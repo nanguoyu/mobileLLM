@@ -4,8 +4,9 @@ import XCTest
 import AppRuntime
 @testable import LLMCore
 
-/// Engine-aware memory governor (DESIGN §1 / §6): the llama.cpp GGUF path discounts mmap'd weights so
-/// the fit is honestly better than MLX, but the experimental hybrid 27B is never allowed green.
+/// Engine-aware memory governor (DESIGN §1 / §6): the llama.cpp GGUF path discounts mmap'd (clean-page)
+/// weights so the fit is honestly better than MLX. Green requires the RAW weights to fit without banking
+/// on the discount, so a model that only fits via clean pages reads honest `.tight` — purely size-driven.
 final class LlamaCppGovernorTests: XCTestCase {
 
     private let phone8  = DeviceTier(physicalMemoryBytes: 8_000_000_000,  isPhone: true)
@@ -30,15 +31,14 @@ final class LlamaCppGovernorTests: XCTestCase {
         XCTAssertEqual(plan(LLMCatalog.bonsai1_7b, phone8), .comfortable)
     }
 
-    /// The 27B GGUF is NEVER comfortable/green on any device (experimental hybrid clamp), yet the mmap
-    /// discount keeps it *runnable* (tight) even on the 8 GB phone — where the MLX 27B is unsupported.
-    func test27BGGUFClampedButMoreFeasibleThanMLX() {
-        for device in [phone8, phone12, mac16] {
-            let fit = plan(LLMCatalog.bonsai27b, device)
-            XCTAssertNotEqual(fit, .comfortable, "27B GGUF must never read green (experimental hybrid)")
-            guard case .tight = fit else {
-                return XCTFail("27B GGUF should be runnable-but-tight on \(device), got \(fit)")
-            }
+    /// The 3.8 GB 27B Q1_0 GGUF: size-driven — comfortable on roomy devices (12 GB phone, 16 GB Mac,
+    /// where the raw weights fit the green line), but honest `.tight` on the 8 GB phone (only the
+    /// clean-page discount gets it under the ceiling → never a falsely confident green there).
+    func test27BGGUFSizeDrivenAndMoreFeasibleThanMLX() {
+        XCTAssertEqual(plan(LLMCatalog.bonsai27b, phone12), .comfortable)
+        XCTAssertEqual(plan(LLMCatalog.bonsai27b, mac16),   .comfortable)
+        guard case .tight = plan(LLMCatalog.bonsai27b, phone8) else {
+            return XCTFail("27B GGUF should be runnable-but-tight on the 8 GB phone")
         }
         // The MLX 27B is unsupported on the 8 GB phone; the GGUF (mmap discount) is tight → more feasible.
         let mlx = LLMMemoryGovernor.plan(model: LLMCatalog.bonsai27b,

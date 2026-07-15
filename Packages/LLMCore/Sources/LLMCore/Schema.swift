@@ -6,17 +6,29 @@ import Foundation
 // governor's memory model is qwen-shaped ("qwen-family v1"). Adding a Qwen3/Llama/Mistral model later
 // = append an `LLMModel` with the right `modelType` / `swiftModelClass`, no schema change.
 
-/// Publisher/architecture family. Extensible; the seed catalog starts with one family.
+/// Publisher/architecture family. Extensible; adding a family = one case + a display name.
 public enum LLMFamily: String, Sendable, Hashable, CaseIterable, Codable {
     case bonsai
+    case qwen
+    case minicpm
+    case hunyuan
+    case deepseek
     public var displayName: String {
-        switch self { case .bonsai: "Bonsai" }
+        switch self {
+        case .bonsai: "Bonsai"
+        case .qwen: "Qwen"
+        case .minicpm: "MiniCPM"
+        case .hunyuan: "Hunyuan"
+        case .deepseek: "DeepSeek"
+        }
     }
 }
 
-/// The permissive license the seed models ship under (kept local so LLMCore is self-contained).
+/// The license a model ships under (kept local so LLMCore is self-contained).
 public enum ModelLicense: String, Sendable, Hashable, Codable {
     case apache2 = "Apache-2.0"
+    case mit = "MIT"
+    case tencentHunyuan = "Tencent Hunyuan Community"
     public var displayName: String { rawValue }
 }
 
@@ -75,14 +87,24 @@ public enum EnginePreference: String, Sendable, Codable, CaseIterable, Hashable 
     }
 }
 
-/// Quantization scheme. 1-bit (Binary) needs the PrismML fork kernel; ternary 2-bit is upstream-native.
+/// Quantization scheme. 1-bit (Binary) needs the PrismML fork kernel; ternary 2-bit is upstream-native
+/// MLX; `gguf4bit` is llama.cpp's Q4_K_M (the standard on-device GGUF quant, ~4.5 bpw).
 public enum QuantSpec: Sendable, Hashable, Codable {
     case binary1bit    // {bits:1}, group_size 128 — PrismML fork
     case ternary2bit   // {bits:2}, group_size 128 — upstream stock
+    case gguf4bit      // Q4_K_M — llama.cpp
 
-    public var bits: Int { self == .binary1bit ? 1 : 2 }
+    public var bits: Int {
+        switch self { case .binary1bit: 1; case .ternary2bit: 2; case .gguf4bit: 4 }
+    }
     public var groupSize: Int { 128 }
-    public var displayName: String { self == .binary1bit ? "1-bit" : "Ternary (2-bit)" }
+    public var displayName: String {
+        switch self {
+        case .binary1bit: "1-bit"
+        case .ternary2bit: "Ternary (2-bit)"
+        case .gguf4bit: "Q4_K_M"
+        }
+    }
 }
 
 /// Which inference backend a variant needs.
@@ -164,6 +186,30 @@ public enum ChatTemplateSource: Sendable, Hashable, Codable {
     case builtin(String)    // a named template compiled into the app
 }
 
+/// The wire format the **llama.cpp engine** serializes chat turns into (the MLX engine uses the repo's
+/// jinja template via `chatTemplate`; the llama.cpp path builds the string by hand for full control).
+/// Extensible: add a case + a builder in `LlamaEngine.buildPrompt` to onboard a new template family.
+public enum PromptTemplate: String, Sendable, Hashable, Codable {
+    case chatML     // <|im_start|>role\n…<|im_end|>  — Qwen3/3.5/3.6, MiniCPM5, Bonsai
+    case deepSeek   // <｜begin▁of▁sentence｜>{sys}<｜User｜>…<｜Assistant｜>  — DeepSeek(-R1 distills)
+    case hunyuan    // <｜hy_begin▁of▁sentence｜>{sys}<｜hy_User｜>…<｜hy_Assistant｜>  — Tencent Hunyuan
+}
+
+/// How a model delimits its reasoning, so the engine can build the prompt + split the stream correctly.
+public enum ReasoningStyle: String, Sendable, Hashable, Codable {
+    /// No reasoning trace — the whole stream is the answer.
+    case none
+    /// Explicit `<think>…</think>` the model emits itself (Qwen-family). Thinking-off is enforced by
+    /// pre-filling an empty `<think></think>` block in the prompt.
+    case thinkTags
+    /// The chat template pre-fills the OPENING `<think>` in the prompt, so the model streams reasoning
+    /// first and emits only the closing `</think>` (DeepSeek-R1 distills). The splitter starts in-think.
+    case thinkTagsImplicitOpen
+
+    /// Whether the model can produce a reasoning trace at all (drives the composer's 🧠 toggle).
+    public var canThink: Bool { self != .none }
+}
+
 /// The architecture facts the factory + governor need (keys into `LLMModelFactory`, KV shape, etc).
 public struct LLMArchitecture: Sendable, Hashable, Codable {
     public let modelType: String        // config.json `model_type`, e.g. "qwen3_5_text" | "qwen3"
@@ -177,13 +223,19 @@ public struct LLMArchitecture: Sendable, Hashable, Codable {
     public let thinkingCapable: Bool
     public let eos: String              // e.g. "<|im_end|>"
     public let chatTemplate: ChatTemplateSource
+    /// The wire format + reasoning convention for the llama.cpp engine (defaults suit the ChatML/Qwen
+    /// seed models; a non-Qwen GGUF sets these to onboard cleanly without touching the engine).
+    public let promptTemplate: PromptTemplate
+    public let reasoningStyle: ReasoningStyle
 
     /// The hybrid Gated-DeltaNet arch (qwen3_5) — unconfirmed on mainline llama.cpp (held experimental).
     public var isHybrid: Bool { attention.isHybrid }
 
     public init(modelType: String, swiftModelClass: String, hidden: Int, layers: Int, vocab: Int,
                 tieWordEmbeddings: Bool, attention: AttentionShape, nativeContext: Int,
-                thinkingCapable: Bool, eos: String, chatTemplate: ChatTemplateSource) {
+                thinkingCapable: Bool, eos: String, chatTemplate: ChatTemplateSource,
+                promptTemplate: PromptTemplate = .chatML,
+                reasoningStyle: ReasoningStyle = .thinkTags) {
         self.modelType = modelType
         self.swiftModelClass = swiftModelClass
         self.hidden = hidden
@@ -195,6 +247,8 @@ public struct LLMArchitecture: Sendable, Hashable, Codable {
         self.thinkingCapable = thinkingCapable
         self.eos = eos
         self.chatTemplate = chatTemplate
+        self.promptTemplate = promptTemplate
+        self.reasoningStyle = reasoningStyle
     }
 }
 

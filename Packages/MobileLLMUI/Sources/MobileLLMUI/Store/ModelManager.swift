@@ -145,13 +145,14 @@ public final class ModelManager {
     }
 
     public func fitPresentation(_ model: LLMModel, _ variant: LLMVariant, context: Int) -> FitPresentation {
-        // The 27B GGUF on llama.cpp is unconfirmed on mainline (hybrid GDN) — always render it as an
-        // honest experimental (amber), never a plain green/tight, pending on-device measurement. The
-        // governor already clamps it below green; this makes the badge read "Experimental" everywhere.
-        let experimentalByEngine = variant.engine == .llamaCpp && model.architecture.isHybrid
+        // Purely size-driven now: the qwen3_5 hybrid arch is confirmed on mainline llama.cpp (Bonsai-27B
+        // decodes on Metal), so a small hybrid (Qwen3.5-4B) reads genuinely comfortable. When the governor
+        // says `.unsupported` but the raw weights are physically conceivable on this device, render an
+        // honest amber **experimental** ("Try anyway", not a hidden row) — the 27B-1bit on an 8 GB phone.
+        // Truly-too-big-for-RAM stays gray/unsupported.
         switch fit(model, variant, context: context) {
-        case .comfortable: return experimentalByEngine ? .experimental : .comfortable
-        case let .tight(maxContext): return experimentalByEngine ? .experimental : .tight(maxContext: maxContext)
+        case .comfortable: return .comfortable
+        case let .tight(maxContext): return .tight(maxContext: maxContext)
         case .unsupported:
             let base = variant.onDiskBytes + variant.backend.runtimeOverheadBytes
             return base <= device.physicalMemoryBytes ? .experimental : .unsupported

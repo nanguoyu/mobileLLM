@@ -3,10 +3,12 @@
 import XCTest
 @testable import LLMCore
 
-/// The engine additions to the schema + catalog (DESIGN §3 / §6): every Bonsai model now ships one
-/// llama.cpp GGUF variant alongside its MLX variants, ids stay unique across engines, and the MLX
-/// variants remain first (so the quant-keyed default is unchanged).
+/// The engine additions to the schema + catalog (DESIGN §3 / §6): Bonsai models ship MLX variants plus a
+/// llama.cpp GGUF (Q1_0), while the newer families (Qwen3.5/3.6, MiniCPM5, Hunyuan, DeepSeek) are
+/// GGUF-only (Q4_K_M). Ids stay unique across engines; Bonsai's MLX-first default is unchanged.
 final class EngineCatalogTests: XCTestCase {
+
+    private let bonsaiIDs: Set<String> = ["bonsai-27b", "bonsai-8b", "bonsai-4b", "bonsai-1.7b"]
 
     /// Backend → engine mapping (AWQ maps to MLX; GGUF to llama.cpp).
     func testBackendEngineMapping() {
@@ -21,43 +23,44 @@ final class EngineCatalogTests: XCTestCase {
         XCTAssertEqual(EngineKind.llamaCpp.label, "llama.cpp")
     }
 
-    /// Every model ships exactly one GGUF variant, with the expected repo + filename.
-    func testEveryModelHasOneGGUFVariant() {
-        let expected: [String: (repo: String, file: String)] = [
-            "bonsai-27b":  ("prism-ml/Bonsai-27B-gguf",  "Bonsai-27B-Q1_0.gguf"),
-            "bonsai-8b":   ("prism-ml/Bonsai-8B-gguf",   "Bonsai-8B-Q1_0.gguf"),
-            "bonsai-4b":   ("prism-ml/Bonsai-4B-gguf",   "Bonsai-4B-Q1_0.gguf"),
-            "bonsai-1.7b": ("prism-ml/Bonsai-1.7B-gguf", "Bonsai-1.7B-Q1_0.gguf"),
-        ]
+    /// Every model ships at least one GGUF variant, each with a real single-file `.gguf` name + size.
+    func testEveryModelHasAGGUFVariant() {
         for model in LLMCatalog.all {
             let ggufs = model.variants(for: .llamaCpp)
-            XCTAssertEqual(ggufs.count, 1, "\(model.id) must ship exactly one GGUF variant")
-            let v = ggufs[0]
-            XCTAssertEqual(v.backend, .llamaCppGGUF)
-            XCTAssertEqual(v.quant, .binary1bit, "GGUF Q1_0 is 1-bit")
-            XCTAssertEqual(v.source.huggingFaceRepo, expected[model.id]?.repo)
-            XCTAssertEqual(v.source.fileName, expected[model.id]?.file)
-            XCTAssertGreaterThan(v.onDiskBytes, 0)
+            XCTAssertGreaterThanOrEqual(ggufs.count, 1, "\(model.id) must ship a GGUF variant")
+            for v in ggufs {
+                XCTAssertEqual(v.backend, .llamaCppGGUF)
+                XCTAssertTrue(v.source.fileName?.hasSuffix(".gguf") ?? false,
+                              "\(model.id) GGUF needs a single .gguf filename")
+                XCTAssertGreaterThan(v.onDiskBytes, 0)
+            }
         }
+        // Bonsai ships the 1-bit Q1_0 quant; the new families ship Q4_K_M.
+        XCTAssertEqual(LLMCatalog.bonsai8b.variant(engine: .llamaCpp, quant: .binary1bit)?.source.fileName,
+                       "Bonsai-8B-Q1_0.gguf")
+        XCTAssertEqual(LLMCatalog.qwen35_4b.variant(engine: .llamaCpp, quant: .gguf4bit)?.source.fileName,
+                       "Qwen3.5-4B-Q4_K_M.gguf")
     }
 
-    /// The existing MLX variants are untouched — still first, still the quant-keyed default.
-    func testMLXVariantsPreservedAndDefaultStable() {
-        for model in LLMCatalog.all {
-            XCTAssertEqual(model.variants.first?.engine, .mlx, "MLX variant must stay first")
-            XCTAssertEqual(model.variant(for: model.defaultVariant)?.engine, .mlx,
-                           "the quant-keyed default must still resolve to the MLX variant")
+    /// The Bonsai models keep their MLX-first ordering + MLX default; the new families are GGUF-only.
+    func testBonsaiMLXPreservedAndNewFamiliesGGUFOnly() {
+        for model in LLMCatalog.all where bonsaiIDs.contains(model.id) {
+            XCTAssertEqual(model.variants.first?.engine, .mlx, "MLX must stay first for \(model.id)")
+            XCTAssertEqual(model.variant(for: model.defaultVariant)?.engine, .mlx)
             XCTAssertEqual(model.defaultVariantValue.engine, .mlx)
         }
-        // Both engines are present, MLX first.
         XCTAssertEqual(LLMCatalog.bonsai8b.engines, [.mlx, .llamaCpp])
+        // GGUF-only newcomers default to their llama.cpp variant.
+        for model in LLMCatalog.all where !bonsaiIDs.contains(model.id) {
+            XCTAssertEqual(model.engines, [.llamaCpp], "\(model.id) is GGUF-only")
+            XCTAssertEqual(model.defaultVariantValue.engine, .llamaCpp)
+        }
     }
 
     /// Variant ids are unique across the whole catalog even though MLX + GGUF share the 1-bit quant.
     func testVariantIdsUniqueAcrossEngines() {
         let ids = LLMCatalog.all.flatMap { $0.variants.map(\.id) }
         XCTAssertEqual(Set(ids).count, ids.count, "variant ids must be unique across engines")
-        // The id encodes the format tag so a same-quant MLX vs GGUF pair never collides.
         let mlx1 = LLMCatalog.bonsai8b.variant(engine: .mlx, quant: .binary1bit)!
         let gguf1 = LLMCatalog.bonsai8b.variant(engine: .llamaCpp, quant: .binary1bit)!
         XCTAssertNotEqual(mlx1.id, gguf1.id)
@@ -74,11 +77,24 @@ final class EngineCatalogTests: XCTestCase {
         XCTAssertNil(m.variant(engine: .llamaCpp, quant: .ternary2bit))
     }
 
-    /// Only the 27B is the hybrid arch (the experimental-on-llama flag).
+    /// The qwen3_5 models are the hybrid Gated-DeltaNet arch; plain qwen3 / llama / hunyuan dense are not.
     func testHybridFlag() {
-        XCTAssertTrue(LLMCatalog.bonsai27b.architecture.isHybrid)
-        for m in [LLMCatalog.bonsai8b, LLMCatalog.bonsai4b, LLMCatalog.bonsai1_7b] {
-            XCTAssertFalse(m.architecture.isHybrid)
+        for m in [LLMCatalog.bonsai27b, LLMCatalog.qwen35_4b, LLMCatalog.qwen35_9b, LLMCatalog.qwen36_27b] {
+            XCTAssertTrue(m.architecture.isHybrid, "\(m.id) is qwen3_5 hybrid")
         }
+        for m in [LLMCatalog.bonsai8b, LLMCatalog.bonsai4b, LLMCatalog.bonsai1_7b,
+                  LLMCatalog.minicpm5_1b, LLMCatalog.hunyuan4b, LLMCatalog.deepseekR1Qwen8b] {
+            XCTAssertFalse(m.architecture.isHybrid, "\(m.id) is dense")
+        }
+    }
+
+    /// The new models carry the right prompt/reasoning wiring for the llama.cpp engine.
+    func testNewFamilyPromptWiring() {
+        XCTAssertEqual(LLMCatalog.qwen35_4b.architecture.promptTemplate, .chatML)
+        XCTAssertEqual(LLMCatalog.qwen35_4b.architecture.reasoningStyle, .thinkTagsImplicitOpen)
+        XCTAssertEqual(LLMCatalog.deepseekR1Qwen8b.architecture.promptTemplate, .deepSeek)
+        XCTAssertEqual(LLMCatalog.deepseekR1Qwen8b.architecture.reasoningStyle, .thinkTags)
+        XCTAssertEqual(LLMCatalog.hunyuan4b.architecture.promptTemplate, .hunyuan)
+        XCTAssertEqual(LLMCatalog.minicpm5_1b.architecture.reasoningStyle, .thinkTagsImplicitOpen)
     }
 }

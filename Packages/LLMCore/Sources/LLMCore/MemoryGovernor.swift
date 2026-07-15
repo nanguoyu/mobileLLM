@@ -81,25 +81,31 @@ public enum LLMMemoryGovernor {
         return maxContext > 0 ? .tight(maxContext: maxContext) : .unsupported
     }
 
-    /// llama.cpp GGUF planner: mmap'd weights are (largely) reclaimable, so only `mmapResidentFraction`
-    /// of them counts against the ceiling — an honest discount that makes GGUF fit better than MLX. The
-    /// dense small models (8B/4B/1.7B) come out comfortably green; the hybrid 27B is CLAMPED to at best
-    /// `.tight` (never `.comfortable`), because mainline support is unconfirmed and iOS residency sets
-    /// can wire the GPU buffers and erase the discount — the honest answer waits for on-device measurement.
+    /// llama.cpp GGUF planner: mmap'd weights are file-backed *clean* pages (not counted in
+    /// `phys_footprint` the way MLX's anonymous/dirty buffers are), so only `mmapResidentFraction` of them
+    /// counts against the jetsam ceiling — an honest discount that makes GGUF fit better than MLX. The fit
+    /// is now purely size-driven: the qwen3_5 hybrid arch is CONFIRMED on mainline llama.cpp (Bonsai-27B
+    /// decodes on Metal), so a small hybrid (Qwen3.5-4B) reads comfortably green while a big one (a 16 GB
+    /// 27B GGUF) is honestly `.unsupported` on a phone by the weight math alone — no arch special-casing.
     private static func planLlamaCpp(model: LLMModel, variant: LLMVariant,
                                      device: DeviceTier, context: Int) -> LLMFit {
         let ceiling = residentCeilingBytes(for: device)
-        let effectiveWeights = Int64(Double(variant.onDiskBytes) * mmapResidentFraction)
-        let base = effectiveWeights + variant.backend.runtimeOverheadBytes
+        let overhead = variant.backend.runtimeOverheadBytes
+        let discountedBase = Int64(Double(variant.onDiskBytes) * mmapResidentFraction) + overhead
+        let rawBase = variant.onDiskBytes + overhead
+        let kv = model.architecture.attention.kvBytes(tokens: context)
 
-        guard base <= ceiling else { return .unsupported }
+        // Supported if the clean-page (discounted) footprint fits — the mmap discount is what lets a big
+        // GGUF run on a memory-tight phone at all.
+        guard discountedBase <= ceiling else { return .unsupported }
 
-        let peak = base + model.architecture.attention.kvBytes(tokens: context)
+        // Green ONLY if it's comfortable WITHOUT banking on the discount (raw weights fit the green line),
+        // so a model that fits only via the clean-page gamble reads honest `.tight`, never a falsely
+        // confident green. This is purely size-driven — no arch special-casing.
         let green = Int64(greenFraction * Double(ceiling))
-        // The experimental hybrid never reads green — clamp it to tight even with headroom to spare.
-        if peak <= green && !model.architecture.isHybrid { return .comfortable }
+        if rawBase + kv <= green { return .comfortable }
 
-        let maxContext = maxContext(base: base, ceiling: ceiling, attention: model.architecture.attention)
+        let maxContext = maxContext(base: discountedBase, ceiling: ceiling, attention: model.architecture.attention)
         return maxContext > 0 ? .tight(maxContext: maxContext) : .unsupported
     }
 

@@ -65,12 +65,14 @@ final class ModelManagerEngineTests: XCTestCase {
         XCTAssertEqual(captured, [])
     }
 
-    /// The 27B GGUF presents as experimental on every device (never comfortable/tight/unsupported).
-    func testGGUF27BAlwaysExperimental() {
+    /// The 3.8 GB 27B GGUF presents by SIZE now (hybrid arch confirmed on mainline): comfortable on
+    /// roomy devices, honest `.tight` on the 8 GB phone (runs via the clean-page discount, not green).
+    func testGGUF27BSizeDrivenPresentation() {
         let gguf = LLMCatalog.bonsai27b.variant(engine: .llamaCpp, quant: .binary1bit)!
-        for device in [phone8, phone12, mac16] {
-            XCTAssertEqual(manager(device).fitPresentation(LLMCatalog.bonsai27b, gguf, context: 4096),
-                           .experimental, "27B GGUF must be experimental on \(device)")
+        XCTAssertEqual(manager(phone12).fitPresentation(LLMCatalog.bonsai27b, gguf, context: 4096), .comfortable)
+        XCTAssertEqual(manager(mac16).fitPresentation(LLMCatalog.bonsai27b, gguf, context: 4096), .comfortable)
+        guard case .tight = manager(phone8).fitPresentation(LLMCatalog.bonsai27b, gguf, context: 4096) else {
+            return XCTFail("27B GGUF should read tight (runnable via mmap discount) on the 8 GB phone")
         }
     }
 

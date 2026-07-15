@@ -30,6 +30,8 @@ public actor LlamaEngine: LLMEngine {
     private var loadedID: String?
     private var thinkingCapable = true
     private var eosText = "<|im_end|>"
+    private var promptTemplate: PromptTemplate = .chatML
+    private var reasoningStyle: ReasoningStyle = .thinkTags
 
     private let nThreads: Int32 = {
         Int32(max(1, min(8, ProcessInfo.processInfo.activeProcessorCount - 2)))
@@ -73,6 +75,8 @@ public actor LlamaEngine: LLMEngine {
         loadedID = modelSpec.id
         thinkingCapable = modelSpec.architecture.thinkingCapable
         eosText = modelSpec.architecture.eos
+        promptTemplate = modelSpec.architecture.promptTemplate
+        reasoningStyle = modelSpec.architecture.reasoningStyle
         context = nil; contextCap = 0
         progress(1)
     }
@@ -123,7 +127,9 @@ public actor LlamaEngine: LLMEngine {
             try ensureContext(cap: params.contextTokenCap)
             guard let context else { throw EngineError.contextInitFailed }
 
-            let prompt = Self.buildChatML(messages: messages, thinking: params.thinking && thinkingCapable)
+            let wantThinking = params.thinking && reasoningStyle.canThink
+            let prompt = Self.buildPrompt(messages: messages, template: promptTemplate,
+                                          reasoning: reasoningStyle, thinking: wantThinking)
             var promptTokens = Self.tokenize(vocab: vocab, text: prompt, addSpecial: true)
             // Guard the KV window: keep the most recent tokens if the prompt overflows the context.
             let room = contextCap - max(8, params.maxTokens > 0 ? min(params.maxTokens, 256) : 256)
@@ -150,8 +156,8 @@ public actor LlamaEngine: LLMEngine {
             }
             let promptSecs = max(Date().timeIntervalSince(prefillStart), 0.0001)
 
-            // Decode loop.
-            var splitter = ThinkSplitter()
+            // Decode loop. Implicit-open reasoning (DeepSeek) begins inside the think block.
+            var splitter = ThinkSplitter(startInThink: reasoningStyle == .thinkTagsImplicitOpen && wantThinking)
             var decoder = PieceDecoder()
             var genTokens = 0
             var peak: Int64 = 0
@@ -206,10 +212,34 @@ public actor LlamaEngine: LLMEngine {
 
     // MARK: - Prompt / tokenizer helpers
 
-    /// Build a ChatML prompt from the full turn history. When thinking is off we pre-fill an empty
-    /// `<think></think>` block after the assistant tag — the same trick Qwen3's own template uses to make
-    /// the model skip reasoning (so nothing lands in `.reasoning`).
-    static func buildChatML(messages: [ChatTurn], thinking: Bool) -> String {
+    /// Serialize the chat history into the model's prompt string, dispatching on its `PromptTemplate`
+    /// and appending the reasoning-control suffix for its `ReasoningStyle`. `thinking` is the effective
+    /// per-turn choice (the caller has already ANDed it with the model's capability).
+    static func buildPrompt(messages: [ChatTurn], template: PromptTemplate,
+                            reasoning: ReasoningStyle, thinking: Bool) -> String {
+        switch template {
+        case .chatML:   return chatMLPrompt(messages, reasoning: reasoning, thinking: thinking)
+        case .deepSeek: return deepSeekPrompt(messages, reasoning: reasoning, thinking: thinking)
+        case .hunyuan:  return hunyuanPrompt(messages, reasoning: reasoning, thinking: thinking)
+        }
+    }
+
+    /// The `<think>` control suffix appended after the assistant-turn opener:
+    /// - `.thinkTags` — the model emits its own `<think>`: nothing when thinking, an empty closed block
+    ///   to suppress reasoning when not.
+    /// - `.thinkTagsImplicitOpen` — the template pre-fills the opening tag: an open `<think>\n` when
+    ///   thinking (the stream begins inside the block), the empty closed block to suppress when not.
+    static func thinkSuffix(_ reasoning: ReasoningStyle, thinking: Bool) -> String {
+        switch reasoning {
+        case .none: return ""
+        case .thinkTags: return thinking ? "" : "<think>\n\n</think>\n\n"
+        case .thinkTagsImplicitOpen: return thinking ? "<think>\n" : "<think>\n\n</think>\n\n"
+        }
+    }
+
+    /// ChatML (Qwen3/3.5/3.6, MiniCPM5, Bonsai): `<|im_start|>role\n…<|im_end|>\n`, then the assistant
+    /// opener + think suffix.
+    static func chatMLPrompt(_ messages: [ChatTurn], reasoning: ReasoningStyle, thinking: Bool) -> String {
         var s = ""
         for m in messages {
             let role: String
@@ -217,8 +247,40 @@ public actor LlamaEngine: LLMEngine {
             s += "<|im_start|>\(role)\n\(m.content)<|im_end|>\n"
         }
         s += "<|im_start|>assistant\n"
-        if !thinking { s += "<think>\n\n</think>\n\n" }
-        return s
+        return s + thinkSuffix(reasoning, thinking: thinking)
+    }
+
+    /// DeepSeek(-R1 distills): BOS + raw system, then each USER turn already carries the trailing
+    /// `<｜Assistant｜>` opener; assistant history turns end with the DeepSeek EOS. The model emits its own
+    /// `<think>` (explicit), so no opener is pre-filled unless we suppress.
+    static func deepSeekPrompt(_ messages: [ChatTurn], reasoning: ReasoningStyle, thinking: Bool) -> String {
+        let bos = "<｜begin▁of▁sentence｜>", eos = "<｜end▁of▁sentence｜>"
+        var s = bos
+        if let sys = messages.first(where: { $0.role == .system })?.content, !sys.isEmpty { s += sys }
+        for m in messages {
+            switch m.role {
+            case .system: break
+            case .user: s += "<｜User｜>\(m.content)<｜Assistant｜>"
+            case .assistant: s += "\(m.content)\(eos)"
+            }
+        }
+        return s + thinkSuffix(reasoning, thinking: thinking)
+    }
+
+    /// Tencent Hunyuan: BOS + raw system, then each USER turn carries the trailing `<｜hy_Assistant｜>`
+    /// opener; assistant history turns end with the Hunyuan EOS. Explicit `<think>`.
+    static func hunyuanPrompt(_ messages: [ChatTurn], reasoning: ReasoningStyle, thinking: Bool) -> String {
+        let bos = "<｜hy_begin▁of▁sentence｜>", eos = "<｜hy_place▁holder▁no▁2｜>"
+        var s = bos
+        if let sys = messages.first(where: { $0.role == .system })?.content, !sys.isEmpty { s += sys }
+        for m in messages {
+            switch m.role {
+            case .system: break
+            case .user: s += "<｜hy_User｜>\(m.content)<｜hy_Assistant｜>"
+            case .assistant: s += "\(m.content)\(eos)"
+            }
+        }
+        return s + thinkSuffix(reasoning, thinking: thinking)
     }
 
     static func tokenize(vocab: OpaquePointer, text: String, addSpecial: Bool) -> [llama_token] {

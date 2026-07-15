@@ -26,7 +26,13 @@ public struct ThinkSplitter {
     private var inThink = false
     private var buffer = ""   // unclassified pending characters, including a possible partial-tag tail
 
-    public init() {}
+    /// `startInThink` handles the "implicit-open" reasoning convention (DeepSeek-R1 distills): the chat
+    /// template pre-fills the opening `<think>` in the PROMPT, so the generated stream begins inside the
+    /// reasoning block and emits only the closing `</think>`. Starting in-think routes everything up to
+    /// that `</think>` to `.reasoning`, matching what the model actually streams.
+    public init(startInThink: Bool = false) {
+        inThink = startInThink
+    }
 
     /// Feed a streamed chunk; returns any deltas it completes (withholding a possible partial tag).
     public mutating func feed(_ chunk: String) -> [Delta] {
