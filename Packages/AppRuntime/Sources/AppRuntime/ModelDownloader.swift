@@ -203,9 +203,11 @@ public struct ModelDownloader: Sendable {
         // Range header resumes next time. Resume is handled via the Range header + 200/206 branching.
         try await Self.streamDownload(request: request, into: partURL, existingBytes: existingBytes,
                                       repoId: repoId, filePath: file.path, session: session, progress: progress)
-        guard Self.fileMatches(partURL, expectedSize: file.size, expectedSHA256: file.sha256) else {
-            // Remove the corrupt partial so a retry re-downloads from scratch, not the same bad prefix.
-            try? FileManager.default.removeItem(at: partURL)
+        // Verify by SIZE only. A full-file SHA256 re-reads the whole shard from disk at completion —
+        // ~5 GB for the 27B, which stalled/killed the app right as the download finished. HTTPS + the
+        // exact expected byte count is what normal apps rely on; a truncated download fails the size check.
+        guard Self.fileMatches(partURL, expectedSize: file.size, expectedSHA256: file.sha256, verifyHash: false) else {
+            try? FileManager.default.removeItem(at: partURL)   // wrong size → drop it so a retry re-fetches
             throw ModelDownloadError.hashMismatch(file.path)
         }
         if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
@@ -402,7 +404,7 @@ public struct ModelDownloader: Sendable {
         return true
     }
 
-    private static func fileMatches(_ url: URL, expectedSize: Int64?, expectedSHA256: String?, verifyHash: Bool = true) -> Bool {
+    private static func fileMatches(_ url: URL, expectedSize: Int64?, expectedSHA256: String?, verifyHash: Bool = false) -> Bool {
         guard FileManager.default.fileExists(atPath: url.path) else { return false }
         if let expectedSize, fileSize(url) != expectedSize { return false }
         if verifyHash, let expectedSHA256, !expectedSHA256.isEmpty {
