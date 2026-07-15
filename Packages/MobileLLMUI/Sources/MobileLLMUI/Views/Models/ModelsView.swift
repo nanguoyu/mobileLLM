@@ -19,21 +19,25 @@ struct ModelsView: View {
     @State private var selectedQuant: [String: QuantSpec] = [:]
     @State private var pendingDelete: (model: LLMModel, variant: LLMVariant)?
     @State private var filter: ModelFilter = .all
+    @State private var query = ""
 
-    /// Catalog filter (the catalog now spans several families, so it needs shape).
+    /// Catalog filter (the catalog now spans several families, so it needs search + shape).
     private enum ModelFilter: String, CaseIterable {
-        case all, runs, installed
+        case all, runs, installed, reasoning, chinese
         var label: String {
-            switch self { case .all: "All"; case .runs: "Runs here"; case .installed: "Installed" }
+            switch self {
+            case .all: "All"; case .runs: "Runs here"; case .installed: "Installed"
+            case .reasoning: "Reasoning"; case .chinese: "Chinese"
+            }
         }
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Space.lg) {
+            VStack(alignment: .leading, spacing: Theme.Space.md) {
                 storageHeader
-                Segmented(selection: $filter, options: ModelFilter.allCases) { $0.label }
-                    .accessibilityLabel("Filter models")
+                searchField
+                filterChips
                 ForEach(visibleFamilies, id: \.self) { family in
                     familySection(family)
                 }
@@ -109,16 +113,67 @@ struct ModelsView: View {
         .padding(.vertical, Theme.Space.xl)
     }
 
-    // MARK: Filtering
+    // MARK: Search + filter
+
+    private var searchField: some View {
+        HStack(spacing: Theme.Space.sm) {
+            Image(systemName: "magnifyingglass").font(.subheadline).foregroundStyle(Theme.textTertiary)
+            TextField("Search models — name, publisher…", text: $query)
+                .textFieldStyle(.plain).font(.subheadline)
+                #if os(iOS)
+                .autocorrectionDisabled().textInputAutocapitalization(.never)
+                #endif
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill").font(.subheadline).foregroundStyle(Theme.textTertiary)
+                }
+                .buttonStyle(.plain).accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, Theme.Space.md).padding(.vertical, Theme.Space.sm)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
+    }
+
+    private var filterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.Space.xs) {
+                ForEach(ModelFilter.allCases, id: \.self) { f in
+                    let on = filter == f
+                    Button { withAnimation(Motion.select) { filter = f } } label: {
+                        Text(f.label)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(on ? Theme.onAccent : Theme.textSecondary)
+                            .padding(.horizontal, Theme.Space.md).padding(.vertical, 7)
+                            .background(on ? Theme.accent : Theme.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(on ? Color.clear : Theme.hairline))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(on ? [.isSelected] : [])
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+    }
 
     private func matches(_ model: LLMModel) -> Bool {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        if !q.isEmpty, !"\(model.displayName) \(model.publisher)".lowercased().contains(q) { return false }
         switch filter {
         case .all: return true
         case .runs: return model.variants.contains {
             models.fitPresentation(model, $0, context: settings.contextLength) != .unsupported
         }
         case .installed: return model.variants.contains { models.isInstalled($0) }
+        case .reasoning: return model.architecture.thinkingCapable
+        case .chinese: return isChineseStrong(model)
         }
+    }
+
+    /// Chinese-language strength by family (the seed catalog): Qwen / Bonsai / DeepSeek / Hunyuan /
+    /// MiniCPM are strong; Gemma is broadly multilingual but not Chinese-first.
+    private func isChineseStrong(_ model: LLMModel) -> Bool {
+        model.family != .gemma
     }
 
     private var storageHeader: some View {

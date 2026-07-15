@@ -8,9 +8,9 @@ import UIKit
 import AppKit
 #endif
 
-/// "On-device intelligence" design tokens: layered flat surfaces, a single teal accent, hairline
-/// borders. Adaptive to system light/dark (no asset catalog — colors resolve per scheme at draw
-/// time). mobileLLM's studio design system; the accent is its own teal ramp.
+/// Ink-wash design tokens (水墨): warm rice-paper surfaces, ink text, mountain-grey neutrals, and the
+/// seal's cinnabar red as the single accent — the palette sampled from the app icon. Adaptive to system
+/// light/dark (no asset catalog — colors resolve per scheme at draw time).
 public enum Theme {
 
     // MARK: Dynamic-color shim
@@ -58,38 +58,41 @@ public enum Theme {
 
     // MARK: Color tokens (light + dark)
 
-    /// App background.
-    public static let bg          = dynamic(dark: 0x0E0E10, light: 0xF6F6F8)
-    /// Card / panel / modelBar / selected segment tile.
-    public static let surface     = dynamic(dark: 0x1A1A1D, light: 0xFFFFFF)
+    // Ink-wash palette, sampled from the app icon (水墨山水): 宣纸 paper, ink, 远山 mountain grey, and the
+    // seal's 印章红 cinnabar as the accent. Warm neutrals throughout; dark mode is "wet ink at night".
+
+    /// App background — deeper rice-paper (light) / warm ink night (dark).
+    public static let bg          = dynamic(dark: 0x151009, light: 0xE7DDCC)
+    /// Card / panel / modelBar / selected segment tile — lighter paper so cards lift off the ground.
+    public static let surface     = dynamic(dark: 0x221B12, light: 0xF7F1E7)
     /// Inset fields, segmented track, chip fill.
-    public static let surface2    = dynamic(dark: 0x222227, light: 0xECECF0)
-    /// All 1px borders.
-    public static let hairline    = dynamic(dark: .white, darkA: 0.08, light: 0x11111A, lightA: 0.10)
+    public static let surface2    = dynamic(dark: 0x2A2117, light: 0xEFE7D9)
+    /// All 1px borders — warm ink hairline.
+    public static let hairline    = dynamic(dark: .white, darkA: 0.09, light: 0x211400, lightA: 0.09)
 
-    /// Titles, prompt text, values.
-    public static let textPrimary   = dynamic(dark: 0xF2F2F5, light: 0x16161A)
+    /// Titles, prompt text, values — ink.
+    public static let textPrimary   = dynamic(dark: 0xEFE6D5, light: 0x211B12)
     /// Body, captions, labels, keys.
-    public static let textSecondary = dynamic(dark: 0xA8A8B2, light: 0x5A5A66)
-    /// Section headers, chevrons, hints.
-    public static let textTertiary  = dynamic(dark: 0x6E6E78, light: 0x9A9AA6)
+    public static let textSecondary = dynamic(dark: 0xB0A491, light: 0x5B5245)
+    /// Section headers, chevrons, hints — 远山 mountain grey.
+    public static let textTertiary  = dynamic(dark: 0x7C7160, light: 0x8E8574)
 
-    /// Teal "on-device intelligence" accent (mobileLLM's own identity).
-    public static let accent     = dynamic(dark: 0x2DD4BF, light: 0x0D9488)
+    /// 印章红 seal cinnabar accent (mobileLLM's identity — the seal = a stamp of authenticity).
+    public static let accent     = dynamic(dark: 0xD06450, light: 0x9F3C2E)
     /// Filled-chip / glow wash — low-opacity accent.
-    public static let accentSoft = dynamic(dark: 0x2DD4BF, darkA: 0.15, light: 0x0D9488, lightA: 0.15)
-    /// Text / icon on a filled accent surface.
-    public static let onAccent   = Color.white
+    public static let accentSoft = dynamic(dark: 0xD06450, darkA: 0.16, light: 0x9F3C2E, lightA: 0.14)
+    /// Text / icon on a filled accent surface — warm cream, not stark white.
+    public static let onAccent   = dynamic(dark: 0x1C110D, light: 0xF6EFE4)
 
-    /// Fit badge — comfortable / runs resident.
-    public static let fitGreen = dynamic(dark: 0x3DD68C, light: 0x1FA968)
-    /// Fit badge — tight / experimental.
-    public static let fitAmber = dynamic(dark: 0xF0A33D, light: 0xC9791A)
-    /// Fit badge — needs more memory / unsupported.
-    public static let fitGray  = dynamic(dark: 0x6E6E78, light: 0x9A9AA6)
+    /// Fit badge — comfortable / runs resident — 青瓷 celadon green (calm, ink-wash-friendly).
+    public static let fitGreen = dynamic(dark: 0x7FA383, light: 0x5E7F63)
+    /// Fit badge — tight / experimental — 赭 ochre.
+    public static let fitAmber = dynamic(dark: 0xD69B4C, light: 0xB67C2E)
+    /// Fit badge — needs more memory / unsupported — mountain grey.
+    public static let fitGray  = dynamic(dark: 0x7C7361, light: 0x9A9382)
 
-    /// Failed-state text.
-    public static let danger = dynamic(dark: 0xFF5C5C, light: 0xD92D2D)
+    /// Failed-state / destructive text — a brighter pure red, kept distinct from the brick-red accent.
+    public static let danger = dynamic(dark: 0xF06A5A, light: 0xC02617)
 
     // MARK: Scale tokens
 
