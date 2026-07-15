@@ -105,9 +105,10 @@ struct SettingsView: View {
             Divider().background(Theme.hairline)
             Toggle(isOn: $settings.toolsEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("On-device tools").font(.subheadline).foregroundStyle(Theme.textPrimary)
-                    Text("Let the model use a calculator and the clock — all on-device. Adds a round-trip; "
-                         + "some models call tools more reliably than others.")
+                    Text("Tools").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                    Text("Let the model use a calculator and the clock (on-device) and a Wikipedia lookup "
+                         + "(reaches the network only when it searches). Adds a round-trip; some models call "
+                         + "tools more reliably than others.")
                         .font(.caption).foregroundStyle(Theme.textTertiary)
                 }
             }

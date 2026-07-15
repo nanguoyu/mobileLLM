@@ -206,8 +206,9 @@ public final class ChatStore {
             do {
                 await self?.ensureModelReady?()   // reload if the model was suspended to free memory
                 if toolsOn {
-                    // Agent loop: the model may call on-device tools before answering.
-                    let loop = ToolLoop(engine: engine, registry: .builtIn)
+                    // Agent loop: the model may call the calculator/clock (on-device) or a Wikipedia
+                    // lookup (network) before answering.
+                    let loop = ToolLoop(engine: engine, registry: .standard)
                     for try await event in loop.run(messages: turns, params: params) {
                         guard let self, self.streaming?.messageID == assistantID else { return }
                         self.applyLoopEvent(event)

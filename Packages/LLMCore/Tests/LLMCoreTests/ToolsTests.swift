@@ -80,4 +80,31 @@ final class ToolsTests: XCTestCase {
         let tail = p.finish()
         XCTAssertTrue(tail.contains { if case .text(let s) = $0 { return s.contains("<tool") }; return false })
     }
+
+    // MARK: Web search (pure parsers — no network)
+
+    func testWebSearchPicksLanguageByScript() {
+        XCTAssertEqual(WebSearchTool.lang(for: "Alan Turing"), "en")
+        XCTAssertEqual(WebSearchTool.lang(for: "北京是哪里"), "zh")
+        XCTAssertEqual(WebSearchTool.lang(for: "Qwen 模型"), "zh")   // any CJK → zh
+    }
+
+    func testWebSearchParsesTopTitle() {
+        let json = #"{"query":{"search":[{"title":"Alan Turing","pageid":1},{"title":"Other"}]}}"#
+        XCTAssertEqual(WebSearchTool.parseTopTitle(Data(json.utf8)), "Alan Turing")
+        XCTAssertNil(WebSearchTool.parseTopTitle(Data(#"{"query":{"search":[]}}"#.utf8)))
+        XCTAssertNil(WebSearchTool.parseTopTitle(Data("garbage".utf8)))
+    }
+
+    func testWebSearchParsesSummary() {
+        let json = #"{"title":"Alan Turing","extract":"  Alan Turing was a British mathematician.  "}"#
+        XCTAssertEqual(WebSearchTool.parseSummary(Data(json.utf8)), "Alan Turing was a British mathematician.")
+        XCTAssertEqual(WebSearchTool.parseSummary(Data("{}".utf8)), "")
+    }
+
+    func testWebSearchSchema() {
+        let s = WebSearchTool().schema
+        XCTAssertEqual(s.name, "web_search")
+        XCTAssertEqual(s.parameters.first?.name, "query")
+    }
 }
