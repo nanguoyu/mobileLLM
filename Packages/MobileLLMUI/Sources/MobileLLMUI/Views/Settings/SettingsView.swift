@@ -178,9 +178,12 @@ struct SettingsView: View {
         section("About", icon: "info.circle") {
             row("Version", appVersion)
             row("Engine", "Pure Swift + MLX")
-            row("Models", "Prism ML Bonsai · Apache-2.0")
-            Text("On-device inference via mlx-swift-lm and the PrismML 1-bit kernel fork (both Apache-2.0). "
-                 + "Open weights, generated on your device.")
+            row("Runs", "Open-weight models, on-device")
+            Text("A private, on-device runner for open-weight LLMs — everything runs on your device, "
+                 + "nothing is sent to a server. More models will be supported over time.")
+                .font(.caption).foregroundStyle(Theme.textTertiary)
+            Text("Included now: Prism ML Bonsai (Apache-2.0). Inference via mlx-swift-lm; 1-bit models "
+                 + "use the PrismML mlx-swift kernel fork. Each model keeps its own license.")
                 .font(.caption).foregroundStyle(Theme.textTertiary)
         }
     }

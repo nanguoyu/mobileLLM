@@ -12,6 +12,7 @@ import LLMEngineMLX
 @main
 struct MobileLLMApp: App {
     @State private var container: AppContainer
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // Multi-GB weights live under Application Support (a no-backup dir so they don't hit iCloud).
@@ -34,6 +35,11 @@ struct MobileLLMApp: App {
         WindowGroup {
             RootView(container: container)
                 .task { await container.bootstrap() }
+                // Free the resident model when the app leaves the foreground: it stops a 5 GB model
+                // hogging memory while unused and stops iOS jetsam-killing the app in the background.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .background { container.suspendModel() }
+                }
         }
         #if os(macOS)
         .defaultSize(width: 1100, height: 760)

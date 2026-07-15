@@ -35,6 +35,21 @@ public final class AppContainer {
                                    downloader: downloader, installProbe: installProbe,
                                    availableMemory: availableMemory)
         self.chat = ChatStore(engine: engine, store: store, settings: settings)
+        // Reload a suspended model right before the next turn (its memory is freed while idle).
+        chat.ensureModelReady = { [weak self] in await self?.reloadIfSuspended() }
+    }
+
+    /// Free the resident model's weights while idle (app backgrounded, or the user left the chat), but
+    /// keep the active-model identity so the next turn reloads it. On the 8 GB phone this is what stops
+    /// a 5 GB model from being jetsam-killed in the background — and stops it hogging memory when unused.
+    public func suspendModel() {
+        guard !chat.isStreaming else { return }   // never unload mid-generation
+        Task { await models.suspend(); syncActive() }
+    }
+
+    private func reloadIfSuspended() async {
+        try? await models.ensureResident(context: settings.contextLength)
+        syncActive()
     }
 
     /// Load persisted chats + install state, then auto-activate the default model if it's on disk.

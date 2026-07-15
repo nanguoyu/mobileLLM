@@ -39,6 +39,9 @@ public final class ChatStore {
     /// so the value type stays `Equatable`.
     private var bannerAction: (@MainActor () -> Void)?
     private var bannerDismissTask: Task<Void, Never>?
+    /// Set by the app shell: reloads the active model if it was suspended to free memory while idle.
+    /// Awaited right before generation, so a suspended big model comes back on the next send.
+    public var ensureModelReady: (@Sendable () async -> Void)?
 
     public init(engine: any LLMEngine, store: ConversationStore, settings: AppSettings,
                 activeModel: LoadedModel? = nil) {
@@ -194,12 +197,15 @@ public final class ChatStore {
         streaming = state
 
         let history = convo.messages.filter { $0.id != assistantID }
-        let params = settings.sampling(thinking: thinkingEnabled)
+        // "Hidden" thinking ⇒ don't GENERATE reasoning. This model's think-boundary isn't a literal
+        // <think> tag we can reliably strip from the shown text, so the only sure way to hide it is off.
+        let params = settings.sampling(thinking: thinkingEnabled && settings.thinkingDisplay != .hidden)
         let turns = Self.chatTurns(messages: history, systemPrompt: settings.systemPrompt, cap: params.contextTokenCap)
         let engine = self.engine
 
         genTask = Task { @MainActor [weak self] in
             do {
+                await self?.ensureModelReady?()   // reload if the model was suspended to free memory
                 for try await delta in engine.generate(messages: turns, params: params) {
                     guard let self, self.streaming?.messageID == assistantID else { return }
                     self.apply(delta)

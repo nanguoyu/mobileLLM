@@ -64,6 +64,9 @@ public final class ModelManager {
     public private(set) var downloads: [String: VariantDownload] = [:]
     /// True while a model swap is serializing (unload → drain → load), per DESIGN §2.3.
     public private(set) var switching = false
+    /// Whether the engine currently holds `active`'s weights in memory. Suspended (false) when we free
+    /// the weights while idle (background / leaving a chat); reloaded on the next generation.
+    public private(set) var engineResident = false
 
     private let engine: any LLMEngine
     private let downloadBase: URL
@@ -182,12 +185,33 @@ public final class ModelManager {
         try await engine.load(model: model, variant: variant, weightsDir: weightsDir, progress: { _ in })
         let loaded = LoadedModel(model: model, variant: variant)
         active = loaded
+        engineResident = true
         return loaded
     }
 
     public func deactivate() async {
         await engine.unload()
         active = nil
+        engineResident = false
+    }
+
+    /// Free the resident weights but REMEMBER the active model, so we can reload it on the next turn.
+    /// Called when idle (app backgrounded / left the chat) so a 5 GB model doesn't hog memory — and, on
+    /// the 8 GB phone, so iOS doesn't jetsam-kill the app in the background against a 5 GB footprint.
+    public func suspend() async {
+        guard active != nil, engineResident, !switching else { return }
+        await engine.unload()
+        engineResident = false
+    }
+
+    /// Reload the active model if it was suspended (awaited right before generation).
+    public func ensureResident(context: Int) async throws {
+        guard let active, !engineResident, !switching else { return }
+        switching = true
+        defer { switching = false }
+        let weightsDir = ModelDownloader(downloadBase: downloadBase).localURL(repoId: active.variant.source.huggingFaceRepo)
+        try await engine.load(model: active.model, variant: active.variant, weightsDir: weightsDir, progress: { _ in })
+        engineResident = true
     }
 
     // MARK: - Download (foreground, resumable)

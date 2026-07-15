@@ -39,6 +39,9 @@ struct ChatDetailView: View {
         .sheet(isPresented: $showSwitcher) {
             ModelSwitcherSheet(container: container, onOpenModels: onOpenModels)
         }
+        // Leaving the conversation frees the model's memory (reloaded lazily on the next turn), so a
+        // 5 GB model doesn't sit resident while you're not chatting. No-op mid-generation.
+        .onDisappear { container.suspendModel() }
     }
 
     private var modelHeader: some View {
