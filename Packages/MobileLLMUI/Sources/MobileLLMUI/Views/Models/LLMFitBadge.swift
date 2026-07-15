@@ -33,7 +33,9 @@ struct LLMFitBadge: View {
         Label {
             Text(text).font(.caption2.weight(.medium)).foregroundStyle(color)
         } icon: {
-            Circle().fill(color)
+            // A Circle() shape ignores DotLabelStyle's font-based sizing (which only sizes SF Symbols),
+            // so pin it to a small dot explicitly — otherwise it expands to fill the row.
+            Circle().fill(color).frame(width: 8, height: 8)
         }
         .labelStyle(DotLabelStyle())
         .accessibilityElement(children: .ignore)

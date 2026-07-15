@@ -85,12 +85,10 @@ struct AssistantView: View {
     private var answerBody: some View {
         Group {
             if isStreaming {
-                // Streaming: inline caret after the growing text (still incrementally markdown-rendered).
-                VStack(alignment: .leading, spacing: Theme.Space.md) {
-                    MarkdownMessage(text: answer)
-                    HStack { Spacer(minLength: 0); TypingCaret(); Spacer() }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                // Streaming: an inline block caret at the very tail of the growing text. A separate
+                // caret view can't sit at the end of block-rendered markdown, so append the glyph to
+                // the text itself — it always renders right after the last character.
+                MarkdownMessage(text: answer + "\u{258C}")
             } else {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     MarkdownMessage(text: answer)
