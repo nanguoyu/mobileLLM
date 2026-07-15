@@ -11,7 +11,12 @@ import LLMCore
 
 func err(_ s: String) { FileHandle.standardError.write(s.data(using: .utf8)!) }
 
-let repo = ProcessInfo.processInfo.environment["DECODE_REPO"] ?? "prism-ml/Bonsai-8B-mlx-1bit"
+let env = ProcessInfo.processInfo.environment
+let repo = env["DECODE_REPO"] ?? "prism-ml/Bonsai-8B-mlx-1bit"
+let promptText = env["DECODE_PROMPT"]
+    ?? "Explain in about 80 words, in simple terms, how a neural network learns."
+let maxTokens = Int(env["DECODE_MAXTOKENS"] ?? "") ?? 220
+let thinking = env["DECODE_THINK"] == "1"
 let engine = MLXLLMEngine()
 
 err("▶ Loading \(repo) (first run downloads ~1.3 GB)…\n")
@@ -24,11 +29,11 @@ try await engine.loadFromHub(repo) { f in
 err("▶ Generating…\n")
 let messages = [
     ChatTurn(role: .system, content: "You are a concise, helpful assistant."),
-    ChatTurn(role: .user, content: "In one short sentence, what is the capital of France?"),
+    ChatTurn(role: .user, content: promptText),
 ]
 var params = Sampling()
-params.maxTokens = 96
-params.thinking = false
+params.maxTokens = maxTokens
+params.thinking = thinking
 
 var answer = "", reasoning = ""
 for try await delta in engine.generate(messages: messages, params: params) {
