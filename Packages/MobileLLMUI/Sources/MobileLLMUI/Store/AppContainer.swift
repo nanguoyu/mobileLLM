@@ -55,10 +55,22 @@ public final class AppContainer {
         models.refreshInstalled()
         await chat.load()
         let model = LLMCatalog.model(id: settings.defaultModelID) ?? models.recommendedModel
-        if let variant = model.variant(for: model.defaultVariant), models.isInstalled(variant) {
+        if let variant = bootVariant(for: model) {
             await activateAndSync(model, variant, force: false, announce: false)
         }
         syncActive()
+    }
+
+    /// Which variant to auto-activate on launch. The user's engine preference (Settings → Inference
+    /// engine) is honored — a persisted "llama.cpp" (or "MLX") choice is respected instead of always
+    /// booting the MLX default — falling back to any installed variant so a prior download still boots.
+    /// The engine is never silently overridden by a platform default.
+    private func bootVariant(for model: LLMModel) -> LLMVariant? {
+        let preferred = AppSettings.preferredVariant(for: model, device: models.device,
+                                                     preference: settings.enginePreference,
+                                                     context: settings.contextLength)
+        if models.isInstalled(preferred) { return preferred }
+        return model.variants.first { models.isInstalled($0) }
     }
 
     /// Activate a variant (Models → Use / Try anyway). Runs the OOM pre-flight; surfaces a recoverable
