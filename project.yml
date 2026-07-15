@@ -2,7 +2,7 @@
 # The project is not committed; the packages + this spec + Signing.xcconfig are the source of truth.
 name: mobileLLM
 options:
-  bundleIdPrefix: com.elss
+  bundleIdPrefix: com.example
   deploymentTarget:
     iOS: "17.0"
     macOS: "14.0"

@@ -8,7 +8,7 @@ xcuserdata/
 *.xcscmblueprint
 *.xccheckout
 
-# Resolved deps float on the pinned manifests (mirrors MobileDiffuser)
+# Resolved deps float on the pinned manifests
 Package.resolved
 
 # Secrets — signing team id / identity never committed

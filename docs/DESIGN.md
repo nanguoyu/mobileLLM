@@ -1,11 +1,14 @@
 # mobileLLM — Design
 
-*On-device LLM chat for macOS + iOS. Pure MLX + Swift. Runs Prism ML's Bonsai (1-bit) models
-fully on device — no account, no cloud, nothing leaves the device. Sibling to
-[MobileDiffuser](../../MobileDiffuser); reuses its infrastructure without inheriting its MLX pin.*
+*An open-source, private, on-device runner for open-weight LLMs on macOS + iOS (Swift + MLX). Everything
+runs on the user's own silicon — no account, no cloud, nothing leaves the device. It is built to host
+many open-weight model families over time: Prism ML's Bonsai (1-bit) is the first included, and the goal
+is **≥7 families**. Two inference engines sit behind one protocol — an **MLX** engine today, and a
+**llama.cpp** engine planned for large models on memory-tight phones (mmap'd weights). The 1-bit weight
+format (`Q1_0`) is already merged into mainline llama.cpp.*
 
 Status: **design approved-for-build pending sign-off.** Produced from a multi-agent design pass
-(reuse audit · engine wiring · model catalog · architecture · product/UX · adversarial critique),
+(foundation audit · engine wiring · model catalog · architecture · product/UX · adversarial critique),
 2026-07-15. Every "verified" number below comes from a Hugging Face primary source (config.json /
 safetensors index), not a model card.
 
@@ -16,14 +19,15 @@ safetensors index), not a model card.
 A commercial-grade, private chat app (ChatGPT-app calm × Raycast keyboard-speed × Linear structure)
 where the model runs on the user's own silicon. Two facts shape **every** decision:
 
-1. **Weights must be RESIDENT.** LLM decode is bandwidth-bound at batch-1: streaming weights from
-   flash = seconds/token (unusable). There is **no** two-phase / weight-streaming rung like the
-   diffusion engine has. A model either fits in RAM or it cannot run. The only memory lever is the
-   KV cache.
+1. **Weights must be RESIDENT (MLX engine).** LLM decode is bandwidth-bound at batch-1: streaming
+   weights from flash = seconds/token (unusable). On the MLX engine there is **no** two-phase /
+   weight-streaming rung — a model either fits in RAM or it cannot run, and the only memory lever is
+   the KV cache. (Fitting a large model on a memory-tight phone is exactly what the planned llama.cpp
+   engine's mmap'd weights are for, trading tok/s for footprint.)
 2. **1-bit needs the fork.** `bits=1` is not in upstream MLX (only {2,3,4,5,6,8}); the 1-bit Metal
-   kernel lives in `ml-explore/mlx` PR **#3161** (open/unmerged) and ships in Prism's forks
-   (`PrismML-Eng/mlx`, `PrismML-Eng/mlx-swift@prism`). **mobileLLM uses the fork**, quarantined in
-   its own project so MobileDiffuser's validated upstream diffusion stack is never touched.
+   kernel lives in `ml-explore/mlx` PR **#3161** (open/unmerged) and ships in the PrismML forks
+   (`PrismML-Eng/mlx`, `PrismML-Eng/mlx-swift@prism`). **mobileLLM uses the fork**, quarantined behind
+   the `LLMCore` package so it is the only place in the app that ever sees a non-upstream MLX.
 
 ### 1.1 Verified model facts (HF, live)
 
@@ -45,7 +49,8 @@ License **Apache-2.0**.
   in mlx-swift-lm). **8B / 4B / 1.7B are plain `qwen3` dense** → the standard `Qwen3.swift` (upstream).
   The small models are architecturally simpler.
 - **AWQ-4bit and gguf variants are excluded.** AWQ is AWQ-gemm (non-MLX-native) and bundles an fp16
-  vision tower (6–19 GB); gguf is llama.cpp. The real stock-MLX path is the **ternary 2-bit** variants.
+  vision tower (6–19 GB); gguf is a llama.cpp format (out of scope for the MLX engine — a target for
+  the planned second engine). The real stock-MLX path is the **ternary 2-bit** variants.
 
 ### 1.2 The feasibility matrix (peak ≈ weights + ~0.5 GB runtime + KV@ctx)
 
@@ -73,9 +78,8 @@ Mac ≈ RAM − 4 GB.
 **Defaults:** Mac → 27B-1bit · 12 GB iPhone → 27B-1bit · **8 GB iPhone → 8B-1bit** (27B-1bit selectable
 as Experimental).
 
-**Accent:** mobileLLM gets its **own identity — a teal "on-device intelligence" hue** (distinct from
-MobileDiffuser's violet). Light `#0D9488` / dark `#2DD4BF`, with a low-opacity `accentSoft`; the
-`Theme` token indirection makes this a self-contained ramp.
+**Accent:** mobileLLM's identity is a **teal "on-device intelligence" hue**. Light `#0D9488` / dark
+`#2DD4BF`, with a low-opacity `accentSoft`; the `Theme` token indirection makes this a self-contained ramp.
 
 The 27B's hybrid attention is a genuine selling point: only its **16 full-attn layers grow a KV cache**
 (the 48 Gated-DeltaNet layers hold fixed `MambaCache` state) → **near-constant memory as context grows**
@@ -85,7 +89,7 @@ The 27B's hybrid attention is a genuine selling point: only its **16 full-attn l
 
 ## 2. Architecture
 
-Three tiers: an **MLX-free shared core** (copied for v1), a **fork-quarantined engine**, and the app.
+Three tiers: an **MLX-free foundation layer** (kept inline for v1), a **fork-quarantined engine**, and the app.
 
 ```
 mobileLLM.app  (Xcode target — build via xcodebuild only; SwiftPM can't compile the fork's Metal)
@@ -97,7 +101,7 @@ LLMCore  (Swift package — THE ONLY place the fork appears)
 ├── LLMEngine (actor) · ThinkSplitter · Sampling · LLMMemoryGovernor · LLMCatalog · schema
 └── deps → nanguoyu/mlx-swift-lm (fork; one repointed dep line → PrismML-Eng/mlx-swift@prism)
 
-Shared* — MLX-FREE code lifted from MobileDiffuser (v1: COPIED into mobileLLM; see §6)
+Shared* — MLX-FREE foundation code (v1: kept inline in the app; see §5)
 ├── UI: Theme, Motion, Chip, Segmented, studioCard, toastBanner
 └── Runtime: ModelDownloader (resumable .part streaming), DownloadMeter, MemoryProbe,
              DeviceTier, ThermalGovernor(clearCache injected), GenerationControl, DurableStore
@@ -108,8 +112,8 @@ Shared* — MLX-FREE code lifted from MobileDiffuser (v1: COPIED into mobileLLM;
 `ml-explore/mlx-swift` and `PrismML-Eng/mlx-swift` share SPM identity `mlx-swift` → an app can hold
 only one. mobileLLM resolves the **fork** everywhere. The mechanism: fork `mlx-swift-lm` and edit its
 **single** dependency line to point at `PrismML-Eng/mlx-swift@prism`; `LLMCore` depends on that fork.
-Vendor both fork repos as git submodules under `Packages/` with `.package(path:)` (matches the
-swift-diffusion-core dev pattern; lets the exact Metal tree be reviewed before it ships).
+Vendor both fork repos as git submodules under `Packages/` with `.package(path:)` (lets the exact
+Metal tree be reviewed before it ships).
 
 > **Critique B1 / B4 (do this FIRST, before any UI):** the real risk is not URL identity — it's whether
 > the pinned `mlx-swift-lm` compiles against the fork's `mlx-swift 0.31.1` base (version constraint +
@@ -170,9 +174,9 @@ and `ConversationStore.save`. Only the streaming strings mutate per token (no ar
 
 ### 2.4 Persistence — files, not SwiftData
 
-Both stores build on `DurableStore` (the `LibraryStore` recovery skeleton: versioned Codable manifest,
-atomic writes, **corrupt-manifest → backup-not-wipe recovery**, bad-record skipping). Losing a long
-chat is worse than losing a regenerable image — keep that defensive posture.
+Both stores build on `DurableStore` — a recovery skeleton with a versioned Codable manifest, atomic
+writes, **corrupt-manifest → backup-not-wipe recovery**, and bad-record skipping. Losing a long chat
+is a serious failure — keep that defensive posture.
 
 - **ConversationStore** (actor): one `conversation-<uuid>.json` per thread + a light `index.json`
   (id, title, updatedAt, model, count) for fast list rendering. `Message { role, answer, reasoning?,
@@ -188,8 +192,8 @@ chat is worse than losing a regenerable image — keep that defensive posture.
 `weights alone > ceiling` → gray/unsupported. **OOM pre-flight** in `ModelManager.activate` compares
 live `MemoryProbe.availableBytes()` against the peak and throws a **recoverable**
 `insufficientMemory(needed, available)` before load (never let jetsam fire). Ship
-`increased-memory-limit` (helps 12 GB, never claimed for 8 GB). **Thermal**: reuse `ThermalGovernor`;
-call `throttleIfNeeded()` on a wall-clock boundary (~every 250 ms of decode, not only per-N-tokens);
+`increased-memory-limit` (helps 12 GB, never claimed for 8 GB). **Thermal**: the `ThermalGovernor`
+calls `throttleIfNeeded()` on a wall-clock boundary (~every 250 ms of decode, not only per-N-tokens);
 `.critical` → bounded pause then recoverable `pausedForHeat` (the one hard anti-shutdown guarantee).
 
 One `LLMError` enum surfaced via `.toastBanner` + inline, always with a forward action:
@@ -263,12 +267,12 @@ pager (v1.0). **Quiet stats:** per-message footer `Bonsai 8B · 41 tok · 23 tok
 model-summarized later as a *preemptible idle* job — critique F4); full-text search; new/rename/pin;
 **soft-delete + Undo toast** (safety rule against irreversible loss); export MD/JSON; fork.
 
-**Model management** (reuses `ModelRecipe`/`ModelsView`/`DownloadMeter`/`FitBadge→LLMFit`). Catalog
-cards with the **device-recommended default pinned first**, a **Segmented** 1-bit ↔ ternary selector
-that live-updates the fit badge + size, and the reused **bytes/speed/ETA meter** with **pause/resume**.
-One active model (bandwidth-bound = one resident); switching is first-class (unload→load warm toast).
+**Model management.** Catalog cards with the **device-recommended default pinned first**, a
+**Segmented** 1-bit ↔ ternary selector that live-updates the fit badge (`LLMFitBadge` bound to `LLMFit`)
++ size, and a **bytes/speed/ETA download meter** with **pause/resume**. One active model
+(bandwidth-bound = one resident); switching is first-class (unload→load warm toast).
 
-> **Critique D2 (honest download copy):** the reused downloader is a `URLSessionDataTask` streaming into
+> **Critique D2 (honest download copy):** the downloader is a `URLSessionDataTask` streaming into
 > `.part` — iOS **background** URLSession supports only download/upload tasks, **not** data tasks. So
 > **downloading continues only in the foreground** (resume-on-relaunch works). Copy: *"Keep mobileLLM
 > open while downloading — it resumes automatically if interrupted."* A true background
@@ -286,28 +290,29 @@ crossfades, steady caret).
 
 ---
 
-## 5. Reuse plan
+## 5. Foundation layer (MLX-free)
 
-**v1 = COPY the ~6 MLX-free files into mobileLLM. Do NOT extract a shared package yet.**
+**v1 = keep the ~6 MLX-free foundation files inline in the app. Do NOT extract a standalone shared
+package yet.**
 
-> **Critique B3:** extracting `AppFoundation` now forces refactoring the **shipping, validated**
-> MobileDiffuser (re-port its 12 thermal tests, re-validate on-device thermal). That destabilizes a
-> working app to benefit the new one. The files are small, self-contained, and already MLX-free — copy
-> them into mobileLLM, ship, and defer the shared-package convergence to a deliberate later pass.
+> **Critique B3:** extracting an `AppFoundation` package now would force designing a stable public API
+> before it has more than one real consumer — premature abstraction. The files are small,
+> self-contained, and already MLX-free — keep them inline, ship, and defer the shared-package extraction
+> to a deliberate later pass, once the API has settled.
 
-| Component | Source (MobileDiffuser) | MLX-coupled | v1 action |
-|---|---|---|---|
-| Theme / Motion / Chip / Segmented / studioCard / toastBanner | `Theme.swift` | No | **copy** (leave `FitBadge`/`ComponentBar`/`SeedField` — diffusion-shaped) |
-| `DownloadMeter` + `formatETA` | `AppModel.swift:104-164` | No | **copy** verbatim |
-| Resumable streaming downloader | `z-image/…/ZImageModelDownloader.swift` | No (Foundation+CryptoKit+Hub) | **copy**; parameterize the hardcoded `[transformer,text_encoder,vae]` check (LLM repos are flat); rename `.mobile-diffuser-*` manifest |
-| `MemoryProbe` (`phys_footprint`) | `swift-diffusion-core/…/MemoryProbe.swift` | No | **copy** verbatim (jetsam-accurate) |
-| `DeviceTier` | `swift-diffusion-core/…/DeviceTier.swift` | No | **copy** (drop diffusion `defaultPrecision`) |
-| `ThermalGovernor` | `swift-diffusion-core/…/ThermalGovernor.swift` | Barely (3× `MLX.GPU.clearCache()`) | **copy with `clearCache` injected** as `@Sendable ()->Void` → MLX-free |
-| `LibraryStore` recovery skeleton | `MobileDiffuser/LibraryStore.swift` | No | **adapt** → `DurableStore`/`ConversationStore` |
-| `ModelRecipe` / `ModelsView` / `SettingsView` builders | app | No | **adapt** (retarget `DiffusionModel`→`LLMModel`, `FitBadge`→`LLMFitBadge`) |
+| Component | MLX-coupled | v1 action |
+|---|---|---|
+| Design system: Theme / Motion / Chip / Segmented / studioCard / toastBanner | No | **inline** the tokens + shared controls; add the app's own controls per surface |
+| `DownloadMeter` + `formatETA` | No | **inline** verbatim |
+| Resumable streaming downloader | No (Foundation + CryptoKit + Hub) | **inline**; parameterize the component-set check (LLM repos ship a flat file list); give it an LLM-specific on-disk manifest name |
+| `MemoryProbe` (`phys_footprint`) | No | **inline** verbatim (jetsam-accurate) |
+| `DeviceTier` | No | **inline** (LLM-relevant fields only) |
+| `ThermalGovernor` | Barely (3× `MLX.GPU.clearCache()`) | **inline with `clearCache` injected** as `@Sendable ()->Void` → MLX-free |
+| `DurableStore` recovery skeleton | No | **adapt** → `ConversationStore` / `ModelRegistryStore` |
+| `ModelsView` / `SettingsView` view builders | No | **adapt** (retarget to `LLMModel`, `FitBadge` → `LLMFitBadge`) |
 
 The two hardest subsystems — the resumable multi-GB downloader and the thermal governor — are
-effectively MLX-free already and only *looked* MLX-bound by file placement. That's the big reuse win.
+effectively MLX-free already: that is the big head start.
 
 ---
 
@@ -316,7 +321,7 @@ effectively MLX-free already and only *looked* MLX-bound by file placement. That
 **MVP — prove the hard tech + one clean loop**
 1. **Fork pin + `bits=1` smoke-decode gate FIRST** (Bonsai-8B → non-garbage). This is the schedule risk;
    settle it before any UI.
-2. Copy the MLX-free files into mobileLLM; stand up `LLMCore` + `LLMEngine`.
+2. Stand up the MLX-free foundation files inline; bring up `LLMCore` + `LLMEngine`.
 3. **8B-1bit + 27B-1bit, iPhone + Mac.** 8B-1bit is the safe green path everywhere; **27B-1bit ships in
    the MVP too** (user decision — they want to personally test whether it runs on the 8 GB 16 Pro). 27B
    is green on Mac/12 GB and an honest amber "Experimental · Try anyway" on the 8 GB phone.
@@ -331,7 +336,9 @@ effectively MLX-free already and only *looked* MLX-bound by file placement. That
 - Full stats HUD, LaTeX, syntax highlighting, full-text search, `.xcstrings`.
 
 **v1.1+**
-- `AppFoundation` shared-package extraction + MobileDiffuser convergence (a separately-tested refactor).
+- **Second inference engine (llama.cpp)** behind the same protocol — mmap'd weights to fit large models
+  on memory-tight phones (the 1-bit `Q1_0` format is already upstream in llama.cpp).
+- `AppFoundation` shared-package extraction, once the foundation API has settled (a separately-tested refactor).
 - `MenuBarExtra` quick-ask; background `URLSessionDownloadTask` path; vision (mmproj) when MLX supports it.
 
 **Device testing is LAST** (per the user's instruction; the phone isn't connected to the Mac yet).
