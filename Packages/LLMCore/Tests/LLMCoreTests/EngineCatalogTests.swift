@@ -83,7 +83,7 @@ final class EngineCatalogTests: XCTestCase {
             XCTAssertTrue(m.architecture.isHybrid, "\(m.id) is qwen3_5 hybrid")
         }
         for m in [LLMCatalog.bonsai8b, LLMCatalog.bonsai4b, LLMCatalog.bonsai1_7b,
-                  LLMCatalog.minicpm5_1b, LLMCatalog.hunyuan4b, LLMCatalog.deepseekR1Qwen8b] {
+                  LLMCatalog.hunyuan4b, LLMCatalog.deepseekR1Qwen8b] {
             XCTAssertFalse(m.architecture.isHybrid, "\(m.id) is dense")
         }
     }
@@ -95,6 +95,6 @@ final class EngineCatalogTests: XCTestCase {
         XCTAssertEqual(LLMCatalog.deepseekR1Qwen8b.architecture.promptTemplate, .deepSeek)
         XCTAssertEqual(LLMCatalog.deepseekR1Qwen8b.architecture.reasoningStyle, .thinkTags)
         XCTAssertEqual(LLMCatalog.hunyuan4b.architecture.promptTemplate, .hunyuan)
-        XCTAssertEqual(LLMCatalog.minicpm5_1b.architecture.reasoningStyle, .thinkTagsImplicitOpen)
+        XCTAssertEqual(LLMCatalog.qwen36_27b.architecture.reasoningStyle, .thinkTagsImplicitOpen)
     }
 }

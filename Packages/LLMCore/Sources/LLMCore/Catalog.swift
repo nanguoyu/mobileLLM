@@ -227,29 +227,9 @@ public enum LLMCatalog {
         ],
         defaultVariant: .gguf4bit)
 
-    // MARK: - MiniCPM5-1B (OpenBMB) — llama arch, ChatML, implicit-open <think>. Strong Chinese in 688 MB;
-    // the "always fits" ultralight. head_dim is EXPLICIT (128, ≠ hidden/heads). eos <|im_end|> (id 130073).
-
-    public static let minicpm5_1b = LLMModel(
-        id: "minicpm5-1b",
-        displayName: "MiniCPM5 1B",
-        family: .minicpm,
-        publisher: "OpenBMB",
-        summary: "688 MB of strong on-device Chinese — the always-fits ultralight. ChatML.",
-        license: .apache2,
-        architecture: LLMArchitecture(
-            modelType: "llama", swiftModelClass: "LlamaModel",
-            hidden: 1536, layers: 24, vocab: 130_560, tieWordEmbeddings: false,
-            attention: .fullAttention(kvHeads: 2, headDim: 128, layers: 24),
-            nativeContext: 131_072, thinkingCapable: true, eos: "<|im_end|>",
-            chatTemplate: .repoFile("chat_template.jinja"),
-            promptTemplate: .chatML, reasoningStyle: .thinkTagsImplicitOpen),
-        variants: [
-            LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 688_065_920,
-                       source: ModelSource(huggingFaceRepo: "openbmb/MiniCPM5-1B-GGUF",
-                                           fileName: "MiniCPM5-1B-Q4_K_M.gguf")),
-        ],
-        defaultVariant: .gguf4bit)
+    // NOTE: MiniCPM5-1B was evaluated but held back — its Q4_K_M GGUF produced garbage/empty output through
+    // the ChatML path (immediate EOS without a <think> prefill, never closing </think> with one). Needs
+    // a template/tokenizer investigation before shipping; tracked as a follow-up.
 
     // MARK: - Hunyuan 4B Instruct (Tencent) — hunyuan_v1_dense. NOT ChatML: Tencent's own fullwidth-bar
     // format (<｜hy_User｜>/<｜hy_Assistant｜>). Explicit <think>. Strong Chinese, native iPhone size.
@@ -303,7 +283,7 @@ public enum LLMCatalog {
     /// All catalog models, in device-recommended order (largest first for Bonsai, then the new families).
     public static let all: [LLMModel] = [
         bonsai27b, bonsai8b, bonsai4b, bonsai1_7b,
-        qwen35_4b, qwen35_9b, qwen36_27b, minicpm5_1b, hunyuan4b, deepseekR1Qwen8b,
+        qwen35_4b, qwen35_9b, qwen36_27b, hunyuan4b, deepseekR1Qwen8b,
     ]
 
     /// Look a model up by id.

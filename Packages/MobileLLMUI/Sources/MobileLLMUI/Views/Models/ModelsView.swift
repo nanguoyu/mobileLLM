@@ -18,22 +18,26 @@ struct ModelsView: View {
     @State private var selectedEngine: [String: EngineKind] = [:]
     @State private var selectedQuant: [String: QuantSpec] = [:]
     @State private var pendingDelete: (model: LLMModel, variant: LLMVariant)?
+    @State private var filter: ModelFilter = .all
+
+    /// Catalog filter (the catalog now spans several families, so it needs shape).
+    private enum ModelFilter: String, CaseIterable {
+        case all, runs, installed
+        var label: String {
+            switch self { case .all: "All"; case .runs: "Runs here"; case .installed: "Installed" }
+        }
+    }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: Theme.Space.md) {
+            VStack(alignment: .leading, spacing: Theme.Space.lg) {
                 storageHeader
-                ForEach(Array(models.orderedCatalog.enumerated()), id: \.element.id) { index, model in
-                    ModelCard(models: models,
-                              model: model,
-                              context: settings.contextLength,
-                              enginePreference: settings.enginePreference,
-                              isRecommended: index == 0,
-                              engineSel: engineBinding(for: model),
-                              quantSel: quantBinding(for: model),
-                              onUse: onUse,
-                              onDelete: { variant in pendingDelete = (model, variant) })
+                Segmented(selection: $filter, options: ModelFilter.allCases) { $0.label }
+                    .accessibilityLabel("Filter models")
+                ForEach(visibleFamilies, id: \.self) { family in
+                    familySection(family)
                 }
+                if visibleFamilies.isEmpty { emptyState }
             }
             .padding(Theme.Space.lg)
             .frame(maxWidth: 720)
@@ -48,6 +52,72 @@ struct ModelsView: View {
             Button("Cancel", role: .cancel) {}
         } message: { _ in
             Text("Frees the disk space. You can download it again anytime.")
+        }
+    }
+
+    // MARK: Family sections
+
+    /// Families with at least one model matching the current filter, in catalog order.
+    private var visibleFamilies: [LLMFamily] {
+        var seen: [LLMFamily] = []
+        for model in models.catalog where matches(model) && !seen.contains(model.family) {
+            seen.append(model.family)
+        }
+        return seen
+    }
+
+    private func familyModels(_ family: LLMFamily) -> [LLMModel] {
+        models.catalog.filter { $0.family == family && matches($0) }
+    }
+
+    @ViewBuilder private func familySection(_ family: LLMFamily) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
+            HStack(spacing: Theme.Space.xs) {
+                Text(family.displayName)
+                    .font(.headline).foregroundStyle(Theme.textPrimary)
+                if family == models.recommendedModel.family {
+                    Chip(text: "Recommended", filled: true)
+                }
+                Spacer()
+                Text(familyModels(family).first?.publisher ?? "")
+                    .font(.caption).foregroundStyle(Theme.textTertiary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .padding(.horizontal, 2)
+            ForEach(familyModels(family)) { model in
+                ModelCard(models: models,
+                          model: model,
+                          context: settings.contextLength,
+                          enginePreference: settings.enginePreference,
+                          isRecommended: model.id == models.recommendedModel.id,
+                          engineSel: engineBinding(for: model),
+                          quantSel: quantBinding(for: model),
+                          onUse: onUse,
+                          onDelete: { variant in pendingDelete = (model, variant) })
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: Theme.Space.sm) {
+            Image(systemName: filter == .installed ? "square.and.arrow.down" : "line.3.horizontal.decrease.circle")
+                .font(.largeTitle).foregroundStyle(Theme.textTertiary)
+            Text(filter == .installed ? "No models downloaded yet" : "Nothing matches this filter")
+                .font(.subheadline).foregroundStyle(Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Space.xl)
+    }
+
+    // MARK: Filtering
+
+    private func matches(_ model: LLMModel) -> Bool {
+        switch filter {
+        case .all: return true
+        case .runs: return model.variants.contains {
+            models.fitPresentation(model, $0, context: settings.contextLength) != .unsupported
+        }
+        case .installed: return model.variants.contains { models.isInstalled($0) }
         }
     }
 
