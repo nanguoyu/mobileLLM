@@ -20,6 +20,13 @@ struct ModelsView: View {
     @State private var pendingDelete: (model: LLMModel, variant: LLMVariant)?
     @State private var filter: ModelFilter = .all
     @State private var query = ""
+    @State private var tier: Tier = .featured
+
+    /// The two-tier library: curated (verified + adapted) vs live Hugging Face browse.
+    private enum Tier: String, CaseIterable {
+        case featured, explore
+        var label: String { self == .featured ? "Featured" : "Explore" }
+    }
 
     /// Catalog filter (the catalog now spans several families, so it needs search + shape).
     private enum ModelFilter: String, CaseIterable {
@@ -33,6 +40,31 @@ struct ModelsView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            Segmented(selection: $tier, options: Tier.allCases) { $0.label }
+                .frame(maxWidth: 360)
+                .padding(.horizontal, Theme.Space.lg)
+                .padding(.top, Theme.Space.md).padding(.bottom, Theme.Space.sm)
+                .accessibilityLabel("Model library")
+            if tier == .featured {
+                featuredScroll
+            } else {
+                ExploreView(models: models, settings: settings, onUse: onUse)
+            }
+        }
+        .background(Theme.bg)
+        .onAppear { models.refreshInstalled() }
+        .alert(pendingDelete.map { "Delete \($0.model.displayName)?" } ?? "",
+               isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+               presenting: pendingDelete) { target in
+            Button("Delete", role: .destructive) { models.delete(target.variant) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Frees the disk space. You can download it again anytime.")
+        }
+    }
+
+    private var featuredScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.md) {
                 storageHeader
@@ -46,16 +78,6 @@ struct ModelsView: View {
             .padding(Theme.Space.lg)
             .frame(maxWidth: 720)
             .frame(maxWidth: .infinity)
-        }
-        .background(Theme.bg)
-        .onAppear { models.refreshInstalled() }
-        .alert(pendingDelete.map { "Delete \($0.model.displayName)?" } ?? "",
-               isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
-               presenting: pendingDelete) { target in
-            Button("Delete", role: .destructive) { models.delete(target.variant) }
-            Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("Frees the disk space. You can download it again anytime.")
         }
     }
 
@@ -196,8 +218,8 @@ struct ModelsView: View {
     }
 }
 
-/// One catalog card, data-driven so every model renders the same anatomy.
-private struct ModelCard: View {
+/// One catalog card, data-driven so every model renders the same anatomy. Reused by the Explore detail.
+struct ModelCard: View {
     @Bindable var models: ModelManager
     let model: LLMModel
     let context: Int

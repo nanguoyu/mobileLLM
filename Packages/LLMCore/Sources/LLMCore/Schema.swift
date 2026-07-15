@@ -95,9 +95,17 @@ public enum QuantSpec: Sendable, Hashable, Codable {
     case binary1bit    // {bits:1}, group_size 128 — PrismML fork
     case ternary2bit   // {bits:2}, group_size 128 — upstream stock
     case gguf4bit      // Q4_K_M — llama.cpp
+    case other(String) // an arbitrary community quant label (Explore) — MLX "4-bit"/"8-bit", GGUF "Q5_K_M"…
 
     public var bits: Int {
-        switch self { case .binary1bit: 1; case .ternary2bit: 2; case .gguf4bit: 4 }
+        switch self {
+        case .binary1bit: return 1
+        case .ternary2bit: return 2
+        case .gguf4bit: return 4
+        case .other(let s):
+            if let m = s.range(of: #"\d+"#, options: .regularExpression), let n = Int(s[m]) { return n }
+            return 4
+        }
     }
     public var groupSize: Int { 128 }
     public var displayName: String {
@@ -105,6 +113,7 @@ public enum QuantSpec: Sendable, Hashable, Codable {
         case .binary1bit: "1-bit"
         case .ternary2bit: "Ternary (2-bit)"
         case .gguf4bit: "Q4_K_M"
+        case .other(let s): s
         }
     }
 }

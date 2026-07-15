@@ -56,6 +56,19 @@ public final class ModelManager {
     public let catalog: [LLMModel] = LLMCatalog.all
     public let device: DeviceTier
 
+    /// Community models adopted from the Explore tier (Hugging Face browse). Kept separate from the
+    /// curated `catalog` but flow through the same download / fit / activate path once adopted.
+    public private(set) var exploreModels: [LLMModel] = []
+    /// Curated + adopted-explore models — the set install state is scanned over.
+    public var allModels: [LLMModel] { catalog + exploreModels }
+
+    /// Register a discovered model so it participates in install tracking + activation. Idempotent.
+    public func adopt(_ model: LLMModel) {
+        guard !allModels.contains(where: { $0.id == model.id }) else { return }
+        exploreModels.append(model)
+        refreshInstalled()
+    }
+
     /// Repo ids of variants present on disk.
     public internal(set) var installed: Set<String> = []
     /// The resident model, if any (one active model — decode is bandwidth-bound).
@@ -117,7 +130,7 @@ public final class ModelManager {
     /// Refresh install state by re-scanning the weights directory (rebuildable registry, DESIGN §2.4).
     public func refreshInstalled() {
         var present: Set<String> = []
-        for model in catalog {
+        for model in allModels {
             for variant in model.variants where installProbe(variant, downloadBase) {
                 present.insert(variant.id)
             }
