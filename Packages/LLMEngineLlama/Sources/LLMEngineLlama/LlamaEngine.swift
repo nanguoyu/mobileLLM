@@ -156,9 +156,20 @@ public actor LlamaEngine: LLMEngine {
             }
             let promptSecs = max(Date().timeIntervalSince(prefillStart), 0.0001)
 
-            // Decode loop. Implicit-open reasoning (DeepSeek) begins inside the think block.
+            // Decode loop. Implicit-open reasoning (Qwen3.5) begins inside the think block. The answer
+            // stripper removes a model's answer-wrapper tags (Hunyuan's <answer>…</answer>) so they never
+            // reach the UI.
             var splitter = ThinkSplitter(startInThink: reasoningStyle == .thinkTagsImplicitOpen && wantThinking)
             var decoder = PieceDecoder()
+            var answerStripper = LiteralStripper(tags: Self.answerStripTags(for: promptTemplate))
+            func emit(_ d: ThinkSplitter.Delta) {
+                switch d {
+                case .reasoning(let s): cont.yield(.reasoning(s))
+                case .answer(let s):
+                    let out = answerStripper.isNoop ? s : answerStripper.feed(s)
+                    if !out.isEmpty { cont.yield(.answer(out)) }
+                }
+            }
             var genTokens = 0
             var peak: Int64 = 0
             var stop: StopReason = .eos
@@ -175,7 +186,7 @@ public actor LlamaEngine: LLMEngine {
                 let piece = Self.tokenToPiece(vocab: vocab, token: tokenID)
                 let text = decoder.feed(piece)
                 if !text.isEmpty {
-                    for d in splitter.feed(text) { cont.yield(Self.map(d)) }
+                    for d in splitter.feed(text) { emit(d) }
                 }
                 genTokens += 1
                 if genTokens & 0b111 == 0 { peak = max(peak, Self.footprintBytes()) }
@@ -188,8 +199,10 @@ public actor LlamaEngine: LLMEngine {
             }
 
             let tail = decoder.flush()
-            if !tail.isEmpty { for d in splitter.feed(tail) { cont.yield(Self.map(d)) } }
-            for d in splitter.finish() { cont.yield(Self.map(d)) }
+            if !tail.isEmpty { for d in splitter.feed(tail) { emit(d) } }
+            for d in splitter.finish() { emit(d) }
+            let strippedTail = answerStripper.isNoop ? "" : answerStripper.flush()
+            if !strippedTail.isEmpty { cont.yield(.answer(strippedTail)) }
 
             let genSecs = max(Date().timeIntervalSince(genStart), 0.0001)
             peak = max(peak, Self.footprintBytes())
@@ -337,10 +350,12 @@ public actor LlamaEngine: LLMEngine {
         throw EngineError.weightsNotFound
     }
 
-    private static func map(_ d: ThinkSplitter.Delta) -> EngineDelta {
-        switch d {
-        case .reasoning(let s): .reasoning(s)
-        case .answer(let s): .answer(s)
+    /// Literal answer-wrapper tags to strip from the answer stream for a given template. Hunyuan wraps its
+    /// final answer in `<answer>…</answer>`; the ChatML/DeepSeek families don't wrap.
+    static func answerStripTags(for template: PromptTemplate) -> [String] {
+        switch template {
+        case .hunyuan: ["<answer>", "</answer>"]
+        case .chatML, .deepSeek: []
         }
     }
 
