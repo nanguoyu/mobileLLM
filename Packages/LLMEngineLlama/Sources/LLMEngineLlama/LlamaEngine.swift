@@ -234,6 +234,7 @@ public actor LlamaEngine: LLMEngine {
         case .chatML:   return chatMLPrompt(messages, reasoning: reasoning, thinking: thinking)
         case .deepSeek: return deepSeekPrompt(messages, reasoning: reasoning, thinking: thinking)
         case .hunyuan:  return hunyuanPrompt(messages, reasoning: reasoning, thinking: thinking)
+        case .gemma:    return gemmaPrompt(messages)
         }
     }
 
@@ -296,6 +297,21 @@ public actor LlamaEngine: LLMEngine {
         return s + thinkSuffix(reasoning, thinking: thinking)
     }
 
+    /// Google Gemma 4: asymmetric turn markers — `<|turn>role\n…<turn|>\n` per turn, then the model
+    /// opener `<|turn>model\n`. Shipped non-thinking (reasoning `.none`): with no thinking token injected
+    /// the model answers directly, so no `<|channel>thought` channel appears. BOS is added by the
+    /// tokenizer (add_special), not written here. (assistant role → "model".)
+    static func gemmaPrompt(_ messages: [ChatTurn]) -> String {
+        var s = ""
+        for m in messages {
+            let role: String
+            switch m.role { case .system: role = "system"; case .user: role = "user"; case .assistant: role = "model" }
+            s += "<|turn>\(role)\n\(m.content)<turn|>\n"
+        }
+        s += "<|turn>model\n"
+        return s
+    }
+
     static func tokenize(vocab: OpaquePointer, text: String, addSpecial: Bool) -> [llama_token] {
         let cap = Int32(text.utf8.count + 2)
         var tokens = [llama_token](repeating: 0, count: Int(cap))
@@ -355,7 +371,7 @@ public actor LlamaEngine: LLMEngine {
     static func answerStripTags(for template: PromptTemplate) -> [String] {
         switch template {
         case .hunyuan: ["<answer>", "</answer>"]
-        case .chatML, .deepSeek: []
+        case .chatML, .deepSeek, .gemma: []
         }
     }
 

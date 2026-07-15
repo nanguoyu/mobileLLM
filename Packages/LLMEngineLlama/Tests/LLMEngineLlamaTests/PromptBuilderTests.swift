@@ -85,6 +85,21 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertEqual(p, "<｜hy_begin▁of▁sentence｜><｜hy_User｜>你好<｜hy_Assistant｜>")
     }
 
+    // MARK: Gemma 4 (asymmetric turn markers, non-thinking)
+
+    func testGemmaAsymmetricTurnMarkers() {
+        let p = LlamaEngine.buildPrompt(
+            messages: [ChatTurn(role: .system, content: "S"),
+                       ChatTurn(role: .user, content: "hi"),
+                       ChatTurn(role: .assistant, content: "hey"),
+                       ChatTurn(role: .user, content: "bye")],
+            template: .gemma, reasoning: .none, thinking: false)
+        // <|turn> opens, <turn|> closes; assistant → "model"; ends on the model opener; no <think>.
+        XCTAssertEqual(p, "<|turn>system\nS<turn|>\n<|turn>user\nhi<turn|>\n"
+                        + "<|turn>model\nhey<turn|>\n<|turn>user\nbye<turn|>\n<|turn>model\n")
+        XCTAssertFalse(p.contains("<think>"))
+    }
+
     // MARK: reasoning-style toggle wiring
 
     func testNoneStyleNeverEmitsThink() {

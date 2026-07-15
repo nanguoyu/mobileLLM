@@ -280,10 +280,79 @@ public enum LLMCatalog {
         ],
         defaultVariant: .gguf4bit)
 
+    // MARK: - Gemma 4 (Google) — gemma4 arch, Gemma's own asymmetric <|turn>…<turn|> format (2026-07-09
+    // canonical template). Shipped NON-THINKING (Gemma 4's reasoning is a <|channel>thought channel, not
+    // <think> — deferred). Broad multilingual (Chinese not a priority). E2B/E4B are edge (MatFormer)
+    // sizes; 12B is a Mac model. head_dim EXPLICIT 256; tied embeddings; eos <eos>.
+
+    public static let gemma4E2B = LLMModel(
+        id: "gemma-4-e2b",
+        displayName: "Gemma 4 E2B",
+        family: .gemma,
+        publisher: "Google",
+        summary: "Google's newest edge model — multilingual, compact. Non-thinking. Gemma chat format.",
+        license: .apache2,   // Gemma models ship under the Gemma Terms; shown per-card in the app.
+        architecture: LLMArchitecture(
+            modelType: "gemma4_text", swiftModelClass: "Gemma4Model",
+            hidden: 1536, layers: 35, vocab: 262_144, tieWordEmbeddings: true,
+            attention: .fullAttention(kvHeads: 1, headDim: 256, layers: 35),
+            nativeContext: 131_072, thinkingCapable: false, eos: "<eos>",
+            chatTemplate: .repoFile("chat_template.jinja"),
+            promptTemplate: .gemma, reasoningStyle: .none),
+        variants: [
+            LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 3_106_736_256,
+                       source: ModelSource(huggingFaceRepo: "unsloth/gemma-4-E2B-it-GGUF",
+                                           fileName: "gemma-4-E2B-it-Q4_K_M.gguf")),
+        ],
+        defaultVariant: .gguf4bit)
+
+    public static let gemma4E4B = LLMModel(
+        id: "gemma-4-e4b",
+        displayName: "Gemma 4 E4B",
+        family: .gemma,
+        publisher: "Google",
+        summary: "The flagship Gemma 4 edge model — stronger, still on-device. Non-thinking.",
+        license: .apache2,
+        architecture: LLMArchitecture(
+            modelType: "gemma4_text", swiftModelClass: "Gemma4Model",
+            hidden: 2560, layers: 42, vocab: 262_144, tieWordEmbeddings: true,
+            attention: .fullAttention(kvHeads: 2, headDim: 256, layers: 42),
+            nativeContext: 131_072, thinkingCapable: false, eos: "<eos>",
+            chatTemplate: .repoFile("chat_template.jinja"),
+            promptTemplate: .gemma, reasoningStyle: .none),
+        variants: [
+            LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 4_977_169_568,
+                       source: ModelSource(huggingFaceRepo: "unsloth/gemma-4-E4B-it-GGUF",
+                                           fileName: "gemma-4-E4B-it-Q4_K_M.gguf")),
+        ],
+        defaultVariant: .gguf4bit)
+
+    public static let gemma4_12B = LLMModel(
+        id: "gemma-4-12b",
+        displayName: "Gemma 4 12B",
+        family: .gemma,
+        publisher: "Google",
+        summary: "Gemma 4 12B — the Mac-comfortable Google model, broad multilingual coverage.",
+        license: .apache2,
+        architecture: LLMArchitecture(
+            modelType: "gemma4_unified_text", swiftModelClass: "Gemma4Model",
+            hidden: 3840, layers: 48, vocab: 262_144, tieWordEmbeddings: true,
+            attention: .fullAttention(kvHeads: 8, headDim: 256, layers: 48),
+            nativeContext: 262_144, thinkingCapable: false, eos: "<eos>",
+            chatTemplate: .repoFile("chat_template.jinja"),
+            promptTemplate: .gemma, reasoningStyle: .none),
+        variants: [
+            LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 7_381_382_048,
+                       source: ModelSource(huggingFaceRepo: "ggml-org/gemma-4-12B-it-GGUF",
+                                           fileName: "gemma-4-12B-it-Q4_K_M.gguf")),
+        ],
+        defaultVariant: .gguf4bit)
+
     /// All catalog models, in device-recommended order (largest first for Bonsai, then the new families).
     public static let all: [LLMModel] = [
         bonsai27b, bonsai8b, bonsai4b, bonsai1_7b,
         qwen35_4b, qwen35_9b, qwen36_27b, hunyuan4b, deepseekR1Qwen8b,
+        gemma4E2B, gemma4E4B, gemma4_12B,
     ]
 
     /// Look a model up by id.

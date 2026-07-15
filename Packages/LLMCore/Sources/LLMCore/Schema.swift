@@ -13,6 +13,7 @@ public enum LLMFamily: String, Sendable, Hashable, CaseIterable, Codable {
     case minicpm
     case hunyuan
     case deepseek
+    case gemma
     public var displayName: String {
         switch self {
         case .bonsai: "Bonsai"
@@ -20,6 +21,7 @@ public enum LLMFamily: String, Sendable, Hashable, CaseIterable, Codable {
         case .minicpm: "MiniCPM"
         case .hunyuan: "Hunyuan"
         case .deepseek: "DeepSeek"
+        case .gemma: "Gemma"
         }
     }
 }
@@ -193,6 +195,7 @@ public enum PromptTemplate: String, Sendable, Hashable, Codable {
     case chatML     // <|im_start|>role\n…<|im_end|>  — Qwen3/3.5/3.6, MiniCPM5, Bonsai
     case deepSeek   // <｜begin▁of▁sentence｜>{sys}<｜User｜>…<｜Assistant｜>  — DeepSeek(-R1 distills)
     case hunyuan    // <｜hy_begin▁of▁sentence｜>{sys}<｜hy_User｜>…<｜hy_Assistant｜>  — Tencent Hunyuan
+    case gemma      // <|turn>role\n…<turn|>\n  — Google Gemma 4 (asymmetric open/close markers)
 }
 
 /// How a model delimits its reasoning, so the engine can build the prompt + split the stream correctly.
