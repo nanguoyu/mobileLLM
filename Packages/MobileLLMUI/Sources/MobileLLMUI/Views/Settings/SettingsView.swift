@@ -175,15 +175,19 @@ struct SettingsView: View {
     // MARK: About
 
     private var aboutSection: some View {
-        section("About", icon: "info.circle") {
+        // Derive providers + licenses from the catalog (the single source of truth) — never hand-maintain
+        // a model list here; it would go stale the moment a model is added or removed.
+        let providers = Set(container.models.catalog.map(\.publisher)).sorted().joined(separator: " · ")
+        let licenses = Set(container.models.catalog.map { $0.license.rawValue }).sorted().joined(separator: " · ")
+        return section("About", icon: "info.circle") {
             row("Version", appVersion)
             row("Engine", "Pure Swift + MLX")
             row("Runs", "Open-weight models, on-device")
             Text("A private, on-device runner for open-weight LLMs — everything runs on your device, "
                  + "nothing is sent to a server. More models will be supported over time.")
                 .font(.caption).foregroundStyle(Theme.textTertiary)
-            Text("Included now: Prism ML Bonsai (Apache-2.0). Inference via mlx-swift-lm; 1-bit models "
-                 + "use the PrismML mlx-swift kernel fork. Each model keeps its own license.")
+            Text("Model providers: \(providers). Licenses: \(licenses) — each model keeps its own. "
+                 + "Inference via mlx-swift-lm; 1-bit models use the PrismML mlx-swift kernel fork.")
                 .font(.caption).foregroundStyle(Theme.textTertiary)
         }
     }
