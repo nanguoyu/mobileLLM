@@ -102,13 +102,37 @@ final class ChatStoreTests: XCTestCase {
         XCTAssertEqual(turns.first?.role, .system, "the system turn is always first + always kept")
         XCTAssertEqual(turns.first?.content, system)
 
-        // Total estimated tokens stay within the cap (system + kept turns).
-        let total = turns.reduce(0) { $0 + max(1, $1.content.count / 4) }
-        XCTAssertLessThanOrEqual(total, cap, "trimmed history honors contextTokenCap")
+        // The conversation turns (user/assistant) stay within the cap; the system prompt + the bounded
+        // compaction preamble are always-kept overhead.
+        let convo = turns.filter { $0.role != .system }.reduce(0) { $0 + max(1, $1.content.count / 4) }
+        XCTAssertLessThanOrEqual(convo, cap, "trimmed conversation honors contextTokenCap")
 
         // Oldest turns were dropped; the most recent turn survives.
         XCTAssertLessThan(turns.count, messages.count + 1)
         XCTAssertEqual(turns.last?.content, messages.last?.answer, "the newest turn is preserved")
+    }
+
+    func testCompactionNoteInjectedWhenOldTurnsDropped() {
+        var messages: [Message] = []
+        for i in 0..<12 {
+            messages.append(Message(role: .user, answer: "Tell me about topic number \(i)"))
+            messages.append(Message(role: .assistant, answer: String(repeating: "y", count: 80)))
+        }
+        let turns = ChatStore.chatTurns(messages: messages, systemPrompt: "Sys", cap: 120)
+        // A compaction system turn is present and references a dropped early topic.
+        let systemNotes = turns.filter { $0.role == .system }.map(\.content)
+        XCTAssertTrue(systemNotes.contains { $0.contains("Earlier in this conversation") },
+                      "dropping old turns must leave a compaction breadcrumb")
+        // The note summarizes dropped user turns (the most recent of the dropped span).
+        XCTAssertTrue(systemNotes.contains { $0.contains("topic number") },
+                      "the breadcrumb references what the dropped turns were about")
+    }
+
+    func testNoCompactionNoteWhenEverythingFits() {
+        let messages = [Message(role: .user, answer: "hi"), Message(role: .assistant, answer: "hello")]
+        let turns = ChatStore.chatTurns(messages: messages, systemPrompt: "Sys", cap: 8192)
+        XCTAssertFalse(turns.contains { $0.content.contains("Earlier in this conversation") })
+        XCTAssertNil(ChatStore.compactionNote([]))
     }
 
     func testChatTurnsWithoutSystemPrompt() {

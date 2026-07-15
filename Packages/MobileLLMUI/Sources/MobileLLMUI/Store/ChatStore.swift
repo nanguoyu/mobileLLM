@@ -386,10 +386,33 @@ public final class ChatStore {
             budget -= tokens
             if budget <= 0 { break }
         }
+        // Auto-compaction (DESIGN §2.3): rather than silently dropping the oldest turns, leave the model a
+        // breadcrumb of what they were about — an extractive summary of the dropped user turns (no extra
+        // model call). This keeps continuity on the small on-device contexts where trimming bites often.
+        let dropped = Array(candidates.dropLast(kept.count))
+        let note = compactionNote(dropped)
+
         var turns: [ChatTurn] = []
         if let systemTurn { turns.append(systemTurn) }
+        if let note { turns.append(ChatTurn(role: .system, content: note)) }
         turns.append(contentsOf: kept.reversed())
         return turns
+    }
+
+    /// A compact system note summarizing dropped turns, or nil when nothing was dropped.
+    static func compactionNote(_ dropped: [Message]) -> String? {
+        let topics = dropped.filter { $0.role == .user }
+            .map { firstFragment($0.answer) }.filter { !$0.isEmpty }
+        guard !topics.isEmpty else { return nil }
+        let recent = topics.suffix(6).joined(separator: "; ")
+        return "[Earlier in this conversation, older turns were summarized to save space. The user "
+             + "previously asked about: \(recent). Ask if you need those details again.]"
+    }
+
+    private static func firstFragment(_ text: String) -> String {
+        let line = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
+        let t = line.trimmingCharacters(in: .whitespaces)
+        return t.count > 60 ? String(t.prefix(60)) + "…" : t
     }
 
     /// First-line title from the first user message, trimmed to a reasonable length.
