@@ -1,0 +1,19 @@
+# Xcode / SwiftPM
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# Resolved deps float on the pinned manifests (mirrors MobileDiffuser)
+Package.resolved
+
+# Secrets — signing team id / identity never committed
+Signing.xcconfig
+
+# Model weights (multi-GB, downloaded at runtime)
+*.safetensors
+Weights/
