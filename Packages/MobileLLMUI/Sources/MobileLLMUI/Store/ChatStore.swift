@@ -200,13 +200,23 @@ public final class ChatStore {
         let params = settings.sampling(thinking: thinkingEnabled && settings.thinkingDisplay != .hidden)
         let turns = Self.chatTurns(messages: history, systemPrompt: settings.systemPrompt, cap: params.contextTokenCap)
         let engine = self.engine
+        let toolsOn = settings.toolsEnabled
 
         genTask = Task { @MainActor [weak self] in
             do {
                 await self?.ensureModelReady?()   // reload if the model was suspended to free memory
-                for try await delta in engine.generate(messages: turns, params: params) {
-                    guard let self, self.streaming?.messageID == assistantID else { return }
-                    self.apply(delta)
+                if toolsOn {
+                    // Agent loop: the model may call on-device tools before answering.
+                    let loop = ToolLoop(engine: engine, registry: .builtIn)
+                    for try await event in loop.run(messages: turns, params: params) {
+                        guard let self, self.streaming?.messageID == assistantID else { return }
+                        self.applyLoopEvent(event)
+                    }
+                } else {
+                    for try await delta in engine.generate(messages: turns, params: params) {
+                        guard let self, self.streaming?.messageID == assistantID else { return }
+                        self.apply(delta)
+                    }
                 }
                 // A cancelled consumer ends the stream by returning nil (not by throwing), so detect
                 // Stop here too — the partial is committed, never discarded (DESIGN §2.3).
@@ -217,6 +227,21 @@ public final class ChatStore {
                 self?.finalizeIfNeeded(stopReason: .cancelled)
                 self?.present(error)
             }
+        }
+    }
+
+    /// Map an agent-loop event onto the streaming state — reasoning/answer as usual, plus tool activity.
+    private func applyLoopEvent(_ event: ToolLoopEvent) {
+        guard streaming != nil else { return }
+        switch event {
+        case .reasoning(let s): apply(.reasoning(s))
+        case .answer(let s): apply(.answer(s))
+        case .toolCall(let call):
+            if streaming?.phase != .stopping { streaming?.phase = .answering }
+            streaming?.toolActivity.append(ToolRun(name: call.name, arguments: call.argumentsJSON))
+        case .toolResult(_, let result):
+            if let n = streaming?.toolActivity.count, n > 0 { streaming?.toolActivity[n - 1].result = result }
+        case .done(let stats): apply(.done(stats))
         }
     }
 
@@ -259,6 +284,7 @@ public final class ChatStore {
         // Persist the real thinking wall-clock so the collapsed tile shows an honest "Thought for Xs".
         conversations[ci].messages[mi].thinkingSeconds =
             state.reasoning.isEmpty ? nil : (state.thinkingDuration ?? state.thinkingStartedAt.map { Date().timeIntervalSince($0) })
+        conversations[ci].messages[mi].toolRuns = state.toolActivity.isEmpty ? nil : state.toolActivity
         conversations[ci].messages[mi].stats = stats ?? Stats(
             promptTokens: 0, genTokens: 0, promptTPS: 0,
             tokensPerSecond: 0, peakMemoryBytes: 0, stopReason: stopReason)

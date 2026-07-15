@@ -102,6 +102,16 @@ struct SettingsView: View {
                 Text("Show reasoning").font(.subheadline).foregroundStyle(Theme.textSecondary)
                 Segmented(selection: $settings.thinkingDisplay, options: ThinkingDisplayMode.allCases) { $0.label }
             }
+            Divider().background(Theme.hairline)
+            Toggle(isOn: $settings.toolsEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("On-device tools").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                    Text("Let the model use a calculator and the clock — all on-device. Adds a round-trip; "
+                         + "some models call tools more reliably than others.")
+                        .font(.caption).foregroundStyle(Theme.textTertiary)
+                }
+            }
+            .tint(Theme.accent)
         }
     }
 

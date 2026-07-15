@@ -105,6 +105,7 @@ struct ChatThreadView: View {
                 isStreaming: false,
                 stats: message.stats,
                 modelName: chat.activeModel?.model.displayName ?? "Model",
+                toolRuns: message.toolRuns ?? [],
                 onCopy: { Clipboard.copy(message.answer); chat.showToast(Toast("Copied")) },
                 onRegenerate: chat.isStreaming ? nil : { chat.regenerate(assistantMessageID: message.id) })
         }
@@ -122,7 +123,8 @@ struct ChatThreadView: View {
                 displayMode: displayMode,
                 isStreaming: true,
                 stats: nil,
-                modelName: chat.activeModel?.model.displayName ?? "Model")
+                modelName: chat.activeModel?.model.displayName ?? "Model",
+                toolRuns: streaming.toolActivity)
         }
     }
 

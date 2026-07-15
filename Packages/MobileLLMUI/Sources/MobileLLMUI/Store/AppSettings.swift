@@ -21,6 +21,9 @@ public final class AppSettings {
     public var systemPrompt: String { didSet { persist() } }
     public var thinkingDefault: Bool { didSet { persist() } }
     public var thinkingDisplay: ThinkingDisplayMode { didSet { persist() } }
+    /// Let the model call on-device tools (calculator, date/time) via the agent loop. Off by default —
+    /// it adds a round-trip and only some models call tools reliably.
+    public var toolsEnabled: Bool { didSet { persist() } }
 
     // MARK: Sampling
     public var temperature: Double { didSet { persist() } }
@@ -49,6 +52,7 @@ public final class AppSettings {
         systemPrompt = snap?.systemPrompt ?? ""
         thinkingDefault = snap?.thinkingDefault ?? true
         thinkingDisplay = snap?.thinkingDisplay ?? .autoCollapse
+        toolsEnabled = snap?.toolsEnabled ?? false
         temperature = snap?.temperature ?? 0.7
         topP = snap?.topP ?? 0.95
         topK = snap?.topK ?? 20
@@ -76,6 +80,7 @@ public final class AppSettings {
         var systemPrompt: String
         var thinkingDefault: Bool
         var thinkingDisplay: ThinkingDisplayMode
+        var toolsEnabled: Bool? = false   // optional → old snapshots decode
         var temperature: Double
         var topP: Double
         var topK: Int
@@ -91,6 +96,7 @@ public final class AppSettings {
         let snap = Snapshot(defaultModelID: defaultModelID, enginePreference: enginePreference,
                             systemPrompt: systemPrompt,
                             thinkingDefault: thinkingDefault, thinkingDisplay: thinkingDisplay,
+                            toolsEnabled: toolsEnabled,
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
                             contextLength: contextLength, kvBits: kvBits, appearance: appearance)

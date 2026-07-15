@@ -6,6 +6,18 @@ import LLMCore
 /// One message in a conversation (DESIGN §2.4). Reasoning + answer are stored split so the thinking
 /// disclosure can re-render a completed turn exactly as it streamed. `parentID` is plumbed for the
 /// v1.0 edit/branch pager (the pager UI itself is deferred).
+/// A tool the assistant invoked during a turn — its name, a short argument summary, and the result once
+/// it returns (nil while running). Shown as an activity row and persisted with the message.
+public struct ToolRun: Identifiable, Codable, Sendable, Equatable {
+    public var id: UUID
+    public var name: String
+    public var arguments: String
+    public var result: String?
+    public init(id: UUID = UUID(), name: String, arguments: String, result: String? = nil) {
+        self.id = id; self.name = name; self.arguments = arguments; self.result = result
+    }
+}
+
 public struct Message: Identifiable, Codable, Sendable, Equatable {
     public enum Role: String, Codable, Sendable, Equatable {
         case system, user, assistant
@@ -21,6 +33,9 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
     /// Wall-clock the model spent inside its `<think>` block, persisted so the collapsed reasoning tile
     /// shows an honest "Thought for Xs" (optional → old records without it decode as nil).
     public var thinkingSeconds: Double?
+    /// Tools the assistant called during this turn (empty/absent for non-tool turns; optional → old
+    /// records decode as nil).
+    public var toolRuns: [ToolRun]?
     /// End-of-generation stats for an assistant turn (nil while streaming / for non-assistant turns).
     public var stats: Stats?
     /// The turn this message was branched/regenerated from (v1.0 branch pager).
@@ -28,13 +43,14 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
 
     public init(id: UUID = UUID(), role: Role, createdAt: Date = Date(),
                 answer: String, reasoning: String? = nil, thinkingSeconds: Double? = nil,
-                stats: Stats? = nil, parentID: UUID? = nil) {
+                toolRuns: [ToolRun]? = nil, stats: Stats? = nil, parentID: UUID? = nil) {
         self.id = id
         self.role = role
         self.createdAt = createdAt
         self.answer = answer
         self.reasoning = reasoning
         self.thinkingSeconds = thinkingSeconds
+        self.toolRuns = toolRuns
         self.stats = stats
         self.parentID = parentID
     }

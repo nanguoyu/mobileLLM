@@ -49,6 +49,41 @@ struct UserBubble: View {
     }
 }
 
+/// A single tool the assistant invoked — a running spinner while it works, the seal (✓) + result when
+/// it returns. The red seal is the app's mark of a completed, authentic action.
+struct ToolActivityRow: View {
+    let run: ToolRun
+    private var argSummary: String {
+        guard let data = run.arguments.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], !obj.isEmpty else { return "" }
+        return obj.map { "\($0.value)" }.joined(separator: ", ")
+    }
+    var body: some View {
+        HStack(spacing: Theme.Space.sm) {
+            if run.result == nil {
+                ProgressView().controlSize(.mini).tint(Theme.accent)
+            } else {
+                Image(systemName: "checkmark.seal.fill").font(.caption).foregroundStyle(Theme.accent)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(run.result == nil ? "Using \(prettyName)…" : prettyName + (argSummary.isEmpty ? "" : "(\(argSummary))"))
+                    .font(.caption.weight(.medium)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                if let r = run.result {
+                    Text("→ \(r)").font(.caption2.monospaced()).foregroundStyle(Theme.textTertiary).lineLimit(2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Theme.Space.md).padding(.vertical, Theme.Space.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(run.result == nil ? "Using \(prettyName)" : "\(prettyName) returned \(run.result ?? "")")
+    }
+    private var prettyName: String { run.name.replacingOccurrences(of: "_", with: " ").capitalized }
+}
+
 /// The assistant turn — full-width document text (no bubble) so markdown + code read cleanly
 /// (DESIGN §4). Drives the thinking disclosure, an optional streaming caret, and a quiet action bar.
 struct AssistantView: View {
@@ -59,6 +94,7 @@ struct AssistantView: View {
     let isStreaming: Bool
     let stats: Stats?
     let modelName: String
+    var toolRuns: [ToolRun] = []
     var onCopy: (() -> Void)?
     var onRegenerate: (() -> Void)?
 
@@ -66,6 +102,11 @@ struct AssistantView: View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
             if !reasoning.isEmpty {
                 ThinkingDisclosure(reasoning: reasoning, phase: disclosurePhase, displayMode: displayMode)
+            }
+            if !toolRuns.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    ForEach(toolRuns) { ToolActivityRow(run: $0) }
+                }
             }
             if !answer.isEmpty {
                 answerBody

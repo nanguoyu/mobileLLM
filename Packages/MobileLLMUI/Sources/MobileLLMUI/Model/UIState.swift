@@ -50,11 +50,13 @@ public struct StreamingState: Equatable {
     /// When the reasoning began + how long it lasted (frozen when the first answer token arrives).
     public var thinkingStartedAt: Date?
     public var thinkingDuration: TimeInterval?
+    /// Tools invoked so far this turn (the last one is "running" until its result lands).
+    public var toolActivity: [ToolRun] = []
 
     public init(messageID: UUID) { self.messageID = messageID }
 
     public var isReasoning: Bool { phase == .thinking }
-    public var hasAnyContent: Bool { !reasoning.isEmpty || !answer.isEmpty }
+    public var hasAnyContent: Bool { !reasoning.isEmpty || !answer.isEmpty || !toolActivity.isEmpty }
 }
 
 /// The currently-loaded model + variant the engine will generate with.
