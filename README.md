@@ -8,16 +8,26 @@
 macOS + iOS, pure Swift + [MLX](https://github.com/ml-explore/mlx-swift). No account, no cloud;
 nothing you type ever leaves the device.
 
+<p>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+  <img src="https://img.shields.io/badge/platform-iOS%20%7C%20macOS-lightgrey.svg" alt="Platforms: iOS | macOS" />
+  <img src="https://img.shields.io/badge/Swift-6-orange.svg" alt="Swift 6" />
+  <img src="https://img.shields.io/badge/inference-100%25%20on--device-brightgreen.svg" alt="100% on-device" />
+</p>
+
 <img src="assets/screenshot.jpg" width="300" alt="mobileLLM running an on-device model on iPhone" />
 
 </div>
 
-## What it is
+## Features
 
-- **On-device chat** with open-weight LLMs, streamed token-by-token, with collapsible reasoning.
-- **A model catalog** you download and switch between — each model shows an honest per-device memory
-  **fit badge**, so you know what will actually run well on your hardware before downloading it.
-- **Built to host many model families.** Adding a family is a catalog entry, not a rewrite.
+- 🔒 **100% on-device.** Chats, prompts, and models stay on your device — no account, no server, no telemetry.
+- 💬 **Streamed chat** with open-weight LLMs, token-by-token, plus a collapsible **reasoning** view for thinking-mode models.
+- 📊 **Honest memory fit.** Every model shows a per-device fit badge (*Runs great* / *Tight* / *Experimental*) computed from your actual hardware — so you know before you download.
+- ⬇️ **Resumable downloads** with live bytes/speed/ETA; one active model, with its memory reclaimed automatically when idle.
+- 🧩 **Many model families.** Extend the catalog by adding an entry, not a rewrite — Bonsai (Qwen3.5 / Qwen3, 1-bit & ternary) is included first.
+- ⚡ **Two engines, one protocol.** MLX today; a memory-mapped llama.cpp engine is planned for large models on memory-tight phones.
+- 🎨 **Native SwiftUI** on iPhone and Mac — tabs & sheets on iOS, sidebar & menu bar on macOS, Dynamic Type, dark mode, reduce-motion.
 
 ## Models
 
