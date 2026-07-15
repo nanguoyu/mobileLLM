@@ -248,9 +248,6 @@ struct ModelCard: View {
     private var engineBinding: Binding<EngineKind> {
         Binding(get: { engine }, set: { engineSel = $0 })
     }
-    private var quantBinding: Binding<QuantSpec> {
-        Binding(get: { quant }, set: { quantSel = $0 })
-    }
 
     private var presentation: ModelManager.FitPresentation {
         models.fitPresentation(model, variant, context: context)
@@ -291,25 +288,78 @@ struct ModelCard: View {
     @ViewBuilder private var engineAndQuant: some View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
             // Engine picker (only when the model ships more than one engine). Switching reflows the
-            // quant options + live-updates the fit badge below.
+            // precision chips + live-updates the fit badge above.
             if model.engines.count > 1 {
-                Segmented(selection: engineBinding, options: model.engines) { $0.label }
-                    .frame(maxWidth: 240)
-                    .accessibilityLabel("Inference engine")
-            }
-            HStack(spacing: Theme.Space.sm) {
-                if quantsForEngine.count > 1 {
-                    Segmented(selection: quantBinding, options: quantsForEngine) { $0.displayName }
-                        .frame(maxWidth: 220)
-                } else {
-                    // Single quant for this engine (e.g. GGUF Q1_0) — a static label, not a control.
-                    Chip(text: quant.displayName)
+                matrixRow(label: "Engine") {
+                    Segmented(selection: engineBinding, options: model.engines) { $0.label }
+                        .frame(maxWidth: 240)
+                        .accessibilityLabel("Inference engine")
                 }
-                Spacer(minLength: Theme.Space.sm)
-                Text(Format.bytes(variant.onDiskBytes))
-                    .font(.caption.monospacedDigit()).foregroundStyle(Theme.textSecondary)
-                    .fixedSize()
             }
+            // Precision as chips — each carries its own fit dot, so the whole matrix reads at a glance.
+            matrixRow(label: "Precision") {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Theme.Space.xs) {
+                        ForEach(quantsForEngine, id: \.self) { q in precisionChip(q) }
+                    }
+                    .padding(.vertical, 1)
+                }
+            }
+            HStack(spacing: Theme.Space.xs) {
+                Text(variant.quant.displayName).font(.caption.weight(.medium)).foregroundStyle(Theme.textSecondary)
+                Text("·").foregroundStyle(Theme.textTertiary)
+                Text(Format.bytes(variant.onDiskBytes)).font(.caption.monospacedDigit()).foregroundStyle(Theme.textPrimary)
+                Spacer()
+            }
+            .padding(.top, 1)
+        }
+    }
+
+    private func matrixRow<Content: View>(label: String, @ViewBuilder _ content: () -> Content) -> some View {
+        HStack(alignment: .center, spacing: Theme.Space.sm) {
+            Text(label.uppercased())
+                .font(.caption2.weight(.bold)).tracking(0.6).foregroundStyle(Theme.textTertiary)
+                .frame(width: 58, alignment: .leading)
+            content()
+        }
+    }
+
+    private func precisionChip(_ q: QuantSpec) -> some View {
+        let on = q == quant
+        return Button { withAnimation(Motion.select) { quantSel = q } } label: {
+            HStack(spacing: 5) {
+                Circle().fill(fitColor(for: q))
+                    .frame(width: 7, height: 7)
+                    .overlay(Circle().strokeBorder(.white.opacity(on ? 0.5 : 0), lineWidth: 1))
+                Text(q.displayName).font(.caption.weight(.medium)).lineLimit(1)
+            }
+            .foregroundStyle(on ? Theme.onAccent : Theme.textSecondary)
+            .padding(.horizontal, Theme.Space.sm).padding(.vertical, 6)
+            .background(on ? Theme.accent : Theme.surface2, in: Capsule())
+            .overlay(Capsule().strokeBorder(on ? Color.clear : Theme.hairline))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(q.displayName), \(fitWord(for: q))")
+        .accessibilityAddTraits(on ? [.isSelected] : [])
+    }
+
+    /// The fit dot colour for a precision on this device (each chip rates its own variant).
+    private func fitColor(for q: QuantSpec) -> Color {
+        guard let v = model.variant(engine: engine, quant: q) else { return Theme.fitGray }
+        switch models.fitPresentation(model, v, context: context) {
+        case .comfortable: return Theme.fitGreen
+        case .tight, .experimental: return Theme.fitAmber
+        case .unsupported: return Theme.fitGray
+        }
+    }
+
+    private func fitWord(for q: QuantSpec) -> String {
+        guard let v = model.variant(engine: engine, quant: q) else { return "unavailable" }
+        switch models.fitPresentation(model, v, context: context) {
+        case .comfortable: return "runs great"
+        case .tight: return "tight"
+        case .experimental: return "experimental"
+        case .unsupported: return "won't fit"
         }
     }
 
