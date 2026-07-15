@@ -204,7 +204,11 @@ public final class ModelManager {
 
     /// Reload the active model if it was suspended (awaited right before generation).
     public func ensureResident(context: Int) async throws {
-        guard let active, !engineResident, !switching else { return }
+        // Wait out any in-flight swap/load first (e.g. the user just tapped a model and it's still
+        // loading — the slow 27B especially). Skipping here let a send run on a half-loaded engine,
+        // which threw "not loaded" on the first tap and only worked on the second.
+        while switching { try? await Task.sleep(nanoseconds: 100_000_000) }
+        guard let active, !engineResident else { return }
         switching = true
         defer { switching = false }
         let weightsDir = ModelDownloader(downloadBase: downloadBase).localURL(repoId: active.variant.source.huggingFaceRepo)

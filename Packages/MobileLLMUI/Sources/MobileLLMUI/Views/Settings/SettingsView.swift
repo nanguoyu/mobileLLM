@@ -31,6 +31,7 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity)
             .padding(Theme.Space.xl)
         }
+        .scrollDismissesKeyboard(.interactively)   // drag to dismiss the system-prompt keyboard
         .background(Theme.bg)
         .task { storageBytes = await container.conversationStore.storageBytes() }
         .alert("Delete all data?", isPresented: $confirmDeleteAll) {

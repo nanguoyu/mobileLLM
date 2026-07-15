@@ -65,7 +65,7 @@ struct Composer: View {
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
             .disabled(!chat.hasModel)
             #if os(macOS)
-            .onSubmit { if chat.canSend { chat.send() } }   // ⏎ sends on Mac; ⇧⏎ inserts a newline
+            .onSubmit { if chat.canSend { chat.send(); focused = false } }   // ⏎ sends on Mac; ⇧⏎ inserts a newline
             #endif
             .accessibilityLabel("Message")
     }
@@ -97,7 +97,7 @@ struct Composer: View {
 
     private var sendOrStop: some View {
         Button {
-            if chat.isStreaming { chat.stop() } else { chat.send() }
+            if chat.isStreaming { chat.stop() } else { chat.send(); focused = false }   // dismiss keyboard on send
         } label: {
             Image(systemName: chat.isStreaming ? "stop.fill" : "arrow.up")
                 .font(.body.weight(.semibold))

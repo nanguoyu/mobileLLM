@@ -64,6 +64,7 @@ struct ChatThreadView: View {
                     .frame(maxWidth: 760, alignment: .leading)
                     .frame(maxWidth: .infinity)
                 }
+                .scrollDismissesKeyboard(.interactively)   // drag the thread down to dismiss the keyboard
                 .coordinateSpace(name: "thread")
                 .background(Theme.bg)
                 .onPreferenceChange(BottomOffsetKey.self) { maxY in
