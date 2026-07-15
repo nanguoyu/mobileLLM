@@ -18,7 +18,7 @@ public final class ChatStore {
     // MARK: - Published state
 
     /// The in-memory mirror of live conversations, newest first (pinned on top).
-    public private(set) var conversations: [Conversation] = []
+    public internal(set) var conversations: [Conversation] = []
     public var activeID: UUID?
     public var draft: String = ""
     /// Live in-flight turn; `nil` when idle.
@@ -91,6 +91,13 @@ public final class ChatStore {
     }
 
     public func select(_ id: UUID) { activeID = id }
+
+    /// Clear the in-memory mirror after a full data wipe (Settings → Delete all data).
+    public func reloadAfterWipe() {
+        stop()
+        conversations = []
+        activeID = nil
+    }
 
     public func rename(_ id: UUID, to title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -197,7 +204,9 @@ public final class ChatStore {
                     guard let self, self.streaming?.messageID == assistantID else { return }
                     self.apply(delta)
                 }
-                self?.finalizeIfNeeded(stopReason: .eos)
+                // A cancelled consumer ends the stream by returning nil (not by throwing), so detect
+                // Stop here too — the partial is committed, never discarded (DESIGN §2.3).
+                self?.finalizeIfNeeded(stopReason: Task.isCancelled ? .cancelled : .eos)
             } catch is CancellationError {
                 self?.finalizeIfNeeded(stopReason: .cancelled)
             } catch {

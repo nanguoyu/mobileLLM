@@ -35,7 +35,7 @@ public enum ModelActivationError: Error, Equatable {
 }
 
 /// Per-variant download progress surfaced to the UI (bytes/speed/ETA via `DownloadMeter`).
-public struct VariantDownload: Equatable {
+public struct VariantDownload {
     public var fraction: Double = 0
     public var meter: DownloadMeter = DownloadMeter()
     public var isPaused: Bool = false
@@ -57,9 +57,9 @@ public final class ModelManager {
     public let device: DeviceTier
 
     /// Repo ids of variants present on disk.
-    public private(set) var installed: Set<String> = []
+    public internal(set) var installed: Set<String> = []
     /// The resident model, if any (one active model — decode is bandwidth-bound).
-    public private(set) var active: LoadedModel?
+    public internal(set) var active: LoadedModel?
     /// In-flight downloads keyed by variant repo id.
     public private(set) var downloads: [String: VariantDownload] = [:]
     /// True while a model swap is serializing (unload → drain → load), per DESIGN §2.3.
@@ -76,7 +76,7 @@ public final class ModelManager {
                 device: DeviceTier = .current,
                 downloadBase: URL,
                 downloader: @escaping Downloader,
-                installProbe: @escaping @Sendable (LLMVariant, URL) -> Bool = ModelManager.defaultInstallProbe,
+                installProbe: @escaping @Sendable (LLMVariant, URL) -> Bool = ModelManager.defaultInstallProbe(),
                 availableMemory: @escaping @Sendable () -> Int64 = { Int64(bitPattern: MemoryProbe.availableBytes()) }) {
         self.engine = engine
         self.device = device
@@ -87,8 +87,10 @@ public final class ModelManager {
     }
 
     /// Default probe: the reused `ModelDownloader` reports the flat repo as fully downloaded.
-    public static let defaultInstallProbe: @Sendable (LLMVariant, URL) -> Bool = { variant, base in
-        ModelDownloader(downloadBase: base).isDownloaded(repoId: variant.source.huggingFaceRepo)
+    public nonisolated static func defaultInstallProbe() -> @Sendable (LLMVariant, URL) -> Bool {
+        { variant, base in
+            ModelDownloader(downloadBase: base).isDownloaded(repoId: variant.source.huggingFaceRepo)
+        }
     }
 
     // MARK: - Catalog helpers
@@ -118,6 +120,30 @@ public final class ModelManager {
     /// Memory-fit verdict for a (model, variant) at a context (DESIGN §2.5).
     public func fit(_ model: LLMModel, _ variant: LLMVariant, context: Int) -> LLMFit {
         LLMMemoryGovernor.plan(model: model, variant: variant, device: device, context: context)
+    }
+
+    /// How a variant's fit is presented (DESIGN §1.2). The governor's `.unsupported` becomes an
+    /// honest amber **experimental** — not a hidden/disabled row — when the weights are physically
+    /// conceivable on this device (the 27B-1bit on an 8 GB iPhone: above the safe ceiling but under
+    /// physical RAM, so "Try anyway" attempts the resident load and lets the device give the real
+    /// answer). Truly-too-big-for-the-RAM stays gray/unsupported.
+    public enum FitPresentation: Equatable {
+        case comfortable
+        case tight(maxContext: Int)
+        case experimental
+        case unsupported
+
+        public var isExperimental: Bool { self == .experimental }
+    }
+
+    public func fitPresentation(_ model: LLMModel, _ variant: LLMVariant, context: Int) -> FitPresentation {
+        switch fit(model, variant, context: context) {
+        case .comfortable: return .comfortable
+        case let .tight(maxContext): return .tight(maxContext: maxContext)
+        case .unsupported:
+            let base = variant.onDiskBytes + variant.backend.runtimeOverheadBytes
+            return base <= device.physicalMemoryBytes ? .experimental : .unsupported
+        }
     }
 
     /// Total on-disk bytes of installed variants (Settings → storage total).
@@ -174,15 +200,16 @@ public final class ModelManager {
 
         let downloader = self.downloader
         downloadTasks[repoId] = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
-                try await downloader(repoId) { fraction in
-                    Task { @MainActor [weak self] in self?.applyProgress(fraction, to: repoId) }
+                try await downloader(repoId) { [weak self] fraction in
+                    Task { @MainActor in self?.applyProgress(fraction, to: repoId) }
                 }
-                self?.finishDownload(repoId, error: nil)
+                self.finishDownload(repoId, error: nil)
             } catch is CancellationError {
-                self?.downloadTasks[repoId] = nil   // paused: keep the partial, no error
+                self.downloadTasks[repoId] = nil   // paused: keep the partial, no error
             } catch {
-                self?.finishDownload(repoId, error: error.localizedDescription)
+                self.finishDownload(repoId, error: error.localizedDescription)
             }
         }
     }
