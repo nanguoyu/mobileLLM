@@ -1,12 +1,10 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MIT
 
 import Foundation
 
 /// Detected hardware class → memory budget. The budget here is a conservative static estimate; the
-/// live decision uses `MemoryProbe.availableBytes()`. (Ported from swift-diffusion-core; the
-/// diffusion-specific `defaultPrecision` member is dropped — mobileLLM's quant is per-variant.)
+/// live decision uses `MemoryProbe.availableBytes()`. Quantization is per-variant, so there is no
+/// default-precision field.
 public struct DeviceTier: Sendable {
     public let physicalMemoryBytes: Int64
     public let isPhone: Bool

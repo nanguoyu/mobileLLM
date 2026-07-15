@@ -1,6 +1,4 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MIT
 
 import Foundation
 #if canImport(Darwin)
@@ -9,7 +7,7 @@ import Darwin
 
 /// Jetsam-accurate memory introspection. `phys_footprint` is the value the OS compares
 /// against the per-app limit; `os_proc_available_memory` is the real remaining budget.
-/// (Ported verbatim from swift-diffusion-core — pure Swift, no platform-specific UI.)
+/// (Pure Swift, no platform-specific UI.)
 public enum MemoryProbe {
 
     /// Resident memory billed against the jetsam limit (bytes).

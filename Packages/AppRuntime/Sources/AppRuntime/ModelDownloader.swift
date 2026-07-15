@@ -1,6 +1,4 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MIT
 
 import Foundation
 import CryptoKit
@@ -13,10 +11,10 @@ import Darwin   // fnmatch for glob matching
 /// `Range` header resumes), size/SHA-256 are verified before the `.part` is renamed into place, and
 /// an already-complete repo verifies quickly and is reused.
 ///
-/// Adapted from z-image-swift-mlx's `ModelDownloader`:
+/// Design notes:
 ///   • **No swift-transformers** — the repo file listing comes straight from HF's tree API
 ///     (`fetchHubFiles`); there is no `Hub`/`HubApi` dependency. Foundation + CryptoKit only.
-///   • **Flat LLM repos** — the diffusion `[transformer, text_encoder, vae]` subfolder completeness
+///   • **Flat LLM repos** — a nested `[transformer, text_encoder, vae]` subfolder completeness
 ///     check is removed. LLM repos are flat: root `model.safetensors` (+ optional index shards) plus
 ///     `config.json` / `tokenizer*.json` / `chat_template.jinja`. Completeness is enforced by the
 ///     written manifest (+ index-shard presence when an index exists).

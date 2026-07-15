@@ -1,6 +1,4 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MIT
 
 import Foundation
 
@@ -43,7 +41,7 @@ public enum MemoryPressure: Int, Sendable, Comparable {
 /// memory source reports `.normal`, so `throttleIfNeeded` falls straight through the `.nominal` branch.
 ///
 /// ## MLX-free
-/// This is the diffusion-core governor with MLX removed: the three `MLX.GPU.clearCache()` call sites
+/// MLX is decoupled from this governor: the three `MLX.GPU.clearCache()` call sites
 /// are replaced by an injected `clearCache: @Sendable () -> Void` (default no-op). The LLM engine
 /// injects `{ MLX.GPU.clearCache() }` from inside its own MLX-linked package; every layer below it
 /// stays MLX-free and testable deviceless.

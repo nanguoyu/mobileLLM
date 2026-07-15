@@ -1,6 +1,4 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MIT
 
 import Foundation
 
@@ -9,7 +7,7 @@ import Foundation
 /// Engines call `checkpoint()` at safe boundaries. `pause()` blocks the next checkpoint without
 /// trying to serialize model state; `cancel()` wakes any paused checkpoint and throws
 /// `CancellationError`. This keeps pause/resume session-only and token-boundary scoped. (Ported
-/// verbatim from swift-diffusion-core — MLX-free.)
+/// verbatim — MLX-free.)
 public final class GenerationControl: @unchecked Sendable {
     private let condition = NSCondition()
     private var paused = false

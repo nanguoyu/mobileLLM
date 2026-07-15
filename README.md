@@ -46,4 +46,4 @@ Build with **`xcodebuild`** (MLX's Metal kernels require it). The MLX-free packa
 
 ## License
 
-App source: **[MPL-2.0](LICENSE)**. Each model keeps its own license (shown in the app).
+App source: **[MIT](LICENSE)**. Each model keeps its own license (shown in the app).

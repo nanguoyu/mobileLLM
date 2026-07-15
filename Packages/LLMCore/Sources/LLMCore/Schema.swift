@@ -1,6 +1,4 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// SPDX-License-Identifier: MIT
 
 import Foundation
 
@@ -16,7 +14,7 @@ public enum LLMFamily: String, Sendable, Hashable, CaseIterable, Codable {
     }
 }
 
-/// The permissive license the seed models ship under (kept local — LLMCore does not import DiffusionCore).
+/// The permissive license the seed models ship under (kept local so LLMCore is self-contained).
 public enum ModelLicense: String, Sendable, Hashable, Codable {
     case apache2 = "Apache-2.0"
     public var displayName: String { rawValue }
