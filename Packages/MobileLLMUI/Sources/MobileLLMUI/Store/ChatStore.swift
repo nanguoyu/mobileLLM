@@ -256,6 +256,9 @@ public final class ChatStore {
         }
         conversations[ci].messages[mi].answer = state.answer
         conversations[ci].messages[mi].reasoning = state.reasoning.isEmpty ? nil : state.reasoning
+        // Persist the real thinking wall-clock so the collapsed tile shows an honest "Thought for Xs".
+        conversations[ci].messages[mi].thinkingSeconds =
+            state.reasoning.isEmpty ? nil : (state.thinkingDuration ?? state.thinkingStartedAt.map { Date().timeIntervalSince($0) })
         conversations[ci].messages[mi].stats = stats ?? Stats(
             promptTokens: 0, genTokens: 0, promptTPS: 0,
             tokensPerSecond: 0, peakMemoryBytes: 0, stopReason: stopReason)

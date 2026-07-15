@@ -126,8 +126,10 @@ struct ChatThreadView: View {
         }
     }
 
-    /// Estimate a completed turn's thinking time from its stats (we don't persist the wall-clock).
+    /// A completed turn's thinking time — the persisted wall-clock when we have it, else estimated from
+    /// stats (older records that predate `thinkingSeconds`).
     private func completedThinkSeconds(_ message: Message) -> Double? {
+        if let s = message.thinkingSeconds, s > 0 { return s }
         guard let reasoning = message.reasoning, !reasoning.isEmpty,
               let tps = message.stats?.tokensPerSecond, tps > 0 else { return nil }
         return Double(max(1, reasoning.count / 4)) / tps

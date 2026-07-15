@@ -6,7 +6,9 @@ import AppUI
 /// A parsed block of assistant text: either prose (rendered as markdown) or a fenced code block.
 struct MarkdownBlock: Identifiable {
     enum Kind: Equatable { case prose(String); case code(language: String?, code: String) }
-    let id = UUID()
+    /// Stable position-based id so SwiftUI reuses the block views across streaming re-parses — a random
+    /// UUID per parse forced a full rebuild every token (FlowDown's "reuse by stable id" fix).
+    let id: Int
     let kind: Kind
 
     /// Split text on ```-fenced code blocks (DESIGN §4 — code cards, prose as markdown). A trailing
@@ -20,12 +22,12 @@ struct MarkdownBlock: Identifiable {
 
         func flushProse() {
             let joined = proseLines.joined(separator: "\n").trimmingCharacters(in: .newlines)
-            if !joined.isEmpty { blocks.append(MarkdownBlock(kind: .prose(joined))) }
+            if !joined.isEmpty { blocks.append(MarkdownBlock(id: blocks.count, kind: .prose(joined))) }
             proseLines.removeAll()
         }
         func flushCode() {
-            blocks.append(MarkdownBlock(kind: .code(language: language,
-                                                    code: codeLines.joined(separator: "\n"))))
+            blocks.append(MarkdownBlock(id: blocks.count, kind: .code(language: language,
+                                                                      code: codeLines.joined(separator: "\n"))))
             codeLines.removeAll()
             language = nil
         }
@@ -64,6 +66,28 @@ struct MarkdownMessage: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Streaming wrapper: coalesces token-by-token growth to ~20 fps so the markdown re-parse can't thrash
+/// on a phone (FlowDown's throttle idea). The inline block caret rides at the tail; the final text is
+/// always shown when the caller switches to the non-streaming `MarkdownMessage` on completion.
+struct StreamingMarkdown: View {
+    let text: String
+    @State private var shown = ""
+    @State private var lastRenderedAt = Date.distantPast
+
+    var body: some View {
+        MarkdownMessage(text: shown + "\u{258C}")
+            .onChange(of: text) { _, new in
+                let now = Date()
+                // Render on a ~50 ms gate, or immediately when a big chunk arrives so we never fall far behind.
+                if now.timeIntervalSince(lastRenderedAt) >= 0.05 || new.count - shown.count > 24 {
+                    shown = new
+                    lastRenderedAt = now
+                }
+            }
+            .onAppear { shown = text }
     }
 }
 

@@ -18,18 +18,23 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
     public var answer: String
     /// The `<think>` reasoning, if the turn produced any (nil for user/system turns).
     public var reasoning: String?
+    /// Wall-clock the model spent inside its `<think>` block, persisted so the collapsed reasoning tile
+    /// shows an honest "Thought for Xs" (optional → old records without it decode as nil).
+    public var thinkingSeconds: Double?
     /// End-of-generation stats for an assistant turn (nil while streaming / for non-assistant turns).
     public var stats: Stats?
     /// The turn this message was branched/regenerated from (v1.0 branch pager).
     public var parentID: UUID?
 
     public init(id: UUID = UUID(), role: Role, createdAt: Date = Date(),
-                answer: String, reasoning: String? = nil, stats: Stats? = nil, parentID: UUID? = nil) {
+                answer: String, reasoning: String? = nil, thinkingSeconds: Double? = nil,
+                stats: Stats? = nil, parentID: UUID? = nil) {
         self.id = id
         self.role = role
         self.createdAt = createdAt
         self.answer = answer
         self.reasoning = reasoning
+        self.thinkingSeconds = thinkingSeconds
         self.stats = stats
         self.parentID = parentID
     }
