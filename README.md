@@ -1,8 +1,16 @@
+<div align="center">
+
+<img src="assets/icon.png" width="104" alt="mobileLLM icon" />
+
 # mobileLLM
 
-A private, **open-source** chat app that runs open-weight language models **fully on your device** —
+**A private, open-source chat app that runs open-weight language models fully on your device** —
 macOS + iOS, pure Swift + [MLX](https://github.com/ml-explore/mlx-swift). No account, no cloud;
 nothing you type ever leaves the device.
+
+<img src="assets/screenshot.jpg" width="300" alt="mobileLLM running an on-device model on iPhone" />
+
+</div>
 
 ## What it is
 
