@@ -15,7 +15,7 @@ private func formatETA(_ seconds: Double) -> String {
 /// Tracks a download's bytes / throughput / ETA from the fraction reported by the downloader plus the
 /// known total size, so the UI can show "2.3 GB / 4.6 GB · 12 MB/s · ~3m left" instead of a bare bar.
 /// Throughput is a smoothed (EMA) estimate sampled at most a few times a second so it doesn't jitter.
-/// (Ported verbatim from MobileDiffuser — Foundation only.)
+/// (Foundation only.)
 public struct DownloadMeter {
     public private(set) var totalBytes: Int64 = 0
     public private(set) var downloadedBytes: Int64 = 0

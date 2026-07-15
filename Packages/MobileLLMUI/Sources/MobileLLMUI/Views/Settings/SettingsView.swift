@@ -7,7 +7,7 @@ import AppUI
 import LLMCore
 
 /// Settings (DESIGN §4): default model, chat behavior, sampling (progressive-disclosure Advanced),
-/// appearance, data & privacy, and about. Section/row builders mirror MobileDiffuser's studio style.
+/// appearance, data & privacy, and about. Section/row builders in a clean studio style.
 struct SettingsView: View {
     let container: AppContainer
     @Bindable var settings: AppSettings
@@ -175,19 +175,12 @@ struct SettingsView: View {
     // MARK: About
 
     private var aboutSection: some View {
-        // Derive providers + licenses from the catalog (the single source of truth) — never hand-maintain
-        // a model list here; it would go stale the moment a model is added or removed.
-        let providers = Set(container.models.catalog.map(\.publisher)).sorted().joined(separator: " · ")
-        let licenses = Set(container.models.catalog.map { $0.license.rawValue }).sorted().joined(separator: " · ")
-        return section("About", icon: "info.circle") {
+        section("About", icon: "info.circle") {
             row("Version", appVersion)
             row("Engine", "Pure Swift + MLX")
-            row("Runs", "Open-weight models, on-device")
-            Text("A private, on-device runner for open-weight LLMs — everything runs on your device, "
-                 + "nothing is sent to a server. More models will be supported over time.")
-                .font(.caption).foregroundStyle(Theme.textTertiary)
-            Text("Model providers: \(providers). Licenses: \(licenses) — each model keeps its own. "
-                 + "Inference via mlx-swift-lm; 1-bit models use the PrismML mlx-swift kernel fork.")
+            Text("A private, open-source runner for open-weight language models — everything runs on your "
+                 + "device, nothing is sent to a server. Each model's provider and license are shown on "
+                 + "its card in Models.")
                 .font(.caption).foregroundStyle(Theme.textTertiary)
         }
     }

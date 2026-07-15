@@ -8,7 +8,7 @@ import Foundation
 // governor's memory model is qwen-shaped ("qwen-family v1"). Adding a Qwen3/Llama/Mistral model later
 // = append an `LLMModel` with the right `modelType` / `swiftModelClass`, no schema change.
 
-/// Publisher/architecture family. Extensible; the seed catalog is all Prism ML's Bonsai.
+/// Publisher/architecture family. Extensible; the seed catalog starts with one family.
 public enum LLMFamily: String, Sendable, Hashable, CaseIterable, Codable {
     case bonsai
     public var displayName: String {

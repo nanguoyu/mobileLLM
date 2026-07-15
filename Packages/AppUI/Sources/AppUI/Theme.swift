@@ -12,7 +12,7 @@ import AppKit
 
 /// "On-device intelligence" design tokens: layered flat surfaces, a single teal accent, hairline
 /// borders. Adaptive to system light/dark (no asset catalog — colors resolve per scheme at draw
-/// time). Ported from MobileDiffuser's studio theme; the accent is mobileLLM's own teal ramp.
+/// time). mobileLLM's studio design system; the accent is its own teal ramp.
 public enum Theme {
 
     // MARK: Dynamic-color shim

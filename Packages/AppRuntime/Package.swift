@@ -2,7 +2,7 @@
 import PackageDescription
 
 // AppRuntime — mobileLLM's MLX-free runtime substrate. The self-contained, dependency-light pieces
-// lifted from MobileDiffuser / swift-diffusion-core: memory + thermal governance, a resumable
+// memory + thermal governance, a resumable
 // Hugging Face downloader, a durable atomic-write store, and the download progress meter. Foundation
 // + CryptoKit only, so it compiles + tests with the plain SwiftPM CLI (no Metal toolchain).
 let package = Package(

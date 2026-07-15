@@ -5,7 +5,7 @@
 import Foundation
 
 /// A small durable, atomic, corruption-resistant record store — the recovery skeleton distilled from
-/// MobileDiffuser's `LibraryStore` and made generic. Backs `ConversationStore` / `ModelRegistryStore`
+/// a proven durable-store pattern, made generic. Backs `ConversationStore` / `ModelRegistryStore`
 /// in the app layer (losing a long chat is worse than losing a regenerable image, so this keeps the
 /// same defensive posture).
 ///

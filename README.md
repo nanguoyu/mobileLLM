@@ -1,17 +1,49 @@
 # mobileLLM
 
-On-device LLM chat for **macOS + iOS**. Pure MLX + Swift. Runs Prism ML's **Bonsai** (1-bit)
-models fully on device — no account, no cloud, nothing leaves the device.
+A private, **open-source** chat app that runs open-weight language models **fully on your device** —
+macOS + iOS, pure Swift + [MLX](https://github.com/ml-explore/mlx-swift). No account, no cloud;
+nothing you type ever leaves the device.
 
-Sibling to [MobileDiffuser](../MobileDiffuser) (the image app); reuses its download subsystem,
-design system, and memory/thermal governors, but lives in its own project so it can use the
-**PrismML `mlx-swift` fork** (1-bit Metal kernels) without touching MobileDiffuser's validated
-upstream diffusion stack.
+## What it is
 
-- **iPhone hero:** Bonsai-8B 1-bit (1.28 GB, fits 8 GB devices comfortably).
-- **Mac / 12 GB iPhone flagship:** Bonsai-27B 1-bit (5.13 GB, Qwen3.5 Gated-DeltaNet, thinking mode).
+- **On-device chat** with open-weight LLMs, streamed token-by-token, with collapsible reasoning.
+- **A model catalog** you download and switch between — each model shows an honest per-device memory
+  **fit badge**, so you know what will actually run well on your hardware before downloading it.
+- **Built to host many model families.** Adding a family is a catalog entry, not a rewrite.
 
-📄 **[docs/DESIGN.md](docs/DESIGN.md)** — architecture, model catalog, product/UX, roadmap, risks.
+## Models
 
-Status: design phase. Build starts with the fork pin + a `bits=1` smoke-decode gate, then an
-8B-1bit MVP (chat · streaming · thinking disclosure · model manager). Device testing last.
+The catalog is designed to grow to **many open-weight families**. Each model shows its own provider
+and license on its card in the app. The first family included is **Bonsai** (Qwen3.5 / Qwen3, 1-bit
+and ternary quantizations) — more families are on the roadmap.
+
+## Architecture
+
+Two inference engines behind **one protocol**, so the UI, model manager, downloader, and
+memory/thermal governance are engine-agnostic:
+
+- **MLX engine** — Mac and small-to-mid models today.
+- **llama.cpp engine** *(planned)* — memory-mapped weights, so large models fit on memory-tight
+  phones (the mmap'd weights don't count against the per-app dirty-memory limit).
+
+See **[docs/DESIGN.md](docs/DESIGN.md)** for the full architecture, model catalog, and roadmap, and
+**[docs/WIRING.md](docs/WIRING.md)** for the 1-bit dependency notes.
+
+## Build
+
+Universal SwiftUI app (macOS 14 / iOS 17). The Xcode project is generated from `project.yml` with
+[XcodeGen](https://github.com/yonaskolb/XcodeGen):
+
+```sh
+brew install xcodegen
+cp Signing.xcconfig.example Signing.xcconfig   # add your Apple Developer Team ID
+xcodegen generate
+open mobileLLM.xcodeproj
+```
+
+Build with **`xcodebuild`** (MLX's Metal kernels require it). The MLX-free packages
+(`AppUI` / `AppRuntime` / `LLMCore`) also run a fast `swift test`.
+
+## License
+
+App source: **[MPL-2.0](LICENSE)**. Each model keeps its own license (shown in the app).
