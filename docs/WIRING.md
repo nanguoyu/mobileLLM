@@ -53,3 +53,60 @@ the fork is correctly wired. Next gate: full Bonsai-8B decode (needs the HF load
 Repoint `nanguoyu/mlx-swift-lm`'s dep line back to `ml-explore/mlx-swift` (a tagged release that includes
 #3161) and retire the fork. Gate the switch on a byte-identical logits check on one checkpoint; the
 on-disk affine-quant format is unchanged, so **no re-download**.
+
+---
+
+## llama.cpp engine (the second, user-selectable backend)
+
+**Package `LLMEngineLlama`** (sibling to `LLMEngineMLX`) vendors a prebuilt **`llama.xcframework`** as an
+SPM `.binaryTarget` and exposes a `LlamaEngine` actor conforming to `LLMCore.LLMEngine`. No fork, no build
+macros → it needs **neither `-skipMacroValidation` nor a special toolchain** (unlike the MLX package).
+
+### Building the XCFramework
+`scripts/build-llama-xcframework.sh` clones mainline **ggml-org/llama.cpp @ `956973c`**, runs the official
+`./build-xcframework.sh` (Metal **embedded** — no `.metallib` to ship), trims to the **iOS + macOS** slices,
+and installs it to `Packages/LLMEngineLlama/Vendor/llama.xcframework` (~355 MB, **gitignored** — a fresh
+checkout regenerates it). The framework module is `llama` (`import llama`); headers include `llama.h`,
+`ggml-metal.h`, `gguf.h`.
+
+### Why a second engine
+MLX keeps weights in **anonymous/dirty** buffers that count fully against the iOS jetsam ceiling; llama.cpp
+**mmaps** the GGUF so weight pages are **clean/file-backed and reclaimable**. That's the difference that
+lets a 3.8 GB model breathe on an 8 GB phone. To keep the discount we set **`GGML_METAL_NO_RESIDENCY=1` on
+iOS** (residency sets would *wire* the GPU buffers and erase it). `use_mmap = true`, `n_gpu_layers = 999`
+(0 on the simulator — no Metal there).
+
+### Engine internals (`LlamaEngine.swift`)
+- **Model at `load`, context lazily in `run`** sized to `Sampling.contextTokenCap` (n_ctx is fixed at
+  context creation on llama.cpp); KV is cleared each generation (we re-prefill the full history).
+- **ChatML built by hand** (`buildChatML`) threading the *full* turn history. Thinking-off pre-fills an
+  empty `<think>\n\n</think>` after the assistant tag — the same trick Qwen3's template uses — so nothing
+  lands in `.reasoning` when the user picks Hidden.
+- **Prefill is chunked to `n_batch = 512`** to keep the Metal compute buffer small on phones.
+- **`PieceDecoder`** reassembles UTF-8 across token pieces (a CJK/emoji char can split mid-sequence) →
+  feeds `ThinkSplitter` → `.reasoning`/`.answer`. **Flush both at stream end** (mirrors the MLX path).
+- Sampler chain: penalties → top-k → top-p → temp → dist (greedy at temp ≤ 0).
+- `peakMemoryBytes` = sampled `phys_footprint` (the number iOS jetsams on).
+
+### Routing
+`@main` builds `RoutingEngine(engines: [.mlx: MLXLLMEngine(), .llamaCpp: LlamaEngine()])`. The router loads
+each variant on the engine its `backend` names and **unloads the other engine on a cross-engine switch**, so
+two weight stacks never co-reside — the on-device memory-safety guarantee. The two GPU stacks (ggml C syms
+vs mlx C++) link together without symbol collision.
+
+### ✅ Gates PASSED (2026-07-15, macOS)
+- **Day-0**: `llama-simple -m Bonsai-8B-Q1_0.gguf` on mainline + Metal → "The capital of France is Paris."
+- **27B mainline-confirmed**: `Bonsai-27B-Q1_0.gguf` (3.8 GB, hybrid GDN) decodes at **11.2 tok/s** — the
+  log shows `kernel_gated_delta_net`, `kernel_ssm_conv`, and `kernel_mul_mv_q1_0` all on Metal → **no
+  llama.cpp fork needed**; one mainline framework serves every Bonsai size. 27B stays *experimental* for
+  MEMORY, not arch.
+- **Engine end-to-end**: `swift run llama-smoke Bonsai-8B-Q1_0.gguf` → correct answer via
+  `LlamaEngine → PieceDecoder → ThinkSplitter → EngineDelta`, 23.6 tok/s Release, peak 1218 MB.
+- **Integration**: the app **builds for macOS and iOS-device** (codesigned, `llama.framework` embedded)
+  with both engines linked. Package tests green (`PieceDecoder`, `ChatML`).
+
+### Rules
+- Running `llama-smoke` / `llama-simple` locally needs **`DYLD_FALLBACK_LIBRARY_PATH=/usr/lib`** (libc++ rpath).
+- Give every `LLMEngineLlama` target an **explicit `path:`** in Package.swift — without it, xcodebuild's
+  package resolution reported "overlapping sources" for the test target (SwiftPM path inference).
+- **Simulator has no Metal** → `n_gpu_layers = 0` there; validate GGUF generation on real devices.

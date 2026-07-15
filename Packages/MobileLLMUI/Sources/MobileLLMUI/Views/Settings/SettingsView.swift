@@ -64,6 +64,15 @@ struct SettingsView: View {
             }
             Text("Used for new chats. Manage downloads on the Models screen.")
                 .font(.caption).foregroundStyle(Theme.textTertiary)
+            Divider().background(Theme.hairline)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Inference engine").font(.subheadline).foregroundStyle(Theme.textSecondary)
+                Segmented(selection: $settings.enginePreference, options: EnginePreference.allCases) { $0.label }
+                    .accessibilityLabel("Inference engine")
+                Text("Auto picks the best-fitting engine for your device. MLX keeps weights resident; "
+                     + "llama.cpp memory-maps them — better for large models on memory-tight phones.")
+                    .font(.caption).foregroundStyle(Theme.textTertiary)
+            }
         }
     }
 
@@ -176,7 +185,7 @@ struct SettingsView: View {
     private var aboutSection: some View {
         section("About", icon: "info.circle") {
             row("Version", appVersion)
-            row("Engine", "Pure Swift + MLX")
+            row("Engine", "Pure Swift · MLX + llama.cpp")
             Text("A private, open-source runner for open-weight language models — everything runs on your "
                  + "device, nothing is sent to a server. Each model's provider and license are shown on "
                  + "its card in Models.")

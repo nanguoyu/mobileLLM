@@ -69,11 +69,25 @@ public struct ModelDownloader: Sendable {
             }
         }
         // With no manifest yet, require the weights to be physically present (guards an empty dir).
+        // Weights are either MLX `.safetensors` (flat repo) or a llama.cpp `.gguf` file.
         let manifestPresent = fm.fileExists(atPath: root.appending(component: Self.manifestFilename).path)
         if !manifestPresent {
-            let hasWeights = (try? fm.contentsOfDirectory(atPath: root.path).contains { $0.hasSuffix(".safetensors") }) ?? false
+            let hasWeights = (try? fm.contentsOfDirectory(atPath: root.path)
+                .contains { $0.hasSuffix(".safetensors") || $0.hasSuffix(".gguf") }) ?? false
             if !hasWeights { return false }
         }
+        return Self.verifyManifestIfPresent(at: root)
+    }
+
+    /// "Already fully downloaded?" for a SINGLE-FILE variant (e.g. one GGUF pulled from a multi-file
+    /// repo). The named file must exist at the repo root with no in-progress `.part` sibling, and — when
+    /// a download manifest recorded its expected size — match it. Used by the file-scoped install probe.
+    public func isDownloaded(repoId: String, fileName: String) -> Bool {
+        let fm = FileManager.default
+        let root = localURL(repoId: repoId)
+        let file = root.appending(component: fileName)
+        guard fm.fileExists(atPath: file.path) else { return false }
+        if fm.fileExists(atPath: file.appendingPathExtension("part").path) { return false }
         return Self.verifyManifestIfPresent(at: root)
     }
 
@@ -124,9 +138,10 @@ public struct ModelDownloader: Sendable {
     // MARK: - File classification / globbing
 
     /// The model files worth fetching from a flat LLM repo: weights + config + tokenizer + template.
+    /// `.gguf` is a self-contained llama.cpp weight file (single-file variants glob to just that one).
     private static func isModelFile(_ file: HubFile) -> Bool {
         let p = file.path
-        if p.hasSuffix(".safetensors") || p.hasSuffix(".json") || p.hasSuffix(".jinja") { return true }
+        if p.hasSuffix(".safetensors") || p.hasSuffix(".gguf") || p.hasSuffix(".json") || p.hasSuffix(".jinja") { return true }
         let name = (p as NSString).lastPathComponent
         return ["tokenizer.model", "merges.txt", "vocab.json"].contains(name)
     }

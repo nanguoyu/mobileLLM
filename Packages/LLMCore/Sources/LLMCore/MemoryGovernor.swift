@@ -29,6 +29,13 @@ public enum LLMMemoryGovernor {
     /// Fraction of the ceiling below which a plan is "comfortable" (green).
     private static let greenFraction = 0.70
 
+    /// Fraction of a llama.cpp GGUF's mmap'd weight bytes that counts against the jetsam ceiling.
+    /// mmap'd weights are file-backed *clean* pages the OS can reclaim under pressure, unlike MLX's
+    /// anonymous/dirty resident weights — so only a portion is truly "hard" resident. An **estimate**
+    /// (iOS 18+ residency sets can wire GPU buffers and erase this discount → the experimental hybrid
+    /// is never allowed green regardless; see below).
+    private static let mmapResidentFraction = 0.60
+
     /// The usable resident ceiling for a device (DESIGN §1.2):
     ///   • phone ≤ 8.5 GB (the 8 GB 16 Pro) → a hard 5.3 GB (jetsam ~5.5 GB);
     ///   • larger phone (12 GB) → 0.72 · RAM (≈ 8.6 GB);
@@ -44,9 +51,21 @@ public enum LLMMemoryGovernor {
         }
     }
 
-    /// Plan a (model, variant) on a device for a target `context`.
+    /// Plan a (model, variant) on a device for a target `context`. Engine-aware (DESIGN §1 / §6): the
+    /// MLX path is resident-weights (numbers unchanged), the llama.cpp path discounts its mmap'd
+    /// weights so the fit is honestly better on memory-tight phones — but never lets the experimental
+    /// hybrid GGUF read green.
     public static func plan(model: LLMModel, variant: LLMVariant,
                             device: DeviceTier, context: Int) -> LLMFit {
+        switch variant.engine {
+        case .mlx:      return planMLX(model: model, variant: variant, device: device, context: context)
+        case .llamaCpp: return planLlamaCpp(model: model, variant: variant, device: device, context: context)
+        }
+    }
+
+    /// Resident-weights MLX planner — the original model, kept byte-for-byte (regression-guarded).
+    private static func planMLX(model: LLMModel, variant: LLMVariant,
+                                device: DeviceTier, context: Int) -> LLMFit {
         let ceiling = residentCeilingBytes(for: device)
         let base = variant.onDiskBytes + variant.backend.runtimeOverheadBytes
 
@@ -58,6 +77,28 @@ public enum LLMMemoryGovernor {
         if peak <= green { return .comfortable }
 
         // Fits, but tightly — report the largest context that stays under the hard ceiling.
+        let maxContext = maxContext(base: base, ceiling: ceiling, attention: model.architecture.attention)
+        return maxContext > 0 ? .tight(maxContext: maxContext) : .unsupported
+    }
+
+    /// llama.cpp GGUF planner: mmap'd weights are (largely) reclaimable, so only `mmapResidentFraction`
+    /// of them counts against the ceiling — an honest discount that makes GGUF fit better than MLX. The
+    /// dense small models (8B/4B/1.7B) come out comfortably green; the hybrid 27B is CLAMPED to at best
+    /// `.tight` (never `.comfortable`), because mainline support is unconfirmed and iOS residency sets
+    /// can wire the GPU buffers and erase the discount — the honest answer waits for on-device measurement.
+    private static func planLlamaCpp(model: LLMModel, variant: LLMVariant,
+                                     device: DeviceTier, context: Int) -> LLMFit {
+        let ceiling = residentCeilingBytes(for: device)
+        let effectiveWeights = Int64(Double(variant.onDiskBytes) * mmapResidentFraction)
+        let base = effectiveWeights + variant.backend.runtimeOverheadBytes
+
+        guard base <= ceiling else { return .unsupported }
+
+        let peak = base + model.architecture.attention.kvBytes(tokens: context)
+        let green = Int64(greenFraction * Double(ceiling))
+        // The experimental hybrid never reads green — clamp it to tight even with headroom to spare.
+        if peak <= green && !model.architecture.isHybrid { return .comfortable }
+
         let maxContext = maxContext(base: base, ceiling: ceiling, attention: model.architecture.attention)
         return maxContext > 0 ? .tight(maxContext: maxContext) : .unsupported
     }

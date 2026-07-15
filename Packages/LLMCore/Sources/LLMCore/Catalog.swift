@@ -41,6 +41,14 @@ public enum LLMCatalog {
                        source: ModelSource(huggingFaceRepo: "prism-ml/Bonsai-27B-mlx-1bit")),
             LLMVariant(quant: .ternary2bit, backend: .mlxStock, onDiskBytes: 8_491_000_000,
                        source: ModelSource(huggingFaceRepo: "prism-ml/Ternary-Bonsai-27B-mlx-2bit")),
+            // llama.cpp GGUF (Q1_0, 3.8 GB — verified x-linked-size). The hybrid GDN arch is CONFIRMED on
+            // mainline llama.cpp (kernel_gated_delta_net + kernel_mul_mv_q1_0 both run on Metal), so the
+            // ARCH risk is gone; the governor/UX still hold this variant EXPERIMENTAL (amber, never green)
+            // for MEMORY — 3.8 GB mmap + KV on an 8 GB phone is close to the jetsam ceiling — pending an
+            // on-device footprint measurement. mmap'd weights make it far more feasible than the MLX 27B.
+            LLMVariant(quant: .binary1bit, backend: .llamaCppGGUF, onDiskBytes: 3_803_452_480,
+                       source: ModelSource(huggingFaceRepo: "prism-ml/Bonsai-27B-gguf",
+                                           fileName: "Bonsai-27B-Q1_0.gguf")),
         ],
         defaultVariant: .binary1bit)
 
@@ -70,6 +78,11 @@ public enum LLMCatalog {
                        source: ModelSource(huggingFaceRepo: "prism-ml/Bonsai-8B-mlx-1bit")),
             LLMVariant(quant: .ternary2bit, backend: .mlxStock, onDiskBytes: 2_304_000_000,
                        source: ModelSource(huggingFaceRepo: "prism-ml/Ternary-Bonsai-8B-mlx-2bit")),
+            // llama.cpp GGUF (Q1_0, ~1.16 GB). Dense qwen3 → confirmed to load+decode on mainline
+            // llama.cpp; mmap'd weights keep this comfortably green on every device.
+            LLMVariant(quant: .binary1bit, backend: .llamaCppGGUF, onDiskBytes: 1_160_000_000,
+                       source: ModelSource(huggingFaceRepo: "prism-ml/Bonsai-8B-gguf",
+                                           fileName: "Bonsai-8B-Q1_0.gguf")),
         ],
         defaultVariant: .binary1bit)
 
@@ -99,6 +112,11 @@ public enum LLMCatalog {
                        source: ModelSource(huggingFaceRepo: "prism-ml/Bonsai-4B-mlx-1bit")),
             LLMVariant(quant: .ternary2bit, backend: .mlxStock, onDiskBytes: 1_132_000_000,
                        source: ModelSource(huggingFaceRepo: "prism-ml/Ternary-Bonsai-4B-mlx-2bit")),
+            // llama.cpp GGUF (Q1_0). Dense qwen3; size is an approximation (~0.57 GB) pending a
+            // published figure — GGUF Q1_0 tracks the MLX 1-bit size a little smaller.
+            LLMVariant(quant: .binary1bit, backend: .llamaCppGGUF, onDiskBytes: 570_000_000,
+                       source: ModelSource(huggingFaceRepo: "prism-ml/Bonsai-4B-gguf",
+                                           fileName: "Bonsai-4B-Q1_0.gguf")),
         ],
         defaultVariant: .binary1bit)
 
@@ -128,6 +146,11 @@ public enum LLMCatalog {
                        source: ModelSource(huggingFaceRepo: "prism-ml/Bonsai-1.7B-mlx-1bit")),
             LLMVariant(quant: .ternary2bit, backend: .mlxStock, onDiskBytes: 484_000_000,
                        source: ModelSource(huggingFaceRepo: "prism-ml/Ternary-Bonsai-1.7B-mlx-2bit")),
+            // llama.cpp GGUF (Q1_0). Dense qwen3; size is an approximation (~0.24 GB) pending a
+            // published figure.
+            LLMVariant(quant: .binary1bit, backend: .llamaCppGGUF, onDiskBytes: 244_000_000,
+                       source: ModelSource(huggingFaceRepo: "prism-ml/Bonsai-1.7B-gguf",
+                                           fileName: "Bonsai-1.7B-Q1_0.gguf")),
         ],
         defaultVariant: .binary1bit)
 

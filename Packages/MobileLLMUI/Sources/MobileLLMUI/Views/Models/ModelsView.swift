@@ -5,16 +5,17 @@ import AppUI
 import LLMCore
 
 /// Model manager (DESIGN §4): catalog cards with the device-recommended default pinned first, a fit
-/// badge, a 1-bit ↔ ternary quant selector that live-updates fit + size, the reused download meter
-/// with pause/resume, delete, an Active tag, and the honest experimental "Try anyway" for the 27B on
-/// an 8 GB phone.
+/// badge, an MLX ↔ llama.cpp engine picker + a quant selector that reflow together and live-update fit
+/// + size, the reused download meter with pause/resume, delete, an Active tag, and the honest
+/// experimental "Try anyway" for the 27B on an 8 GB phone.
 struct ModelsView: View {
     @Bindable var models: ModelManager
     @Bindable var settings: AppSettings
     /// Activate a variant (the container runs the OOM pre-flight + syncs the chat's active model).
     var onUse: (LLMModel, LLMVariant, _ force: Bool) -> Void
 
-    /// Per-model selected quant (defaults to the model's default variant).
+    /// Per-model selection overrides (nil = follow the engine preference / default quant).
+    @State private var selectedEngine: [String: EngineKind] = [:]
     @State private var selectedQuant: [String: QuantSpec] = [:]
     @State private var pendingDelete: (model: LLMModel, variant: LLMVariant)?
 
@@ -26,8 +27,10 @@ struct ModelsView: View {
                     ModelCard(models: models,
                               model: model,
                               context: settings.contextLength,
+                              enginePreference: settings.enginePreference,
                               isRecommended: index == 0,
-                              quant: binding(for: model),
+                              engineSel: engineBinding(for: model),
+                              quantSel: quantBinding(for: model),
                               onUse: onUse,
                               onDelete: { variant in pendingDelete = (model, variant) })
                 }
@@ -59,10 +62,12 @@ struct ModelsView: View {
         .padding(.horizontal, 2)
     }
 
-    private func binding(for model: LLMModel) -> Binding<QuantSpec> {
-        Binding(
-            get: { selectedQuant[model.id] ?? model.defaultVariant },
-            set: { selectedQuant[model.id] = $0 })
+    private func engineBinding(for model: LLMModel) -> Binding<EngineKind?> {
+        Binding(get: { selectedEngine[model.id] }, set: { selectedEngine[model.id] = $0 })
+    }
+
+    private func quantBinding(for model: LLMModel) -> Binding<QuantSpec?> {
+        Binding(get: { selectedQuant[model.id] }, set: { selectedQuant[model.id] = $0 })
     }
 }
 
@@ -71,12 +76,35 @@ private struct ModelCard: View {
     @Bindable var models: ModelManager
     let model: LLMModel
     let context: Int
+    let enginePreference: EnginePreference
     let isRecommended: Bool
-    @Binding var quant: QuantSpec
+    @Binding var engineSel: EngineKind?
+    @Binding var quantSel: QuantSpec?
     var onUse: (LLMModel, LLMVariant, Bool) -> Void
     var onDelete: (LLMVariant) -> Void
 
-    private var variant: LLMVariant { model.variant(for: quant) ?? model.defaultVariantValue }
+    /// The engine the card defaults to when the user hasn't picked one: the Auto-policy's choice for
+    /// this device + preference (so the picker starts on the recommended engine).
+    private var defaultEngine: EngineKind {
+        AppSettings.preferredVariant(for: model, device: models.device,
+                                     preference: enginePreference, context: context).engine
+    }
+    private var engine: EngineKind { engineSel ?? defaultEngine }
+    private var quantsForEngine: [QuantSpec] { model.variants(for: engine).map(\.quant) }
+    /// The selected quant, clamped to one the current engine actually ships (engine switches reflow it).
+    private var quant: QuantSpec {
+        let sel = quantSel ?? model.defaultVariant
+        return quantsForEngine.contains(sel) ? sel : (quantsForEngine.first ?? model.defaultVariant)
+    }
+    private var variant: LLMVariant { model.variant(engine: engine, quant: quant) ?? model.defaultVariantValue }
+
+    private var engineBinding: Binding<EngineKind> {
+        Binding(get: { engine }, set: { engineSel = $0 })
+    }
+    private var quantBinding: Binding<QuantSpec> {
+        Binding(get: { quant }, set: { quantSel = $0 })
+    }
+
     private var presentation: ModelManager.FitPresentation {
         models.fitPresentation(model, variant, context: context)
     }
@@ -89,7 +117,7 @@ private struct ModelCard: View {
             header
             Text("\(model.publisher) · \(model.summary)")
                 .font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(3)
-            quantAndSize
+            engineAndQuant
             if presentation == .experimental && !isActive {
                 Text("This model is larger than the safe budget on this device — it may be interrupted "
                      + "by the system. You can still try it.")
@@ -113,14 +141,28 @@ private struct ModelCard: View {
         }
     }
 
-    private var quantAndSize: some View {
-        HStack(spacing: Theme.Space.sm) {
-            Segmented(selection: $quant, options: model.variants.map(\.quant)) { $0.displayName }
-                .frame(maxWidth: 220)
-            Spacer(minLength: Theme.Space.sm)
-            Text(Format.bytes(variant.onDiskBytes))
-                .font(.caption.monospacedDigit()).foregroundStyle(Theme.textSecondary)
-                .fixedSize()
+    @ViewBuilder private var engineAndQuant: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            // Engine picker (only when the model ships more than one engine). Switching reflows the
+            // quant options + live-updates the fit badge below.
+            if model.engines.count > 1 {
+                Segmented(selection: engineBinding, options: model.engines) { $0.label }
+                    .frame(maxWidth: 240)
+                    .accessibilityLabel("Inference engine")
+            }
+            HStack(spacing: Theme.Space.sm) {
+                if quantsForEngine.count > 1 {
+                    Segmented(selection: quantBinding, options: quantsForEngine) { $0.displayName }
+                        .frame(maxWidth: 220)
+                } else {
+                    // Single quant for this engine (e.g. GGUF Q1_0) — a static label, not a control.
+                    Chip(text: quant.displayName)
+                }
+                Spacer(minLength: Theme.Space.sm)
+                Text(Format.bytes(variant.onDiskBytes))
+                    .font(.caption.monospacedDigit()).foregroundStyle(Theme.textSecondary)
+                    .fixedSize()
+            }
         }
     }
 

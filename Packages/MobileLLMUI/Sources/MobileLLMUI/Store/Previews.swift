@@ -38,7 +38,7 @@ extension AppContainer {
         let container = AppContainer(
             engine: MockLLMEngine(script: .init(chunkSize: 2, chunkDelayNanos: 12_000_000)),
             downloadBase: FileManager.default.temporaryDirectory.appending(component: "mobilellm-preview"),
-            downloader: { _, progress in
+            downloader: { _, _, progress in
                 for i in 1...20 { progress(Double(i) / 20); try? await Task.sleep(nanoseconds: 40_000_000) }
             },
             device: device,

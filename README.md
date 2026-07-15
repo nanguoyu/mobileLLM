@@ -26,7 +26,7 @@ nothing you type ever leaves the device.
 - 📊 **Honest memory fit.** Every model shows a per-device fit badge (*Runs great* / *Tight* / *Experimental*) computed from your actual hardware — so you know before you download.
 - ⬇️ **Resumable downloads** with live bytes/speed/ETA; one active model, with its memory reclaimed automatically when idle.
 - 🧩 **Many model families.** Extend the catalog by adding an entry, not a rewrite — Bonsai (Qwen3.5 / Qwen3, 1-bit & ternary) is included first.
-- ⚡ **Two engines, one protocol.** MLX today; a memory-mapped llama.cpp engine is planned for large models on memory-tight phones.
+- ⚡ **Two engines, one protocol — you choose.** Switch between **MLX** (resident weights) and **llama.cpp** (memory-mapped GGUF) per model, or let Auto pick the best fit for your device.
 - 🎨 **Native SwiftUI** on iPhone and Mac — tabs & sheets on iOS, sidebar & menu bar on macOS, Dynamic Type, dark mode, reduce-motion.
 
 ## Models
@@ -37,15 +37,20 @@ and ternary quantizations) — more families are on the roadmap.
 
 ## Architecture
 
-Two inference engines behind **one protocol**, so the UI, model manager, downloader, and
-memory/thermal governance are engine-agnostic:
+Two inference engines behind **one protocol** (`LLMEngine`), fronted by a `RoutingEngine` that keeps at
+most one resident — so the UI, model manager, downloader, and memory/thermal governance are engine-agnostic:
 
-- **MLX engine** — Mac and small-to-mid models today.
-- **llama.cpp engine** *(planned)* — memory-mapped weights, so large models fit on memory-tight
-  phones (the mmap'd weights don't count against the per-app dirty-memory limit).
+- **MLX engine** — resident weights via the 1-bit MLX fork; the fastest path on Mac.
+- **llama.cpp engine** — memory-mapped GGUF, so large models fit on memory-tight phones (mmap'd weight
+  pages are clean/reclaimable and don't count like anonymous dirty memory against the iOS jetsam limit).
+
+You pick the engine per model on its card, or set a global preference (Auto / MLX / llama.cpp) in
+Settings; the memory-fit badge updates live for the engine you choose. The llama.cpp engine vendors a
+prebuilt `llama.xcframework` (mainline llama.cpp, Metal embedded) — it isn't committed; regenerate it
+with `scripts/build-llama-xcframework.sh`.
 
 See **[docs/DESIGN.md](docs/DESIGN.md)** for the full architecture, model catalog, and roadmap, and
-**[docs/WIRING.md](docs/WIRING.md)** for the 1-bit dependency notes.
+**[docs/WIRING.md](docs/WIRING.md)** for the 1-bit + llama.cpp dependency notes.
 
 ## Build
 

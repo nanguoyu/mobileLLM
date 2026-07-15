@@ -2,6 +2,7 @@
 
 import Foundation
 import Observation
+import AppRuntime
 import LLMCore
 
 /// User preferences (DESIGN §4 Settings): the default model, chat behavior, sampling, and appearance.
@@ -13,6 +14,8 @@ public final class AppSettings {
 
     // MARK: Model
     public var defaultModelID: String { didSet { persist() } }
+    /// Which inference engine to prefer (Auto = greenest fit; or pin MLX / llama.cpp).
+    public var enginePreference: EnginePreference { didSet { persist() } }
 
     // MARK: Behavior
     public var systemPrompt: String { didSet { persist() } }
@@ -42,6 +45,7 @@ public final class AppSettings {
         self.defaults = defaults
         let snap = Self.loadSnapshot(from: defaults, key: key)
         defaultModelID = snap?.defaultModelID ?? fallbackDefaultModelID
+        enginePreference = snap?.enginePreference ?? .auto
         systemPrompt = snap?.systemPrompt ?? ""
         thinkingDefault = snap?.thinkingDefault ?? true
         thinkingDisplay = snap?.thinkingDisplay ?? .autoCollapse
@@ -67,6 +71,8 @@ public final class AppSettings {
 
     private struct Snapshot: Codable {
         var defaultModelID: String
+        /// Optional so an older persisted snapshot (pre-engine-picker) still decodes; defaults to `.auto`.
+        var enginePreference: EnginePreference?
         var systemPrompt: String
         var thinkingDefault: Bool
         var thinkingDisplay: ThinkingDisplayMode
@@ -82,7 +88,8 @@ public final class AppSettings {
 
     private func persist() {
         guard !loading else { return }
-        let snap = Snapshot(defaultModelID: defaultModelID, systemPrompt: systemPrompt,
+        let snap = Snapshot(defaultModelID: defaultModelID, enginePreference: enginePreference,
+                            systemPrompt: systemPrompt,
                             thinkingDefault: thinkingDefault, thinkingDisplay: thinkingDisplay,
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
@@ -93,5 +100,41 @@ public final class AppSettings {
     private static func loadSnapshot(from defaults: UserDefaults, key: String) -> Snapshot? {
         guard let data = defaults.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(Snapshot.self, from: data)
+    }
+}
+
+// MARK: - Auto engine policy
+
+public extension AppSettings {
+    /// Pure Auto-policy: pick which `LLMVariant` to run for a model on this device given the engine
+    /// preference. `.auto` chooses the greenest fit via the governor; ties break to the device-preferred
+    /// engine — **MLX on Mac, llama.cpp on iPhone** (mmap'd weights favor the memory-tight phone) — then
+    /// to the model's default quant, then to the smaller download. The explicit `.mlx` / `.llamaCpp`
+    /// pin that engine's best variant, falling back to the other engine only if the model lacks it.
+    ///
+    /// Nonisolated + pure so it's unit-testable off the main actor; the governor call is MLX-free.
+    nonisolated static func preferredVariant(for model: LLMModel, device: DeviceTier,
+                                             preference: EnginePreference, context: Int) -> LLMVariant {
+        let candidates: [LLMVariant]
+        if let pinned = preference.pinnedEngine {
+            let scoped = model.variants(for: pinned)
+            candidates = scoped.isEmpty ? model.variants : scoped
+        } else {
+            candidates = model.variants
+        }
+        guard !candidates.isEmpty else { return model.defaultVariantValue }
+
+        let tieBreakEngine: EngineKind = device.isPhone ? .llamaCpp : .mlx
+
+        // Higher key wins: greenest fit, then the device-preferred engine, then the default quant, then
+        // the smaller download (negated so smaller = larger key).
+        func key(_ v: LLMVariant) -> (Int, Int, Int, Int64) {
+            let fit = LLMMemoryGovernor.plan(model: model, variant: v, device: device, context: context)
+            let fitRank = fit == .comfortable ? 2 : (fit.isSupported ? 1 : 0)
+            let enginePref = v.engine == tieBreakEngine ? 1 : 0
+            let quantPref = v.quant == model.defaultVariant ? 1 : 0
+            return (fitRank, enginePref, quantPref, -v.onDiskBytes)
+        }
+        return candidates.max { key($0) < key($1) } ?? model.defaultVariantValue
     }
 }

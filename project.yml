@@ -18,6 +18,7 @@ packages:
   AppRuntime: { path: Packages/AppRuntime }
   LLMCore: { path: Packages/LLMCore }
   LLMEngineMLX: { path: Packages/LLMEngineMLX }
+  LLMEngineLlama: { path: Packages/LLMEngineLlama }
   MobileLLMUI: { path: Packages/MobileLLMUI }
 
 targets:
@@ -41,4 +42,6 @@ targets:
       - package: MobileLLMUI
       - package: LLMEngineMLX
         product: LLMEngineMLX
+      - package: LLMEngineLlama
+        product: LLMEngineLlama
       - package: AppRuntime

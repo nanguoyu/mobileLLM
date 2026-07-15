@@ -59,7 +59,9 @@ struct ModelSwitcherSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.displayName).font(.subheadline.weight(.medium)).foregroundStyle(Theme.textPrimary)
-                    Text(variant.quant.displayName).font(.caption).foregroundStyle(Theme.textSecondary)
+                    // Show quant + engine so the two 1-bit variants (MLX vs llama.cpp) are distinguishable.
+                    Text("\(variant.quant.displayName) · \(variant.engine.label)")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
                 }
                 Spacer()
                 if isActive {
@@ -72,7 +74,7 @@ struct ModelSwitcherSheet: View {
         }
         .buttonStyle(.plain)
         .listRowBackground(isActive ? Theme.accentSoft : Color.clear)
-        .accessibilityLabel("\(model.displayName), \(variant.quant.displayName)")
+        .accessibilityLabel("\(model.displayName), \(variant.quant.displayName), \(variant.engine.label)")
         .accessibilityAddTraits(isActive ? [.isSelected] : [])
     }
 }

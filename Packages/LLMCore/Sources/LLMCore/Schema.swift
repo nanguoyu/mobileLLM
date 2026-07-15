@@ -24,9 +24,54 @@ public enum ModelLicense: String, Sendable, Hashable, Codable {
 public struct ModelSource: Sendable, Hashable, Codable {
     public let huggingFaceRepo: String
     public let revision: String
-    public init(huggingFaceRepo: String, revision: String = "main") {
+    /// The single weight file to fetch from a multi-file repo (e.g. one `*.gguf`); `nil` = the whole
+    /// flat repo (the MLX case). Threaded through the downloader as a one-entry glob.
+    public let fileName: String?
+    public init(huggingFaceRepo: String, revision: String = "main", fileName: String? = nil) {
         self.huggingFaceRepo = huggingFaceRepo
         self.revision = revision
+        self.fileName = fileName
+    }
+}
+
+/// Which inference engine runs a variant's weights (DESIGN §1 / §6). Two engines sit behind the one
+/// `LLMEngine` protocol: the resident-weights MLX engine today, and a llama.cpp engine (mmap'd GGUF)
+/// for large models on memory-tight phones.
+public enum EngineKind: String, Sendable, Codable, CaseIterable, Hashable {
+    case mlx
+    case llamaCpp
+
+    /// Human-facing name for the picker + subtitles.
+    public var label: String {
+        switch self {
+        case .mlx: "MLX"
+        case .llamaCpp: "llama.cpp"
+        }
+    }
+}
+
+/// The user's inference-engine preference (Settings → Inference engine). `auto` lets the Auto-policy
+/// pick the greenest-fitting variant; the explicit cases pin an engine when the model ships one.
+public enum EnginePreference: String, Sendable, Codable, CaseIterable, Hashable {
+    case auto
+    case mlx
+    case llamaCpp
+
+    public var label: String {
+        switch self {
+        case .auto: "Auto"
+        case .mlx: EngineKind.mlx.label
+        case .llamaCpp: EngineKind.llamaCpp.label
+        }
+    }
+
+    /// The engine this preference pins to, or `nil` for `.auto`.
+    public var pinnedEngine: EngineKind? {
+        switch self {
+        case .auto: nil
+        case .mlx: .mlx
+        case .llamaCpp: .llamaCpp
+        }
     }
 }
 
@@ -44,11 +89,39 @@ public enum QuantSpec: Sendable, Hashable, Codable {
 public enum Backend: Sendable, Hashable, Codable {
     case mlxFork          // 1-bit, PrismML fork kernel (bits=1 is not in upstream MLX)
     case mlxStock         // ternary 2-bit, upstream `bits ∈ {2,…}`
+    case llamaCppGGUF     // GGUF weights on the (planned) llama.cpp engine — mmap'd, memory-tight phones
     case awqUnsupported   // AWQ-gemm + fp16 vision tower — excluded
 
-    /// The ~0.5 GB non-weight working set an MLX runtime holds (framework + reuse pool + scratch).
-    /// Added to the on-disk weight bytes to estimate the resident floor.
-    public var runtimeOverheadBytes: Int64 { 500_000_000 }
+    /// Which inference engine this backend runs on. AWQ is treated as an MLX target (it's excluded, but
+    /// architecturally it belongs to the MLX side, never llama.cpp).
+    public var engine: EngineKind {
+        switch self {
+        case .mlxFork, .mlxStock, .awqUnsupported: .mlx
+        case .llamaCppGGUF: .llamaCpp
+        }
+    }
+
+    /// The non-weight working set the runtime holds (framework + reuse pool + scratch), added to the
+    /// on-disk weight bytes to estimate the resident floor. **Estimates**: MLX keeps ~0.5 GB of
+    /// anonymous/dirty working set resident; llama.cpp mmaps the GGUF and keeps a slimmer ~0.35 GB of
+    /// non-weight scratch (the bulk of its weight pages are clean/file-backed — the governor discounts
+    /// those separately). Per-engine so the honest fit differs between the two.
+    public var runtimeOverheadBytes: Int64 {
+        switch engine {
+        case .mlx: 500_000_000
+        case .llamaCpp: 350_000_000
+        }
+    }
+
+    /// A short, stable tag for the on-disk weight format, used to keep `LLMVariant.id` unique across
+    /// engines so one model can hold both an MLX and a GGUF variant.
+    public var formatTag: String {
+        switch self {
+        case .mlxFork, .mlxStock: "mlx"
+        case .llamaCppGGUF: "gguf"
+        case .awqUnsupported: "awq"
+        }
+    }
 }
 
 /// The KV-cache shape — the only memory lever, since weights are always resident (DESIGN §1/§2.5).
@@ -76,6 +149,13 @@ public enum AttentionShape: Sendable, Hashable, Codable {
         // per layer: K and V, each kvHeads · headDim · tokens elements.
         Int64(layers) * Int64(kvHeads) * Int64(headDim) * Int64(tokens) * Int64(bytesPerElement) * 2
     }
+
+    /// True for the hybrid Gated-DeltaNet shape (qwen3_5). Only this arch is unconfirmed on mainline
+    /// llama.cpp, so its GGUF variant is held experimental (never green) by the governor / UX.
+    public var isHybrid: Bool {
+        if case .hybridLinear = self { return true }
+        return false
+    }
 }
 
 /// How the runtime obtains the chat template. Every seed repo ships a `chat_template.jinja` (ChatML/Qwen).
@@ -97,6 +177,9 @@ public struct LLMArchitecture: Sendable, Hashable, Codable {
     public let thinkingCapable: Bool
     public let eos: String              // e.g. "<|im_end|>"
     public let chatTemplate: ChatTemplateSource
+
+    /// The hybrid Gated-DeltaNet arch (qwen3_5) — unconfirmed on mainline llama.cpp (held experimental).
+    public var isHybrid: Bool { attention.isHybrid }
 
     public init(modelType: String, swiftModelClass: String, hidden: Int, layers: Int, vocab: Int,
                 tieWordEmbeddings: Bool, attention: AttentionShape, nativeContext: Int,
@@ -122,8 +205,12 @@ public struct LLMVariant: Sendable, Hashable, Codable, Identifiable {
     public let onDiskBytes: Int64
     public let source: ModelSource
 
-    /// Unique per variant (each variant is a distinct HF repo).
-    public var id: String { source.huggingFaceRepo }
+    /// Unique per variant across models AND engines: the repo plus the backend's format tag, so one
+    /// model can hold both an MLX and a GGUF variant of the same quant without an id collision.
+    public var id: String { "\(source.huggingFaceRepo)#\(backend.formatTag)" }
+
+    /// The inference engine this variant runs on (routing key + UI subtitle).
+    public var engine: EngineKind { backend.engine }
 
     public init(quant: QuantSpec, backend: Backend, onDiskBytes: Int64, source: ModelSource) {
         self.quant = quant
@@ -160,7 +247,9 @@ public struct LLMModel: Sendable, Hashable, Codable, Identifiable {
         self.defaultVariant = defaultVariant
     }
 
-    /// The variant for a given quant, if this model ships it.
+    /// The variant for a given quant, if this model ships it. When both engines ship the same quant
+    /// (e.g. 1-bit as MLX + GGUF) this returns the first listed — MLX stays first, so the default and
+    /// every existing quant-keyed lookup keep resolving to the MLX variant (behavior preserved).
     public func variant(for quant: QuantSpec) -> LLMVariant? {
         variants.first { $0.quant == quant }
     }
@@ -168,5 +257,22 @@ public struct LLMModel: Sendable, Hashable, Codable, Identifiable {
     /// The default variant (falls back to the first if the default quant is somehow absent).
     public var defaultVariantValue: LLMVariant {
         variant(for: defaultVariant) ?? variants[0]
+    }
+
+    /// The engines this model ships a variant for, in a stable order (MLX first, then llama.cpp).
+    public var engines: [EngineKind] {
+        var seen: [EngineKind] = []
+        for v in variants where !seen.contains(v.engine) { seen.append(v.engine) }
+        return seen
+    }
+
+    /// The variants that run on a given engine, in catalog order.
+    public func variants(for engine: EngineKind) -> [LLMVariant] {
+        variants.filter { $0.engine == engine }
+    }
+
+    /// The variant for a specific engine + quant, if this model ships it.
+    public func variant(engine: EngineKind, quant: QuantSpec) -> LLMVariant? {
+        variants.first { $0.engine == engine && $0.quant == quant }
     }
 }

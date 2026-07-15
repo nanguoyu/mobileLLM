@@ -48,7 +48,9 @@ public struct VariantDownload {
 @Observable
 public final class ModelManager {
 
-    public typealias Downloader = @Sendable (_ repoId: String,
+    /// Fetch a repo's weights. `matching` restricts which files are pulled (empty = the whole flat
+    /// repo — the MLX case; a one-entry glob = a single GGUF file — the llama.cpp case).
+    public typealias Downloader = @Sendable (_ repoId: String, _ matching: [String],
                                              _ progress: @escaping @Sendable (Double) -> Void) async throws -> Void
 
     public let catalog: [LLMModel] = LLMCatalog.all
@@ -87,10 +89,15 @@ public final class ModelManager {
         self.availableMemory = availableMemory
     }
 
-    /// Default probe: the reused `ModelDownloader` reports the flat repo as fully downloaded.
+    /// Default probe: the reused `ModelDownloader` reports the variant as fully downloaded. Single-file
+    /// (GGUF) variants are checked file-scoped (just their one file); flat MLX repos whole-repo.
     public nonisolated static func defaultInstallProbe() -> @Sendable (LLMVariant, URL) -> Bool {
         { variant, base in
-            ModelDownloader(downloadBase: base).isDownloaded(repoId: variant.source.huggingFaceRepo)
+            let downloader = ModelDownloader(downloadBase: base)
+            if let fileName = variant.source.fileName {
+                return downloader.isDownloaded(repoId: variant.source.huggingFaceRepo, fileName: fileName)
+            }
+            return downloader.isDownloaded(repoId: variant.source.huggingFaceRepo)
         }
     }
 
@@ -138,9 +145,13 @@ public final class ModelManager {
     }
 
     public func fitPresentation(_ model: LLMModel, _ variant: LLMVariant, context: Int) -> FitPresentation {
+        // The 27B GGUF on llama.cpp is unconfirmed on mainline (hybrid GDN) — always render it as an
+        // honest experimental (amber), never a plain green/tight, pending on-device measurement. The
+        // governor already clamps it below green; this makes the badge read "Experimental" everywhere.
+        let experimentalByEngine = variant.engine == .llamaCpp && model.architecture.isHybrid
         switch fit(model, variant, context: context) {
-        case .comfortable: return .comfortable
-        case let .tight(maxContext): return .tight(maxContext: maxContext)
+        case .comfortable: return experimentalByEngine ? .experimental : .comfortable
+        case let .tight(maxContext): return experimentalByEngine ? .experimental : .tight(maxContext: maxContext)
         case .unsupported:
             let base = variant.onDiskBytes + variant.backend.runtimeOverheadBytes
             return base <= device.physicalMemoryBytes ? .experimental : .unsupported
@@ -230,10 +241,12 @@ public final class ModelManager {
         downloads[repoId] = progress
 
         let downloader = self.downloader
+        // Single-file (GGUF) variants fetch just their one file; flat MLX repos pass an empty glob.
+        let globs = variant.source.fileName.map { [$0] } ?? []
         downloadTasks[repoId] = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await downloader(repoId) { [weak self] fraction in
+                try await downloader(repoId, globs) { [weak self] fraction in
                     Task { @MainActor in self?.applyProgress(fraction, to: repoId) }
                 }
                 self.finishDownload(repoId, error: nil)
@@ -278,13 +291,21 @@ public final class ModelManager {
         downloads[variant.source.huggingFaceRepo]
     }
 
-    /// Delete a variant's weights from disk (Models → delete with confirm).
+    /// Delete a variant's weights from disk (Models → delete with confirm). File-scoped for single-file
+    /// (GGUF) variants — removes just that file (+ any `.part`), so a shared repo's other files survive
+    /// — and whole-repo for flat MLX variants.
     public func delete(_ variant: LLMVariant) {
         let repoId = variant.source.huggingFaceRepo
         pauseDownload(variant)
         downloads[repoId] = nil
-        let dir = ModelDownloader(downloadBase: downloadBase).localURL(repoId: repoId)
-        try? FileManager.default.removeItem(at: dir)
+        let root = ModelDownloader(downloadBase: downloadBase).localURL(repoId: repoId)
+        if let fileName = variant.source.fileName {
+            let file = root.appending(component: fileName)
+            try? FileManager.default.removeItem(at: file)
+            try? FileManager.default.removeItem(at: file.appendingPathExtension("part"))
+        } else {
+            try? FileManager.default.removeItem(at: root)
+        }
         if active?.variant.id == variant.id { Task { await deactivate() } }
         refreshInstalled()
     }
