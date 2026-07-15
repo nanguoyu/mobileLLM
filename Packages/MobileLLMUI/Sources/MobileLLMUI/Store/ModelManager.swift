@@ -160,12 +160,20 @@ public final class ModelManager {
                          force: Bool = false) async throws -> LoadedModel {
         guard installed.contains(variant.id) else { throw ModelActivationError.notInstalled }
 
-        // OOM pre-flight: refuse recoverably before jetsam can fire (bypassable via "Try anyway").
+        // OOM pre-flight: refuse recoverably before jetsam can fire. The KV/headroom margin is
+        // bypassable via "Try anyway" (force) — but the WEIGHTS-alone check is NOT: a mid-load jetsam
+        // is a SIGKILL you can't catch, so "Try anyway" cannot override physics. (This is what killed
+        // the 27B-1bit on the 8 GB 16 Pro: 5.13 GB weights + overhead ≈ 5.6 GB > the app's ~5 GB budget.)
         let base = variant.onDiskBytes + variant.backend.runtimeOverheadBytes
         let peak = base + model.architecture.attention.kvBytes(tokens: context)
         let available = availableMemory()
-        if !force, available != Int64.max, peak > available {
-            throw ModelActivationError.insufficientMemory(needed: peak, available: available)
+        if available != Int64.max {
+            if base + 250_000_000 > available {   // weights won't fit → refuse even on force
+                throw ModelActivationError.insufficientMemory(needed: base, available: available)
+            }
+            if !force, peak > available {          // only the margin is over → force may still attempt it
+                throw ModelActivationError.insufficientMemory(needed: peak, available: available)
+            }
         }
 
         switching = true

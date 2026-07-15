@@ -252,6 +252,10 @@ public struct ModelDownloader: Sendable {
         // Progress throttling: emit at most ~once per 250 ms or per 8 MB.
         private var lastProgressTime = DispatchTime.now()
         private var bytesSinceProgress: Int64 = 0
+        // Flush dirty pages to disk periodically. Without this, a multi-GB write accumulates dirty
+        // file-backed pages that count toward the app's memory footprint — enough to jetsam-kill the
+        // app near the end of a 5 GB download (the 27B-1bit crash on the 8 GB iPhone).
+        private var bytesSinceSync: Int64 = 0
 
         var continuation: CheckedContinuation<Void, Error>?
 
@@ -318,6 +322,11 @@ public struct ModelDownloader: Sendable {
                 try h.write(contentsOf: data)
                 writtenTotal += Int64(data.count)
                 bytesSinceProgress += Int64(data.count)
+                bytesSinceSync += Int64(data.count)
+                if bytesSinceSync >= 256 * 1024 * 1024 {   // fsync every ~256 MB → dirty pages stay bounded
+                    try h.synchronize()
+                    bytesSinceSync = 0
+                }
                 let now = DispatchTime.now()
                 let elapsedMs = (now.uptimeNanoseconds - lastProgressTime.uptimeNanoseconds) / 1_000_000
                 let total = writtenTotal
