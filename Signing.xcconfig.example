@@ -1,0 +1,4 @@
+// Copy this file to Signing.xcconfig (gitignored) and fill in your Apple Developer Team ID.
+DEVELOPMENT_TEAM =
+CODE_SIGN_STYLE = Automatic
+PRODUCT_BUNDLE_IDENTIFIER = com.example.mobileLLM
