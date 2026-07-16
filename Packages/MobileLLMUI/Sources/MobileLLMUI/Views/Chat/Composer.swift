@@ -309,7 +309,7 @@ struct Composer: View {
                                  set: { newValue in
                                      chat.toolsEnabled = newValue
                                      chat.showToast(Toast(newValue
-                                         ? "Tools on — calculator, clock, Wikipedia + your MCP servers."
+                                         ? "Tools on — search, webpage reader, memory, calculator + your MCP servers."
                                          : "Tools off.", autoDismiss: 3))
                                  })) {
                 Label("Tools", systemImage: "wrench.and.screwdriver")

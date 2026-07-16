@@ -33,7 +33,9 @@ public final class AppContainer {
                 settings: AppSettings? = nil,
                 conversationStore: ConversationStore? = nil,
                 installProbe: @escaping @Sendable (LLMVariant, URL) -> Bool = ModelManager.defaultInstallProbe(),
-                availableMemory: @escaping @Sendable () -> Int64 = { Int64(bitPattern: MemoryProbe.availableBytes()) }) {
+                availableMemory: @escaping @Sendable () -> Int64 = { Int64(bitPattern: MemoryProbe.availableBytes()) },
+                eventStore: (any EventStoring)? = nil,
+                locationProvider: (any LocationProviding)? = nil) {
         let settings = settings ?? AppSettings(fallbackDefaultModelID: LLMCatalog.defaultModel(for: device).id)
         let store = conversationStore ?? ConversationStore()
         self.settings = settings
@@ -41,7 +43,15 @@ public final class AppContainer {
         self.models = ModelManager(engine: engine, device: device, downloadBase: downloadBase,
                                    downloader: downloader, installProbe: installProbe,
                                    availableMemory: availableMemory)
-        self.chat = ChatStore(engine: engine, store: store, settings: settings)
+        // Tool seams for the agent loop. The memory store lives beside the conversation records (durable +
+        // atomic — losing saved facts is annoying). The privacy-gated calendar / location adapters are
+        // injected by the app-assembly layer (the App scene), NOT constructed here, so previews and unit
+        // tests never touch EventKit / CoreLocation. They request TCC access only lazily, on first tool
+        // invocation, and are only assembled into the registry when the user enables that tool (off by default).
+        let memoryStore = MemoryStore(fileURL: store.directory.appending(component: "memory.json"))
+        self.chat = ChatStore(engine: engine, store: store, settings: settings,
+                              memoryStore: memoryStore, eventStore: eventStore,
+                              locationProvider: locationProvider)
         // Reload a suspended model right before the next turn (its memory is freed while idle).
         chat.ensureModelReady = { [weak self] in await self?.reloadIfSuspended() }
         // Opening a conversation brings back ITS model (when installed) instead of whatever is resident —

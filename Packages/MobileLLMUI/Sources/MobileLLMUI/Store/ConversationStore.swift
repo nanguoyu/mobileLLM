@@ -12,7 +12,9 @@ import AppRuntime
 /// undone; `hardDelete` (used by "Delete all data") removes the file for good.
 public actor ConversationStore {
 
-    private let directory: URL
+    /// The base directory holding the conversation records. Exposed (immutable → safe to read across the
+    /// actor boundary) so a sibling on-device store can be placed *beside* it — e.g. the tool memory store.
+    public nonisolated let directory: URL
     /// The index is one file holding every thread's light projection.
     private let index: DurableStore<ConversationIndexEntry>
 

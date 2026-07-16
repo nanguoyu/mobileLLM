@@ -67,6 +67,12 @@ public final class ChatStore {
     private let engine: any LLMEngine
     private let store: ConversationStore
     private let settings: AppSettings
+    /// The tool seams injected at app assembly (nil in tests/previews). `memoryStore` backs remember/recall;
+    /// `eventStore` / `locationProvider` back the privacy-gated calendar / reminders / location tools. A tool
+    /// is assembled only when BOTH its toggle is on AND its seam is present (see `ToolRegistry.assemble`).
+    private let memoryStore: (any MemoryStoring)?
+    private let eventStore: (any EventStoring)?
+    private let locationProvider: (any LocationProviding)?
     private var genTask: Task<Void, Never>?
     /// The forward action attached to the current banner (Undo / Switch model), kept out of `Toast`
     /// so the value type stays `Equatable`.
@@ -88,11 +94,17 @@ public final class ChatStore {
     public var ensureModelReady: (@Sendable () async -> Void)?
 
     public init(engine: any LLMEngine, store: ConversationStore, settings: AppSettings,
-                activeModel: LoadedModel? = nil) {
+                activeModel: LoadedModel? = nil,
+                memoryStore: (any MemoryStoring)? = nil,
+                eventStore: (any EventStoring)? = nil,
+                locationProvider: (any LocationProviding)? = nil) {
         self.engine = engine
         self.store = store
         self.settings = settings
         self.activeModel = activeModel
+        self.memoryStore = memoryStore
+        self.eventStore = eventStore
+        self.locationProvider = locationProvider
         self.thinkingEnabled = settings.thinkingDefault
     }
 
@@ -448,23 +460,45 @@ public final class ChatStore {
     private var cachedRegistry: ToolRegistry?
     private var cachedRegistrySignature: String?
 
-    /// The tool set for a turn: the standard local tools, plus every MCP server's tools (connected once
-    /// and cached by config signature so we don't re-handshake every message).
+    /// The tool set for a turn: the persisted built-in tools (assembled from `settings.builtInToolConfig`
+    /// plus the injected memory / calendar / location seams), then every enabled MCP server's tools layered
+    /// on top. Cached by a signature that covers BOTH the built-in config and the servers, so flipping any
+    /// tool — a built-in toggle, a search engine, a muted MCP tool — takes effect on the next send, not the
+    /// next launch.
     private func toolRegistry() async -> ToolRegistry {
+        let config = settings.builtInToolConfig
         let servers = settings.mcpServers.filter {
             $0.isEnabled && !$0.url.trimmingCharacters(in: .whitespaces).isEmpty
         }
-        guard !servers.isEmpty else { return .standard }
-        // The signature must cover everything that changes the tool set — muting a tool or disabling a
-        // server has to take effect on the next turn, not the next launch.
-        let signature = servers.map {
-            "\($0.url)|\($0.token ?? "")|\($0.disabledTools.sorted().joined(separator: "+"))"
-        }.joined(separator: ",")
+        let signature = Self.registrySignature(config: config, servers: servers)
         if let cachedRegistry, cachedRegistrySignature == signature { return cachedRegistry }
-        let registry = await ToolRegistry.build(mcpServers: servers)
+
+        let builtIns = ToolRegistry.assemble(config: config, memoryStore: memoryStore,
+                                             eventStore: eventStore, locationProvider: locationProvider)
+        let registry: ToolRegistry
+        if servers.isEmpty {
+            registry = builtIns
+        } else {
+            // `includeStandard: false` yields ONLY the MCP tools, so the assembled built-ins aren't
+            // duplicated; the two lists are then concatenated (built-ins advertise first).
+            let mcp = await ToolRegistry.build(mcpServers: servers, includeStandard: false)
+            registry = ToolRegistry(builtIns.tools + mcp.tools)
+        }
         cachedRegistry = registry
         cachedRegistrySignature = signature
         return registry
+    }
+
+    /// A stable string over everything that changes the assembled tool set — the enabled built-in tools,
+    /// the search-engine order, and each enabled server's URL / token / muted tools. Pure + nonisolated so
+    /// the cache-invalidation contract is unit-testable off the main actor, without building real registries.
+    nonisolated static func registrySignature(config: BuiltInToolConfig, servers: [MCPServer]) -> String {
+        let builtins = config.enabled.map(\.rawValue).sorted().joined(separator: "+")
+        let engines = config.searchEngines.map(\.rawValue).joined(separator: "+")
+        let mcp = servers.map {
+            "\($0.url)|\($0.token ?? "")|\($0.disabledTools.sorted().joined(separator: "+"))"
+        }.joined(separator: ",")
+        return "builtins:[\(builtins)];engines:[\(engines)];mcp:[\(mcp)]"
     }
 
     /// Map an agent-loop event onto the streaming state — reasoning/answer as usual, plus tool activity.

@@ -35,6 +35,13 @@ public final class AppSettings {
             persist()
         }
     }
+    /// Which built-in tools the user turned OFF (raw `ToolID` values). Stored as the *disabled* set on
+    /// purpose: a tool shipped in a later version is ON without a migration (it's simply absent here), and
+    /// the privacy-sensitive tools (calendar / reminders / location) start disabled until the user opts in.
+    public var disabledBuiltInTools: Set<String> { didSet { persist() } }
+    /// Web-search engine priority — the first that returns results wins, the rest are fall-through. At least
+    /// one is kept while `web_search` is on (the UI enforces it); an empty list falls back to both.
+    public var searchEngines: [SearchEngine] { didSet { persist() } }
 
     // MARK: Sampling
     public var temperature: Double { didSet { persist() } }
@@ -83,6 +90,10 @@ public final class AppSettings {
         dictationLocale = snap?.dictationLocale ?? nil
         let (servers, migrated) = Self.loadMCPServers(from: snap, keychain: keychain)
         mcpServers = servers
+        // Absent in pre-D2 snapshots → the default disabled set (privacy tools off), matching
+        // `BuiltInToolConfig.defaultEnabled`, so an upgraded install behaves exactly like a fresh one.
+        disabledBuiltInTools = snap?.disabledBuiltInTools ?? Self.defaultDisabledBuiltInTools
+        searchEngines = snap?.searchEngines ?? [.duckduckgo, .bing]
         temperature = snap?.temperature ?? 0.7
         topP = snap?.topP ?? 0.95
         topK = snap?.topK ?? 20
@@ -153,6 +164,24 @@ public final class AppSettings {
         return ContextPolicy.effective(requested: contextLength, model: model)
     }
 
+    // MARK: - Built-in tool config
+
+    /// The built-in tools OFF on a fresh install / in a pre-D2 snapshot: everything NOT in the config's
+    /// default-enabled set — i.e. the privacy-sensitive calendar / reminders / location tools. Derived from
+    /// `BuiltInToolConfig.defaultEnabled` so the two never drift.
+    public static let defaultDisabledBuiltInTools: Set<String> =
+        Set(ToolID.allCases.map(\.rawValue))
+            .subtracting(BuiltInToolConfig.defaultEnabled.map(\.rawValue))
+
+    /// The tool set to assemble, derived from the persisted toggles: every `ToolID` except the disabled
+    /// ones, plus the chosen search-engine order (falling back to both if somehow empty). Fed to
+    /// `ToolRegistry.assemble(config:…)` — the single mapping from Settings to the live registry.
+    public var builtInToolConfig: BuiltInToolConfig {
+        let enabled = Set(ToolID.allCases).subtracting(disabledBuiltInTools.compactMap(ToolID.init(rawValue:)))
+        let engines = searchEngines.isEmpty ? [SearchEngine.duckduckgo, .bing] : searchEngines
+        return BuiltInToolConfig(searchEngines: engines, enabled: enabled)
+    }
+
     // MARK: - Persistence
 
     private struct Snapshot: Codable {
@@ -170,6 +199,10 @@ public final class AppSettings {
         /// Ids of servers whose bearer token lives in the Keychain (A2.9). Absent in pre-migration
         /// snapshots — the loader then treats any inline `token` as legacy plaintext to migrate.
         var mcpTokenMarkers: Set<String>? = []
+        /// Built-in tool toggles (D2). Optional → a pre-D2 snapshot decodes and the loader supplies the
+        /// defaults (privacy tools off; both search engines on).
+        var disabledBuiltInTools: Set<String>? = nil
+        var searchEngines: [SearchEngine]? = nil
         var temperature: Double
         var topP: Double
         var topK: Int
@@ -191,6 +224,7 @@ public final class AppSettings {
                             thinkingDefault: thinkingDefault, thinkingDisplay: thinkingDisplay,
                             toolsEnabled: toolsEnabled, dictationLocale: dictationLocale,
                             mcpServers: scrubbed, mcpTokenMarkers: markers,
+                            disabledBuiltInTools: disabledBuiltInTools, searchEngines: searchEngines,
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
                             contextLength: contextLength, kvBits: kvBits, appearance: appearance)

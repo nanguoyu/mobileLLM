@@ -77,6 +77,65 @@ final class SettingsPersistenceTests: XCTestCase {
         XCTAssertTrue(settings.mcpServers.first?.isEnabled ?? false)
     }
 
+    // MARK: Built-in tool toggles (D2)
+
+    /// The new tool fields survive a save/reload.
+    func testToolToggleFieldsRoundTrip() {
+        let settings = AppSettings(defaults: defaults)
+        settings.disabledBuiltInTools = ["web_search", "current_location"]
+        settings.searchEngines = [.bing]
+        let reloaded = AppSettings(defaults: defaults)
+        XCTAssertEqual(reloaded.disabledBuiltInTools, ["web_search", "current_location"])
+        XCTAssertEqual(reloaded.searchEngines, [.bing])
+    }
+
+    /// A pre-D2 snapshot (no tool fields at all) decodes to the defaults: the privacy-sensitive tools off,
+    /// both engines on — so an upgraded install behaves exactly like a fresh one, and the surrounding
+    /// settings are untouched (all-or-nothing decode).
+    func testOldSnapshotDecodesWithToolDefaults() {
+        write(#"""
+        {"defaultModelID":"bonsai-8b","systemPrompt":"keep me","systemPromptSeeded":true,
+         "thinkingDefault":true,"thinkingDisplay":"autoCollapse","toolsEnabled":true,
+         "temperature":0.7,"topP":0.95,"topK":20,"repetitionPenalty":1.05,"maxTokens":1024,
+         "contextLength":8192,"kvBits":4,"appearance":"system"}
+        """#)
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.disabledBuiltInTools, AppSettings.defaultDisabledBuiltInTools)
+        XCTAssertEqual(Set(settings.searchEngines), [.duckduckgo, .bing])
+        XCTAssertEqual(settings.builtInToolConfig.enabled, BuiltInToolConfig.defaultEnabled,
+                       "the derived config matches D1's default-enabled set exactly")
+        XCTAssertEqual(settings.systemPrompt, "keep me", "unrelated settings survive the added fields")
+    }
+
+    /// A fresh install disables exactly the three privacy-sensitive capabilities (four tool ids) and leaves
+    /// every other built-in on.
+    func testFreshInstallDisablesOnlyPrivacyTools() {
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.disabledBuiltInTools,
+                       ["create_calendar_event", "list_calendar_events", "create_reminder", "current_location"])
+        XCTAssertEqual(settings.builtInToolConfig.enabled, BuiltInToolConfig.defaultEnabled)
+    }
+
+    /// `builtInToolConfig` is the single mapping from the persisted toggles to the assembled registry:
+    /// a disabled tool is dropped, one not disabled is enabled, and the engine priority order carries through.
+    func testBuiltInToolConfigReflectsToggles() {
+        let settings = AppSettings(defaults: defaults)
+        settings.disabledBuiltInTools = ["web_search"]          // web_search off; calendar/etc. now on
+        settings.searchEngines = [.bing, .duckduckgo]
+        let config = settings.builtInToolConfig
+        XCTAssertFalse(config.enabled.contains(.webSearch))
+        XCTAssertTrue(config.enabled.contains(.calculator))
+        XCTAssertTrue(config.enabled.contains(.createCalendarEvent), "not in the disabled set → enabled")
+        XCTAssertEqual(config.searchEngines, [.bing, .duckduckgo], "engine priority order is preserved")
+    }
+
+    /// An empty engine selection can't produce a broken web_search tool — the config falls back to both.
+    func testBuiltInToolConfigFallsBackWhenNoEnginesChosen() {
+        let settings = AppSettings(defaults: defaults)
+        settings.searchEngines = []
+        XCTAssertEqual(Set(settings.builtInToolConfig.searchEngines), [.duckduckgo, .bing])
+    }
+
     // MARK: Context clamp
 
     func testSamplingClampsContextToTheModelsNativeCeiling() {

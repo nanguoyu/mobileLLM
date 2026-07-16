@@ -91,6 +91,8 @@ final class ToolsTests: XCTestCase {
     func testRegistriesExposeExpectedTools() {
         XCTAssertEqual(Set(ToolRegistry.builtIn.tools.map { $0.schema.name }), ["calculator", "current_datetime"])
         XCTAssertTrue(ToolRegistry.standard.tool(named: "web_search") != nil)
+        XCTAssertTrue(ToolRegistry.standard.tool(named: "wikipedia") != nil)
+        XCTAssertTrue(ToolRegistry.standard.tool(named: "fetch_webpage") != nil)
         XCTAssertNil(ToolRegistry.builtIn.tool(named: "web_search"))
     }
 
@@ -145,30 +147,37 @@ final class ToolsTests: XCTestCase {
         XCTAssertTrue(tail.contains { if case .text(let s) = $0 { return s.contains("<tool") }; return false })
     }
 
-    // MARK: Web search (pure parsers — no network)
+    // MARK: Wikipedia (pure parsers — no network). The Wikipedia lookup moved to its own `wikipedia` tool;
+    // `web_search` is now live SERP search (covered in WebSearchToolTests).
 
-    func testWebSearchPicksLanguageByScript() {
-        XCTAssertEqual(WebSearchTool.lang(for: "Alan Turing"), "en")
-        XCTAssertEqual(WebSearchTool.lang(for: "北京是哪里"), "zh")
-        XCTAssertEqual(WebSearchTool.lang(for: "Qwen 模型"), "zh")   // any CJK → zh
+    func testWikipediaPicksLanguageByScript() {
+        XCTAssertEqual(WikipediaTool.lang(for: "Alan Turing"), "en")
+        XCTAssertEqual(WikipediaTool.lang(for: "北京是哪里"), "zh")
+        XCTAssertEqual(WikipediaTool.lang(for: "Qwen 模型"), "zh")   // any CJK → zh
     }
 
-    func testWebSearchParsesTopTitle() {
+    func testWikipediaParsesTopTitle() {
         let json = #"{"query":{"search":[{"title":"Alan Turing","pageid":1},{"title":"Other"}]}}"#
-        XCTAssertEqual(WebSearchTool.parseTopTitle(Data(json.utf8)), "Alan Turing")
-        XCTAssertNil(WebSearchTool.parseTopTitle(Data(#"{"query":{"search":[]}}"#.utf8)))
-        XCTAssertNil(WebSearchTool.parseTopTitle(Data("garbage".utf8)))
+        XCTAssertEqual(WikipediaTool.parseTopTitle(Data(json.utf8)), "Alan Turing")
+        XCTAssertNil(WikipediaTool.parseTopTitle(Data(#"{"query":{"search":[]}}"#.utf8)))
+        XCTAssertNil(WikipediaTool.parseTopTitle(Data("garbage".utf8)))
     }
 
-    func testWebSearchParsesSummary() {
+    func testWikipediaParsesSummary() {
         let json = #"{"title":"Alan Turing","extract":"  Alan Turing was a British mathematician.  "}"#
-        XCTAssertEqual(WebSearchTool.parseSummary(Data(json.utf8)), "Alan Turing was a British mathematician.")
-        XCTAssertEqual(WebSearchTool.parseSummary(Data("{}".utf8)), "")
+        XCTAssertEqual(WikipediaTool.parseSummary(Data(json.utf8)), "Alan Turing was a British mathematician.")
+        XCTAssertEqual(WikipediaTool.parseSummary(Data("{}".utf8)), "")
     }
 
     func testWebSearchSchema() {
         let s = WebSearchTool().schema
         XCTAssertEqual(s.name, "web_search")
+        XCTAssertEqual(s.parameters.first?.name, "query")
+    }
+
+    func testWikipediaSchema() {
+        let s = WikipediaTool().schema
+        XCTAssertEqual(s.name, "wikipedia")
         XCTAssertEqual(s.parameters.first?.name, "query")
     }
 }

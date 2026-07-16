@@ -26,13 +26,28 @@ struct MobileLLMApp: App {
             .mlx: MLXLLMEngine(),
             .llamaCpp: LlamaEngine(),
         ])
+        // The privacy-gated tool adapters are wired here (the composition root for platform frameworks,
+        // like the engines above): construction is cheap and prompts for nothing — EventKit/CoreLocation
+        // only ask for access lazily, on the first tool call, and only if the user enabled that tool.
+        #if canImport(EventKit)
+        let eventStore: (any EventStoring)? = EventKitStore()
+        #else
+        let eventStore: (any EventStoring)? = nil
+        #endif
+        #if canImport(CoreLocation)
+        let locationProvider: (any LocationProviding)? = CoreLocationProvider()
+        #else
+        let locationProvider: (any LocationProviding)? = nil
+        #endif
         let container = MainActor.assumeIsolated {
             AppContainer(
                 engine: engine,
                 downloadBase: base,
                 downloader: { repoId, globs, progress in
                     _ = try await downloader.download(repoId: repoId, matching: globs, progress: progress)
-                })
+                },
+                eventStore: eventStore,
+                locationProvider: locationProvider)
         }
         _container = State(initialValue: container)
     }

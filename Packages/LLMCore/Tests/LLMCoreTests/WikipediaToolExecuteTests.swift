@@ -3,16 +3,16 @@
 import XCTest
 @testable import LLMCore
 
-/// `WebSearchTool.execute` driven end-to-end against CANNED Wikipedia responses (a `URLProtocol` stub on an
+/// `WikipediaTool.execute` driven end-to-end against CANNED Wikipedia responses (a `URLProtocol` stub on an
 /// injected session). The pure helpers (`lang`, `parseTopTitle`, `parseSummary`) are already covered in
 /// `ToolsTests`; these pin the network-facing behavior those can't: that a query actually ROUTES to the
 /// right-language host, and that every failure path returns a graceful error STRING (execute never throws).
-final class WebSearchToolExecuteTests: XCTestCase {
+final class WikipediaToolExecuteTests: XCTestCase {
 
-    private func tool() -> WebSearchTool {
+    private func tool() -> WikipediaTool {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [WikiMockProtocol.self]
-        return WebSearchTool(session: URLSession(configuration: config))
+        return WikipediaTool(session: URLSession(configuration: config))
     }
 
     private func run(_ query: String) async -> String {

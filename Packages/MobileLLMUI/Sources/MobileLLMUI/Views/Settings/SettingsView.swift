@@ -11,7 +11,7 @@ struct SettingsView: View {
     @Bindable var settings: AppSettings
     @State private var confirmDeleteAll = false
     @State private var storageBytes: Int64 = 0
-    @State private var showMCP = false
+    @State private var showTools = false
     @State private var showSystemPrompt = false
 
     init(container: AppContainer) {
@@ -42,8 +42,8 @@ struct SettingsView: View {
             Text("Removes every conversation on this device. Downloaded models are kept. This can't be undone.")
         }
         // A sheet, not a push: the macOS detail column isn't inside a NavigationStack.
-        .sheet(isPresented: $showMCP) {
-            NavigationStack { MCPServersView(settings: settings) }
+        .sheet(isPresented: $showTools) {
+            NavigationStack { ToolsView(settings: settings) }
             #if os(macOS)
             .frame(minWidth: 520, minHeight: 560)
             #endif
@@ -104,28 +104,28 @@ struct SettingsView: View {
             Toggle(isOn: $settings.toolsEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Tools").font(.subheadline).foregroundStyle(Theme.textPrimary)
-                    Text("Let the model use a calculator and the clock (on-device) and a Wikipedia lookup "
-                         + "(reaches the network only when it searches). Adds a round-trip; some models call "
+                    Text("Let the model call tools while it answers — web search, a webpage reader, "
+                         + "Wikipedia, a calculator, memory, and more. Adds a round-trip; some models call "
                          + "tools more reliably than others.")
                         .font(.caption).foregroundStyle(Theme.textTertiary)
                 }
             }
             .tint(Theme.accent)
-            if settings.toolsEnabled { mcpRow }
+            if settings.toolsEnabled { manageToolsRow }
         }
     }
 
-    // MARK: MCP servers
+    // MARK: Manage tools
 
-    @ViewBuilder private var mcpRow: some View {
+    @ViewBuilder private var manageToolsRow: some View {
         Divider().background(Theme.hairline)
-        Button { showMCP = true } label: {
+        Button { showTools = true } label: {
             HStack(spacing: Theme.Space.sm) {
-                Image(systemName: "point.3.connected.trianglepath.dotted")
+                Image(systemName: "wrench.and.screwdriver")
                     .font(.subheadline).foregroundStyle(Theme.accent).frame(width: 22)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("MCP servers").font(.subheadline).foregroundStyle(Theme.textPrimary)
-                    Text(mcpSummary).font(.caption).foregroundStyle(Theme.textTertiary)
+                    Text("Manage tools").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                    Text(ToolsView.summary(for: settings)).font(.caption).foregroundStyle(Theme.textTertiary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textTertiary)
@@ -133,13 +133,6 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private var mcpSummary: String {
-        let all = settings.mcpServers
-        guard !all.isEmpty else { return "Connect a remote server for more tools" }
-        let on = all.count(where: \.isEnabled)
-        return "\(all.count) configured" + (on < all.count ? " · \(all.count - on) off" : "")
     }
 
     // MARK: Sampling
@@ -284,13 +277,17 @@ struct SettingsView: View {
     private var privacyBlurb: String {
         let base = "Your chats, prompts, and the models stay on this device — there's no account and no telemetry."
         guard settings.toolsEnabled else {
-            return base + " Nothing is sent to a server. (Turning on Tools lets the model reach Wikipedia, or "
-                 + "an MCP server you configure, but only when it invokes that tool.)"
+            return base + " Nothing is sent to a server. (Turning on Tools lets the model reach the web — "
+                 + "search, a webpage reader, Wikipedia — or an MCP server you configure, and lets tools you "
+                 + "enable touch your calendar, reminders, or location, but only when it invokes that tool.)"
         }
         let hasMCP = settings.mcpServers.contains(where: \.isEnabled)
-        return base + " Tools are on: when the model uses one, it sends that query or its arguments to that "
-             + "endpoint — Wikipedia for a lookup"
+        return base + " Tools are on: when the model uses a web tool it sends that query or its arguments to "
+             + "that endpoint — a search engine, a page you link, or Wikipedia"
              + (hasMCP ? ", or an MCP server you've enabled." : " (and any MCP server you add).")
+             + " The calendar, reminders, and location tools read or write that system data only when the "
+             + "model calls them, each asks the system for permission the first time, and only if you enable "
+             + "it in Manage tools."
     }
 
     // MARK: About

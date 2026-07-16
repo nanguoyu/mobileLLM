@@ -66,8 +66,12 @@ public struct ToolRegistry: Sendable {
     /// The built-in, on-device tools (no network / no server) — enough to exercise the whole agent loop.
     public static let builtIn = ToolRegistry([CalculatorTool(), DateTimeTool()])
 
-    /// The on-device tools plus the network-backed Wikipedia lookup — the default set when tools are on.
-    public static let standard = ToolRegistry([CalculatorTool(), DateTimeTool(), WebSearchTool()])
+    /// The on-device tools plus the key-less network tools that need nothing injected — the default set
+    /// when tools are on. Privacy-sensitive (memory/calendar/location) tools are opt-in via
+    /// `ToolRegistry.assemble(config:…)`.
+    public static let standard = ToolRegistry([
+        CalculatorTool(), DateTimeTool(), WikipediaTool(), WebSearchTool(), WebScraperTool(),
+    ])
 }
 
 // MARK: - Built-in local tools
