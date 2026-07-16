@@ -70,6 +70,7 @@ struct ModelsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.md) {
                 if models.installed.isEmpty { firstRunHeader }
+                activeSection
                 storageHeader
                 searchField
                 filterChips
@@ -81,6 +82,33 @@ struct ModelsView: View {
             .padding(Theme.Space.lg)
             .frame(maxWidth: 720)
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// The resident model, pinned above everything (only when no search/filter narrows the list — a
+    /// filtered view should show exactly what was asked for). Reuses ModelCard so engine/quant/fit stay
+    /// live; the family section below still lists it in catalog order.
+    @ViewBuilder private var activeSection: some View {
+        if query.isEmpty, filter == .all, let active = models.active,
+           let model = models.model(id: active.model.id) {
+            VStack(alignment: .leading, spacing: Theme.Space.md) {
+                HStack(spacing: Theme.Space.xs) {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .font(.caption).foregroundStyle(Theme.fitGreen)
+                    Text("In use").font(.headline).foregroundStyle(Theme.textPrimary)
+                    Spacer()
+                }
+                .padding(.horizontal, 2)
+                ModelCard(models: models,
+                          model: model,
+                          context: settings.contextLength,
+                          enginePreference: settings.enginePreference,
+                          isRecommended: false,
+                          engineSel: engineBinding(for: model),
+                          quantSel: quantBinding(for: model),
+                          onUse: onUse,
+                          onDelete: { variant in pendingDelete = (model, variant) })
+            }
         }
     }
 

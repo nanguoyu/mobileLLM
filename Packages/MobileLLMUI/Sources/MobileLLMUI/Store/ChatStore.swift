@@ -34,6 +34,12 @@ public final class ChatStore {
         get { settings.dictationLocale }
         set { settings.dictationLocale = newValue }
     }
+    /// Tools passthrough — the composer shows and flips the same switch Settings owns, because a tool
+    /// state you can't SEE from the chat reads as "tools don't work" (applies from the next send).
+    public var toolsEnabled: Bool {
+        get { settings.toolsEnabled }
+        set { settings.toolsEnabled = newValue }
+    }
     public private(set) var banner: Toast?
     /// Images staged in the composer for the next send — already downscaled + JPEG-re-encoded (never the
     /// raw 48 MP original). Capped at `maxAttachments`; cleared when the turn is sent. Held in memory

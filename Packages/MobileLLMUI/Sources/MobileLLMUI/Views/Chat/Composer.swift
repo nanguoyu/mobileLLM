@@ -46,6 +46,7 @@ struct Composer: View {
             if chat.hasModel {
                 HStack(alignment: .bottom, spacing: Theme.Space.sm) {
                     if thinkingCapable { thinkingToggle }
+                    toolsToggle
                     if canAttachImages { photoButton }
                     micButton
                     field
@@ -331,6 +332,30 @@ struct Composer: View {
         .accessibilityLabel("Thinking mode")
         .accessibilityValue(chat.thinkingEnabled ? "On" : "Off")
         .accessibilityAddTraits(chat.thinkingEnabled ? [.isSelected] : [])
+    }
+
+    /// The tools switch, IN the composer — mirrors Settings → Tools. Without a visible state here, "the
+    /// model didn't call my MCP server" is indistinguishable from "tools were never on".
+    private var toolsToggle: some View {
+        Button {
+            withAnimation(Motion.select) { chat.toolsEnabled.toggle() }
+            chat.showToast(Toast(chat.toolsEnabled
+                                 ? "Tools on — calculator, clock, Wikipedia + your MCP servers."
+                                 : "Tools off.",
+                                 autoDismiss: 3))
+        } label: {
+            Image(systemName: "wrench.and.screwdriver")
+                .font(.body)
+                .foregroundStyle(chat.toolsEnabled ? Theme.accent : Theme.textTertiary)
+                .frame(width: controlSize, height: controlSize)
+                .background(chat.toolsEnabled ? Theme.accentSoft : Theme.surface2,
+                            in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Tools")
+        .accessibilityValue(chat.toolsEnabled ? "On" : "Off")
+        .accessibilityHint("Lets the model call the calculator, clock, Wikipedia and your MCP servers")
+        .accessibilityAddTraits(chat.toolsEnabled ? [.isSelected] : [])
     }
 
     // MARK: Send / Stop

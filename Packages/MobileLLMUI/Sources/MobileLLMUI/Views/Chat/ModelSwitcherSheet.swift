@@ -16,9 +16,12 @@ struct ModelSwitcherSheet: View {
     @State private var activating: String?
 
     private var installed: [(LLMModel, LLMVariant)] {
-        container.models.allModels.flatMap { model in
+        let all = container.models.allModels.flatMap { model in
             model.variants.filter { container.models.isInstalled($0) }.map { (model, $0) }
         }
+        // The resident model leads the list — it's the row you're most likely orienting around.
+        let activeID = container.models.active?.variant.id
+        return all.filter { $0.1.id == activeID } + all.filter { $0.1.id != activeID }
     }
 
     var body: some View {
