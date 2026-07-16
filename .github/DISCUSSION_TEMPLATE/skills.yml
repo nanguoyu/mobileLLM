@@ -1,0 +1,69 @@
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share a **skill** — a reusable instruction pack — for mobileLLM.
+
+        Skills use the same `SKILL.md` format as
+        [Google AI Edge Gallery](https://github.com/google-ai-edge/gallery/discussions/categories/skills),
+        so anything shared here imports into either app. In mobileLLM: **Settings → Skills → + → Import
+        SKILL.md**, then paste your link or the markdown itself.
+
+        Please title your post `[Skill] <Name>` and fill in the fields below.
+  - type: input
+    id: summary
+    attributes:
+      label: One-line summary
+      description: What it does and when to reach for it (this becomes the skill's description).
+      placeholder: Translate between Chinese and English, translation only, no commentary.
+    validations:
+      required: true
+  - type: textarea
+    id: skillmd
+    attributes:
+      label: SKILL.md
+      description: >
+        Paste the full SKILL.md (frontmatter + instructions) OR link to a raw file / GitHub Pages / repo.
+        A repo link is normalized to its raw SKILL.md on import.
+      render: markdown
+      placeholder: |
+        ---
+        name: Translator
+        description: Translate between Chinese and English, translation only.
+        ---
+        Detect the input language. If it is Chinese, translate to English; otherwise translate to Chinese.
+        Output only the translation — no explanations, no notes.
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Does it need a JS runtime?
+      description: >
+        Skills whose instructions call the Gallery's `run_js` tool (bundled `index.html`) need a JavaScript
+        runtime mobileLLM does not ship yet — the text still imports, but those steps won't execute here.
+        Import flags this automatically; please declare it so people know what to expect.
+      options:
+        - "No — pure instructions, works everywhere"
+        - "Yes — calls run_js / bundles index.html (text-only on mobileLLM for now)"
+    validations:
+      required: true
+  - type: dropdown
+    id: models
+    attributes:
+      label: Tested with
+      description: Which on-device model(s) did you try it on? Small models follow sharp, short instructions best.
+      multiple: true
+      options:
+        - Bonsai (1.7B / 4B / 8B / 27B)
+        - Qwen3.5 / Qwen3.6
+        - Gemma 4
+        - Hunyuan 4B
+        - DeepSeek-R1
+        - A community / Explore model
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes (optional)
+      description: Example prompts, caveats, which built-in tools it pairs with (web search, memory, …).

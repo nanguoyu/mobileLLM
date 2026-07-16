@@ -53,7 +53,8 @@ nothing you type ever leaves the device.
   one per conversation from the composer's [+] menu and the thread remembers it. **Compatible with
   [AI Edge Gallery community skills](https://github.com/google-ai-edge/gallery/discussions/categories/skills)**:
   import any `SKILL.md` by URL or paste, export yours in the same format (skills that need the Gallery's
-  `run_js` JS runtime are flagged honestly — that runtime isn't on iOS yet).
+  `run_js` JS runtime are flagged honestly — that runtime isn't on iOS yet). Browse and share more in
+  **[Discussions → Skills](https://github.com/nanguoyu/mobileLLM/discussions/categories/skills)**.
 - 🧵 **Conversations remember their model.** Every send stamps the thread with the model that answered;
   reopening a thread (or relaunching the app) brings that model back. There is no "default model"
   setting to manage — a new chat starts on whatever you used last, and the empty-state title
@@ -163,6 +164,18 @@ geometry on an iOS simulator with XCUITest (needs a small GGUF seeded into the a
 simulator's hardware keyboard disabled — see `UITests/KeyboardUITests.swift`).
 
 See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup and package map.
+
+## Community
+
+[**GitHub Discussions**](https://github.com/nanguoyu/mobileLLM/discussions) is the place for ideas, questions, and skills:
+
+- 🧩 **[Skills](https://github.com/nanguoyu/mobileLLM/discussions/categories/skills)** — share a `SKILL.md`
+  (or a link to one) and anyone can import it into the app; a post template collects the summary, the
+  skill body, and whether it needs the `run_js` runtime. Compatible with AI Edge Gallery skills.
+- 💡 **Ideas** — models, tools, or engines you'd like to see.
+- 🙏 **Q&A** — build issues, model fit, usage help.
+
+Bugs and concrete feature requests still go to [Issues](https://github.com/nanguoyu/mobileLLM/issues).
 
 ## License
 
