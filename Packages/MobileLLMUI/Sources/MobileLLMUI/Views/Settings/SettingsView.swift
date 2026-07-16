@@ -11,6 +11,10 @@ struct SettingsView: View {
     @Bindable var settings: AppSettings
     @State private var confirmDeleteAll = false
     @State private var storageBytes: Int64 = 0
+    @State private var showAddMCP = false
+    @State private var newMCPName = ""
+    @State private var newMCPURL = ""
+    @State private var newMCPToken = ""
 
     init(container: AppContainer) {
         self.container = container
@@ -40,6 +44,7 @@ struct SettingsView: View {
         } message: {
             Text("Removes every conversation on this device. Downloaded models are kept. This can't be undone.")
         }
+        .sheet(isPresented: $showAddMCP) { addMCPSheet }
     }
 
     // MARK: Model
@@ -113,6 +118,103 @@ struct SettingsView: View {
                 }
             }
             .tint(Theme.accent)
+            if settings.toolsEnabled { mcpServers }
+        }
+    }
+
+    // MARK: MCP servers
+
+    @ViewBuilder private var mcpServers: some View {
+        Divider().background(Theme.hairline)
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            HStack {
+                Text("MCP servers").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                Spacer()
+                Button { newMCPName = ""; newMCPURL = ""; newMCPToken = ""; showAddMCP = true } label: {
+                    Label("Add", systemImage: "plus").font(.caption.weight(.medium))
+                }
+                .buttonStyle(.plain).foregroundStyle(Theme.accent)
+            }
+            Text("Connect remote Model Context Protocol servers (HTTPS) to give the model more tools.")
+                .font(.caption).foregroundStyle(Theme.textTertiary)
+            ForEach(settings.mcpServers) { server in
+                HStack(spacing: Theme.Space.sm) {
+                    Image(systemName: "point.3.connected.trianglepath.dotted").font(.caption).foregroundStyle(Theme.accent)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(server.name).font(.caption.weight(.medium)).foregroundStyle(Theme.textPrimary)
+                        Text(server.url).font(.caption2.monospaced()).foregroundStyle(Theme.textTertiary).lineLimit(1)
+                    }
+                    Spacer()
+                    Button(role: .destructive) { removeMCP(server) } label: {
+                        Image(systemName: "trash").font(.caption)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(Theme.textTertiary)
+                    .accessibilityLabel("Remove \(server.name)")
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private func removeMCP(_ server: MCPServer) {
+        settings.mcpServers.removeAll { $0.id == server.id }
+    }
+
+    private func addMCP() {
+        let url = newMCPURL.trimmingCharacters(in: .whitespaces)
+        guard !url.isEmpty else { return }
+        let name = newMCPName.trimmingCharacters(in: .whitespaces)
+        let token = newMCPToken.trimmingCharacters(in: .whitespaces)
+        settings.mcpServers.append(MCPServer(name: name.isEmpty ? url : name, url: url,
+                                             token: token.isEmpty ? nil : token))
+        showAddMCP = false
+    }
+
+    private var addMCPSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.lg) {
+                    Text("Add a remote MCP server. Only HTTPS servers work on device; a token is optional.")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
+                    mcpField("Name", text: $newMCPName, placeholder: "My server")
+                    mcpField("Server URL", text: $newMCPURL, placeholder: "https://host/mcp", mono: true)
+                    mcpField("Bearer token (optional)", text: $newMCPToken, placeholder: "", mono: true, secure: true)
+                }
+                .padding(Theme.Space.lg)
+            }
+            .background(Theme.bg)
+            .navigationTitle("New MCP server")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showAddMCP = false } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") { addMCP() }
+                        .disabled(newMCPURL.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 420, minHeight: 280)
+        #endif
+    }
+
+    private func mcpField(_ label: String, text: Binding<String>, placeholder: String,
+                          mono: Bool = false, secure: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.caption.weight(.medium)).foregroundStyle(Theme.textSecondary)
+            Group {
+                if secure { SecureField(placeholder, text: text) } else { TextField(placeholder, text: text) }
+            }
+            .textFieldStyle(.plain)
+            .font(mono ? .callout.monospaced() : .callout)
+            #if os(iOS)
+            .autocorrectionDisabled().textInputAutocapitalization(.never)
+            #endif
+            .padding(Theme.Space.sm)
+            .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
         }
     }
 

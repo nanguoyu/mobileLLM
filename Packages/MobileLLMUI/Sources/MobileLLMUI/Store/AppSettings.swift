@@ -24,6 +24,8 @@ public final class AppSettings {
     /// Let the model call on-device tools (calculator, date/time) via the agent loop. Off by default —
     /// it adds a round-trip and only some models call tools reliably.
     public var toolsEnabled: Bool { didSet { persist() } }
+    /// Remote MCP servers whose tools join the agent's tool set when tools are on.
+    public var mcpServers: [MCPServer] { didSet { persist() } }
 
     // MARK: Sampling
     public var temperature: Double { didSet { persist() } }
@@ -53,6 +55,7 @@ public final class AppSettings {
         thinkingDefault = snap?.thinkingDefault ?? true
         thinkingDisplay = snap?.thinkingDisplay ?? .autoCollapse
         toolsEnabled = snap?.toolsEnabled ?? false
+        mcpServers = snap?.mcpServers ?? []
         temperature = snap?.temperature ?? 0.7
         topP = snap?.topP ?? 0.95
         topK = snap?.topK ?? 20
@@ -81,6 +84,7 @@ public final class AppSettings {
         var thinkingDefault: Bool
         var thinkingDisplay: ThinkingDisplayMode
         var toolsEnabled: Bool? = false   // optional → old snapshots decode
+        var mcpServers: [MCPServer]? = []
         var temperature: Double
         var topP: Double
         var topK: Int
@@ -96,7 +100,7 @@ public final class AppSettings {
         let snap = Snapshot(defaultModelID: defaultModelID, enginePreference: enginePreference,
                             systemPrompt: systemPrompt,
                             thinkingDefault: thinkingDefault, thinkingDisplay: thinkingDisplay,
-                            toolsEnabled: toolsEnabled,
+                            toolsEnabled: toolsEnabled, mcpServers: mcpServers,
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
                             contextLength: contextLength, kvBits: kvBits, appearance: appearance)

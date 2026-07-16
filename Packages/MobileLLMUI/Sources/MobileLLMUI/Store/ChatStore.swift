@@ -206,9 +206,10 @@ public final class ChatStore {
             do {
                 await self?.ensureModelReady?()   // reload if the model was suspended to free memory
                 if toolsOn {
-                    // Agent loop: the model may call the calculator/clock (on-device) or a Wikipedia
-                    // lookup (network) before answering.
-                    let loop = ToolLoop(engine: engine, registry: .standard)
+                    // Agent loop: the model may call the local calculator/clock, a Wikipedia lookup, or any
+                    // tool exposed by a configured MCP server before answering.
+                    let registry = await self?.toolRegistry() ?? .standard
+                    let loop = ToolLoop(engine: engine, registry: registry)
                     for try await event in loop.run(messages: turns, params: params) {
                         guard let self, self.streaming?.messageID == assistantID else { return }
                         self.applyLoopEvent(event)
@@ -229,6 +230,22 @@ public final class ChatStore {
                 self?.present(error)
             }
         }
+    }
+
+    private var cachedRegistry: ToolRegistry?
+    private var cachedRegistrySignature: String?
+
+    /// The tool set for a turn: the standard local tools, plus every MCP server's tools (connected once
+    /// and cached by config signature so we don't re-handshake every message).
+    private func toolRegistry() async -> ToolRegistry {
+        let servers = settings.mcpServers.filter { !$0.url.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard !servers.isEmpty else { return .standard }
+        let signature = servers.map { "\($0.url)|\($0.token ?? "")" }.joined(separator: ",")
+        if let cachedRegistry, cachedRegistrySignature == signature { return cachedRegistry }
+        let registry = await ToolRegistry.build(mcpServers: servers)
+        cachedRegistry = registry
+        cachedRegistrySignature = signature
+        return registry
     }
 
     /// Map an agent-loop event onto the streaming state — reasoning/answer as usual, plus tool activity.
