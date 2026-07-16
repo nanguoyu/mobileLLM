@@ -167,6 +167,7 @@ struct Composer: View {
             .onSubmit { if chat.canSend { chat.send(); focused = false } }   // ⏎ sends on Mac; ⇧⏎ inserts a newline
             #endif
             .accessibilityLabel("Message")
+            .accessibilityIdentifier("composer.field")   // XCUITest hook (keyboard-geometry regression)
     }
 
     private var placeholder: String {

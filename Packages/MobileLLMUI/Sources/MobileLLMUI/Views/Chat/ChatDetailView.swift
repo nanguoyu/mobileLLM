@@ -10,8 +10,9 @@ struct ChatDetailView: View {
     let container: AppContainer
     var onOpenModels: () -> Void
     @State private var showSwitcher = false
-    /// Manual keyboard tracking (see KeyboardHeight) — automatic avoidance is disabled below.
-    @State private var keyboard = KeyboardHeight()
+    /// Net keyboard lift from UIKit's keyboardLayoutGuide (see KeyboardHeight.swift): 0 when hidden,
+    /// keyboard height minus the home-indicator inset when up. Automatic avoidance is disabled below.
+    @State private var keyboardOverlap: CGFloat = 0
 
     private var chat: ChatStore { container.chat }
 
@@ -24,30 +25,31 @@ struct ChatDetailView: View {
     }
 
     var body: some View {
-        // The composer's lift above the keyboard is OURS to compute (the FlowDown approach): SwiftUI's
-        // automatic avoidance never fired in this TabView → NavigationStack tree, so it's switched off
-        // below and the composer is padded by the observed keyboard overlap instead. The overlap covers
-        // the home-indicator region, which the safe-area-respecting composer already clears — subtract it.
-        GeometryReader { geo in
-            ChatThreadView(chat: container.chat,
-                           displayMode: container.settings.thinkingDisplay,
-                           isLoadingModel: container.models.switching,
-                           loadingModelName: loadingModelName,
-                           onOpenModels: onOpenModels,
-                           onSwitchModel: { showSwitcher = true })
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    Composer(chat: container.chat,
-                             thinkingCapable: chat.activeModel?.model.architecture.thinkingCapable ?? true,
-                             canAttachImages: container.models.activeSupportsImageInput,
-                             isLoadingModel: container.models.switching,
-                             onOpenModels: onOpenModels)
-                        .padding(.bottom, max(0, keyboard.overlap - geo.safeAreaInsets.bottom))
-                }
-                #if os(iOS)
-                .ignoresSafeArea(.keyboard, edges: .bottom)
-                #endif
-        }
+        // The composer's lift above the keyboard is OURS to compute, from the same primitive FlowDown
+        // constrains against: UIKit's keyboardLayoutGuide. The reader reports the NET lift (0 at rest,
+        // keyboard height minus the home-indicator inset when up), measured entirely in UIKit — SwiftUI's
+        // own safeAreaInsets absorbs the keyboard into its bottom value while its avoidance does nothing,
+        // which is both why this tree needed manual handling and why the subtraction must not use it.
+        // Automatic avoidance stays OFF so nothing ever double-lifts.
+        ChatThreadView(chat: container.chat,
+                       displayMode: container.settings.thinkingDisplay,
+                       isLoadingModel: container.models.switching,
+                       loadingModelName: loadingModelName,
+                       onOpenModels: onOpenModels,
+                       onSwitchModel: { showSwitcher = true })
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Composer(chat: container.chat,
+                         thinkingCapable: chat.activeModel?.model.architecture.thinkingCapable ?? true,
+                         canAttachImages: container.models.activeSupportsImageInput,
+                         isLoadingModel: container.models.switching,
+                         onOpenModels: onOpenModels)
+                    .padding(.bottom, keyboardOverlap)
+            }
+            #if os(iOS)
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .background { KeyboardGuideReader(overlap: $keyboardOverlap) }
+            #endif
         .background(Theme.bg)
         .navigationTitle(chat.activeConversation?.title ?? "New Chat")
         #if os(iOS)

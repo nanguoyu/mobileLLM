@@ -5,47 +5,88 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Manual keyboard tracking — the FlowDown lesson. SwiftUI's automatic keyboard avoidance silently
-/// no-ops in this app's TabView → NavigationStack → pushed-detail tree (every layout variant left the
-/// composer's input row buried under the keyboard by the same amount), so we do what UIKit apps do with
-/// `keyboardLayoutGuide`: observe the keyboard frame ourselves and pad the composer by the overlap,
-/// with `.ignoresSafeArea(.keyboard)` switching the broken automatic path fully off.
-@MainActor
-@Observable
-public final class KeyboardHeight {
-    /// How much of the screen the keyboard currently covers, in points (0 when hidden). Includes the
-    /// home-indicator region — subtract the container's bottom safe-area inset when padding content
-    /// that already respects it.
-    public private(set) var overlap: CGFloat = 0
+// The FlowDown primitive, verbatim in spirit: its SafeInputView pins the input bar's bottom to
+// `keyboardLayoutGuide.top` and never touches keyboard notifications. Notifications proved exactly as
+// unreliable here as their reputation — the photo sheet's present/dismiss storm left the observed height
+// stuck high with no keyboard and reset it to zero with the keyboard up. The layout guide has no such
+// races: UIKit itself keeps a tracking view pinned between the guide's top and the window bottom, and
+// its measured height IS the ground truth (bottom safe-area inset when hidden, keyboard height when up),
+// updated frame-by-frame through the keyboard animation and interactive dismissal.
 
-    #if os(iOS)
-    /// nonisolated(unsafe): deinit runs off the main actor and only hands the tokens to the (thread-safe)
-    /// NotificationCenter.removeObserver — the array is never mutated after init.
-    nonisolated(unsafe) private var tokens: [NSObjectProtocol] = []
+#if os(iOS)
+/// SwiftUI leaf that reports the EXTRA bottom lift the keyboard demands (0 when hidden, keyboard height
+/// minus the home-indicator inset when up) into a binding. The subtraction happens UIKit-side against
+/// `window.safeAreaInsets.bottom` on purpose: SwiftUI's own `safeAreaInsets` swallows the keyboard into
+/// its bottom value even while its avoidance does nothing, so subtracting THAT zeroed the lift — the
+/// final trap in this hunt. UIKit's window insets never include the keyboard.
+struct KeyboardGuideReader: UIViewRepresentable {
+    @Binding var overlap: CGFloat
 
-    public init() {
-        let nc = NotificationCenter.default
-        let apply: @Sendable (Notification) -> Void = { note in
-            guard let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
-            else { return }
-            let duration = note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                // A hidden keyboard reports a frame at/below the screen bottom → overlap 0.
-                let overlap = max(0, UIScreen.main.bounds.maxY - end.minY)
-                withAnimation(.easeOut(duration: max(0.1, duration))) { self.overlap = overlap }
+    func makeUIView(context: Context) -> AnchorView {
+        AnchorView { lift in
+            Task { @MainActor in
+                if abs(overlap - lift) > 0.5 { overlap = lift }
             }
         }
-        tokens.append(nc.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification,
-                                     object: nil, queue: .main, using: apply))
-        tokens.append(nc.addObserver(forName: UIResponder.keyboardWillHideNotification,
-                                     object: nil, queue: .main, using: apply))
     }
 
-    deinit {
-        for token in tokens { NotificationCenter.default.removeObserver(token) }
+    func updateUIView(_ view: AnchorView, context: Context) {}
+
+    /// Invisible view whose only job is to reach the window and install the tracker.
+    final class AnchorView: UIView {
+        private let onHeight: (CGFloat) -> Void
+        private var tracker: TrackerView?
+
+        init(onHeight: @escaping (CGFloat) -> Void) {
+            self.onHeight = onHeight
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+            isHidden = true
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            tracker?.removeFromSuperview()
+            tracker = nil
+            guard let window else { return }
+            let t = TrackerView(onHeight: onHeight)
+            t.isUserInteractionEnabled = false
+            t.isHidden = true
+            t.translatesAutoresizingMaskIntoConstraints = false
+            // The tracker hangs between THIS view's keyboardLayoutGuide (the FlowDown anchor — the
+            // view-level guide is the one UIKit actually drives; a bare window-level guide sat inert)
+            // and the window bottom, so its laid-out height IS the keyboard overlap in screen terms.
+            addSubview(t)
+            NSLayoutConstraint.activate([
+                t.leadingAnchor.constraint(equalTo: window.leadingAnchor),
+                t.trailingAnchor.constraint(equalTo: window.trailingAnchor),
+                t.topAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor),
+                t.bottomAnchor.constraint(equalTo: window.bottomAnchor),
+            ])
+            tracker = t
+        }
     }
-    #else
-    public init() {}   // macOS: no software keyboard — overlap stays 0
-    #endif
+
+    /// Pinned guide-top → window-bottom; its laid-out height is the keyboard overlap.
+    final class TrackerView: UIView {
+        private let onHeight: (CGFloat) -> Void
+        init(onHeight: @escaping (CGFloat) -> Void) {
+            self.onHeight = onHeight
+            super.init(frame: .zero)
+        }
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // Height spans keyboard-guide top → window bottom: the bottom safe inset at rest, the
+            // keyboard height when up. Subtract the UIKit inset (keyboard-free by definition) so the
+            // reported value is the net lift the composer needs.
+            let restingInset = window?.safeAreaInsets.bottom ?? 0
+            onHeight(max(0, bounds.height - restingInset))
+        }
+    }
 }
+#endif

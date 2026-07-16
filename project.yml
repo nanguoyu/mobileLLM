@@ -65,6 +65,21 @@ targets:
         product: LLMEngineLlama
       - package: AppRuntime
 
+  # UI regression tests (iOS simulator): the keyboard/composer geometry that burned four blind fixes —
+  # asserted with XCUITest instead of eyeballs. Run:
+  #   xcodebuild -skipMacroValidation -scheme UITests -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test
+  mobileLLMUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6.0"
+    dependencies:
+      - target: mobileLLM
+
 schemes:
   # The app scheme is declared explicitly because defining any scheme below turns off Xcode's implicit
   # per-target scheme (otherwise `-scheme mobileLLM` disappears).
@@ -84,3 +99,12 @@ schemes:
       targets:
         - package: LLMEngineMLX/LLMEngineMLXTests
         - package: LLMEngineLlama/LLMEngineLlamaTests
+  # The keyboard/composer geometry tests. Simulator-only (XCUITest drives real taps + the software
+  # keyboard); needs a small GGUF pre-seeded in the app container — see UITests/KeyboardUITests.swift.
+  UITests:
+    build:
+      targets:
+        mobileLLM: all
+    test:
+      targets:
+        - mobileLLMUITests
