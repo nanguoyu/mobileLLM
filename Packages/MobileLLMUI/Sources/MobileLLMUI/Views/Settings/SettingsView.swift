@@ -11,10 +11,7 @@ struct SettingsView: View {
     @Bindable var settings: AppSettings
     @State private var confirmDeleteAll = false
     @State private var storageBytes: Int64 = 0
-    @State private var showAddMCP = false
-    @State private var newMCPName = ""
-    @State private var newMCPURL = ""
-    @State private var newMCPToken = ""
+    @State private var showMCP = false
 
     init(container: AppContainer) {
         self.container = container
@@ -44,7 +41,13 @@ struct SettingsView: View {
         } message: {
             Text("Removes every conversation on this device. Downloaded models are kept. This can't be undone.")
         }
-        .sheet(isPresented: $showAddMCP) { addMCPSheet }
+        // A sheet, not a push: the macOS detail column isn't inside a NavigationStack.
+        .sheet(isPresented: $showMCP) {
+            NavigationStack { MCPServersView(settings: settings) }
+            #if os(macOS)
+            .frame(minWidth: 520, minHeight: 560)
+            #endif
+        }
     }
 
     // MARK: Model
@@ -86,7 +89,14 @@ struct SettingsView: View {
     private var behaviorSection: some View {
         section("Behavior", icon: "text.bubble") {
             VStack(alignment: .leading, spacing: 4) {
-                Text("System prompt").font(.subheadline).foregroundStyle(Theme.textSecondary)
+                HStack {
+                    Text("System prompt").font(.subheadline).foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    if !SystemPrompt.isStandard(settings.systemPrompt) {
+                        Button("Reset to default") { settings.systemPrompt = SystemPrompt.standard }
+                            .buttonStyle(.plain).font(.caption.weight(.medium)).foregroundStyle(Theme.accent)
+                    }
+                }
                 TextEditor(text: $settings.systemPrompt)
                     .font(.callout)
                     .frame(minHeight: 72)
@@ -95,7 +105,8 @@ struct SettingsView: View {
                     .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
                     .accessibilityLabel("System prompt")
-                Text("Sets the assistant's persona + rules for every new chat.")
+                Text("Prepended to every chat. Keep it short — it's charged to the context window on every "
+                     + "turn, and small models follow three sharp rules better than ten soft ones.")
                     .font(.caption).foregroundStyle(Theme.textTertiary)
             }
             Divider().background(Theme.hairline)
@@ -118,104 +129,35 @@ struct SettingsView: View {
                 }
             }
             .tint(Theme.accent)
-            if settings.toolsEnabled { mcpServers }
+            if settings.toolsEnabled { mcpRow }
         }
     }
 
     // MARK: MCP servers
 
-    @ViewBuilder private var mcpServers: some View {
+    @ViewBuilder private var mcpRow: some View {
         Divider().background(Theme.hairline)
-        VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            HStack {
-                Text("MCP servers").font(.subheadline).foregroundStyle(Theme.textPrimary)
+        Button { showMCP = true } label: {
+            HStack(spacing: Theme.Space.sm) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(.subheadline).foregroundStyle(Theme.accent).frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("MCP servers").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                    Text(mcpSummary).font(.caption).foregroundStyle(Theme.textTertiary)
+                }
                 Spacer()
-                Button { newMCPName = ""; newMCPURL = ""; newMCPToken = ""; showAddMCP = true } label: {
-                    Label("Add", systemImage: "plus").font(.caption.weight(.medium))
-                }
-                .buttonStyle(.plain).foregroundStyle(Theme.accent)
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textTertiary)
             }
-            Text("Connect remote Model Context Protocol servers (HTTPS) to give the model more tools.")
-                .font(.caption).foregroundStyle(Theme.textTertiary)
-            ForEach(settings.mcpServers) { server in
-                HStack(spacing: Theme.Space.sm) {
-                    Image(systemName: "point.3.connected.trianglepath.dotted").font(.caption).foregroundStyle(Theme.accent)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(server.name).font(.caption.weight(.medium)).foregroundStyle(Theme.textPrimary)
-                        Text(server.url).font(.caption2.monospaced()).foregroundStyle(Theme.textTertiary).lineLimit(1)
-                    }
-                    Spacer()
-                    Button(role: .destructive) { removeMCP(server) } label: {
-                        Image(systemName: "trash").font(.caption)
-                    }
-                    .buttonStyle(.plain).foregroundStyle(Theme.textTertiary)
-                    .accessibilityLabel("Remove \(server.name)")
-                }
-                .padding(.vertical, 2)
-            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
-    private func removeMCP(_ server: MCPServer) {
-        settings.mcpServers.removeAll { $0.id == server.id }
-    }
-
-    private func addMCP() {
-        let url = newMCPURL.trimmingCharacters(in: .whitespaces)
-        guard !url.isEmpty else { return }
-        let name = newMCPName.trimmingCharacters(in: .whitespaces)
-        let token = newMCPToken.trimmingCharacters(in: .whitespaces)
-        settings.mcpServers.append(MCPServer(name: name.isEmpty ? url : name, url: url,
-                                             token: token.isEmpty ? nil : token))
-        showAddMCP = false
-    }
-
-    private var addMCPSheet: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.lg) {
-                    Text("Add a remote MCP server. Only HTTPS servers work on device; a token is optional.")
-                        .font(.caption).foregroundStyle(Theme.textSecondary)
-                    mcpField("Name", text: $newMCPName, placeholder: "My server")
-                    mcpField("Server URL", text: $newMCPURL, placeholder: "https://host/mcp", mono: true)
-                    mcpField("Bearer token (optional)", text: $newMCPToken, placeholder: "", mono: true, secure: true)
-                }
-                .padding(Theme.Space.lg)
-            }
-            .background(Theme.bg)
-            .navigationTitle("New MCP server")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showAddMCP = false } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") { addMCP() }
-                        .disabled(newMCPURL.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-        }
-        #if os(macOS)
-        .frame(minWidth: 420, minHeight: 280)
-        #endif
-    }
-
-    private func mcpField(_ label: String, text: Binding<String>, placeholder: String,
-                          mono: Bool = false, secure: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption.weight(.medium)).foregroundStyle(Theme.textSecondary)
-            Group {
-                if secure { SecureField(placeholder, text: text) } else { TextField(placeholder, text: text) }
-            }
-            .textFieldStyle(.plain)
-            .font(mono ? .callout.monospaced() : .callout)
-            #if os(iOS)
-            .autocorrectionDisabled().textInputAutocapitalization(.never)
-            #endif
-            .padding(Theme.Space.sm)
-            .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
-        }
+    private var mcpSummary: String {
+        let all = settings.mcpServers
+        guard !all.isEmpty else { return "Connect a remote server for more tools" }
+        let on = all.count(where: \.isEnabled)
+        return "\(all.count) configured" + (on < all.count ? " · \(all.count - on) off" : "")
     }
 
     // MARK: Sampling
@@ -225,18 +167,7 @@ struct SettingsView: View {
             sliderRow("Temperature", value: $settings.temperature, range: 0...1.5, step: 0.05, format: "%.2f")
             sliderRow("Top-p", value: $settings.topP, range: 0...1, step: 0.01, format: "%.2f")
             stepperRow("Max tokens", value: $settings.maxTokens, range: 128...4096, step: 128)
-            HStack {
-                Text("Context length").font(.subheadline).foregroundStyle(Theme.textSecondary)
-                Spacer()
-                Menu {
-                    ForEach([2048, 4096, 8192, 16384, 32768], id: \.self) { n in
-                        Button(Format.shortCount(n)) { settings.contextLength = n }
-                    }
-                } label: {
-                    Text(Format.shortCount(settings.contextLength)).font(.subheadline).foregroundStyle(Theme.accent)
-                }
-                .fixedSize()
-            }
+            contextRow
             DisclosureGroup("Advanced") {
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
                     stepperRow("Top-k", value: $settings.topK, range: 0...100, step: 5)
@@ -261,6 +192,77 @@ struct SettingsView: View {
             }
             .tint(Theme.accent)
         }
+    }
+
+    // MARK: Context length
+
+    /// Context is only meaningful **relative to a model**: the ladder stops at what the default model was
+    /// trained for, and each rung carries the fit dot for this device — because the ceiling that actually
+    /// binds is RAM, not the checkpoint. (A 9B trained to 256K still only fits ~16K on an 8 GB phone.)
+    @ViewBuilder private var contextRow: some View {
+        let model = contextModel
+        let options = model.map { ContextPolicy.options(for: $0) } ?? ContextPolicy.ladder
+        let shown = model.map { ContextPolicy.effective(requested: settings.contextLength, model: $0) }
+            ?? settings.contextLength
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Context length").font(.subheadline).foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Menu {
+                    ForEach(options, id: \.self) { n in
+                        Button { settings.contextLength = n } label: {
+                            // The dot is the point: it says which rungs this device can actually hold.
+                            Label(Format.shortCount(n), systemImage: fitSymbol(n))
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(Format.shortCount(shown)).font(.subheadline).foregroundStyle(Theme.accent)
+                        Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                }
+                .fixedSize()
+            }
+            Text(contextFootnote).font(.caption).foregroundStyle(Theme.textTertiary)
+        }
+    }
+
+    /// The model the ladder is measured against — whatever a new chat will actually load.
+    private var contextModel: LLMModel? {
+        LLMCatalog.model(id: settings.defaultModelID) ?? container.models.active?.model
+    }
+
+    /// Green / amber / red per rung. `.tight` alone isn't the answer — it's returned both for "runs, but
+    /// deep into the budget" and for "that context is way over the ceiling", so ask `ContextPolicy.fits`.
+    private func fitSymbol(_ n: Int) -> String {
+        guard let model = contextModel else { return "circle" }
+        let device = container.models.device
+        let variant = AppSettings.preferredVariant(for: model, device: device,
+                                                   preference: settings.enginePreference, context: n)
+        if LLMMemoryGovernor.plan(model: model, variant: variant, device: device, context: n) == .comfortable {
+            return "circle.fill"
+        }
+        return ContextPolicy.fits(model: model, variant: variant, device: device, context: n)
+            ? "exclamationmark.circle" : "xmark.circle"
+    }
+
+    private var contextFootnote: String {
+        guard let model = contextModel else {
+            return "How much conversation the model can see at once."
+        }
+        let native = Format.shortCount(model.architecture.nativeContext)
+        let variant = AppSettings.preferredVariant(for: model, device: container.models.device,
+                                                   preference: settings.enginePreference,
+                                                   context: settings.contextLength)
+        let fits = Format.shortCount(ContextPolicy.largestFitting(model: model, variant: variant,
+                                                                  device: container.models.device))
+        let clamped = ContextPolicy.effective(requested: settings.contextLength, model: model) < settings.contextLength
+        let head = clamped
+            ? "\(model.displayName) tops out at \(native), so that's what it runs at."
+            : "\(model.displayName) supports up to \(native); this device holds about \(fits)."
+        return head + " Longer context costs memory (it's the KV cache) and slows the first token — "
+             + "it doesn't make the model smarter."
     }
 
     // MARK: Appearance

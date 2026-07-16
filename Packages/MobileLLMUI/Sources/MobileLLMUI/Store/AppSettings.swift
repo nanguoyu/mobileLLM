@@ -51,7 +51,15 @@ public final class AppSettings {
         let snap = Self.loadSnapshot(from: defaults, key: key)
         defaultModelID = snap?.defaultModelID ?? fallbackDefaultModelID
         enginePreference = snap?.enginePreference ?? .auto
-        systemPrompt = snap?.systemPrompt ?? ""
+        // The stock prompt arrived after v1 shipped with no prompt at all, so seed it once into installs
+        // that predate it. `systemPromptSeeded` is what makes that a migration and not a bug: without it,
+        // "" is indistinguishable from "the user cleared it on purpose" and every launch would undo them.
+        if let snap {
+            systemPrompt = (snap.systemPromptSeeded != true && snap.systemPrompt.isEmpty)
+                ? SystemPrompt.standard : snap.systemPrompt
+        } else {
+            systemPrompt = SystemPrompt.standard
+        }
         thinkingDefault = snap?.thinkingDefault ?? true
         thinkingDisplay = snap?.thinkingDisplay ?? .autoCollapse
         toolsEnabled = snap?.toolsEnabled ?? false
@@ -68,10 +76,20 @@ public final class AppSettings {
     }
 
     /// Build the engine `Sampling` from the current settings + a per-turn thinking override.
-    public func sampling(thinking: Bool) -> Sampling {
+    ///
+    /// `contextLength` is a *request*: pass the model in and it's clamped to what that model was actually
+    /// trained for, since asking a 4K checkpoint for 32K doesn't extend it, it degrades it. (Live case:
+    /// Explore models, where the global setting has no idea what it's aimed at.)
+    public func sampling(thinking: Bool, model: LLMModel? = nil) -> Sampling {
         Sampling(temperature: temperature, topP: topP, topK: topK,
                  repetitionPenalty: repetitionPenalty, maxTokens: maxTokens, thinking: thinking,
-                 contextTokenCap: contextLength, kvBits: kvBits)
+                 contextTokenCap: effectiveContext(for: model), kvBits: kvBits)
+    }
+
+    /// The context the engine really gets for a model — the setting, clamped by the model's native ceiling.
+    public func effectiveContext(for model: LLMModel?) -> Int {
+        guard let model else { return contextLength }
+        return ContextPolicy.effective(requested: contextLength, model: model)
     }
 
     // MARK: - Persistence
@@ -81,6 +99,8 @@ public final class AppSettings {
         /// Optional so an older persisted snapshot (pre-engine-picker) still decodes; defaults to `.auto`.
         var enginePreference: EnginePreference?
         var systemPrompt: String
+        /// One-time marker that the stock prompt has been offered; absent in pre-v1.1 snapshots.
+        var systemPromptSeeded: Bool? = true
         var thinkingDefault: Bool
         var thinkingDisplay: ThinkingDisplayMode
         var toolsEnabled: Bool? = false   // optional → old snapshots decode
@@ -98,7 +118,7 @@ public final class AppSettings {
     private func persist() {
         guard !loading else { return }
         let snap = Snapshot(defaultModelID: defaultModelID, enginePreference: enginePreference,
-                            systemPrompt: systemPrompt,
+                            systemPrompt: systemPrompt, systemPromptSeeded: true,
                             thinkingDefault: thinkingDefault, thinkingDisplay: thinkingDisplay,
                             toolsEnabled: toolsEnabled, mcpServers: mcpServers,
                             temperature: temperature, topP: topP, topK: topK,

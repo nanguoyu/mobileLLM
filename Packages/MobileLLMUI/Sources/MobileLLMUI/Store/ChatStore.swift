@@ -197,7 +197,8 @@ public final class ChatStore {
         let history = convo.messages.filter { $0.id != assistantID }
         // "Hidden" thinking ⇒ don't GENERATE reasoning. This model's think-boundary isn't a literal
         // <think> tag we can reliably strip from the shown text, so the only sure way to hide it is off.
-        let params = settings.sampling(thinking: thinkingEnabled && settings.thinkingDisplay != .hidden)
+        let params = settings.sampling(thinking: thinkingEnabled && settings.thinkingDisplay != .hidden,
+                                       model: activeModel?.model)
         let turns = Self.chatTurns(messages: history, systemPrompt: settings.systemPrompt, cap: params.contextTokenCap)
         let engine = self.engine
         let toolsOn = settings.toolsEnabled
@@ -238,9 +239,15 @@ public final class ChatStore {
     /// The tool set for a turn: the standard local tools, plus every MCP server's tools (connected once
     /// and cached by config signature so we don't re-handshake every message).
     private func toolRegistry() async -> ToolRegistry {
-        let servers = settings.mcpServers.filter { !$0.url.trimmingCharacters(in: .whitespaces).isEmpty }
+        let servers = settings.mcpServers.filter {
+            $0.isEnabled && !$0.url.trimmingCharacters(in: .whitespaces).isEmpty
+        }
         guard !servers.isEmpty else { return .standard }
-        let signature = servers.map { "\($0.url)|\($0.token ?? "")" }.joined(separator: ",")
+        // The signature must cover everything that changes the tool set — muting a tool or disabling a
+        // server has to take effect on the next turn, not the next launch.
+        let signature = servers.map {
+            "\($0.url)|\($0.token ?? "")|\($0.disabledTools.sorted().joined(separator: "+"))"
+        }.joined(separator: ",")
         if let cachedRegistry, cachedRegistrySignature == signature { return cachedRegistry }
         let registry = await ToolRegistry.build(mcpServers: servers)
         cachedRegistry = registry
@@ -326,7 +333,8 @@ public final class ChatStore {
 
     /// Tokens currently used by the active thread's context vs the cap (composer meter; DESIGN §4).
     public func contextUsage() -> (used: Int, cap: Int) {
-        let cap = settings.contextLength
+        // The meter must show the cap the engine actually runs at, not the requested one.
+        let cap = settings.effectiveContext(for: activeModel?.model)
         guard let convo = activeConversation else { return (0, cap) }
         var used = max(1, settings.systemPrompt.count / 4)
         if settings.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { used = 0 }

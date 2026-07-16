@@ -59,6 +59,35 @@ final class MCPTests: XCTestCase {
         XCTAssertTrue(MCPTool.params(fromInputSchema: #"{"type":"object"}"#).isEmpty)
     }
 
+    // MARK: Server config — persistence + gating
+
+    /// The dangerous one: `MCPServer` gained `isEnabled`/`disabledTools` after v1 shipped. The synthesized
+    /// decoder throws on a missing non-optional key, and this struct decodes *inside* the settings
+    /// snapshot — so a regression here doesn't lose your servers, it silently resets every setting.
+    func testDecodesASnapshotWrittenBeforeTheNewFieldsExisted() throws {
+        let old = #"{"name":"DeepWiki","url":"https://mcp.deepwiki.com/mcp"}"#
+        let server = try JSONDecoder().decode(MCPServer.self, from: Data(old.utf8))
+        XCTAssertEqual(server.name, "DeepWiki")
+        XCTAssertTrue(server.isEnabled, "a server configured before the toggle existed stays on")
+        XCTAssertTrue(server.disabledTools.isEmpty)
+    }
+
+    func testRoundTripsTheNewFields() throws {
+        let server = MCPServer(name: "S", url: "https://h/mcp", token: "t",
+                               isEnabled: false, disabledTools: ["noisy_tool"])
+        let back = try JSONDecoder().decode(MCPServer.self, from: JSONEncoder().encode(server))
+        XCTAssertEqual(back, server)
+    }
+
+    /// A disabled server must not even be contacted — the registry is what gates it.
+    func testDisabledServerIsNotConsulted() async {
+        let unreachable = MCPServer(name: "off", url: "https://127.0.0.1:1/mcp", isEnabled: false)
+        let registry = await ToolRegistry.build(mcpServers: [unreachable])
+        // Only the three standard local tools; no hang, no attempt.
+        XCTAssertEqual(registry.schemas.map(\.name).sorted(),
+                       ["calculator", "current_datetime", "web_search"])
+    }
+
     // MARK: Live — DeepWiki (opt-in: MCP_LIVE=1)
 
     func testLiveDeepWikiConnectAndCall() async throws {

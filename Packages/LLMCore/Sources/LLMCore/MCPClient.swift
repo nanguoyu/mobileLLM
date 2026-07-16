@@ -9,8 +9,27 @@ public struct MCPServer: Sendable, Hashable, Codable, Identifiable {
     public var name: String
     public var url: String
     public var token: String?
-    public init(name: String, url: String, token: String? = nil) {
+    /// Off = configured but not consulted — keep a server around without paying its connect on every turn.
+    public var isEnabled: Bool
+    /// Tools the user muted on this server. Muting beats disconnecting when a server advertises 30 tools
+    /// and a small model only reliably picks from 3.
+    public var disabledTools: Set<String>
+
+    public init(name: String, url: String, token: String? = nil,
+                isEnabled: Bool = true, disabledTools: Set<String> = []) {
         self.name = name; self.url = url; self.token = token
+        self.isEnabled = isEnabled; self.disabledTools = disabledTools
+    }
+
+    /// Hand-written so a snapshot persisted before `isEnabled`/`disabledTools` existed still decodes —
+    /// the synthesized decoder would throw on the missing keys and take every other setting down with it.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        url = try c.decode(String.self, forKey: .url)
+        token = try c.decodeIfPresent(String.self, forKey: .token)
+        isEnabled = try c.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        disabledTools = try c.decodeIfPresent(Set<String>.self, forKey: .disabledTools) ?? []
     }
 }
 

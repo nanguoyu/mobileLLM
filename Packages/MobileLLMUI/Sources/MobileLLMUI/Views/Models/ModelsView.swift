@@ -28,13 +28,15 @@ struct ModelsView: View {
         var label: String { self == .featured ? "Featured" : "Explore" }
     }
 
-    /// Catalog filter (the catalog now spans several families, so it needs search + shape).
+    /// Catalog filter (the catalog now spans several families, so it needs search + shape). No "Chinese"
+    /// filter: every seed family except Gemma is Chinese-strong, so it barely narrows anything —
+    /// "Multimodal" is the distinction that actually matters.
     private enum ModelFilter: String, CaseIterable {
-        case all, runs, installed, reasoning, chinese
+        case all, runs, installed, reasoning, multimodal
         var label: String {
             switch self {
             case .all: "All"; case .runs: "Runs here"; case .installed: "Installed"
-            case .reasoning: "Reasoning"; case .chinese: "Chinese"
+            case .reasoning: "Reasoning"; case .multimodal: "Multimodal"
             }
         }
     }
@@ -188,14 +190,8 @@ struct ModelsView: View {
         }
         case .installed: return model.variants.contains { models.isInstalled($0) }
         case .reasoning: return model.architecture.thinkingCapable
-        case .chinese: return isChineseStrong(model)
+        case .multimodal: return !model.architecture.extraModalities.isEmpty
         }
-    }
-
-    /// Chinese-language strength by family (the seed catalog): Qwen / Bonsai / DeepSeek / Hunyuan /
-    /// MiniCPM are strong; Gemma is broadly multilingual but not Chinese-first.
-    private func isChineseStrong(_ model: LLMModel) -> Bool {
-        model.family != .gemma
     }
 
     private var storageHeader: some View {

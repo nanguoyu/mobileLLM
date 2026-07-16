@@ -41,16 +41,17 @@ public struct MCPTool: Tool {
 }
 
 public extension ToolRegistry {
-    /// Build the live tool set: the standard local tools plus every tool from each configured MCP server
-    /// (connect + list once, sharing a client per server). Servers that fail to connect are skipped so one
-    /// bad URL never breaks tools entirely.
+    /// Build the live tool set: the standard local tools plus every tool from each **enabled** MCP server
+    /// (connect + list once, sharing a client per server), minus the tools the user muted. Servers that
+    /// fail to connect are skipped so one bad URL never breaks tools entirely.
     static func build(mcpServers: [MCPServer], includeStandard: Bool = true,
                       session: URLSession = .shared) async -> ToolRegistry {
         var tools: [Tool] = includeStandard ? [CalculatorTool(), DateTimeTool(), WebSearchTool()] : []
-        for server in mcpServers where !server.url.isEmpty {
+        for server in mcpServers where server.isEnabled && !server.url.isEmpty {
             let client = MCPClient(server: server, session: session)
             if let specs = try? await client.connect() {
-                tools.append(contentsOf: specs.map { MCPTool(client: client, spec: $0) })
+                tools.append(contentsOf: specs.filter { !server.disabledTools.contains($0.name) }
+                                              .map { MCPTool(client: client, spec: $0) })
             }
         }
         return ToolRegistry(tools)
