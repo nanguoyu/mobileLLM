@@ -64,6 +64,12 @@ struct ChatThreadView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        // Tap anywhere in the thread AREA — every branch, including the suggestion/empty states, which
+        // live outside the scroll view — to drop the keyboard. Simultaneous, so row buttons still work;
+        // the composer is a sibling (safe-area inset), so focusing the field never self-dismisses.
+        .simultaneousGesture(TapGesture().onEnded { Self.dismissKeyboard() })
         .sheet(item: $editing) { message in editSheet(message) }
         .alert("Regenerate this reply?",
                isPresented: Binding(get: { regenTarget != nil }, set: { if !$0 { regenTarget = nil } }),
@@ -105,10 +111,6 @@ struct ChatThreadView: View {
                     })
                 }
                 .scrollDismissesKeyboard(.interactively)   // drag the thread down to dismiss the keyboard
-                // Tapping blank space dismisses the keyboard too (simultaneous, so taps that land on
-                // buttons/rows still do their job) — otherwise the keyboard camps over the composer's
-                // attach controls with no way out but scrolling.
-                .simultaneousGesture(TapGesture().onEnded { Self.dismissKeyboard() })
                 .coordinateSpace(name: "thread")
                 .background(Theme.bg)
                 // A leaf that alone observes `streaming` and nudges the scroll — throttled, so the thread's

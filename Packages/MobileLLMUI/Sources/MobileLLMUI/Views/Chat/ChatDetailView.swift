@@ -22,19 +22,22 @@ struct ChatDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ChatThreadView(chat: container.chat,
-                           displayMode: container.settings.thinkingDisplay,
-                           isLoadingModel: container.models.switching,
-                           loadingModelName: loadingModelName,
-                           onOpenModels: onOpenModels)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            Composer(chat: container.chat,
-                     thinkingCapable: chat.activeModel?.model.architecture.thinkingCapable ?? true,
-                     canAttachImages: container.models.activeSupportsImageInput,
-                     isLoadingModel: container.models.switching,
-                     onOpenModels: onOpenModels)
-        }
+        ChatThreadView(chat: container.chat,
+                       displayMode: container.settings.thinkingDisplay,
+                       isLoadingModel: container.models.switching,
+                       loadingModelName: loadingModelName,
+                       onOpenModels: onOpenModels)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // A safe-area inset, not a VStack row: the system then owns keeping the composer above the
+            // keyboard in every container (tab bar + pushed stack included) — the VStack arrangement
+            // left the input row buried under the keyboard on device.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Composer(chat: container.chat,
+                         thinkingCapable: chat.activeModel?.model.architecture.thinkingCapable ?? true,
+                         canAttachImages: container.models.activeSupportsImageInput,
+                         isLoadingModel: container.models.switching,
+                         onOpenModels: onOpenModels)
+            }
         .background(Theme.bg)
         .navigationTitle(chat.activeConversation?.title ?? "New Chat")
         #if os(iOS)
