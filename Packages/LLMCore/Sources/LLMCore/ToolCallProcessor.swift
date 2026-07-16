@@ -12,6 +12,10 @@ public struct ToolCallProcessor {
     public enum Event: Equatable, Sendable {
         case text(String)
         case call(ToolCall)
+        /// A `<tool_call>` block whose body isn't a usable call (bad JSON, missing `name`). Carries the raw
+        /// body so the loop can tell the model what was wrong and let it retry. Dropping these silently is
+        /// what made a small model's near-miss vanish into an empty, unexplained reply.
+        case malformed(String)
     }
 
     private static let open = "<tool_call>"
@@ -38,8 +42,14 @@ public struct ToolCallProcessor {
             if let r = buffer.range(of: tag) {
                 let before = String(buffer[buffer.startIndex..<r.lowerBound])
                 if inCall {
-                    // `before` is the tool-call JSON body — parse + emit a call, drop the markup.
-                    if let call = Self.parse(before) { out.append(.call(call)) }
+                    // `before` is the tool-call JSON body — parse + emit a call, drop the markup. A body
+                    // that won't parse becomes `.malformed` rather than nothing: the loop feeds the model
+                    // its own mistake so it can retry.
+                    if let call = Self.parse(before) {
+                        out.append(.call(call))
+                    } else {
+                        out.append(.malformed(before.trimmingCharacters(in: .whitespacesAndNewlines)))
+                    }
                 } else if !before.isEmpty {
                     out.append(.text(before))       // plain text preceding the call
                 }
@@ -55,8 +65,13 @@ public struct ToolCallProcessor {
                 let text = String(buffer[buffer.startIndex..<idx])
                 if !text.isEmpty { out.append(.text(text)) }
                 buffer.removeSubrange(buffer.startIndex..<idx)
-            } else if flush, inCall, let call = Self.parse(buffer) {
-                out.append(.call(call))             // unterminated call at stream end — best-effort parse
+            } else if flush, inCall, !buffer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // Unterminated call at stream end — best-effort parse, else report it rather than drop it.
+                if let call = Self.parse(buffer) {
+                    out.append(.call(call))
+                } else {
+                    out.append(.malformed(buffer.trimmingCharacters(in: .whitespacesAndNewlines)))
+                }
                 buffer.removeAll()
             }
             break

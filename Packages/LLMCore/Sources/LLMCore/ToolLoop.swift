@@ -45,6 +45,23 @@ public enum ToolPrompt {
         """
     }
 
+    /// Hand a malformed tool call back to the model with a worked example. Small models miss the JSON
+    /// shape often enough that silently dropping the attempt (the old behavior) reads to the user as the
+    /// model saying nothing at all; one corrective round trip usually lands it.
+    public static func malformedCallNote(_ body: String) -> String {
+        """
+        <tool_response>
+        Your last tool call could not be read — its body wasn't valid JSON with a "name" field. You sent:
+        =====
+        \(body.prefix(400))
+        =====
+        Try again, emitting ONLY this and nothing else:
+        <tool_call>{"name": "<tool>", "arguments": {"<arg>": "<value>"}}</tool_call>
+        If no tool fits, just answer the user in plain text instead.
+        </tool_response>
+        """
+    }
+
     /// Return `messages` with the tools block folded into the system turn (adding one if absent).
     public static func inject(_ schemas: [ToolSchema], into messages: [ChatTurn]) -> [ChatTurn] {
         let block = systemBlock(schemas)
@@ -94,6 +111,7 @@ public struct ToolLoop: Sendable {
                         var raw = ""
                         var processor = ToolCallProcessor()
                         var call: ToolCall?
+                        var malformed: String?
 
                         loop: for try await delta in engine.generate(messages: history, params: params) {
                             try Task.checkCancellation()
@@ -106,19 +124,31 @@ public struct ToolLoop: Sendable {
                                     switch e {
                                     case .text(let t): if !t.isEmpty { continuation.yield(.answer(t)) }
                                     case .call(let c): call = c; break loop   // stop generating; run the tool
+                                    case .malformed(let body): malformed = body; break loop
                                     }
                                 }
                             case .done(let stats):
                                 lastStats = stats
                             }
                         }
-                        if call == nil {
+                        if call == nil, malformed == nil {
                             for e in processor.finish() {
                                 switch e {
                                 case .text(let t): if !t.isEmpty { continuation.yield(.answer(t)) }
                                 case .call(let c): call = c
+                                case .malformed(let body): malformed = body
                                 }
                             }
+                        }
+
+                        // The model tried to call a tool but its JSON didn't parse. Hand the mistake back
+                        // and let it try again rather than dropping the turn: a small model's near-miss
+                        // otherwise became an empty, unexplained reply (observed on-device with a 2B model
+                        // asked for a reminder). Costs one iteration, like any other round trip.
+                        if let malformed {
+                            history.append(ChatTurn(role: .assistant, content: raw))
+                            history.append(ChatTurn(role: .user, content: ToolPrompt.malformedCallNote(malformed)))
+                            continue
                         }
 
                         // No tool requested → this is the final answer.

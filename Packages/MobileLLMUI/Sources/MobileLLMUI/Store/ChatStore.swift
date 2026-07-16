@@ -572,7 +572,10 @@ public final class ChatStore {
         if state.answer.isEmpty {
             // Nothing was generated — do NOT fake a "0 tok · stop:…" stats line (the ghost reply). Mark
             // the outcome so the row renders a compact Stopped / Failed — Retry instead.
-            conversations[ci].messages[mi].emptyOutcome = failed ? .failed : .stopped
+            // Distinguish "you stopped it" from "it ran to EOS with nothing to say" — the second is the
+            // model's own outcome and shouldn't read as the user's action.
+            conversations[ci].messages[mi].emptyOutcome = failed ? .failed
+                : (stopReason == .cancelled ? .stopped : .noReply)
             conversations[ci].messages[mi].stats = nil
         } else {
             conversations[ci].messages[mi].emptyOutcome = nil

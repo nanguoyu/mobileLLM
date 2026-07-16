@@ -172,3 +172,53 @@ final class ToolLoopRobustnessTests: XCTestCase {
                       "the first call's result (1+1 = 2) is fed back")
     }
 }
+
+/// The on-device failure this pins: a 2B model asked for a reminder emitted a `<tool_call>` whose JSON
+/// didn't parse. The processor dropped it silently — no tool, no error, no text — so the turn committed
+/// empty and the UI could only say "Stopped". The loop now hands the mistake back so the model can retry.
+final class MalformedToolCallRecoveryTests: XCTestCase {
+
+    func testMalformedBodyIsReportedNotDropped() {
+        var p = ToolCallProcessor()
+        var events = p.feed("<tool_call>{\"name\": \"create_reminder\", \"arguments\": {oops}</tool_call>")
+        events += p.finish()
+        guard case .malformed(let body)? = events.first else {
+            return XCTFail("a malformed body must surface, got \(events)")
+        }
+        XCTAssertTrue(body.contains("create_reminder"), "the raw body rides along so the model sees its mistake")
+    }
+
+    func testUnterminatedMalformedCallAtStreamEndIsReported() {
+        var p = ToolCallProcessor()
+        _ = p.feed("<tool_call>{\"name\": ")
+        let events = p.finish()
+        XCTAssertTrue(events.contains { if case .malformed = $0 { return true } else { return false } })
+    }
+
+    /// End-to-end: turn 1 emits bad JSON, the loop feeds back the correction, turn 2 gets it right, the
+    /// tool runs, turn 3 answers — instead of the whole turn vanishing.
+    func testLoopRecoversFromAMalformedCall() async throws {
+        let engine = TurnScriptedEngine([
+            "<tool_call>{\"name\": \"calculator\", \"arguments\": {17+25}}</tool_call>",
+            "<tool_call>{\"name\": \"calculator\", \"arguments\": {\"expression\": \"17+25\"}}</tool_call>",
+            "It's 42.",
+        ])
+        let loop = ToolLoop(engine: engine, registry: .builtIn)
+        var answer = "", ranTool = false
+        for try await event in loop.run(messages: [ChatTurn(role: .user, content: "17+25?")],
+                                        params: Sampling()) {
+            switch event {
+            case .answer(let s): answer += s
+            case .toolCall(let c): XCTAssertEqual(c.name, "calculator"); ranTool = true
+            default: break
+            }
+        }
+        XCTAssertTrue(ranTool, "the retry's valid call must actually run")
+        XCTAssertTrue(answer.contains("42"), "the model reaches its answer, got: \(answer)")
+
+        // The correction was handed back before the retry.
+        let second = engine.receivedHistories()[1]
+        XCTAssertTrue(second.contains { $0.content.contains("wasn't valid JSON") },
+                      "turn 2 must see what was wrong with turn 1")
+    }
+}

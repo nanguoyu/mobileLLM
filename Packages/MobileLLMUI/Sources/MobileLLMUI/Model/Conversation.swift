@@ -37,7 +37,10 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
     /// Why an assistant turn ended with no answer text — the user tapped Stop, or generation errored.
     /// Drives the compact "Stopped / Failed — Retry" row instead of a ghost "0 tok" stats line. Optional
     /// → older records (and every normal turn) decode as nil.
-    public enum EmptyOutcome: String, Codable, Sendable, Equatable { case stopped, failed }
+    /// Why a committed turn has no text. `stopped` = the user stopped it; `noReply` = the model ended
+    /// its turn having produced nothing (a real small-model outcome — labelling that "Stopped" blamed the
+    /// user for the model's silence); `failed` = generation threw.
+    public enum EmptyOutcome: String, Codable, Sendable, Equatable { case stopped, noReply, failed }
 
     public let id: UUID
     public var role: Role

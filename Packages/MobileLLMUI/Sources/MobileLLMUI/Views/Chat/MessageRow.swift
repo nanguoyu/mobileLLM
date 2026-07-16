@@ -153,7 +153,13 @@ struct EmptyReplyRow: View {
     let outcome: Message.EmptyOutcome
     var onRetry: (() -> Void)?
 
-    private var label: String { outcome == .stopped ? "Stopped" : "Couldn't generate a reply" }
+    private var label: String {
+        switch outcome {
+        case .stopped: "Stopped"
+        case .noReply: "The model didn't reply"
+        case .failed: "Couldn't generate a reply"
+        }
+    }
     private var icon: String { outcome == .stopped ? "stop.circle" : "exclamationmark.triangle" }
     private var tint: Color { outcome == .stopped ? Theme.textTertiary : Theme.danger }
 

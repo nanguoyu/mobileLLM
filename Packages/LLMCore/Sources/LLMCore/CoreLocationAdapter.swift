@@ -21,7 +21,14 @@ public final class CoreLocationProvider: LocationProviding, @unchecked Sendable 
 
     public func currentLocation() async throws -> LocationFix {
         let location: CLLocation = try await withCheckedThrowingContinuation { cont in
-            OneShotLocationDelegate(continuation: cont, fixTimeout: fixTimeout).start()
+            // CLLocationManager MUST be created on a thread with an active run loop — it delivers its
+            // delegate callbacks there. The tool runs inside the agent loop's Task (a cooperative-pool
+            // thread with NO run loop), so constructing it inline meant didUpdateLocations never arrived
+            // and every request died on the timeout: "permission granted, still no fix". Hop to main.
+            let timeout = fixTimeout
+            DispatchQueue.main.async {
+                OneShotLocationDelegate(continuation: cont, fixTimeout: timeout).start()
+            }
         }
         let locality = (try? await CLGeocoder().reverseGeocodeLocation(location))?.first?.locality
         return LocationFix(latitude: location.coordinate.latitude,
@@ -31,10 +38,12 @@ public final class CoreLocationProvider: LocationProviding, @unchecked Sendable 
     }
 
     public func permissionState() async -> ToolPermission {
-        switch CLLocationManager().authorizationStatus {
-        case .notDetermined: .notDetermined
-        case .denied, .restricted: .denied
-        default: .granted
+        await MainActor.run {   // same run-loop rule as above
+            switch CLLocationManager().authorizationStatus {
+            case .notDetermined: .notDetermined
+            case .denied, .restricted: .denied
+            default: .granted
+            }
         }
     }
 
@@ -42,7 +51,9 @@ public final class CoreLocationProvider: LocationProviding, @unchecked Sendable 
     /// settings screen so flipping the toggle asks the user right away, not at the first model call.
     public func requestPermission() async -> ToolPermission {
         await withCheckedContinuation { cont in
-            AuthorizationOnlyDelegate(continuation: cont).start()
+            DispatchQueue.main.async {
+                AuthorizationOnlyDelegate(continuation: cont).start()
+            }
         }
     }
 }
