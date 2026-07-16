@@ -201,6 +201,54 @@ final class ChatStoreTests: XCTestCase {
 
     // MARK: - Empty / failed replies (B1.e: no ghost 0-token rows; honest Retry state)
 
+    // MARK: - Conversation ↔ model identity
+
+    /// Every send restamps the record with the model that's ACTUALLY answering, so a mid-thread model
+    /// switch is what a relaunch restores — not the first model the thread ever used.
+    func testSendRestampsTheConversationModelEveryTurn() async throws {
+        let (chat, dir) = makeStore(script: .init(reasoning: "", answer: "ok",
+                                                  chunkSize: 8, chunkDelayNanos: 0))
+        defer { try? FileManager.default.removeItem(at: dir) }
+        chat.draft = "first"
+        chat.send()
+        try await waitUntilIdle(chat)
+        XCTAssertEqual(chat.activeConversation?.modelID, LLMCatalog.bonsai8b.id)
+
+        // Switch the resident model, continue the thread — the record must follow.
+        let other = LLMCatalog.bonsai4b
+        chat.activeModel = LoadedModel(model: other, variant: other.defaultVariantValue)
+        chat.draft = "second"
+        chat.send()
+        try await waitUntilIdle(chat)
+        XCTAssertEqual(chat.activeConversation?.modelID, other.id)
+        XCTAssertEqual(chat.activeConversation?.variantID, other.defaultVariantValue.id)
+    }
+
+    /// Opening a conversation whose remembered model differs from the resident one asks the shell to
+    /// restore it; a matching or empty record stays quiet.
+    func testSelectRequestsTheConversationsOwnModel() async throws {
+        let (chat, dir) = makeStore(script: .init(reasoning: "", answer: "ok",
+                                                  chunkSize: 8, chunkDelayNanos: 0))
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var restored: [String] = []
+        chat.restoreModel = { modelID, _ in restored.append(modelID) }
+
+        chat.draft = "hello"
+        chat.send()
+        try await waitUntilIdle(chat)
+        let convoID = try XCTUnwrap(chat.activeID)
+
+        // Same model resident → no restore chatter.
+        chat.select(convoID)
+        XCTAssertTrue(restored.isEmpty)
+
+        // A different model resident → selecting the thread asks for its own model back.
+        let other = LLMCatalog.bonsai4b
+        chat.activeModel = LoadedModel(model: other, variant: other.defaultVariantValue)
+        chat.select(convoID)
+        XCTAssertEqual(restored, [LLMCatalog.bonsai8b.id])
+    }
+
     func testStopBeforeFirstTokenCommitsStoppedEmptyState() async throws {
         // Long per-char delay so nothing streams before we Stop synchronously.
         let (chat, dir) = makeStore(script: .init(reasoning: "r", answer: "a",

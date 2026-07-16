@@ -158,7 +158,23 @@ public final class ChatStore {
         return convo
     }
 
-    public func select(_ id: UUID) { activeID = id }
+    /// Set by the app shell: activate the given (modelID, variantID) if installed. Called when the user
+    /// opens a conversation whose remembered model differs from the resident one — a thread keeps ITS
+    /// model across relaunches instead of silently falling back to the Settings default.
+    public var restoreModel: (@MainActor (_ modelID: String, _ variantID: String) -> Void)?
+
+    public func select(_ id: UUID) {
+        activeID = id
+        restoreConversationModelIfNeeded()
+    }
+
+    /// Ask the shell to bring back the active conversation's own model when it differs from the resident
+    /// one. Never mid-stream; empty ids (a modelless placeholder thread) are left alone.
+    public func restoreConversationModelIfNeeded() {
+        guard streaming == nil, let convo = activeConversation,
+              !convo.modelID.isEmpty, convo.modelID != activeModel?.model.id else { return }
+        restoreModel?(convo.modelID, convo.variantID)
+    }
 
     /// Clear the in-memory mirror after a full data wipe (Settings → Delete all data).
     public func reloadAfterWipe() {
@@ -265,11 +281,12 @@ public final class ChatStore {
         // Auto-title from the first user line (model-summarized titling is TODO(v1.0)).
         if conversations[idx].messages.filter({ $0.role == .user }).count == 1 {
             conversations[idx].title = Self.autoTitle(from: text)
-            // Stamp the model that's actually answering — a thread created model-less carries a placeholder.
-            if let m = activeModel {
-                conversations[idx].modelID = m.model.id
-                conversations[idx].variantID = m.variant.id
-            }
+        }
+        // Stamp the model that's actually answering on EVERY send — the record tracks the thread's
+        // CURRENT model, so reopening the app restores what you were really using, not the first pick.
+        if let m = activeModel {
+            conversations[idx].modelID = m.model.id
+            conversations[idx].variantID = m.variant.id
         }
         let assistant = Message(role: .assistant, answer: "", parentID: user.id)
         conversations[idx].messages.append(assistant)

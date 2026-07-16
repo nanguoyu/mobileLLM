@@ -89,6 +89,10 @@ struct ConversationListView: View {
         #else
         .listStyle(.sidebar)
         #endif
+        .scrollDismissesKeyboard(.immediately)   // drag the list → the search keyboard drops
+        // …and so does tapping anywhere (simultaneous, so row taps still navigate) — the search field
+        // otherwise held the keyboard over the list with no way out.
+        .simultaneousGesture(TapGesture().onEnded { ChatThreadView.dismissKeyboard() })
         .scrollContentBackground(.hidden)
         .background(Theme.bg)
         .overlay(alignment: .bottom) {

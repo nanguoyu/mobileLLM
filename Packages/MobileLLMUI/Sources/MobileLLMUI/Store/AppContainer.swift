@@ -44,6 +44,22 @@ public final class AppContainer {
         self.chat = ChatStore(engine: engine, store: store, settings: settings)
         // Reload a suspended model right before the next turn (its memory is freed while idle).
         chat.ensureModelReady = { [weak self] in await self?.reloadIfSuspended() }
+        // Opening a conversation brings back ITS model (when installed) instead of whatever is resident —
+        // a thread's identity includes the model it was talked to with.
+        chat.restoreModel = { [weak self] modelID, variantID in
+            self?.restoreConversationModel(modelID: modelID, variantID: variantID)
+        }
+    }
+
+    /// Activate the (model, variant) a conversation remembers, if it's still installed. Falls back to any
+    /// installed variant of the same model (the exact quant may have been deleted); silently keeps the
+    /// resident model when nothing of it is on disk — the header + switcher make that visible.
+    private func restoreConversationModel(modelID: String, variantID: String) {
+        guard !models.switching, let model = models.model(id: modelID) else { return }
+        let variant = model.variants.first { $0.id == variantID && models.isInstalled($0) }
+                   ?? model.variants.first { models.isInstalled($0) }
+        guard let variant, models.active?.variant.id != variant.id else { return }
+        activate(model, variant: variant, force: false)
     }
 
     /// Free the resident model's weights while idle (app backgrounded, or the user left the chat), but
@@ -74,11 +90,27 @@ public final class AppContainer {
         // and the storage/switcher lists see them (DESIGN §2.4). This also rescans install state.
         await models.loadAdoptedRegistry()
         await chat.load()
-        let model = models.model(id: settings.defaultModelID) ?? models.recommendedModel
-        if let variant = bootVariant(for: model) {
+        // Boot into the model the ACTIVE conversation was using (when installed) — falling back to the
+        // Settings default. One activation either way; a thread must not silently switch models just
+        // because the app relaunched.
+        let (model, variant) = bootTarget()
+        if let variant {
             await activateAndSync(model, variant, force: false, announce: false)
         }
         syncActive()
+    }
+
+    /// The launch activation target: the active conversation's remembered (model, variant) if that model
+    /// still has an installed variant, else the Settings default via the engine-preference policy.
+    private func bootTarget() -> (LLMModel, LLMVariant?) {
+        if let convo = chat.activeConversation, !convo.modelID.isEmpty,
+           let remembered = models.model(id: convo.modelID) {
+            let variant = remembered.variants.first { $0.id == convo.variantID && models.isInstalled($0) }
+                       ?? remembered.variants.first { models.isInstalled($0) }
+            if let variant { return (remembered, variant) }
+        }
+        let model = models.model(id: settings.defaultModelID) ?? models.recommendedModel
+        return (model, bootVariant(for: model))
     }
 
     /// Which variant to auto-activate on launch. The user's engine preference (Settings → Inference
