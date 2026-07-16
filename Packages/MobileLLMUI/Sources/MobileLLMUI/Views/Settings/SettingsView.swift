@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var confirmDeleteAll = false
     @State private var storageBytes: Int64 = 0
     @State private var showMCP = false
+    @State private var showSystemPrompt = false
 
     init(container: AppContainer) {
         self.container = container
@@ -48,6 +49,20 @@ struct SettingsView: View {
             .frame(minWidth: 520, minHeight: 560)
             #endif
         }
+        .sheet(isPresented: $showSystemPrompt) {
+            NavigationStack { SystemPromptEditor(settings: settings) }
+            #if os(macOS)
+            .frame(minWidth: 480, minHeight: 420)
+            #endif
+        }
+    }
+
+    /// One-line status for the system-prompt row: the stock prompt, off, or a custom preview.
+    private var systemPromptSummary: String {
+        let text = settings.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return "Off — no instructions are sent" }
+        if SystemPrompt.isStandard(settings.systemPrompt) { return "Standard prompt" }
+        return "Custom · \(text.replacingOccurrences(of: "\n", with: " ").prefix(60))"
     }
 
     // MARK: Model
@@ -89,27 +104,22 @@ struct SettingsView: View {
 
     private var behaviorSection: some View {
         section("Behavior", icon: "text.bubble") {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("System prompt").font(.subheadline).foregroundStyle(Theme.textSecondary)
-                    Spacer()
-                    if !SystemPrompt.isStandard(settings.systemPrompt) {
-                        Button("Reset to default") { settings.systemPrompt = SystemPrompt.standard }
-                            .buttonStyle(.plain).font(.caption.weight(.medium)).foregroundStyle(Theme.accent)
+            // A row, not an inline editor — the full-height TextEditor ate half the settings screen.
+            Button { showSystemPrompt = true } label: {
+                HStack(spacing: Theme.Space.sm) {
+                    Image(systemName: "text.quote")
+                        .font(.subheadline).foregroundStyle(Theme.accent).frame(width: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("System prompt").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                        Text(systemPromptSummary).font(.caption).foregroundStyle(Theme.textTertiary)
+                            .lineLimit(1)
                     }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textTertiary)
                 }
-                TextEditor(text: $settings.systemPrompt)
-                    .font(.callout)
-                    .frame(minHeight: 72)
-                    .scrollContentBackground(.hidden)
-                    .padding(Theme.Space.xs)
-                    .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
-                    .accessibilityLabel("System prompt")
-                Text("Prepended to every chat. Keep it short — it's charged to the context window on every "
-                     + "turn, and small models follow three sharp rules better than ten soft ones.")
-                    .font(.caption).foregroundStyle(Theme.textTertiary)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             Divider().background(Theme.hairline)
             Toggle(isOn: $settings.thinkingDefault) {
                 Text("Thinking mode by default").font(.subheadline).foregroundStyle(Theme.textPrimary)
@@ -429,6 +439,46 @@ public struct MacSettingsWindow: View {
     }
 }
 #endif
+
+/// The system-prompt editor, in its own sheet — full-height editing space without eating the settings
+/// screen. Reset restores the stock prompt; clearing it entirely is a valid "off" state that sticks.
+struct SystemPromptEditor: View {
+    @Bindable var settings: AppSettings
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Space.md) {
+                Text("Prepended to every chat. Keep it short — it's charged to the context window on "
+                     + "every turn, and small models follow three sharp rules better than ten soft ones.")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+                TextEditor(text: $settings.systemPrompt)
+                    .font(.callout)
+                    .foregroundStyle(Theme.textPrimary)
+                    .frame(minHeight: 280)
+                    .scrollContentBackground(.hidden)
+                    .padding(Theme.Space.xs)
+                    .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
+                        .strokeBorder(Theme.hairline))
+                    .accessibilityLabel("System prompt")
+                if !SystemPrompt.isStandard(settings.systemPrompt) {
+                    Button("Reset to the standard prompt") { settings.systemPrompt = SystemPrompt.standard }
+                        .buttonStyle(.plain).font(.subheadline.weight(.medium)).foregroundStyle(Theme.accent)
+                }
+            }
+            .padding(Theme.Space.lg)
+            .frame(maxWidth: 640).frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .background(Theme.bg)
+        .navigationTitle("System prompt")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+    }
+}
 
 #if DEBUG
 #Preview("Settings") {
