@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var showTools = false
     @State private var showSystemPrompt = false
     @State private var showSkills = false
+    @State private var showMemory = false
 
     init(container: AppContainer) {
         self.container = container
@@ -65,6 +66,12 @@ struct SettingsView: View {
             .frame(minWidth: 520, minHeight: 560)
             #endif
         }
+        .sheet(isPresented: $showMemory) {
+            NavigationStack { MemoryView(book: container.memory, settings: settings) }
+            #if os(macOS)
+            .frame(minWidth: 520, minHeight: 560)
+            #endif
+        }
     }
 
     /// One-line status for the system-prompt row: the stock prompt, off, or a custom preview.
@@ -104,6 +111,8 @@ struct SettingsView: View {
             .buttonStyle(.plain)
             Divider().background(Theme.hairline)
             skillsRow
+            Divider().background(Theme.hairline)
+            memoryRow
             Divider().background(Theme.hairline)
             Toggle(isOn: $settings.thinkingDefault) {
                 Text("Thinking mode by default").font(.subheadline).foregroundStyle(Theme.textPrimary)
@@ -146,6 +155,32 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: Memory
+
+    /// Its own row in Behavior, beside System prompt and Skills — memory is a thing the app knows about
+    /// you, not a tool setting, and it was unreviewable while its only surface was a switch two screens
+    /// deep in Manage tools. The switch stays there; what's remembered lives here.
+    private var memoryRow: some View {
+        Button { showMemory = true } label: {
+            HStack(spacing: Theme.Space.sm) {
+                Image(systemName: "bookmark")
+                    .font(.subheadline).foregroundStyle(Theme.accent).frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Memory").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                    Text(MemoryView.summary(book: container.memory, settings: settings))
+                        .font(.caption).foregroundStyle(Theme.textTertiary).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textTertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        // The count comes from a mirror of the durable store; a chat that saved a fact while Settings was
+        // on screen must not leave the row reading "Nothing saved yet".
+        .task { await container.memory.refresh() }
     }
 
     // MARK: Manage tools

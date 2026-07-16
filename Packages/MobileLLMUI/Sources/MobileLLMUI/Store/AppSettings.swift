@@ -182,6 +182,13 @@ public final class AppSettings {
         return BuiltInToolConfig(searchEngines: engines, enabled: enabled)
     }
 
+    /// Whether the model may use what it remembers about the user — the Manage-tools "Memory" switch, and
+    /// the one gate the prompt injector, the memory screen, and the tools all read. Keyed on `recall`
+    /// because reading memory is what it authorizes: the system-prompt block IS an automatic recall, so a
+    /// user who switched memory off must not keep getting it silently by another route. Note this is NOT
+    /// gated on `toolsEnabled` — the block calls nothing, so facts still reach a model given no tools.
+    public var memoryEnabled: Bool { !disabledBuiltInTools.contains(ToolID.recall.rawValue) }
+
     // MARK: - Persistence
 
     private struct Snapshot: Codable {

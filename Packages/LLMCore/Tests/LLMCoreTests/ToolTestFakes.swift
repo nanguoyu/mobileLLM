@@ -7,18 +7,25 @@ import AppRuntime
 // Shared in-memory fakes for the injectable tool seams, so the memory / calendar / location / assembly
 // tests drive the tools without touching disk, EventKit, or CoreLocation (no permission prompts).
 
-/// A `MemoryStoring` backed by an array. Insertion order preserved; no persistence.
+/// A `MemoryStoring` backed by an array. Insertion order preserved; no persistence. `search` is left to
+/// the protocol's default (rank over `list()`), which is what the real store does too.
 actor FakeMemoryStore: MemoryStoring {
     private(set) var facts: [MemoryFact]
     init(_ seed: [MemoryFact] = []) { facts = seed }
 
-    @discardableResult func save(_ text: String) -> MemoryFact {
-        let fact = MemoryFact(text: text.trimmingCharacters(in: .whitespacesAndNewlines))
+    @discardableResult func save(_ text: String, source: MemoryFact.Source) -> MemoryFact {
+        let fact = MemoryFact(text: text.trimmingCharacters(in: .whitespacesAndNewlines), source: source)
         facts.append(fact)
         return fact
     }
     func list() -> [MemoryFact] { facts }
+    func update(id: String, text: String) {
+        guard let i = facts.firstIndex(where: { $0.id == id }) else { return }
+        let old = facts[i]
+        facts[i] = MemoryFact(id: old.id, text: text, createdAt: old.createdAt, source: old.source)
+    }
     func delete(id: String) { facts.removeAll { $0.id == id } }
+    func deleteAll() { facts.removeAll() }
 }
 
 /// An `EventStoring` that records drafts and can simulate access denial. Reads happen via actor awaits.

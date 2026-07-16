@@ -19,6 +19,9 @@ public final class AppContainer {
     /// The per-conversation skill packs (Skills v1). Persisted beside the conversation records + tool
     /// memory; surfaced to the composer's Skill menu and the management screen.
     public let skills: SkillStore
+    /// What the assistant remembers about the user — the durable memory store's main-actor mirror, shared
+    /// by the memory screen (Settings → Behavior → Memory) and `ChatStore`'s prompt injector.
+    public let memory: MemoryBook
     /// The privacy-gated tool seams, also surfaced to the Tools settings screen so flipping a toggle can
     /// request the system permission right there (nil in tests/previews — the screen then skips prompting).
     public let toolEventStore: (any EventStoring)?
@@ -39,6 +42,7 @@ public final class AppContainer {
                 device: DeviceTier = .current,
                 settings: AppSettings? = nil,
                 conversationStore: ConversationStore? = nil,
+                memoryStore: (any MemoryStoring)? = nil,
                 installProbe: @escaping @Sendable (LLMVariant, URL) -> Bool = ModelManager.defaultInstallProbe(),
                 availableMemory: @escaping @Sendable () -> Int64 = { Int64(bitPattern: MemoryProbe.availableBytes()) },
                 eventStore: (any EventStoring)? = nil,
@@ -55,7 +59,13 @@ public final class AppContainer {
         // injected by the app-assembly layer (the App scene), NOT constructed here, so previews and unit
         // tests never touch EventKit / CoreLocation. They request TCC access only lazily, on first tool
         // invocation, and are only assembled into the registry when the user enables that tool (off by default).
-        let memoryStore = MemoryStore(fileURL: store.directory.appending(component: "memory.json"))
+        // Injectable like the conversation store, so previews + tests seed facts in memory instead of
+        // writing a JSON file (and never race the app's real one).
+        let memory = memoryStore ?? MemoryStore(fileURL: store.directory.appending(component: "memory.json"))
+        // One book over that store: the tools write to the store, the memory screen and the prompt injector
+        // read the book's mirror of it (see `MemoryBook`).
+        let memoryBook = MemoryBook(store: memory)
+        self.memory = memoryBook
         // Skills live beside memory.json (same durable, atomic store) so a thread's activated skill survives
         // relaunch and a corrupt file is backed up, not wiped.
         let skillStore = SkillStore(fileURL: store.directory.appending(component: "skills.json"))
@@ -63,7 +73,7 @@ public final class AppContainer {
         self.toolEventStore = eventStore
         self.toolLocationProvider = locationProvider
         self.chat = ChatStore(engine: engine, store: store, settings: settings,
-                              memoryStore: memoryStore, eventStore: eventStore,
+                              memoryBook: memoryBook, eventStore: eventStore,
                               locationProvider: locationProvider, skillStore: skillStore)
         // Reload a suspended model right before the next turn (its memory is freed while idle).
         chat.ensureModelReady = { [weak self] in await self?.reloadIfSuspended() }
@@ -113,6 +123,7 @@ public final class AppContainer {
         // and the storage/switcher lists see them (DESIGN §2.4). This also rescans install state.
         await models.loadAdoptedRegistry()
         await skills.load()   // seed the built-in skills on first launch, else read them back from disk
+        await memory.refresh()   // the first send composes its memory block from this mirror
         await chat.load()
         // Boot into the model the ACTIVE conversation was using (when installed) — falling back to the
         // last-used default. One activation either way; a thread must not silently switch models just

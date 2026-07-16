@@ -27,6 +27,36 @@ extension SkillStore {
     func previewSeed() { skills = Skill.builtIns }
 }
 
+/// An in-memory `MemoryStoring` for previews: the memory screen renders saved facts — both provenance
+/// labels, both relative dates — without touching disk. A real store would need the seed written through
+/// an async save, and `MemoryBook.refresh()` would read the empty file back before the first frame.
+actor PreviewMemoryStore: MemoryStoring {
+    private var facts: [MemoryFact]
+
+    init(_ seed: [MemoryFact] = [
+        MemoryFact(text: "The user's dog is named Momo",
+                   createdAt: Date().addingTimeInterval(-90 * 60), source: .model),
+        MemoryFact(text: "Prefers short answers, no preamble",
+                   createdAt: Date().addingTimeInterval(-3 * 24 * 60 * 60), source: .user),
+    ]) {
+        facts = seed
+    }
+
+    @discardableResult func save(_ text: String, source: MemoryFact.Source) -> MemoryFact {
+        let fact = MemoryFact(text: text, source: source)
+        facts.append(fact)
+        return fact
+    }
+    func list() -> [MemoryFact] { facts }
+    func update(id: String, text: String) {
+        guard let i = facts.firstIndex(where: { $0.id == id }) else { return }
+        let old = facts[i]
+        facts[i] = MemoryFact(id: old.id, text: text, createdAt: old.createdAt, source: old.source)
+    }
+    func delete(id: String) { facts.removeAll { $0.id == id } }
+    func deleteAll() { facts.removeAll() }
+}
+
 extension ModelManager {
     /// Mark every catalog variant as installed (previews show a working library).
     func previewInstallAll() {
@@ -50,6 +80,7 @@ extension AppContainer {
             settings: AppSettings(defaults: UserDefaults(suiteName: "mobilellm-preview")!),
             conversationStore: ConversationStore(
                 directory: FileManager.default.temporaryDirectory.appending(component: "mobilellm-preview-convos")),
+            memoryStore: PreviewMemoryStore(),
             installProbe: { _, _ in true },
             availableMemory: { .max })
 

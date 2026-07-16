@@ -273,8 +273,12 @@ struct BuiltInToolRow: Identifiable {
         .init(id: "clock", title: "Clock",
               subtitle: "Check the current date and time.",
               icon: "clock", toolIDs: [.currentDatetime]),
+        // The switch, and only the switch: what's actually remembered is reviewed, corrected, and added to
+        // in Settings → Behavior → Memory. This row points there rather than implying a toggle is the
+        // whole feature — which is exactly how memory used to stay invisible.
         .init(id: "memory", title: "Memory",
-              subtitle: "Remember details you share and recall them later.",
+              subtitle: "Remember details you share and use them later. See and edit what's saved in "
+                      + "Settings → Memory.",
               icon: "bookmark", toolIDs: [.remember, .recall]),
         .init(id: "calendar", title: "Calendar",
               subtitle: "Add events and read what's on your calendar.",

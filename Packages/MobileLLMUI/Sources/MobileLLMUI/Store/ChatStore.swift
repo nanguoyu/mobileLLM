@@ -67,12 +67,16 @@ public final class ChatStore {
     private let engine: any LLMEngine
     private let store: ConversationStore
     private let settings: AppSettings
-    /// The tool seams injected at app assembly (nil in tests/previews). `memoryStore` backs remember/recall;
-    /// `eventStore` / `locationProvider` back the privacy-gated calendar / reminders / location tools. A tool
-    /// is assembled only when BOTH its toggle is on AND its seam is present (see `ToolRegistry.assemble`).
-    private let memoryStore: (any MemoryStoring)?
+    /// The tool seams injected at app assembly (nil in tests/previews). `eventStore` / `locationProvider`
+    /// back the privacy-gated calendar / reminders / location tools. A tool is assembled only when BOTH its
+    /// toggle is on AND its seam is present (see `ToolRegistry.assemble`).
     private let eventStore: (any EventStoring)?
     private let locationProvider: (any LocationProviding)?
+    /// What the assistant remembers about the user. Read on every send to compose the memory block into the
+    /// system prompt — the automatic recall that makes memory work with a 2B model that never thinks to
+    /// call `recall` — and unwrapped to its durable store when the memory tools are assembled. Public so
+    /// the memory screen edits the very list the prompt is composed from.
+    public let memoryBook: MemoryBook?
     /// The per-conversation skill packs (Skills v1). Optional so tests/previews that don't exercise skills
     /// construct a `ChatStore` without one; then `activeSkill` is always nil and composition falls back to
     /// the base system prompt. Public so the composer's Skill menu + management sheet reach the same store.
@@ -99,7 +103,7 @@ public final class ChatStore {
 
     public init(engine: any LLMEngine, store: ConversationStore, settings: AppSettings,
                 activeModel: LoadedModel? = nil,
-                memoryStore: (any MemoryStoring)? = nil,
+                memoryBook: MemoryBook? = nil,
                 eventStore: (any EventStoring)? = nil,
                 locationProvider: (any LocationProviding)? = nil,
                 skillStore: SkillStore? = nil) {
@@ -107,7 +111,7 @@ public final class ChatStore {
         self.store = store
         self.settings = settings
         self.activeModel = activeModel
-        self.memoryStore = memoryStore
+        self.memoryBook = memoryBook
         self.eventStore = eventStore
         self.locationProvider = locationProvider
         self.skillStore = skillStore
@@ -411,9 +415,8 @@ public final class ChatStore {
         // <think> tag we can reliably strip from the shown text, so the only sure way to hide it is off.
         let params = settings.sampling(thinking: thinkingEnabled && settings.thinkingDisplay != .hidden,
                                        model: activeModel?.model)
-        // Base system prompt + the active thread's skill (if any) — the skill's instructions ride the same
-        // path as the system prompt into `chatTurns`, so trimming, token accounting, and the model all see it.
-        let systemPrompt = composedSystemPrompt()
+        // What this turn asks about — the query the memory block is searched with, below.
+        let memoryQuery = Self.memoryQuery(history: history)
         let engine = self.engine
         let toolsOn = settings.toolsEnabled
         let store = self.store
@@ -434,6 +437,15 @@ public final class ChatStore {
                 // while generating (this local map is released when the task ends) and bounded by the
                 // thread's image count, keeping memory honest on the phone.
                 let imagesByMessage = imageCapable ? await Self.loadAttachmentImages(for: history, from: store) : [:]
+                // Re-read memory before composing, not after: a fact the model saved with `remember` last
+                // turn — or one the user just typed on the memory screen — has to be in THIS turn's prompt.
+                await self?.memoryBook?.refresh()
+                // Base system prompt + the active thread's skill + what's worth remembering for this turn.
+                // All three ride the same path into `chatTurns`, so trimming, token accounting, and the
+                // model all see exactly what was composed. Composed HERE, not captured at send time, so it
+                // sees the memory refreshed just above; if the store is gone there's no one to stream to,
+                // so stop rather than generate against an empty prompt.
+                guard let systemPrompt = self?.composedSystemPrompt(query: memoryQuery) else { return }
                 let turns = Self.chatTurns(messages: history, systemPrompt: systemPrompt,
                                            cap: params.contextTokenCap,
                                            images: { imagesByMessage[$0.id] ?? [] })
@@ -481,7 +493,9 @@ public final class ChatStore {
         let signature = Self.registrySignature(config: config, servers: servers)
         if let cachedRegistry, cachedRegistrySignature == signature { return cachedRegistry }
 
-        let builtIns = ToolRegistry.assemble(config: config, memoryStore: memoryStore,
+        // The tools get the DURABLE store, not the book: they run inside the agent loop, off the main
+        // actor, and the book is only the screen's (and the injector's) main-actor mirror of it.
+        let builtIns = ToolRegistry.assemble(config: config, memoryStore: memoryBook?.store,
                                              eventStore: eventStore, locationProvider: locationProvider)
         let registry: ToolRegistry
         if servers.isEmpty {
@@ -631,20 +645,63 @@ public final class ChatStore {
         setSkill(skillID, for: convo.id)
     }
 
-    /// The system prompt for a turn: the base prompt plus the active skill's instruction fragment. Both the
-    /// generation path (`startGeneration`) and the context meter (`contextUsage`) route through this, so the
-    /// skill text is charged to the window exactly once and shown honestly.
-    func composedSystemPrompt() -> String {
-        Self.systemPrompt(base: settings.systemPrompt, skill: activeSkill)
+    /// The system prompt for a turn: the base prompt, the active skill's instruction fragment, and the
+    /// facts worth remembering for `query` (blank — the default — means the freshest few). Both the
+    /// generation path (`startGeneration`) and the context meter (`contextUsage`) route through this, so
+    /// every part is charged to the window exactly once and shown honestly.
+    func composedSystemPrompt(query: String = "") -> String {
+        Self.systemPrompt(base: settings.systemPrompt, skill: activeSkill, memoryBlock: memoryBlock(for: query))
     }
 
     /// Pure composition (unit-tested): `base` + `"\n\n## Active skill: <name>\n<instructions>"` when a skill
-    /// is active. A blank base (system prompt "off") yields just the skill fragment, so the skill still works.
-    /// Nonisolated + pure so the composition contract is unit-testable off the main actor.
-    nonisolated static func systemPrompt(base: String, skill: Skill?) -> String {
-        guard let skill else { return base }
-        let fragment = "## Active skill: \(skill.name)\n\(skill.instructions)"
-        return base.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fragment : base + "\n\n" + fragment
+    /// is active, then the memory block. A blank base (system prompt "off") yields just the fragments, so a
+    /// skill — and memory — still work. Nonisolated + pure so the composition contract is unit-testable off
+    /// the main actor.
+    nonisolated static func systemPrompt(base: String, skill: Skill?, memoryBlock: String? = nil) -> String {
+        var parts: [String] = []
+        let trimmedBase = base.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedBase.isEmpty { parts.append(base) }
+        if let skill { parts.append("## Active skill: \(skill.name)\n\(skill.instructions)") }
+        if let memoryBlock, !memoryBlock.isEmpty { parts.append(memoryBlock) }
+        return parts.joined(separator: "\n\n")
+    }
+
+    // MARK: - Memory (auto-recall into the prompt)
+
+    /// The memory block for `query`, or nil when memory is switched off (`AppSettings.memoryEnabled`),
+    /// unwired, or empty. Reads the book's main-actor mirror — `startGeneration` refreshes it right before
+    /// composing, and the meter shows whatever the last refresh left.
+    private func memoryBlock(for query: String) -> String? {
+        guard settings.memoryEnabled, let facts = memoryBook?.facts, !facts.isEmpty else { return nil }
+        return Self.memoryBlock(facts, query: query)
+    }
+
+    /// The search query for the memory block: the outgoing user turn, plus the one before it. A follow-up
+    /// often can't stand alone ("and his birthday?"), so one turn of carry-over is what makes the right
+    /// fact surface — but only one: more history dilutes the token scoring into "everything matches".
+    /// `draft` is the text not yet sent (the meter's view of the next turn); on the send path it's already
+    /// in `history`, so it's left empty there.
+    nonisolated static func memoryQuery(draft: String = "", history: [Message]) -> String {
+        let recentUserTurns = history.filter { $0.role == .user && !$0.answer.isEmpty }.suffix(2).map(\.answer)
+        return ([draft] + recentUserTurns).filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    /// The "what you remember" block: the top `limit` facts for `query`, one per line, hard-capped at
+    /// `maxChars` — the whole point is a small model reading a short list, and an unbounded block would eat
+    /// the 4K window it has to answer in. Each line is clipped first, so one rambling fact can't crowd the
+    /// rest out; then lines are taken while the block fits. Nil when nothing survives.
+    /// Pure + nonisolated so the bound is unit-testable off the main actor.
+    nonisolated static func memoryBlock(_ facts: [MemoryFact], query: String,
+                                        limit: Int = 5, maxChars: Int = 400) -> String? {
+        let header = "## What you remember about the user"
+        var block = header
+        for fact in MemoryRanking.rank(facts, query: query, limit: limit) {
+            let flat = fact.text.replacingOccurrences(of: "\n", with: " ")
+            let line = "\n- " + (flat.count > 120 ? String(flat.prefix(120)) + "…" : flat)
+            guard block.count + line.count <= maxChars else { break }
+            block += line
+        }
+        return block == header ? nil : block
     }
 
     // MARK: - Context meter
@@ -655,8 +712,12 @@ public final class ChatStore {
         let cap = settings.effectiveContext(for: activeModel?.model)
         guard let convo = activeConversation else { return (0, cap) }
         // CJK-aware throughout (`TokenEstimate`) so a Chinese thread's meter isn't ~3× under. The active
-        // skill's instructions ride the composed system prompt, so they're counted here too.
-        let system = composedSystemPrompt()
+        // skill's instructions AND the memory block ride the composed system prompt, so they're counted
+        // here too. Memory is searched with the query the NEXT send would use — draft included — because a
+        // meter that warns you after the injection pushed you over the window is no warning at all. (So the
+        // count can shift slightly as you type, when the draft brings different facts into range; the
+        // block's cap bounds that to a few tokens.)
+        let system = composedSystemPrompt(query: Self.memoryQuery(draft: draft, history: convo.messages))
         var used = system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : TokenEstimate.tokens(in: system)
         for message in convo.messages where !message.answer.isEmpty { used += message.approximateTokens }
         used += streaming.map { TokenEstimate.tokens(in: $0.answer) + TokenEstimate.tokens(in: $0.reasoning) } ?? 0
