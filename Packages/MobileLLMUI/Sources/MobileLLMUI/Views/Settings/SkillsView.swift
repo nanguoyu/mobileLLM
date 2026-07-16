@@ -13,6 +13,7 @@ struct SkillsView: View {
     @State private var editing: SkillEditorTarget?
     @State private var pendingDelete: Skill?
     @State private var showImport = false
+    @State private var showGallery = false
 
     var body: some View {
         List {
@@ -66,6 +67,10 @@ struct SkillsView: View {
             ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    Button { showGallery = true } label: {
+                        Label("Browse Community Skills…", systemImage: "square.grid.2x2")
+                    }
+                    Divider()
                     Button { editing = .new } label: { Label("New Skill", systemImage: "square.and.pencil") }
                     Button { showImport = true } label: {
                         Label("Import SKILL.md…", systemImage: "square.and.arrow.down")
@@ -82,6 +87,12 @@ struct SkillsView: View {
         }
         .sheet(isPresented: $showImport) {
             NavigationStack { SkillImportView(store: store) }
+            #if os(macOS)
+                .frame(minWidth: 480, minHeight: 520)
+            #endif
+        }
+        .sheet(isPresented: $showGallery) {
+            NavigationStack { SkillGalleryView(store: store) }
             #if os(macOS)
                 .frame(minWidth: 480, minHeight: 520)
             #endif
