@@ -5,6 +5,80 @@ import XCTest
 @testable import LLMCore
 import AppRuntime
 
+/// The memory switch, which has to be reachable from the screen that always reaches memory.
+///
+/// The trap this pins: auto-injection is deliberately NOT gated on the master tools switch, but the
+/// Manage-tools row that used to hold the ONLY memory switch is hidden when tools are off
+/// (`SettingsView`: `if settings.toolsEnabled { manageToolsRow }`). So a tools-off user had facts riding
+/// every prompt with no reachable way to stop it. The switch now also lives on the Memory screen, which
+/// sits in Behavior and is never gated.
+@MainActor
+final class MemorySwitchTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private let suite = "MemorySwitchTests"
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: suite)
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suite)
+        super.tearDown()
+    }
+
+    private func makeSettings() -> AppSettings { AppSettings(defaults: defaults) }
+
+    /// The whole point: with tools off — when Manage tools is gone from Settings — memory is still
+    /// switchable. A get-only `memoryEnabled` (the shape this shipped as) makes this test impossible to
+    /// even write.
+    func testMemoryStaysSwitchableWithToolsOff() {
+        let settings = makeSettings()
+        settings.toolsEnabled = false
+        XCTAssertTrue(settings.memoryEnabled, "memory is on by default")
+
+        settings.memoryEnabled = false
+        XCTAssertFalse(settings.memoryEnabled,
+                       "the tools master switch must not strand the memory switch out of reach")
+
+        settings.memoryEnabled = true
+        XCTAssertTrue(settings.memoryEnabled)
+    }
+
+    /// Off moves `remember` with `recall` — the same pair the Manage-tools row moves. Leaving `remember`
+    /// on would keep writing notes the model can never read.
+    func testSwitchingOffDisablesBothMemoryTools() {
+        let settings = makeSettings()
+        settings.memoryEnabled = false
+        XCTAssertTrue(settings.disabledBuiltInTools.contains(ToolID.recall.rawValue))
+        XCTAssertTrue(settings.disabledBuiltInTools.contains(ToolID.remember.rawValue))
+        XCTAssertFalse(settings.builtInToolConfig.enabled.contains(.recall))
+        XCTAssertFalse(settings.builtInToolConfig.enabled.contains(.remember))
+
+        settings.memoryEnabled = true
+        XCTAssertTrue(settings.builtInToolConfig.enabled.contains(.recall))
+        XCTAssertTrue(settings.builtInToolConfig.enabled.contains(.remember))
+    }
+
+    /// The switch touches memory and nothing else — turning memory off must not cost you your calculator.
+    func testSwitchingMemoryLeavesOtherToolsAlone() {
+        let settings = makeSettings()
+        settings.disabledBuiltInTools = [ToolID.webSearch.rawValue]
+        settings.memoryEnabled = false
+        settings.memoryEnabled = true
+        XCTAssertEqual(settings.disabledBuiltInTools, [ToolID.webSearch.rawValue],
+                       "an unrelated disabled tool survives a memory round-trip")
+        XCTAssertTrue(settings.builtInToolConfig.enabled.contains(.calculator))
+    }
+
+    /// It's one setting whichever surface writes it, so it has to persist like one.
+    func testTheSwitchSurvivesARelaunch() {
+        makeSettings().memoryEnabled = false
+        XCTAssertFalse(AppSettings(defaults: defaults).memoryEnabled)
+    }
+}
+
 /// `MemoryBook` — the memory screen's main-actor mirror over the durable store. What matters here is that
 /// the mirror never lies: every edit lands in the store AND on screen, a fact the model saved behind the
 /// UI's back shows up on refresh, and the ordering is the one the list renders.

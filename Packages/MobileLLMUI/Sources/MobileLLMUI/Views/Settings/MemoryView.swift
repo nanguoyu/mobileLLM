@@ -14,8 +14,9 @@ import LLMCore
 /// editor sheet, and a confirm before anything is destroyed.
 struct MemoryView: View {
     let book: MemoryBook
-    /// Read-only here: the on/off switch lives in Manage tools (one switch, one place). This screen only
-    /// reports that state, so a user editing notes the model can't currently see is told why.
+    /// The switch lives here too, not only in Manage tools. Injection isn't gated on the master tools
+    /// switch (see `AppSettings.memoryEnabled`) but the Manage-tools row is hidden when tools are off — so
+    /// the one surface that always reaches memory has to be the one that can turn it off.
     let settings: AppSettings
     @Environment(\.dismiss) private var dismiss
     @State private var editing: MemoryEditorTarget?
@@ -31,13 +32,23 @@ struct MemoryView: View {
                     .font(.caption).foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .listRowBackground(Color.clear)
-                if !settings.memoryEnabled {
-                    Label("Memory is off in Manage tools. These notes stay saved, but the model isn't "
-                          + "shown them.", systemImage: "exclamationmark.circle")
-                        .font(.caption).foregroundStyle(Theme.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .listRowBackground(Color.clear)
+            }
+
+            Section {
+                Toggle(isOn: Binding(get: { settings.memoryEnabled },
+                                     set: { settings.memoryEnabled = $0 })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Use memory").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                        Text(settings.memoryEnabled
+                             ? "Notes that matter to your question are added to the model's prompt."
+                             : "These notes stay saved, but the model isn't shown them, and it won't "
+                               + "take new ones.")
+                            .font(.caption).foregroundStyle(Theme.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .tint(Theme.accent)
+                .listRowBackground(Theme.surface)
             }
 
             Section {
