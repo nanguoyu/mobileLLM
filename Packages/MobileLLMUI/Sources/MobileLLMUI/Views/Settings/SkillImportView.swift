@@ -135,18 +135,12 @@ struct SkillImportView: View {
     private func fetch() async {
         error = nil; preview = nil; fetching = true
         defer { fetching = false }
-        let candidates = SkillIO.candidateURLs(from: urlText)
-        guard !candidates.isEmpty else { error = "That doesn't look like a URL."; return }
-        for url in candidates {
-            if let (data, response) = try? await URLSession.shared.data(from: url),
-               (response as? HTTPURLResponse).map({ (200...299).contains($0.statusCode) }) ?? true,
-               let text = String(data: data, encoding: .utf8),
-               let parsed = SkillIO.parse(markdown: text) {
-                preview = parsed
-                return
-            }
+        guard !SkillIO.candidateURLs(from: urlText).isEmpty else { error = "That doesn't look like a URL."; return }
+        if let parsed = await SkillIO.fetchFirstParseable(from: urlText) {
+            preview = parsed
+        } else {
+            error = "Couldn't find a readable SKILL.md there. Try the direct link to the file."
         }
-        error = "Couldn't find a readable SKILL.md there. Try the direct link to the file."
     }
 
     private func parse(_ text: String) {

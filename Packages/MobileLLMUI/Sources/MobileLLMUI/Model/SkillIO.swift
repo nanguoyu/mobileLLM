@@ -113,4 +113,23 @@ enum SkillIO {
         }
         return [url.appending(path: "SKILL.md")]
     }
+
+    // MARK: Fetch (URL → skill)
+
+    /// Fetch the first candidate for `raw` that yields a readable SKILL.md, and parse it. Walks
+    /// `candidateURLs(from:)` in order, gating each on a 2xx status (a non-HTTP response passes), decoding
+    /// UTF-8, and parsing; returns the first success, or nil when none is readable. Extracted from
+    /// `SkillImportView.fetch()` so the import networking is exercisable end-to-end via a `URLProtocol`
+    /// stub — the `session` is injectable and defaults to `.shared`, so the app's behavior is unchanged.
+    static func fetchFirstParseable(from raw: String, session: URLSession = .shared) async -> ParsedSkill? {
+        for url in candidateURLs(from: raw) {
+            if let (data, response) = try? await session.data(from: url),
+               (response as? HTTPURLResponse).map({ (200...299).contains($0.statusCode) }) ?? true,
+               let text = String(data: data, encoding: .utf8),
+               let parsed = parse(markdown: text) {
+                return parsed
+            }
+        }
+        return nil
+    }
 }

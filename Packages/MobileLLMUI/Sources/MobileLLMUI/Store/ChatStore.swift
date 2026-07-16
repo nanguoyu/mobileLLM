@@ -455,11 +455,11 @@ public final class ChatStore {
                 }
                 // A cancelled consumer ends the stream by returning nil (not by throwing), so detect
                 // Stop here too — the partial is committed, never discarded (DESIGN §2.3).
-                self?.finalizeIfNeeded(stopReason: Task.isCancelled ? .cancelled : .eos)
+                self?.finalizeIfNeeded(assistantID: assistantID, stopReason: Task.isCancelled ? .cancelled : .eos)
             } catch is CancellationError {
-                self?.finalizeIfNeeded(stopReason: .cancelled)
+                self?.finalizeIfNeeded(assistantID: assistantID, stopReason: .cancelled)
             } catch {
-                self?.finalizeIfNeeded(stopReason: .cancelled, failed: true)
+                self?.finalizeIfNeeded(assistantID: assistantID, stopReason: .cancelled, failed: true)
                 self?.present(error)
             }
         }
@@ -546,8 +546,12 @@ public final class ChatStore {
 
     /// Commit the streamed reasoning/answer into the assistant message + autosave. Called on `.done`,
     /// on clean stream end, and on Stop/cancel (which always commits the partial — never discards).
-    private func finalizeIfNeeded(stopReason: StopReason, failed: Bool = false) {
-        guard streaming != nil else { return }   // already committed by `.done`
+    private func finalizeIfNeeded(assistantID: UUID, stopReason: StopReason, failed: Bool = false) {
+        // Only finalize OUR stream: a just-cancelled generation task can reach here AFTER a new send has
+        // started a fresh stream, and an unguarded commit would stamp this task's stop reason onto the new
+        // turn (a real race the coverage work surfaced). The messageID gate makes finalize idempotent
+        // per-turn — the winning `.done`/stop already niled `streaming`, so a late loser no-ops.
+        guard streaming?.messageID == assistantID else { return }
         commit(stopReason: stopReason, stats: nil, failed: failed)
     }
 

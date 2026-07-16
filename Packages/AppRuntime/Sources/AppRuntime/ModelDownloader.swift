@@ -39,7 +39,23 @@ public struct ModelDownloader: Sendable {
     private static let manifestFilename = ".mobilellm-download-manifest.json"
 
     public let downloadBase: URL
-    public init(downloadBase: URL) { self.downloadBase = downloadBase }
+
+    /// An optional injected `URLSession` used for BOTH the HF tree-listing request (`fetchHubFiles`) and
+    /// the file downloads. Defaults to `nil` → the built-in `makeSession()` is used, so production behavior
+    /// is unchanged. This is a strictly-additive test seam: a caller can pass a session whose
+    /// `configuration.protocolClasses` stubs Hugging Face, making the whole
+    /// fetch → stream → size-verify → manifest path (and the 206/200 resume branch) drivable offline.
+    /// Mirrors how the web tools (`WebSearchTool`/`WebScraperTool`) already accept a `session:` — a
+    /// `URLSession` is thread-safe (`@unchecked Sendable`), so storing it keeps `ModelDownloader` `Sendable`.
+    private let injectedSession: URLSession?
+
+    public init(downloadBase: URL, session: URLSession? = nil) {
+        self.downloadBase = downloadBase
+        self.injectedSession = session
+    }
+
+    /// The session used for network I/O: the injected one if provided, else a fresh default session.
+    private func session() -> URLSession { injectedSession ?? Self.makeSession() }
 
     /// Where `repoId` materializes (`downloadBase/models/{repoId}`).
     public func localURL(repoId: String) -> URL {
@@ -123,7 +139,7 @@ public struct ModelDownloader: Sendable {
 
         let totalBytes = max(1, selected.reduce(Int64(0)) { $0 + ($1.size ?? 0) })
         var completedBytes: Int64 = 0
-        let session = Self.makeSession()
+        let session = self.session()
         for file in selected {
             // `file.path` is taken verbatim from the HF tree API — sanitize it against zip-slip before
             // it becomes a write destination (a malicious repo could list "../../…").
@@ -208,7 +224,7 @@ public struct ModelDownloader: Sendable {
     private func fetchHubFiles(repoId: String) async throws -> [HubFile] {
         let urlString = "https://huggingface.co/api/models/\(repoId)/tree/main?recursive=1&expand=1"
         guard let url = URL(string: urlString) else { throw ModelDownloadError.invalidURL(urlString) }
-        let (data, response) = try await Self.makeSession().data(from: url)
+        let (data, response) = try await self.session().data(from: url)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw ModelDownloadError.emptyFileList(repoId)
         }
