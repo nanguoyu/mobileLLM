@@ -43,6 +43,11 @@ struct ChatDetailView: View {
         .navigationTitle(chat.activeConversation?.title ?? "New Chat")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        // The tab bar is why the input row kept sinking: keyboard avoidance lifts the composer by the
+        // keyboard's window overlap, but the composer already sat a tab-bar-height above the window
+        // bottom — every layout variant came up exactly ~50pt short. A pushed conversation hides the
+        // tab bar (standard chat behavior, and the thread gains the row of space).
+        .toolbar(.hidden, for: .tabBar)
         #endif
         .toolbar {
             ToolbarItem(placement: .principal) { modelHeader }
