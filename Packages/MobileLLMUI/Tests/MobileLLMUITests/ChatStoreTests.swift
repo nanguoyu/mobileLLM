@@ -203,6 +203,28 @@ final class ChatStoreTests: XCTestCase {
 
     // MARK: - Conversation ↔ model identity
 
+    /// A fresh (still-empty) thread must survive a relaunch — with its model seed — so reopening the app
+    /// lands back on the chat the user just opened, not on the previous conversation.
+    func testNewEmptyConversationSurvivesRelaunch() async throws {
+        let (chat, dir) = makeStore(script: .init(reasoning: "", answer: "ok",
+                                                  chunkSize: 8, chunkDelayNanos: 0))
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let convo = try XCTUnwrap(chat.newConversation())
+
+        // persist() is fire-and-forget — poll the store until the write lands.
+        let store = ConversationStore(directory: dir)
+        let deadline = Date().addingTimeInterval(3)
+        var reloaded: [Conversation] = []
+        while Date() < deadline {
+            reloaded = await store.loadAllLive()
+            if reloaded.contains(where: { $0.id == convo.id }) { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        let persisted = try XCTUnwrap(reloaded.first { $0.id == convo.id })
+        XCTAssertTrue(persisted.messages.isEmpty)
+        XCTAssertEqual(persisted.modelID, LLMCatalog.bonsai8b.id, "the seed rides along")
+    }
+
     /// Every send restamps the record with the model that's ACTUALLY answering, so a mid-thread model
     /// switch is what a relaunch restores — not the first model the thread ever used.
     func testSendRestampsTheConversationModelEveryTurn() async throws {

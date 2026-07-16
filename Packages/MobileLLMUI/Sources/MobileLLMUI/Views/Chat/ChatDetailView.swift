@@ -54,6 +54,9 @@ struct ChatDetailView: View {
         .sheet(isPresented: $showSwitcher) {
             ModelSwitcherSheet(container: container, onOpenModels: onOpenModels)
         }
+        // Entering a conversation restores ITS model even when nothing routed through select() — the
+        // launch auto-push, and a boot activation that failed and needs a retry, both land here.
+        .onAppear { chat.restoreConversationModelIfNeeded() }
         // Leaving the conversation frees the model's memory (reloaded lazily on the next turn), so a
         // 5 GB model doesn't sit resident while you're not chatting. No-op mid-generation.
         .onDisappear { container.suspendModel() }

@@ -91,13 +91,28 @@ public final class AppContainer {
         await models.loadAdoptedRegistry()
         await chat.load()
         // Boot into the model the ACTIVE conversation was using (when installed) — falling back to the
-        // Settings default. One activation either way; a thread must not silently switch models just
+        // last-used default. One activation either way; a thread must not silently switch models just
         // because the app relaunched.
         let (model, variant) = bootTarget()
         if let variant {
             await activateAndSync(model, variant, force: false, announce: false)
         }
+        // The boot pick can still fail (the OOM pre-flight refusing a big vision model on a cold start,
+        // a half-deleted download…). "No model" with installed weights on disk is a dead end — fall back
+        // to the smallest installed variant of anything, which always loads if anything can.
+        if models.active == nil, let fallback = smallestInstalledFallback(excluding: variant?.id) {
+            await activateAndSync(fallback.0, fallback.1, force: false, announce: false)
+        }
         syncActive()
+    }
+
+    /// The smallest installed (model, variant) on disk — the boot fallback that keeps the header from
+    /// reading "No model" when weights exist. Excludes the variant that just failed.
+    private func smallestInstalledFallback(excluding failedID: String?) -> (LLMModel, LLMVariant)? {
+        models.allModels
+            .flatMap { model in model.variants.map { (model, $0) } }
+            .filter { $0.1.id != failedID && models.isInstalled($0.1) }
+            .min { $0.1.onDiskBytes < $1.1.onDiskBytes }
     }
 
     /// The launch activation target: the active conversation's remembered (model, variant) if that model

@@ -167,6 +167,7 @@ public final class ChatStore {
             if let m = activeModel {
                 conversations[i].modelID = m.model.id
                 conversations[i].variantID = m.variant.id
+                persist(conversations[i])
             }
             activeID = existing.id
             return conversations[i]
@@ -175,6 +176,10 @@ public final class ChatStore {
                                  variantID: activeModel?.variant.id ?? "")
         conversations.insert(convo, at: 0)
         activeID = convo.id
+        // Persisted immediately (not on first send): a relaunch should land back on the fresh thread the
+        // user just opened — and on its model — not on the previous conversation. At most one empty
+        // thread ever exists (the reuse branch above), so this never litters the list.
+        persist(convo)
         return convo
     }
 
