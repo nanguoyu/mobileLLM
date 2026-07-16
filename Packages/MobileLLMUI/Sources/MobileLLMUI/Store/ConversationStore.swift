@@ -39,6 +39,34 @@ public actor ConversationStore {
         DurableStore(fileURL: fileURL(for: id), version: 1)
     }
 
+    // MARK: - Attachments (image bytes stored as files, never inline in the conversation JSON)
+
+    /// The directory holding attachment image files (`attachments/<uuid>.jpg`) beside the records.
+    private var attachmentsDirectory: URL { directory.appending(component: "attachments") }
+
+    private func attachmentURL(for id: UUID) -> URL {
+        attachmentsDirectory.appending(component: "\(id.uuidString).jpg")
+    }
+
+    /// Persist one attachment's encoded (downscaled JPEG) bytes to disk, keyed by its `ImageRef.id`.
+    /// Written before generation so history replay + follow-ups can reload it; kept out of the record
+    /// JSON so a record load never drags multi-MB pixels through the decoder.
+    public func writeAttachment(_ data: Data, id: UUID) throws {
+        try FileManager.default.createDirectory(at: attachmentsDirectory, withIntermediateDirectories: true)
+        try data.write(to: attachmentURL(for: id), options: .atomic)
+    }
+
+    /// Load one attachment's bytes (nil if it was never written / already purged).
+    public func attachmentData(_ id: UUID) -> Data? {
+        try? Data(contentsOf: attachmentURL(for: id))
+    }
+
+    /// Remove the files backing a set of attachment refs (used when a thread is hard-deleted). Best-effort
+    /// — a missing file is already the desired state.
+    private func removeAttachments(_ refs: [ImageRef]) {
+        for ref in refs { try? FileManager.default.removeItem(at: attachmentURL(for: ref.id)) }
+    }
+
     // MARK: - Index
 
     /// The live (non-tombstoned) index entries, newest first, pinned on top — for list rendering.
@@ -110,8 +138,14 @@ public actor ConversationStore {
         try await writeIndex(entries)
     }
 
-    /// Permanently remove a conversation's file and index entry (irreversible — used by "Delete all").
+    /// Permanently remove a conversation's file, its attachment images, and its index entry (irreversible
+    /// — used by "Delete all" and the tombstone sweep). Purging the attachment files with the thread is
+    /// the privacy promise: a hard-deleted chat leaves no pixels behind.
     public func hardDelete(_ id: UUID) async throws {
+        // Load the record first to find the attachment files to purge (before its JSON is removed).
+        if let conversation = await load(id) {
+            removeAttachments(conversation.messages.flatMap { $0.attachments ?? [] })
+        }
         var entries = await index.load()
         entries.removeAll { $0.id == id }
         try await writeIndex(entries)
@@ -133,11 +167,12 @@ public actor ConversationStore {
         return swept
     }
 
-    /// Remove every conversation + index (Settings → Delete all data).
+    /// Remove every conversation + index + attachment image (Settings → Delete all data).
     public func deleteAll() async throws {
         for entry in await index.load() {
             try? FileManager.default.removeItem(at: fileURL(for: entry.id))
         }
+        try? FileManager.default.removeItem(at: attachmentsDirectory)   // purge all attachment pixels
         try await writeIndex([])
     }
 
@@ -162,11 +197,12 @@ public actor ConversationStore {
         return hits
     }
 
-    /// Total on-disk bytes used by conversation records (Settings → storage).
+    /// Total on-disk bytes used by conversation records + their attachment images (Settings → storage).
     public func storageBytes() async -> Int64 {
         var total: Int64 = 0
         let fm = FileManager.default
-        if let items = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey]) {
+        for dir in [directory, attachmentsDirectory] {
+            guard let items = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) else { continue }
             for url in items {
                 total += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
             }

@@ -178,9 +178,12 @@ public enum LLMCatalog {
             promptTemplate: .chatML, reasoningStyle: .thinkTagsImplicitOpen,
             modalities: [.text, .vision]),   // VL checkpoint (vision_config + mmproj); we load text-only
         variants: [
+            // Vision projector: unsloth ships F16/BF16/F32 mmproj (no Q8_0) — F16 is the smallest sensible
+            // precision. Size is the HF tree API `lfs.size` (verified 2026-07-16).
             LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 2_740_937_888,
                        source: ModelSource(huggingFaceRepo: "unsloth/Qwen3.5-4B-GGUF",
-                                           fileName: "Qwen3.5-4B-Q4_K_M.gguf")),
+                                           fileName: "Qwen3.5-4B-Q4_K_M.gguf"),
+                       visionProjector: VisionProjector(fileName: "mmproj-F16.gguf", sizeBytes: 672_423_616)),
         ],
         defaultVariant: .gguf4bit)
 
@@ -200,9 +203,11 @@ public enum LLMCatalog {
             promptTemplate: .chatML, reasoningStyle: .thinkTagsImplicitOpen,
             modalities: [.text, .vision]),
         variants: [
+            // Vision projector: unsloth F16 mmproj (no Q8_0 offered). Size = HF `lfs.size` (verified).
             LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 5_680_522_464,
                        source: ModelSource(huggingFaceRepo: "unsloth/Qwen3.5-9B-GGUF",
-                                           fileName: "Qwen3.5-9B-Q4_K_M.gguf")),
+                                           fileName: "Qwen3.5-9B-Q4_K_M.gguf"),
+                       visionProjector: VisionProjector(fileName: "mmproj-F16.gguf", sizeBytes: 918_166_080)),
         ],
         defaultVariant: .gguf4bit)
 
@@ -308,9 +313,11 @@ public enum LLMCatalog {
             promptTemplate: .gemma, reasoningStyle: .none,
             modalities: [.text, .vision, .audio]),   // Gemma 4's template carries image/audio tokens
         variants: [
+            // Vision projector: unsloth F16 mmproj (no Q8_0 offered). Size = HF `lfs.size` (verified).
             LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 3_106_736_256,
                        source: ModelSource(huggingFaceRepo: "unsloth/gemma-4-E2B-it-GGUF",
-                                           fileName: "gemma-4-E2B-it-Q4_K_M.gguf")),
+                                           fileName: "gemma-4-E2B-it-Q4_K_M.gguf"),
+                       visionProjector: VisionProjector(fileName: "mmproj-F16.gguf", sizeBytes: 985_654_080)),
         ],
         defaultVariant: .gguf4bit)
 
@@ -330,9 +337,11 @@ public enum LLMCatalog {
             promptTemplate: .gemma, reasoningStyle: .none,
             modalities: [.text, .vision, .audio]),   // Gemma 4's template carries image/audio tokens
         variants: [
+            // Vision projector: unsloth F16 mmproj (no Q8_0 offered). Size = HF `lfs.size` (verified).
             LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 4_977_169_568,
                        source: ModelSource(huggingFaceRepo: "unsloth/gemma-4-E4B-it-GGUF",
-                                           fileName: "gemma-4-E4B-it-Q4_K_M.gguf")),
+                                           fileName: "gemma-4-E4B-it-Q4_K_M.gguf"),
+                       visionProjector: VisionProjector(fileName: "mmproj-F16.gguf", sizeBytes: 990_372_672)),
         ],
         defaultVariant: .gguf4bit)
 
@@ -352,9 +361,13 @@ public enum LLMCatalog {
             promptTemplate: .gemma, reasoningStyle: .none,
             modalities: [.text, .vision, .audio]),   // Gemma 4's template carries image/audio tokens
         variants: [
+            // Vision projector: the ggml-org repo ships a Q8_0 mmproj (smallest sensible precision, and
+            // far leaner than the unsloth F16 towers). Size = HF `lfs.size` (verified 2026-07-16).
             LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 7_381_382_048,
                        source: ModelSource(huggingFaceRepo: "ggml-org/gemma-4-12B-it-GGUF",
-                                           fileName: "gemma-4-12B-it-Q4_K_M.gguf")),
+                                           fileName: "gemma-4-12B-it-Q4_K_M.gguf"),
+                       visionProjector: VisionProjector(fileName: "mmproj-gemma-4-12B-it-Q8_0.gguf",
+                                                        sizeBytes: 158_987_584)),
         ],
         defaultVariant: .gguf4bit)
 

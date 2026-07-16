@@ -92,6 +92,16 @@ public struct ModelDownloader: Sendable {
         return Self.verifyManifestIfPresent(at: root)
     }
 
+    /// "Already fully downloaded?" for a variant that needs SEVERAL named files from a shared repo (a
+    /// GGUF weight file **plus** its vision projector mmproj). Every listed file must be present with no
+    /// in-progress `.part`, and the manifest (if any) must verify. An empty list is treated as a whole-repo
+    /// variant (delegates to `isDownloaded(repoId:)`). Used by the install probe so a half-fetched vision
+    /// model — weights present but mmproj still downloading — never reads as installed.
+    public func isDownloaded(repoId: String, fileNames: [String]) -> Bool {
+        guard !fileNames.isEmpty else { return isDownloaded(repoId: repoId) }
+        return fileNames.allSatisfy { isDownloaded(repoId: repoId, fileName: $0) }
+    }
+
     /// Download (idempotent) and return the local model directory. `progress` reports 0…1.
     /// `matching` optionally restricts which files are fetched (empty = the whole repo).
     @discardableResult

@@ -20,12 +20,25 @@ final class EngineSurfaceTests: XCTestCase {
         let cases: [LlamaEngine.EngineError] = [
             .backendUnavailable, .weightsNotFound, .modelLoadFailed, .contextInitFailed,
             .notLoaded, .decodeFailed, .noUserMessage, .contextWindowExceeded,
+            .visionUnavailable, .imageDecodeFailed,
         ]
         for e in cases {
             let d = e.errorDescription
             XCTAssertNotNil(d, "\(e) must expose an errorDescription")
             XCTAssertFalse(d?.isEmpty ?? true, "\(e) description must not be empty")
         }
+    }
+
+    /// The vision errors name the actual lever: re-download to get the projector / send text only, and a
+    /// valid image format.
+    func testVisionErrorsAreActionable() {
+        let unavailable = LlamaEngine.EngineError.visionUnavailable.errorDescription?.lowercased() ?? ""
+        XCTAssertTrue(unavailable.contains("image"), "visionUnavailable should mention images")
+        XCTAssertTrue(unavailable.contains("re-download") || unavailable.contains("text"),
+                      "visionUnavailable should name a way out")
+        let decode = LlamaEngine.EngineError.imageDecodeFailed.errorDescription?.lowercased() ?? ""
+        XCTAssertTrue(decode.contains("jpeg") || decode.contains("png") || decode.contains("image"),
+                      "imageDecodeFailed should name the accepted formats")
     }
 
     func testLoadFailureDescriptionNamesTheLever() {

@@ -31,6 +31,7 @@ struct ChatDetailView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             Composer(chat: container.chat,
                      thinkingCapable: chat.activeModel?.model.architecture.thinkingCapable ?? true,
+                     canAttachImages: container.models.activeSupportsImageInput,
                      isLoadingModel: container.models.switching,
                      onOpenModels: onOpenModels)
         }

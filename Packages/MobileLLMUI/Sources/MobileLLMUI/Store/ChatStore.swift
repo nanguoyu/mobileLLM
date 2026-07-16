@@ -30,6 +30,13 @@ public final class ChatStore {
     /// The composer's per-thread thinking toggle (seeded from Settings' default).
     public var thinkingEnabled: Bool
     public private(set) var banner: Toast?
+    /// Images staged in the composer for the next send — already downscaled + JPEG-re-encoded (never the
+    /// raw 48 MP original). Capped at `maxAttachments`; cleared when the turn is sent. Held in memory
+    /// only until send stamps them onto the user turn + writes them to disk.
+    public private(set) var pendingImages: [PendingImage] = []
+
+    /// The most images a single turn may carry (keeps the mtmd prefill — and memory — bounded).
+    public static let maxAttachments = 3
 
     // MARK: - Dependencies
 
@@ -88,7 +95,36 @@ public final class ChatStore {
     public var isStreaming: Bool { streaming != nil }
     public var hasModel: Bool { activeModel != nil }
     public var canSend: Bool {
-        hasModel && streaming == nil && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        hasModel && streaming == nil
+            && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingImages.isEmpty)
+    }
+
+    // MARK: - Composer attachments
+
+    /// Room for another staged image (the photo affordance disables at the cap).
+    public var canAttachMoreImages: Bool { pendingImages.count < Self.maxAttachments }
+
+    /// Stage a picked/pasted image for the next send. Downscales + re-encodes to JPEG BEFORE storing so a
+    /// 48 MP photo never rides the prompt or sits in memory at full size. No-op past the cap or when the
+    /// bytes aren't a decodable image. Returns whether the image was added (so the UI can toast on reject).
+    @discardableResult
+    public func attach(imageData: Data) -> Bool {
+        guard canAttachMoreImages, let jpeg = ImageAttachment.downscaledJPEG(from: imageData) else { return false }
+        pendingImages.append(PendingImage(data: jpeg))
+        return true
+    }
+
+    public func removePendingImage(_ id: UUID) {
+        pendingImages.removeAll { $0.id == id }
+    }
+
+    public func clearPendingImages() {
+        pendingImages.removeAll()
+    }
+
+    /// Load a persisted attachment's bytes (for thumbnail rendering in a committed user turn).
+    public func attachmentData(_ ref: ImageRef) async -> Data? {
+        await store.attachmentData(ref.id)
     }
 
     // MARK: - Conversation lifecycle
@@ -190,15 +226,30 @@ public final class ChatStore {
 
     // MARK: - Sending
 
-    /// Send the composer draft: append the user turn + an empty assistant turn, then stream a reply.
+    /// Send the composer draft (text and/or staged images): append the user turn + an empty assistant
+    /// turn, then stream a reply. An image-only turn (no text) is allowed for vision models.
     public func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, activeModel != nil, streaming == nil else { return }
+        let images = pendingImages.map(\.data)
+        guard !text.isEmpty || !images.isEmpty, activeModel != nil, streaming == nil else { return }
+
+        // The MLX engine has no mtmd image path. Rather than silently drop the images and answer text-only,
+        // block the send with an actionable toast so the user can switch this model to its GGUF variant
+        // (C2.3). Draft + staged images are kept so the retry after switching loses nothing.
+        if !images.isEmpty, activeModel?.variant.engine == .mlx {
+            showToast(Toast("此模型引擎暂不支持图片 — switch this model to its GGUF/llama.cpp variant",
+                            kind: .warning, autoDismiss: 5))
+            return
+        }
+
         draft = ""
+        clearPendingImages()
         guard let convo = activeConversation ?? newConversation(),
               let idx = conversations.firstIndex(where: { $0.id == convo.id }) else { return }
 
-        let user = Message(role: .user, answer: text)
+        // Reference the attached images by id; the bytes are written to disk (never inlined in the record).
+        let refs = images.map { _ in ImageRef() }
+        let user = Message(role: .user, answer: text, attachments: refs.isEmpty ? nil : refs)
         conversations[idx].messages.append(user)
         // Auto-title from the first user line (model-summarized titling is TODO(v1.0)).
         if conversations[idx].messages.filter({ $0.role == .user }).count == 1 {
@@ -213,7 +264,8 @@ public final class ChatStore {
         conversations[idx].messages.append(assistant)
         conversations[idx].updatedAt = Date()
 
-        startGeneration(assistantID: assistant.id, in: conversations[idx].id)
+        let attachments = zip(refs, images).map { (id: $0.0.id, data: $0.1) }
+        startGeneration(assistantID: assistant.id, in: conversations[idx].id, writeAttachments: attachments)
     }
 
     /// Regenerate an assistant turn: drop it (and anything after) and stream a fresh reply to the
@@ -259,7 +311,8 @@ public final class ChatStore {
         startGeneration(assistantID: assistant.id, in: conversations[ci].id)
     }
 
-    private func startGeneration(assistantID: UUID, in conversationID: UUID) {
+    private func startGeneration(assistantID: UUID, in conversationID: UUID,
+                                 writeAttachments: [(id: UUID, data: Data)] = []) {
         guard let convo = conversations.first(where: { $0.id == conversationID }) else { return }
         var state = StreamingState(messageID: assistantID)
         state.phase = .warming
@@ -271,13 +324,26 @@ public final class ChatStore {
         // <think> tag we can reliably strip from the shown text, so the only sure way to hide it is off.
         let params = settings.sampling(thinking: thinkingEnabled && settings.thinkingDisplay != .hidden,
                                        model: activeModel?.model)
-        let turns = Self.chatTurns(messages: history, systemPrompt: settings.systemPrompt, cap: params.contextTokenCap)
+        let systemPrompt = settings.systemPrompt
         let engine = self.engine
         let toolsOn = settings.toolsEnabled
+        let store = self.store
 
         genTask = Task { @MainActor [weak self] in
             do {
+                // Persist this turn's attachment bytes to disk FIRST, so the reload-from-disk below (and
+                // any later follow-up / history replay) sees them. Files, not inline JSON (the privacy +
+                // record-size promise).
+                for a in writeAttachments { try? await store.writeAttachment(a.data, id: a.id) }
                 await self?.ensureModelReady?()   // reload if the model was suspended to free memory
+                // Re-attach image bytes from disk for every image-bearing turn in THIS thread — the new
+                // turn AND earlier ones — so a follow-up question still sees the image context. Loaded only
+                // while generating (this local map is released when the task ends) and bounded by the
+                // thread's image count, keeping memory honest on the phone.
+                let imagesByMessage = await Self.loadAttachmentImages(for: history, from: store)
+                let turns = Self.chatTurns(messages: history, systemPrompt: systemPrompt,
+                                           cap: params.contextTokenCap,
+                                           images: { imagesByMessage[$0.id] ?? [] })
                 if toolsOn {
                     // Agent loop: the model may call the local calculator/clock, a Wikipedia lookup, or any
                     // tool exposed by a configured MCP server before answering.
@@ -502,22 +568,27 @@ public final class ChatStore {
 
     /// Trim history to `cap` tokens, ALWAYS keeping the system turn (DESIGN §2.3). Assistant turns are
     /// fed back as their answer text only (reasoning is not re-sent). Empty placeholder turns are
-    /// skipped. The most recent turn is kept even if it alone exceeds the budget.
-    public static func chatTurns(messages: [Message], systemPrompt: String?, cap: Int) -> [ChatTurn] {
+    /// skipped — but a user turn that carries image attachments is kept even with no text (a "describe
+    /// this" turn). The most recent turn is kept even if it alone exceeds the budget. `images` supplies
+    /// the (already-loaded) encoded bytes for a message's attachments; user turns carry them to the
+    /// vision engine.
+    public static func chatTurns(messages: [Message], systemPrompt: String?, cap: Int,
+                                 images: (Message) -> [Data] = { _ in [] }) -> [ChatTurn] {
         var systemTurn: ChatTurn?
         var systemTokens = 0
         if let prompt = systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines), !prompt.isEmpty {
             systemTurn = ChatTurn(role: .system, content: prompt)
             systemTokens = TokenEstimate.tokens(in: prompt)   // CJK-aware, matching the per-message estimate
         }
-        let candidates = messages.filter { $0.role != .system && !$0.answer.isEmpty }
+        let candidates = messages.filter { $0.role != .system && ($0.hasVisibleContent) }
         var budget = max(0, cap - systemTokens)
         var kept: [ChatTurn] = []
         for message in candidates.reversed() {
             let tokens = message.approximateTokens
             if !kept.isEmpty && tokens > budget { break }
             let role: ChatTurn.Role = message.role == .assistant ? .assistant : .user
-            kept.append(ChatTurn(role: role, content: message.answer))
+            let turnImages = role == .user ? images(message) : []
+            kept.append(ChatTurn(role: role, content: message.answer, images: turnImages))
             budget -= tokens
             if budget <= 0 { break }
         }
@@ -532,6 +603,23 @@ public final class ChatStore {
         if let note { turns.append(ChatTurn(role: .system, content: note)) }
         turns.append(contentsOf: kept.reversed())
         return turns
+    }
+
+    /// Load the encoded image bytes for every attachment across `messages` (current thread only), keyed by
+    /// message id, for `chatTurns`' image provider. Awaits the store actor per file; the returned map is a
+    /// generation-scoped local that's released when the caller's task ends (memory discipline).
+    static func loadAttachmentImages(for messages: [Message],
+                                     from store: ConversationStore) async -> [UUID: [Data]] {
+        var result: [UUID: [Data]] = [:]
+        for message in messages {
+            guard let refs = message.attachments, !refs.isEmpty else { continue }
+            var datas: [Data] = []
+            for ref in refs {
+                if let data = await store.attachmentData(ref.id) { datas.append(data) }
+            }
+            if !datas.isEmpty { result[message.id] = datas }
+        }
+        return result
     }
 
     /// A compact system note summarizing dropped turns, or nil when nothing was dropped.

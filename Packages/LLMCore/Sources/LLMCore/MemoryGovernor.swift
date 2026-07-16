@@ -93,8 +93,12 @@ public enum LLMMemoryGovernor {
                                      device: DeviceTier, context: Int) -> LLMFit {
         let ceiling = residentCeilingBytes(for: device)
         let overhead = variant.backend.runtimeOverheadBytes
-        let discountedBase = Int64(Double(variant.onDiskBytes) * mmapResidentFraction) + overhead
-        let rawBase = variant.onDiskBytes + overhead
+        // A vision variant also holds its mmproj resident — count it in the weight bytes so the fit badge
+        // stays honest (a vision model's footprint is ~1 GB higher). The mmproj is a GGUF loaded via mtmd,
+        // so the same clean-page mmap discount applies to it. `?? 0` keeps text/MLX numbers byte-identical.
+        let weightBytes = variant.onDiskBytes + (variant.visionProjector?.sizeBytes ?? 0)
+        let discountedBase = Int64(Double(weightBytes) * mmapResidentFraction) + overhead
+        let rawBase = weightBytes + overhead
         let kv = model.architecture.attention.kvBytes(tokens: context)
 
         // Supported if the clean-page (discounted) footprint fits — the mmap discount is what lets a big

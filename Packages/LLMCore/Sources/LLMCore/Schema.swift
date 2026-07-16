@@ -294,12 +294,32 @@ public struct LLMArchitecture: Sendable, Hashable, Codable {
     }
 }
 
+/// A vision projector (mmproj) companion file for a llama.cpp vision model: the multimodal-projector
+/// weights that turn an image into embedding tokens the text model consumes (loaded via mtmd). It ships
+/// as a second GGUF beside the text weights in the SAME repo; `sizeBytes` is the HF-verified file size,
+/// fed to the governor's weight math and the storage/download accounting.
+public struct VisionProjector: Sendable, Hashable, Codable {
+    /// The repo-relative file name (e.g. `mmproj-F16.gguf`).
+    public let fileName: String
+    /// The projector file's true size in bytes (HF tree API `lfs.size`).
+    public let sizeBytes: Int64
+    public init(fileName: String, sizeBytes: Int64) {
+        self.fileName = fileName
+        self.sizeBytes = sizeBytes
+    }
+}
+
 /// One installable variant of a model (a specific quant + backend + weights repo).
 public struct LLMVariant: Sendable, Hashable, Codable, Identifiable {
     public let quant: QuantSpec
     public let backend: Backend
     public let onDiskBytes: Int64
     public let source: ModelSource
+    /// The vision projector (mmproj) this variant pairs with, when it can accept image input; `nil` for a
+    /// text-only variant. Present only on llama.cpp GGUF vision variants (the mmproj lives in `source`'s
+    /// repo). Optional + decode-defaulted so persisted snapshots / adopted registries written before this
+    /// field survive a decode unchanged.
+    public let visionProjector: VisionProjector?
 
     /// Unique per variant across models AND engines: the repo plus the backend's format tag, so one
     /// model can hold both an MLX and a GGUF variant of the same quant without an id collision.
@@ -308,11 +328,49 @@ public struct LLMVariant: Sendable, Hashable, Codable, Identifiable {
     /// The inference engine this variant runs on (routing key + UI subtitle).
     public var engine: EngineKind { backend.engine }
 
-    public init(quant: QuantSpec, backend: Backend, onDiskBytes: Int64, source: ModelSource) {
+    /// True when this variant ships a vision projector — i.e. it can accept image input (drives the
+    /// composer's attach-image affordance and the engine's mtmd path).
+    public var supportsVisionInput: Bool { visionProjector != nil }
+
+    /// The repo-relative files this variant must download to be usable, in fetch order: the primary
+    /// single weight file (when it pulls one file from a shared repo — e.g. a GGUF) plus its vision
+    /// projector when present. Empty = fetch the whole flat repo (the MLX case). Pure and the single
+    /// source of truth for the download globs, the "installed?" probe (ALL of these must be present),
+    /// deletion, and storage accounting.
+    public var requiredFileNames: [String] {
+        var names: [String] = []
+        if let f = source.fileName { names.append(f) }
+        if let p = visionProjector { names.append(p.fileName) }
+        return names
+    }
+
+    public init(quant: QuantSpec, backend: Backend, onDiskBytes: Int64, source: ModelSource,
+                visionProjector: VisionProjector? = nil) {
         self.quant = quant
         self.backend = backend
         self.onDiskBytes = onDiskBytes
         self.source = source
+        self.visionProjector = visionProjector
+    }
+
+    // Hand-written Codable so a snapshot written before `visionProjector` existed decodes with it nil,
+    // and a text-only variant re-encodes without the key (byte-identical to the old form).
+    private enum CodingKeys: String, CodingKey { case quant, backend, onDiskBytes, source, visionProjector }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        quant = try c.decode(QuantSpec.self, forKey: .quant)
+        backend = try c.decode(Backend.self, forKey: .backend)
+        onDiskBytes = try c.decode(Int64.self, forKey: .onDiskBytes)
+        source = try c.decode(ModelSource.self, forKey: .source)
+        visionProjector = try c.decodeIfPresent(VisionProjector.self, forKey: .visionProjector)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(quant, forKey: .quant)
+        try c.encode(backend, forKey: .backend)
+        try c.encode(onDiskBytes, forKey: .onDiskBytes)
+        try c.encode(source, forKey: .source)
+        try c.encodeIfPresent(visionProjector, forKey: .visionProjector)
     }
 }
 

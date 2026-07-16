@@ -301,8 +301,9 @@ struct ModelCard: View {
             .strokeBorder(isActive ? Theme.accent : .clear, lineWidth: 1.5))
     }
 
-    /// What the checkpoint natively accepts beyond text. The app still runs every model text-only, so the
-    /// chips are quiet + carry an honest "text-only for now" note rather than implying image input works.
+    /// What the checkpoint natively accepts beyond text. Vision GGUF variants with an mmproj can now take
+    /// image input for real (llama.cpp mtmd); everything else stays honestly text-only, so the note never
+    /// over-promises.
     private var modalityRow: some View {
         HStack(spacing: Theme.Space.xs) {
             ForEach(model.architecture.extraModalities, id: \.self) { m in
@@ -321,11 +322,11 @@ struct ModelCard: View {
         }
     }
 
-    /// Honest modality status: image input over llama.cpp's mmproj is landing next wave for GGUF vision
-    /// models, so say so for those; MLX vision + audio aren't wired, so they stay "text-only".
+    /// Honest modality status: a GGUF vision variant that ships an mmproj projector takes image input now
+    /// (llama.cpp mtmd), so say so; MLX vision + audio aren't wired, so they stay "text-only".
     private var modalityFootnote: String {
-        let ggufVision = model.architecture.modalities.contains(.vision) && !model.variants(for: .llamaCpp).isEmpty
-        return ggufVision ? "· image input coming soon (GGUF); text-only today" : "· text-only here for now"
+        let visionReady = model.variants(for: .llamaCpp).contains { $0.supportsVisionInput }
+        return visionReady ? "· image input works (llama.cpp)" : "· text-only here for now"
     }
 
     private var header: some View {

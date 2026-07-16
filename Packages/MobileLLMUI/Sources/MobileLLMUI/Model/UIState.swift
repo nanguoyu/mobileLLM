@@ -59,6 +59,17 @@ public struct StreamingState: Equatable {
     public var hasAnyContent: Bool { !reasoning.isEmpty || !answer.isEmpty || !toolActivity.isEmpty }
 }
 
+/// One image staged in the composer before sending — downscaled + JPEG-encoded bytes plus a stable id
+/// so the thumbnail chips render + remove cleanly in a SwiftUI `ForEach`.
+public struct PendingImage: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let data: Data
+    public init(id: UUID = UUID(), data: Data) {
+        self.id = id
+        self.data = data
+    }
+}
+
 /// The currently-loaded model + variant the engine will generate with.
 public struct LoadedModel: Equatable, Sendable {
     public var model: LLMModel

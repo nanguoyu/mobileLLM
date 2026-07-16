@@ -24,6 +24,12 @@ public actor LlamaEngine: LLMEngine {
         /// The prompt can't be made to fit the context window even after dropping all droppable history
         /// (system prefix + final user turn alone overflow). Raised instead of truncating mid-token.
         case contextWindowExceeded
+        /// A turn carries an image but this model has no vision projector loaded (the variant declares no
+        /// mmproj, or its file was missing at load). Raised instead of silently dropping the image.
+        case visionUnavailable
+        /// An attached image couldn't be decoded / prepared for the vision encoder (corrupt or unsupported
+        /// image bytes, or the multimodal tokenizer rejected the prompt+image pairing).
+        case imageDecodeFailed
 
         /// Actionable, user-facing text. Load/context failures point at the real lever (a smaller quant or
         /// freeing memory); the overflow case names the way out (shorter system prompt / longer context).
@@ -45,6 +51,10 @@ public actor LlamaEngine: LLMEngine {
                 return "There's no user message to respond to."
             case .contextWindowExceeded:
                 return "The system prompt and your latest message alone don't fit this model's context window. Shorten the system prompt or raise the context length, then try again."
+            case .visionUnavailable:
+                return "This model can't read images — its vision component isn't available. Re-download the model to fetch its vision projector, or remove the image and send text only."
+            case .imageDecodeFailed:
+                return "Couldn't process the attached image. Make sure it's a valid JPEG or PNG, then try again."
             }
         }
     }
@@ -52,6 +62,10 @@ public actor LlamaEngine: LLMEngine {
     private var model: OpaquePointer?
     private var vocab: OpaquePointer?
     private var context: OpaquePointer?
+    /// The multimodal (vision) context from the variant's mmproj, initialized at load when the variant
+    /// ships a vision projector whose file is present. `nil` for a text-only load. Freed before the model
+    /// on unload/reload (it holds a reference to the text model).
+    private var mtmdContext: OpaquePointer?
     private var contextCap: Int = 0          // the n_ctx the live context was built with
     private var contextKVBits: Int = -1      // the Sampling.kvBits the live context's KV cache was built for
     private var loadedID: String?
@@ -96,7 +110,7 @@ public actor LlamaEngine: LLMEngine {
         // Reloading over a resident model must free the predecessor first: llama_model_load_from_file
         // returns a fresh allocation, so overwriting the pointers would leak the old multi-GB model
         // (and `context = nil` below would leak its context — only llama_free releases it).
-        if model != nil || context != nil { await unload() }
+        if model != nil || context != nil || mtmdContext != nil { await unload() }
         let path = try Self.resolveGGUF(in: weightsDir, preferred: variant.source.fileName)
 
         var mp = llama_model_default_params()
@@ -119,12 +133,28 @@ public actor LlamaEngine: LLMEngine {
         promptTemplate = modelSpec.architecture.promptTemplate
         reasoningStyle = modelSpec.architecture.reasoningStyle
         context = nil; contextCap = 0; contextKVBits = -1
+
+        // Vision: if the variant ships a projector AND its file is present, bring up the multimodal
+        // context (mmproj → vision encoder) so image-bearing turns can be prefilled via mtmd. A declared
+        // projector whose file is missing leaves `mtmdContext` nil → an image later throws visionUnavailable
+        // rather than loading blind. use_gpu on, timings off (per the vision plan).
+        if let projector = variant.visionProjector,
+           let projectorPath = Self.resolveProjector(in: weightsDir, fileName: projector.fileName) {
+            var mp2 = mtmd_context_params_default()
+            mp2.use_gpu = true
+            mp2.print_timings = false
+            mp2.n_threads = nThreads
+            mtmdContext = projectorPath.withCString { mtmd_init_from_file($0, m, mp2) }
+        }
         progress(1)
     }
 
     public func unload() async {
+        // Free the vision context BEFORE the model — it holds a reference to the text model.
+        if let mtmdContext { mtmd_free(mtmdContext) }
         if let context { llama_free(context) }
         if let model { llama_model_free(model) }
+        mtmdContext = nil
         context = nil; model = nil; vocab = nil; loadedID = nil; contextCap = 0; contextKVBits = -1
     }
 
@@ -181,6 +211,12 @@ public actor LlamaEngine: LLMEngine {
         do {
             guard model != nil, let vocab else { throw EngineError.notLoaded }
             guard messages.contains(where: { $0.role == .user }) else { throw EngineError.noUserMessage }
+            // An attached image with no vision projector loaded fails fast (rather than being silently
+            // dropped): the model literally can't see it. Checked on the full history so a NEW image in the
+            // final turn is always caught, before we spend anything building a context.
+            if mtmdContext == nil, messages.contains(where: { !$0.images.isEmpty }) {
+                throw EngineError.visionUnavailable
+            }
 
             try ensureContext(cap: params.contextTokenCap, kvBits: params.kvBits)
             guard let context else { throw EngineError.contextInitFailed }
@@ -201,37 +237,49 @@ public actor LlamaEngine: LLMEngine {
             // Fit the history into the KV window by dropping WHOLE oldest non-system turns and rebuilding —
             // NEVER by chopping tokens off the front, which would shear the system prompt and the template
             // head mid-conversation. Reserve room for the answer; if even {system prefix + final user turn}
-            // overflows, fail with a clear error rather than emit garbage from a half-formed prompt.
+            // overflows, fail with a clear error rather than emit garbage from a half-formed prompt. Each
+            // attached image also reserves ~600 tokens — its vision-encoder embeddings consume real context.
             let reserve = max(8, params.maxTokens > 0 ? min(params.maxTokens, 256) : 256)
             let budget = contextCap - reserve
             guard budget > 0, let kept = Self.fitMessages(messages, budget: budget, tokenCount: {
-                Self.tokenize(vocab: vocab, text: renderPrompt($0), addSpecial: true).count
+                Self.tokenize(vocab: vocab, text: renderPrompt($0), addSpecial: true).count + Self.imageTokenCount($0)
             }) else {
                 throw EngineError.contextWindowExceeded
             }
-            let promptTokens = Self.tokenize(vocab: vocab, text: renderPrompt(kept), addSpecial: true)
 
             let sampler = Self.makeSampler(vocab: vocab, params: params)
             defer { llama_sampler_free(sampler) }
 
-            // Prefill (chunked to n_batch so the Metal compute buffer stays small).
+            // Prefill. With NO image in the kept history this is byte-identical to before: tokenize the
+            // rendered prompt and llama_decode it in n_batch chunks. When a kept turn carries images, prefill
+            // through mtmd instead (marker injection → tokenize text+images → chunk-by-chunk encode/decode),
+            // which leaves the KV populated so the decode loop below continues from where the prefill ended.
             let prefillStart = Date()
             let nBatch = 512
-            var i = 0
-            while i < promptTokens.count {
-                try Task.checkCancellation()
-                let end = min(i + nBatch, promptTokens.count)
-                var chunk = Array(promptTokens[i..<end])
-                let ok = chunk.withUnsafeMutableBufferPointer { buf -> Bool in
-                    llama_decode(context, llama_batch_get_one(buf.baseAddress, Int32(buf.count))) == 0
+            let promptTokenCount: Int
+            let hasImages = kept.contains { !$0.images.isEmpty }
+            if hasImages {
+                promptTokenCount = try await mtmdPrefill(kept: kept, context: context,
+                                                         renderPrompt: renderPrompt, nBatch: nBatch)
+            } else {
+                let promptTokens = Self.tokenize(vocab: vocab, text: renderPrompt(kept), addSpecial: true)
+                var i = 0
+                while i < promptTokens.count {
+                    try Task.checkCancellation()
+                    let end = min(i + nBatch, promptTokens.count)
+                    var chunk = Array(promptTokens[i..<end])
+                    let ok = chunk.withUnsafeMutableBufferPointer { buf -> Bool in
+                        llama_decode(context, llama_batch_get_one(buf.baseAddress, Int32(buf.count))) == 0
+                    }
+                    guard ok else { throw EngineError.decodeFailed }
+                    i = end
+                    // Hand the cooperative pool a breath between chunks so downloads/saves keep progressing
+                    // (these C calls have no suspension points of their own). The yield is an actor-reentrancy
+                    // point: bail if a concurrent unload/reload swapped the context out from under us.
+                    await Task.yield()
+                    guard self.context == context else { throw CancellationError() }
                 }
-                guard ok else { throw EngineError.decodeFailed }
-                i = end
-                // Hand the cooperative pool a breath between chunks so downloads/saves keep progressing
-                // (these C calls have no suspension points of their own). The yield is an actor-reentrancy
-                // point: bail if a concurrent unload/reload swapped the context out from under us.
-                await Task.yield()
-                guard self.context == context else { throw CancellationError() }
+                promptTokenCount = promptTokens.count
             }
             let promptSecs = max(Date().timeIntervalSince(prefillStart), 0.0001)
 
@@ -292,9 +340,9 @@ public actor LlamaEngine: LLMEngine {
             let genSecs = max(Date().timeIntervalSince(genStart), 0.0001)
             peak = max(peak, Self.footprintBytes())
             cont.yield(.done(Stats(
-                promptTokens: promptTokens.count,
+                promptTokens: promptTokenCount,
                 genTokens: genTokens,
-                promptTPS: Double(promptTokens.count) / promptSecs,
+                promptTPS: Double(promptTokenCount) / promptSecs,
                 tokensPerSecond: Double(genTokens) / genSecs,
                 peakMemoryBytes: peak,
                 stopReason: stop)))
@@ -306,6 +354,93 @@ public actor LlamaEngine: LLMEngine {
         } catch {
             cont.finish(throwing: error)
         }
+    }
+
+    // MARK: - Vision (mtmd)
+
+    /// Tokens reserved per attached image in the context-fit math. A vision encoder emits on the order of a
+    /// few hundred embedding tokens per image (it varies with the model's tiling / input resolution); ~600
+    /// is a deliberately safe upper bound that keeps the KV budget honest without starving the text. It is
+    /// a reservation for FITTING only — the true image-token count comes back from mtmd after tokenization.
+    static let imageTokenBudget = 600
+
+    /// Total image-token reservation for a set of turns: `imageTokenBudget` per attached image. Zero for a
+    /// text-only history, so adding this term to the fit's token count is a no-op on the text path.
+    static func imageTokenCount(_ messages: [ChatTurn]) -> Int {
+        messages.reduce(0) { $0 + $1.images.count } * imageTokenBudget
+    }
+
+    /// Prefix one media marker (each on its own line) per attached image to the content of every
+    /// image-bearing turn, leaving text-only turns untouched. The rendered prompt then carries exactly one
+    /// marker per image, in turn/image order, which is what `mtmd_tokenize` needs to interleave the image
+    /// chunks. Pure (the marker is injected, not read from the C library) so it unit-tests without a model;
+    /// with no images anywhere it returns the input unchanged, so the no-image prompt is byte-for-byte as
+    /// before.
+    static func injectMediaMarkers(_ messages: [ChatTurn], marker: String) -> [ChatTurn] {
+        messages.map { turn in
+            guard !turn.images.isEmpty else { return turn }
+            let prefix = String(repeating: marker + "\n", count: turn.images.count)
+            return ChatTurn(role: turn.role, content: prefix + turn.content, images: turn.images)
+        }
+    }
+
+    /// Multimodal prefill: render the kept turns with a media marker injected per attached image, split the
+    /// text + images into mtmd chunks, and evaluate them chunk-by-chunk into the live context's KV cache
+    /// (image encode → decode for image chunks, plain decode for text) so the ordinary decode loop can
+    /// continue from the end of the prefill. Returns the total prefilled token count (text + image tokens)
+    /// for the stats line. Cancellation-checked and yields between chunks (chunk-level granularity is
+    /// acceptable), bailing via the reentrancy guard if a concurrent reload swaps the context out.
+    private func mtmdPrefill(kept: [ChatTurn], context: OpaquePointer,
+                             renderPrompt: ([ChatTurn]) -> String, nBatch: Int) async throws -> Int {
+        guard let mtmdCtx = mtmdContext else { throw EngineError.visionUnavailable }
+        let marker = String(cString: mtmd_default_marker())
+        let promptText = renderPrompt(Self.injectMediaMarkers(kept, marker: marker))
+
+        // Decode each attached image (encoded JPEG/PNG bytes) into an mtmd bitmap, in prompt order.
+        var bitmaps: [OpaquePointer?] = []
+        defer { for b in bitmaps { if let b { mtmd_bitmap_free(b) } } }
+        for turn in kept {
+            for image in turn.images {
+                try Task.checkCancellation()
+                let wrapper: mtmd_helper_bitmap_wrapper = image.withUnsafeBytes { raw in
+                    mtmd_helper_bitmap_init_from_buf(mtmdCtx, raw.bindMemory(to: UInt8.self).baseAddress,
+                                                     image.count, false)
+                }
+                guard let bmp = wrapper.bitmap else { throw EngineError.imageDecodeFailed }
+                bitmaps.append(bmp)
+            }
+        }
+
+        // Split the text + bitmaps into chunks (marker count == bitmap count by construction).
+        guard let chunks = mtmd_input_chunks_init() else { throw EngineError.imageDecodeFailed }
+        defer { mtmd_input_chunks_free(chunks) }
+        let tokenizeRC: Int32 = promptText.withCString { cText -> Int32 in
+            // text_len in BYTES (matches the text path's `utf8.count`), robust to any embedded null.
+            var input = mtmd_input_text(text: cText, text_len: promptText.utf8.count,
+                                        add_special: true, parse_special: true)
+            var bmpArray = bitmaps
+            return bmpArray.withUnsafeMutableBufferPointer { buf in
+                mtmd_tokenize(mtmdCtx, chunks, &input, buf.baseAddress, bitmaps.count)
+            }
+        }
+        guard tokenizeRC == 0 else { throw EngineError.imageDecodeFailed }
+
+        // Evaluate chunk-by-chunk into the KV cache; only the last chunk needs logits (for the first sample).
+        let nChunks = mtmd_input_chunks_size(chunks)
+        var nPast: llama_pos = 0
+        for idx in 0..<nChunks {
+            try Task.checkCancellation()
+            guard let chunk = mtmd_input_chunks_get(chunks, idx) else { throw EngineError.decodeFailed }
+            let isLast = idx == nChunks - 1
+            var newNPast: llama_pos = 0
+            let rc = mtmd_helper_eval_chunk_single(mtmdCtx, context, chunk, nPast, /*seq_id*/ 0,
+                                                   Int32(nBatch), /*logits_last*/ isLast, &newNPast)
+            guard rc == 0 else { throw EngineError.decodeFailed }
+            nPast = newNPast
+            await Task.yield()
+            guard self.context == context else { throw CancellationError() }   // reentrant teardown
+        }
+        return Int(mtmd_helper_get_n_tokens(chunks))
     }
 
     // MARK: - Prompt / tokenizer helpers
@@ -517,6 +652,21 @@ public actor LlamaEngine: LLMEngine {
         // A single-file download may have landed at `dir` itself.
         if dir.pathExtension.lowercased() == "gguf", fm.fileExists(atPath: dir.path) { return dir.path }
         throw EngineError.weightsNotFound
+    }
+
+    /// Resolve a vision projector (mmproj) file to load. Order: (1) an absolute `fileName` that exists — the
+    /// CLI `--mmproj` escape hatch; (2) `dir/fileName`, where the downloader places it beside the GGUF; (3)
+    /// a basename match anywhere in `dir`. Returns nil when the projector isn't present (the caller then
+    /// runs text-only, and an image later throws `.visionUnavailable`).
+    static func resolveProjector(in dir: URL, fileName: String) -> String? {
+        let fm = FileManager.default
+        if fileName.hasPrefix("/"), fm.fileExists(atPath: fileName) { return fileName }
+        let direct = dir.appendingPathComponent(fileName)
+        if fm.fileExists(atPath: direct.path) { return direct.path }
+        let base = (fileName as NSString).lastPathComponent
+        let contents = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        if let hit = contents.first(where: { $0.lastPathComponent == base }) { return hit.path }
+        return nil
     }
 
     /// Literal answer-wrapper tags to strip from the answer stream for a given template. Hunyuan wraps its

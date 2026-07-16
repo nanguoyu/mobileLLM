@@ -111,7 +111,8 @@ struct ChatThreadView: View {
         if message.role == .user {
             UserBubble(message: message,
                        onEdit: isBusy ? nil : { beginEdit(message) },
-                       onCopy: { Clipboard.copy(message.answer); chat.showToast(Toast("Copied")) })
+                       onCopy: { Clipboard.copy(message.answer); chat.showToast(Toast("Copied")) },
+                       attachmentLoader: { await chat.attachmentData($0) })
         } else if message.id == chat.streamingMessageID {
             StreamingRow(chat: chat, displayMode: displayMode,
                          modelName: chat.activeModel?.model.displayName ?? "Model")

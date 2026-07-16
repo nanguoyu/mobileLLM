@@ -18,6 +18,17 @@ public struct ToolRun: Identifiable, Codable, Sendable, Equatable {
     }
 }
 
+/// A reference to one image the user attached to a turn. The bytes live as a FILE
+/// (`attachments/<id>.jpg` under the conversation store root, written/deleted by `ConversationStore`),
+/// never inlined into the conversation JSON — so a multi-MB photo doesn't bloat every record load, and a
+/// hard-delete purges the pixels with the thread (the privacy promise, DESIGN §2.4).
+public struct ImageRef: Identifiable, Codable, Sendable, Equatable {
+    public let id: UUID
+    public init(id: UUID = UUID()) { self.id = id }
+    /// The on-disk filename under the store's `attachments/` directory.
+    public var fileName: String { "\(id.uuidString).jpg" }
+}
+
 public struct Message: Identifiable, Codable, Sendable, Equatable {
     public enum Role: String, Codable, Sendable, Equatable {
         case system, user, assistant
@@ -48,11 +59,15 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
     public var stats: Stats?
     /// The turn this message was branched/regenerated from (v1.0 branch pager).
     public var parentID: UUID?
+    /// Images the user attached to this turn, as file references (bytes live under the store's
+    /// `attachments/` dir — never inline here). Optional → old records without the key decode as nil,
+    /// and a text-only turn re-encodes byte-identically (the synthesized Codable omits a nil key).
+    public var attachments: [ImageRef]?
 
     public init(id: UUID = UUID(), role: Role, createdAt: Date = Date(),
                 answer: String, reasoning: String? = nil, thinkingSeconds: Double? = nil,
                 toolRuns: [ToolRun]? = nil, stats: Stats? = nil, parentID: UUID? = nil,
-                emptyOutcome: EmptyOutcome? = nil) {
+                emptyOutcome: EmptyOutcome? = nil, attachments: [ImageRef]? = nil) {
         self.id = id
         self.role = role
         self.createdAt = createdAt
@@ -63,11 +78,16 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
         self.stats = stats
         self.parentID = parentID
         self.emptyOutcome = emptyOutcome
+        self.attachments = attachments
     }
 
     /// A CJK-aware token estimate (`LLMCore.TokenEstimate`) used for context-window trimming — the old
     /// `count / 4` under-counted Chinese/Japanese/Korean ~3× and let the window silently overrun.
     var approximateTokens: Int { TokenEstimate.tokens(in: answer) }
+
+    /// Whether this turn carries anything the engine should see — visible text OR image attachments. A
+    /// user turn with only an image (no text) still counts; an empty assistant placeholder does not.
+    var hasVisibleContent: Bool { !answer.isEmpty || !(attachments?.isEmpty ?? true) }
 }
 
 /// A chat thread (DESIGN §2.4). Persisted one-record-per-file by `ConversationStore`; a lightweight

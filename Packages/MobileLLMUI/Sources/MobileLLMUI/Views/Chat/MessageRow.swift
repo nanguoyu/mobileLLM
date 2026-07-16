@@ -20,32 +20,95 @@ struct TypingCaret: View {
     }
 }
 
-/// The user turn — a right-aligned accent bubble (DESIGN §4).
+/// The user turn — a right-aligned accent bubble (DESIGN §4), with any attached image thumbnails stacked
+/// above the text. An image-only turn (no text) shows just the thumbnails.
 struct UserBubble: View {
     let message: Message
     var onEdit: (() -> Void)?
     var onCopy: (() -> Void)?
+    /// Loads a committed attachment's bytes from the store (nil on the previews/paths that don't render them).
+    var attachmentLoader: ((ImageRef) async -> Data?)?
+
+    private var attachments: [ImageRef] { message.attachments ?? [] }
 
     var body: some View {
         HStack {
             Spacer(minLength: 40)
-            Text(message.answer)
-                .font(.body)
-                .foregroundStyle(Theme.onAccent)
-                .textSelection(.enabled)
-                .padding(.horizontal, Theme.Space.md)
-                .padding(.vertical, Theme.Space.sm)
-                .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-                .contextMenu {
-                    Button { onCopy?() } label: { Label("Copy", systemImage: "doc.on.doc") }
-                    if onEdit != nil {
-                        Button { onEdit?() } label: { Label("Edit & resend", systemImage: "pencil") }
-                    }
+            VStack(alignment: .trailing, spacing: Theme.Space.xs) {
+                if !attachments.isEmpty, let attachmentLoader {
+                    AttachmentThumbnails(refs: attachments, load: attachmentLoader)
                 }
+                if !message.answer.isEmpty {
+                    Text(message.answer)
+                        .font(.body)
+                        .foregroundStyle(Theme.onAccent)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, Theme.Space.md)
+                        .padding(.vertical, Theme.Space.sm)
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                        .contextMenu {
+                            Button { onCopy?() } label: { Label("Copy", systemImage: "doc.on.doc") }
+                            if onEdit != nil {
+                                Button { onEdit?() } label: { Label("Edit & resend", systemImage: "pencil") }
+                            }
+                        }
+                }
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("You said")
-        .accessibilityValue(message.answer)
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var accessibilityValue: String {
+        guard !attachments.isEmpty else { return message.answer }
+        let noun = attachments.count == 1 ? "attached image" : "\(attachments.count) attached images"
+        return message.answer.isEmpty ? noun : "\(noun). \(message.answer)"
+    }
+}
+
+/// The image attachments on a user turn — one thumbnail up to ~200pt, or a 2-up grid for several.
+struct AttachmentThumbnails: View {
+    let refs: [ImageRef]
+    let load: (ImageRef) async -> Data?
+
+    var body: some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: Theme.Space.xs),
+                            count: refs.count == 1 ? 1 : 2)
+        LazyVGrid(columns: columns, alignment: .trailing, spacing: Theme.Space.xs) {
+            ForEach(refs) { ref in
+                AttachmentThumbnail(ref: ref, load: load)
+            }
+        }
+        .frame(maxWidth: refs.count == 1 ? 200 : 220)
+    }
+}
+
+/// One attachment thumbnail — loads its bytes lazily from the store, decodes, and renders rounded.
+struct AttachmentThumbnail: View {
+    let ref: ImageRef
+    let load: (ImageRef) async -> Data?
+    @State private var image: Image?
+
+    var body: some View {
+        Group {
+            if let image {
+                image.resizable().scaledToFill()
+            } else {
+                Rectangle().fill(Theme.surface2)
+                    .overlay(ProgressView().controlSize(.small))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 140)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.hairline))
+        .task(id: ref.id) {
+            if image == nil, let data = await load(ref), let decoded = Image(attachmentData: data) {
+                image = decoded
+            }
+        }
+        .accessibilityLabel("attached image")
     }
 }
 

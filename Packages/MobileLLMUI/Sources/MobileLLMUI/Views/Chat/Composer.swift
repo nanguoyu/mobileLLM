@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: MIT
 
 import SwiftUI
+import PhotosUI
 import AppUI
 
 /// The chat composer (DESIGN §4): multiline auto-grow field, one morphing Send↔Stop button (no
-/// reflow), an inline 🧠 thinking toggle, a mic for dictation, and a live context meter. When no model
-/// is loaded the input is replaced by a compact hint that routes to the model picker — so a model-less
-/// thread is browsable but sending is clearly gated.
+/// reflow), an inline 🧠 thinking toggle, a mic for dictation, an optional photo attach (vision models),
+/// and a live context meter. When no model is loaded the input is replaced by a compact hint that routes
+/// to the model picker — so a model-less thread is browsable but sending is clearly gated.
 struct Composer: View {
     @Bindable var chat: ChatStore
     var thinkingCapable: Bool
+    /// The active model can accept image input (a vision GGUF with its projector installed) — shows the
+    /// photo attach affordance. Text-only / MLX models never see it.
+    var canAttachImages: Bool = false
     /// True while a model is loading (cold start / switch) — shows a loading hint instead of the picker CTA.
     var isLoadingModel: Bool = false
     /// Route to the Models screen (the no-model CTA).
@@ -19,6 +23,9 @@ struct Composer: View {
     @State private var dictation = DictationService()
     /// The draft text captured when dictation started, so live partial results replace (not duplicate).
     @State private var dictationBase = ""
+    /// Photo-library picks (loaded async into `chat.pendingImages`), and the flag that presents the picker.
+    @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var showPhotoPicker = false
     /// Composer controls scale with Dynamic Type instead of a hard 44pt.
     @ScaledMetric(relativeTo: .body) private var controlSize: CGFloat = 44
 
@@ -34,9 +41,11 @@ struct Composer: View {
     var body: some View {
         VStack(spacing: Theme.Space.xs) {
             contextMeter
+            if !chat.pendingImages.isEmpty { pendingImageChips }
             if chat.hasModel {
                 HStack(alignment: .bottom, spacing: Theme.Space.sm) {
                     if thinkingCapable { thinkingToggle }
+                    if canAttachImages { photoButton }
                     micButton
                     field
                     sendOrStop
@@ -48,6 +57,9 @@ struct Composer: View {
         .padding(Theme.Space.md)
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) { Divider().background(Theme.hairline) }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItems,
+                      maxSelectionCount: ChatStore.maxAttachments, matching: .images)
+        .onChange(of: pickerItems) { _, items in loadPickedImages(items) }
         .onChange(of: dictation.transcript) { _, transcript in
             guard dictation.isRecording else { return }
             chat.draft = merge(base: dictationBase, dictated: transcript)
@@ -165,6 +177,97 @@ struct Composer: View {
         .accessibilityLabel("Dictate")
         .accessibilityValue(dictation.isRecording ? "Recording" : "Off")
         .accessibilityAddTraits(dictation.isRecording ? [.isSelected] : [])
+    }
+
+    // MARK: Photo attach
+
+    private var photoButton: some View {
+        Menu {
+            Button {
+                showPhotoPicker = true
+            } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
+            Button {
+                pasteImage()
+            } label: { Label("Paste", systemImage: "doc.on.clipboard") }
+        } label: {
+            Image(systemName: "photo")
+                .font(.body)
+                .foregroundStyle(chat.canAttachMoreImages ? Theme.textTertiary : Theme.fitGray)
+                .frame(width: controlSize, height: controlSize)
+                .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
+        }
+        .menuIndicator(.hidden)
+        .disabled(!chat.canAttachMoreImages)
+        .accessibilityLabel("Attach image")
+        .accessibilityHint(chat.canAttachMoreImages ? "Add a photo to your message"
+                                                     : "Attachment limit reached")
+    }
+
+    /// Thumbnail chips for staged (not-yet-sent) images, each with a remove control.
+    private var pendingImageChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.Space.sm) {
+                ForEach(chat.pendingImages) { image in
+                    pendingChip(image)
+                }
+            }
+            .padding(.horizontal, 2).padding(.vertical, 2)
+        }
+        .frame(height: 64)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func pendingChip(_ image: PendingImage) -> some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let thumb = Image(attachmentData: image.data) {
+                    thumb.resizable().scaledToFill()
+                } else {
+                    Rectangle().fill(Theme.surface2)
+                }
+            }
+            .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
+            .accessibilityLabel("Attached image")
+
+            Button {
+                chat.removePendingImage(image.id)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.body)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(Theme.onAccent, Theme.textSecondary)
+                    .background(Circle().fill(Theme.surface))
+            }
+            .buttonStyle(.plain)
+            .padding(2)
+            .accessibilityLabel("Remove attached image")
+        }
+    }
+
+    /// Load photo-library picks into the composer (downscaled by `chat.attach`), then clear the selection.
+    private func loadPickedImages(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        Task { @MainActor in
+            for item in items {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    _ = chat.attach(imageData: data)
+                }
+            }
+            pickerItems = []
+        }
+    }
+
+    /// Attach an image from the clipboard, or tell the user there isn't one.
+    private func pasteImage() {
+        guard let data = Clipboard.imageData() else {
+            chat.showToast(Toast("No image on the clipboard.", kind: .warning, autoDismiss: 3))
+            return
+        }
+        if !chat.attach(imageData: data) {
+            chat.showToast(Toast("Couldn't add that image.", kind: .warning, autoDismiss: 3))
+        }
     }
 
     // MARK: Thinking toggle

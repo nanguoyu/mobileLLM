@@ -4,8 +4,9 @@
 // that model's real PromptTemplate + ReasoningStyle — and streams a short answer, proving the adapter,
 // Metal, and the ThinkSplitter/PieceDecoder path are correct per model.
 //
-//   swift run llama-smoke <catalog-id> <gguf-dir> ["prompt"] [--think]
+//   swift run llama-smoke <catalog-id> <gguf-dir> ["prompt"] [--think] [--image <path>]… [--mmproj <path>]
 //   e.g. swift run llama-smoke minicpm5-1b /Users/.../gguf-models "你好，请用一句话介绍你自己"
+//   vision: swift run llama-smoke qwen3.5-4b /Users/.../gguf "describe this" --image cat.jpg --mmproj mmproj-F16.gguf
 //
 // (run needs `DYLD_FALLBACK_LIBRARY_PATH=/usr/lib` for libc++.)
 
@@ -15,7 +16,7 @@ import LLMEngineLlama
 
 let args = CommandLine.arguments
 guard args.count >= 3 else {
-    FileHandle.standardError.write(Data("usage: llama-smoke <catalog-id> <gguf-dir> [prompt] [--think]\n".utf8))
+    FileHandle.standardError.write(Data("usage: llama-smoke <catalog-id> <gguf-dir> [prompt] [--think] [--image <path>]… [--mmproj <path>]\n".utf8))
     let ids = LLMCatalog.all.map(\.id).joined(separator: ", ")
     FileHandle.standardError.write(Data("catalog ids: \(ids)\n".utf8))
     exit(2)
@@ -24,6 +25,20 @@ let modelID = args[1]
 let dir = URL(fileURLWithPath: args[2], isDirectory: true)
 let prompt = args.count >= 4 && !args[3].hasPrefix("--") ? args[3] : "The capital of France is"
 let think = args.contains("--think")
+
+// --image <path> (repeatable) attaches an encoded image to the user turn; --mmproj <path> supplies the
+// vision projector so the engine brings up its multimodal context — together they verify the mtmd vision
+// path end-to-end from the CLI (the orchestrator runs this with a real model + image).
+var imagePaths: [String] = []
+var mmprojPath: String?
+do {
+    var i = 0
+    while i < args.count {
+        if args[i] == "--image", i + 1 < args.count { imagePaths.append(args[i + 1]); i += 2; continue }
+        if args[i] == "--mmproj", i + 1 < args.count { mmprojPath = args[i + 1]; i += 2; continue }
+        i += 1
+    }
+}
 
 guard var model = LLMCatalog.model(id: modelID) else {
     FileHandle.standardError.write(Data("unknown catalog id '\(modelID)'\n".utf8))
@@ -50,9 +65,18 @@ if styleArg != nil || forceAuto {
                      architecture: arch, variants: model.variants, defaultVariant: model.defaultVariant)
     FileHandle.standardError.write(Data("(override: template=\(forceAuto ? "auto" : a.promptTemplate.rawValue) style=\(style.rawValue))\n".utf8))
 }
-guard let variant = model.variants(for: .llamaCpp).first else {
+guard var variant = model.variants(for: .llamaCpp).first else {
     FileHandle.standardError.write(Data("'\(modelID)' has no GGUF variant\n".utf8))
     exit(2)
+}
+
+// A CLI --mmproj overrides (or supplies) the variant's vision projector via its absolute path, so the
+// engine's resolveProjector picks it up and initializes mtmd even for a catalog model that ships none.
+if let mmprojPath {
+    let size = ((try? FileManager.default.attributesOfItem(atPath: mmprojPath))?[.size] as? NSNumber)?.int64Value ?? 0
+    variant = LLMVariant(quant: variant.quant, backend: variant.backend, onDiskBytes: variant.onDiskBytes,
+                         source: variant.source,
+                         visionProjector: VisionProjector(fileName: mmprojPath, sizeBytes: size))
 }
 
 let engine = LlamaEngine()
@@ -71,8 +95,13 @@ do {
     params.temperature = think ? 0.6 : 0
     params.seed = 42
 
-    let messages = [ChatTurn(role: .user, content: prompt)]
-    line("PROMPT> \(prompt)")
+    var images: [Data] = []
+    for p in imagePaths {
+        guard let d = try? Data(contentsOf: URL(fileURLWithPath: p)) else { line("cannot read image: \(p)"); exit(2) }
+        images.append(d)
+    }
+    let messages = [ChatTurn(role: .user, content: prompt, images: images)]
+    line("PROMPT> \(prompt)\(images.isEmpty ? "" : "  [+\(images.count) image(s), mmproj=\(mmprojPath ?? variant.visionProjector?.fileName ?? "?")]")")
     var reasoningShown = false
     for try await delta in engine.generate(messages: messages, params: params) {
         switch delta {

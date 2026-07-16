@@ -9,9 +9,33 @@ public struct ChatTurn: Sendable, Equatable, Codable {
     }
     public let role: Role
     public let content: String
-    public init(role: Role, content: String) {
+    /// Encoded image bytes (JPEG/PNG) attached to this turn, in display order. Empty for a text-only
+    /// turn (the default) — the vision-capable llama.cpp engine feeds these to the model's mmproj via
+    /// mtmd; every other path ignores them. Kept as raw encoded bytes (not decoded pixels) because
+    /// `mtmd_helper_bitmap_init_from_buf` accepts encoded files directly.
+    public let images: [Data]
+
+    public init(role: Role, content: String, images: [Data] = []) {
         self.role = role
         self.content = content
+        self.images = images
+    }
+
+    // Hand-written Codable so old persisted turns (no `images` key) still decode — `images` defaults to
+    // empty — and a text-only turn re-encodes to the SAME bytes as before (the key is omitted when empty).
+    // ChatStore builds ChatTurn transiently today, but the type is Codable and must stay snapshot-safe.
+    private enum CodingKeys: String, CodingKey { case role, content, images }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        role = try c.decode(Role.self, forKey: .role)
+        content = try c.decode(String.self, forKey: .content)
+        images = try c.decodeIfPresent([Data].self, forKey: .images) ?? []
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(role, forKey: .role)
+        try c.encode(content, forKey: .content)
+        if !images.isEmpty { try c.encode(images, forKey: .images) }
     }
 }
 

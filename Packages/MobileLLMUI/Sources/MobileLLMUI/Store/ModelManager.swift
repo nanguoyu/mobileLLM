@@ -146,14 +146,18 @@ public final class ModelManager {
     }
 
     /// Default probe: the reused `ModelDownloader` reports the variant as fully downloaded. Single-file
-    /// (GGUF) variants are checked file-scoped (just their one file); flat MLX repos whole-repo.
+    /// (GGUF) variants are checked file-scoped over ALL their `requiredFileNames` — a GGUF weight file
+    /// plus, for a vision variant, its mmproj — so a half-fetched vision model (weights present, mmproj
+    /// still downloading) never reads as installed; flat MLX repos are checked whole-repo. Identical to
+    /// the old single-file check for a text-only variant (its `requiredFileNames` is just its one file).
     public nonisolated static func defaultInstallProbe() -> @Sendable (LLMVariant, URL) -> Bool {
         { variant, base in
             let downloader = ModelDownloader(downloadBase: base)
-            if let fileName = variant.source.fileName {
-                return downloader.isDownloaded(repoId: variant.source.huggingFaceRepo, fileName: fileName)
+            let names = variant.requiredFileNames
+            if names.isEmpty {
+                return downloader.isDownloaded(repoId: variant.source.huggingFaceRepo)
             }
-            return downloader.isDownloaded(repoId: variant.source.huggingFaceRepo)
+            return downloader.isDownloaded(repoId: variant.source.huggingFaceRepo, fileNames: names)
         }
     }
 
@@ -169,6 +173,21 @@ public final class ModelManager {
     }
 
     public func isInstalled(_ variant: LLMVariant) -> Bool { installed.contains(variant.id) }
+
+    /// Whether a variant can accept image input RIGHT NOW: it ships a vision projector, runs on the
+    /// llama.cpp engine (the only engine wired for mtmd image input — MLX stays text-only), and is
+    /// installed (which, via `defaultInstallProbe` → `requiredFileNames`, means its mmproj file is on
+    /// disk, not just the weights). Drives the composer's photo affordance (C2.1).
+    public func supportsImageInput(_ variant: LLMVariant) -> Bool {
+        variant.supportsVisionInput && variant.engine == .llamaCpp && isInstalled(variant)
+    }
+
+    /// Whether the RESIDENT model can accept image input — the composer shows its photo button only when
+    /// this is true.
+    public var activeSupportsImageInput: Bool {
+        guard let active else { return false }
+        return supportsImageInput(active.variant)
+    }
 
     /// Refresh install state by re-scanning the weights directory (rebuildable registry, DESIGN §2.4).
     public func refreshInstalled() {
@@ -320,8 +339,10 @@ public final class ModelManager {
         downloads[repoId] = progress
 
         let downloader = self.downloader
-        // Single-file (GGUF) variants fetch just their one file; flat MLX repos pass an empty glob.
-        let globs = variant.source.fileName.map { [$0] } ?? []
+        // Fetch every file the variant needs: a single-file GGUF pulls just its weight file; a vision
+        // GGUF pulls its weight file AND its mmproj projector; a flat MLX repo passes an empty glob (whole
+        // repo). `requiredFileNames` is the single source of truth (matches the install probe + delete).
+        let globs = variant.requiredFileNames
         downloadTasks[repoId] = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
@@ -392,12 +413,17 @@ public final class ModelManager {
         pauseDownload(variant)
         downloads[repoId] = nil
         let root = ModelDownloader(downloadBase: downloadBase).localURL(repoId: repoId)
-        if let fileName = variant.source.fileName {
-            let file = root.appending(component: fileName)
-            try? FileManager.default.removeItem(at: file)
-            try? FileManager.default.removeItem(at: file.appendingPathExtension("part"))
+        let names = variant.requiredFileNames
+        if names.isEmpty {
+            try? FileManager.default.removeItem(at: root)   // flat MLX repo — remove the whole directory
         } else {
-            try? FileManager.default.removeItem(at: root)
+            // File-scoped: remove each required file (GGUF weight + any mmproj) and its `.part`, so a
+            // shared repo's other files survive.
+            for name in names {
+                let file = root.appending(component: name)
+                try? FileManager.default.removeItem(at: file)
+                try? FileManager.default.removeItem(at: file.appendingPathExtension("part"))
+            }
         }
         if active?.variant.id == variant.id { Task { await deactivate() } }
         refreshInstalled()
