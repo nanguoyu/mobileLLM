@@ -26,7 +26,8 @@ struct ChatDetailView: View {
                        displayMode: container.settings.thinkingDisplay,
                        isLoadingModel: container.models.switching,
                        loadingModelName: loadingModelName,
-                       onOpenModels: onOpenModels)
+                       onOpenModels: onOpenModels,
+                       onSwitchModel: { showSwitcher = true })
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // A safe-area inset, not a VStack row: the system then owns keeping the composer above the
             // keyboard in every container (tab bar + pushed stack included) — the VStack arrangement

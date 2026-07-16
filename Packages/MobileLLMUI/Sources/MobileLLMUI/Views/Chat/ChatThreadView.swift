@@ -34,6 +34,8 @@ struct ChatThreadView: View {
     /// Best-effort name of the model being loaded (for the loading state).
     var loadingModelName: String = "your model"
     var onOpenModels: () -> Void
+    /// Open the quick model switcher (the empty state's title is the picker).
+    var onSwitchModel: () -> Void = {}
 
     @State private var atBottom = true
     /// True once the thread content is taller than the viewport — the precondition for follow-scrolling.
@@ -58,10 +60,12 @@ struct ChatThreadView: View {
             } else if !chat.hasModel {
                 NoModelState(onOpenModels: onOpenModels)
             } else {
-                EmptyChatState(modelName: chat.activeModel?.model.displayName ?? "your model") { prompt in
-                    chat.draft = prompt
-                    chat.send()
-                }
+                EmptyChatState(modelName: chat.activeModel?.model.displayName ?? "your model",
+                               onExample: { prompt in
+                                   chat.draft = prompt
+                                   chat.send()
+                               },
+                               onSwitchModel: onSwitchModel)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

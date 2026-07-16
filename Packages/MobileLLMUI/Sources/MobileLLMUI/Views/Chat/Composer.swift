@@ -62,6 +62,12 @@ struct Composer: View {
         .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItems,
                       maxSelectionCount: ChatStore.maxAttachments, matching: .images)
         .onChange(of: pickerItems) { _, items in loadPickedImages(items) }
+        // Belt and suspenders for EVERY attach path (incl. the field's own paste menu): a staged chip
+        // appearing under an open keyboard grows the composer down behind it — drop focus so the next
+        // tap re-measures the taller composer correctly.
+        .onChange(of: chat.pendingImages.count) { old, new in
+            if new > old { focused = false }
+        }
         #if os(iOS)
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker { data in
@@ -309,23 +315,25 @@ struct Composer: View {
             }
             if canAttachImages {
                 Divider()
-                // Every image entry point drops the keyboard first: the staged-thumbnail row appearing
-                // UNDER an open keyboard grows the composer downward behind it (the input row ends up
-                // buried) — attach with the keyboard closed and the next focus measures the full height.
+                // Every image entry point clears the FOCUS STATE, not just the first responder: a bare
+                // resignFirstResponder leaves `focused == true`, so when the picker sheet closes SwiftUI
+                // re-asserts focus and the keyboard returns over a now-taller composer — with the input
+                // row buried beneath it. Clearing the binding keeps the keyboard down until the user
+                // taps the field again, at which point the full (chips-included) height is measured.
                 Button {
-                    ChatThreadView.dismissKeyboard()
+                    focused = false
                     showPhotoPicker = true
                 } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
                 #if os(iOS)
                 if CameraPicker.isAvailable {
                     Button {
-                        ChatThreadView.dismissKeyboard()
+                        focused = false
                         showCamera = true
                     } label: { Label("Take Photo", systemImage: "camera") }
                 }
                 #endif
                 Button {
-                    ChatThreadView.dismissKeyboard()
+                    focused = false
                     pasteImage()
                 } label: { Label("Paste Image", systemImage: "doc.on.clipboard") }
             }

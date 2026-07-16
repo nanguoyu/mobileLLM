@@ -75,6 +75,9 @@ struct ModelLoadingState: View {
 struct EmptyChatState: View {
     let modelName: String
     var onExample: (String) -> Void
+    /// Open the model switcher. A NEW chat is the moment you decide who to talk to — the title is the
+    /// picker, so the inherited last-used model is a visible, one-tap-changeable choice, never silent.
+    var onSwitchModel: () -> Void = {}
 
     private let examples = [
         "Explain how sleep affects memory.",
@@ -90,9 +93,19 @@ struct EmptyChatState: View {
                 Image(systemName: "sparkles")
                     .font(.largeTitle.weight(.light))   // semantic size → scales with Dynamic Type
                     .foregroundStyle(Theme.accent)
-                Text("Chat with \(modelName)")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Theme.textPrimary)
+                Button(action: onSwitchModel) {
+                    HStack(spacing: Theme.Space.xs) {
+                        Text("Chat with \(modelName)")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                        Image(systemName: "chevron.down.circle.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Chat with \(modelName)")
+                .accessibilityHint("Choose a different model")
                 Text("Private, on-device, no account. Ask anything to get started.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
