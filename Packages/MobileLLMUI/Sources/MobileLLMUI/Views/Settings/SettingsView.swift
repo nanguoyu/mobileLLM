@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var storageBytes: Int64 = 0
     @State private var showTools = false
     @State private var showSystemPrompt = false
+    @State private var showSkills = false
 
     init(container: AppContainer) {
         self.container = container
@@ -58,6 +59,12 @@ struct SettingsView: View {
             .frame(minWidth: 480, minHeight: 420)
             #endif
         }
+        .sheet(isPresented: $showSkills) {
+            NavigationStack { SkillsView(store: container.skills) }
+            #if os(macOS)
+            .frame(minWidth: 520, minHeight: 560)
+            #endif
+        }
     }
 
     /// One-line status for the system-prompt row: the stock prompt, off, or a custom preview.
@@ -96,6 +103,8 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
             Divider().background(Theme.hairline)
+            skillsRow
+            Divider().background(Theme.hairline)
             Toggle(isOn: $settings.thinkingDefault) {
                 Text("Thinking mode by default").font(.subheadline).foregroundStyle(Theme.textPrimary)
             }
@@ -117,6 +126,26 @@ struct SettingsView: View {
             .tint(Theme.accent)
             if settings.toolsEnabled { manageToolsRow }
         }
+    }
+
+    // MARK: Skills
+
+    private var skillsRow: some View {
+        Button { showSkills = true } label: {
+            HStack(spacing: Theme.Space.sm) {
+                Image(systemName: "sparkles")
+                    .font(.subheadline).foregroundStyle(Theme.accent).frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Skills").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                    Text(SkillsView.summary(for: container.skills))
+                        .font(.caption).foregroundStyle(Theme.textTertiary).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textTertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Manage tools

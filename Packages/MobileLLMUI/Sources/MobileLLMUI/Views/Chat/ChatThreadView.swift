@@ -65,7 +65,8 @@ struct ChatThreadView: View {
                                    chat.draft = prompt
                                    chat.send()
                                },
-                               onSwitchModel: onSwitchModel)
+                               onSwitchModel: onSwitchModel,
+                               activeSkill: chat.activeSkill)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -73,6 +73,10 @@ public final class ChatStore {
     private let memoryStore: (any MemoryStoring)?
     private let eventStore: (any EventStoring)?
     private let locationProvider: (any LocationProviding)?
+    /// The per-conversation skill packs (Skills v1). Optional so tests/previews that don't exercise skills
+    /// construct a `ChatStore` without one; then `activeSkill` is always nil and composition falls back to
+    /// the base system prompt. Public so the composer's Skill menu + management sheet reach the same store.
+    public let skillStore: SkillStore?
     private var genTask: Task<Void, Never>?
     /// The forward action attached to the current banner (Undo / Switch model), kept out of `Toast`
     /// so the value type stays `Equatable`.
@@ -97,7 +101,8 @@ public final class ChatStore {
                 activeModel: LoadedModel? = nil,
                 memoryStore: (any MemoryStoring)? = nil,
                 eventStore: (any EventStoring)? = nil,
-                locationProvider: (any LocationProviding)? = nil) {
+                locationProvider: (any LocationProviding)? = nil,
+                skillStore: SkillStore? = nil) {
         self.engine = engine
         self.store = store
         self.settings = settings
@@ -105,6 +110,7 @@ public final class ChatStore {
         self.memoryStore = memoryStore
         self.eventStore = eventStore
         self.locationProvider = locationProvider
+        self.skillStore = skillStore
         self.thinkingEnabled = settings.thinkingDefault
     }
 
@@ -405,7 +411,9 @@ public final class ChatStore {
         // <think> tag we can reliably strip from the shown text, so the only sure way to hide it is off.
         let params = settings.sampling(thinking: thinkingEnabled && settings.thinkingDisplay != .hidden,
                                        model: activeModel?.model)
-        let systemPrompt = settings.systemPrompt
+        // Base system prompt + the active thread's skill (if any) — the skill's instructions ride the same
+        // path as the system prompt into `chatTurns`, so trimming, token accounting, and the model all see it.
+        let systemPrompt = composedSystemPrompt()
         let engine = self.engine
         let toolsOn = settings.toolsEnabled
         let store = self.store
@@ -587,6 +595,51 @@ public final class ChatStore {
         genTask?.cancel()
     }
 
+    // MARK: - Skills (per-conversation instruction packs; Skills v1)
+
+    /// The skill activated for the active thread, or nil when none is set OR the referenced skill was
+    /// deleted (nil-safe resolution: a dangling `skillID` simply resolves to no skill, and composition
+    /// falls back to the base system prompt).
+    public var activeSkill: Skill? {
+        guard let id = activeConversation?.skillID else { return nil }
+        return skillStore?.skill(id: id)
+    }
+
+    /// Every skill available to pick from the composer menu (empty when no store is wired).
+    public var availableSkills: [Skill] { skillStore?.skills ?? [] }
+
+    /// Persist a per-conversation skill selection (nil clears it). Does NOT bump `updatedAt` — activating a
+    /// skill is a config change, not a message, so it must not reorder the conversation list.
+    public func setSkill(_ skillID: UUID?, for conversationID: UUID) {
+        guard let i = conversations.firstIndex(where: { $0.id == conversationID }),
+              conversations[i].skillID != skillID else { return }
+        conversations[i].skillID = skillID
+        persist(conversations[i])
+    }
+
+    /// Set the skill on the ACTIVE thread from the composer, creating an empty thread first if there isn't
+    /// one — so the Skill menu works before the first message (mirrors how `send` lazily creates a thread).
+    public func setActiveSkill(_ skillID: UUID?) {
+        guard let convo = activeConversation ?? newConversation() else { return }
+        setSkill(skillID, for: convo.id)
+    }
+
+    /// The system prompt for a turn: the base prompt plus the active skill's instruction fragment. Both the
+    /// generation path (`startGeneration`) and the context meter (`contextUsage`) route through this, so the
+    /// skill text is charged to the window exactly once and shown honestly.
+    func composedSystemPrompt() -> String {
+        Self.systemPrompt(base: settings.systemPrompt, skill: activeSkill)
+    }
+
+    /// Pure composition (unit-tested): `base` + `"\n\n## Active skill: <name>\n<instructions>"` when a skill
+    /// is active. A blank base (system prompt "off") yields just the skill fragment, so the skill still works.
+    /// Nonisolated + pure so the composition contract is unit-testable off the main actor.
+    nonisolated static func systemPrompt(base: String, skill: Skill?) -> String {
+        guard let skill else { return base }
+        let fragment = "## Active skill: \(skill.name)\n\(skill.instructions)"
+        return base.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fragment : base + "\n\n" + fragment
+    }
+
     // MARK: - Context meter
 
     /// Tokens currently used by the active thread's context vs the cap (composer meter; DESIGN §4).
@@ -594,8 +647,9 @@ public final class ChatStore {
         // The meter must show the cap the engine actually runs at, not the requested one.
         let cap = settings.effectiveContext(for: activeModel?.model)
         guard let convo = activeConversation else { return (0, cap) }
-        // CJK-aware throughout (`TokenEstimate`) so a Chinese thread's meter isn't ~3× under.
-        let system = settings.systemPrompt
+        // CJK-aware throughout (`TokenEstimate`) so a Chinese thread's meter isn't ~3× under. The active
+        // skill's instructions ride the composed system prompt, so they're counted here too.
+        let system = composedSystemPrompt()
         var used = system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : TokenEstimate.tokens(in: system)
         for message in convo.messages where !message.answer.isEmpty { used += message.approximateTokens }
         used += streaming.map { TokenEstimate.tokens(in: $0.answer) + TokenEstimate.tokens(in: $0.reasoning) } ?? 0

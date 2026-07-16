@@ -78,6 +78,9 @@ struct EmptyChatState: View {
     /// Open the model switcher. A NEW chat is the moment you decide who to talk to — the title is the
     /// picker, so the inherited last-used model is a visible, one-tap-changeable choice, never silent.
     var onSwitchModel: () -> Void = {}
+    /// The skill activated for this thread, if any — surfaced under the title so a thread's configuration
+    /// is visible before the first message (Skills v1, S5).
+    var activeSkill: Skill? = nil
 
     private let examples = [
         "Explain how sleep affects memory.",
@@ -106,6 +109,13 @@ struct EmptyChatState: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Chat with \(modelName)")
                 .accessibilityHint("Choose a different model")
+                if let activeSkill {
+                    Text("\(activeSkill.emoji) \(activeSkill.name) · skill active")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Theme.accent)
+                        .multilineTextAlignment(.center)
+                        .accessibilityLabel("Active skill: \(activeSkill.name)")
+                }
                 Text("Private, on-device, no account. Ask anything to get started.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)

@@ -104,10 +104,16 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
     public var variantID: String
     public var messages: [Message]
     public var pinned: Bool
+    /// The skill activated for this thread (Skills v1), if any. Its instructions ride the system prompt on
+    /// every turn (`ChatStore.systemPrompt(base:skill:)`). Optional → old records without the key decode as
+    /// nil, and a skill-less thread re-encodes byte-identically (the synthesized Codable omits a nil key,
+    /// exactly like `Message.attachments`).
+    public var skillID: UUID?
 
     public init(id: UUID = UUID(), title: String = "New Chat", createdAt: Date = Date(),
                 updatedAt: Date = Date(), systemPromptID: String? = nil, modelID: String,
-                variantID: String, messages: [Message] = [], pinned: Bool = false) {
+                variantID: String, messages: [Message] = [], pinned: Bool = false,
+                skillID: UUID? = nil) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
@@ -117,6 +123,7 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
         self.variantID = variantID
         self.messages = messages
         self.pinned = pinned
+        self.skillID = skillID
     }
 
     /// A one-line preview for the conversation list (last user or assistant text).

@@ -29,6 +29,8 @@ struct Composer: View {
     @State private var showCamera = false
     /// Stop stays disarmed for a beat after send so the tail of a double-tap can't cancel the turn.
     @State private var stopArmed = false
+    /// Presents the skill management sheet (composer's "Manage Skills…").
+    @State private var showSkills = false
     /// Composer controls scale with Dynamic Type instead of a hard 44pt.
     @ScaledMetric(relativeTo: .body) private var controlSize: CGFloat = 44
 
@@ -44,6 +46,7 @@ struct Composer: View {
     var body: some View {
         VStack(spacing: Theme.Space.xs) {
             contextMeter
+            if let skill = chat.activeSkill { activeSkillChip(skill) }
             if !chat.pendingImages.isEmpty { pendingImageChips }
             if chat.hasModel {
                 HStack(alignment: .bottom, spacing: Theme.Space.sm) {
@@ -61,6 +64,14 @@ struct Composer: View {
         .overlay(alignment: .top) { Divider().background(Theme.hairline) }
         .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItems,
                       maxSelectionCount: ChatStore.maxAttachments, matching: .images)
+        .sheet(isPresented: $showSkills) {
+            if let store = chat.skillStore {
+                NavigationStack { SkillsView(store: store) }
+                #if os(macOS)
+                    .frame(minWidth: 520, minHeight: 560)
+                #endif
+            }
+        }
         .onChange(of: pickerItems) { _, items in loadPickedImages(items) }
         // Belt and suspenders for EVERY attach path (incl. the field's own paste menu): a staged chip
         // appearing under an open keyboard grows the composer down behind it — drop focus so the next
@@ -314,6 +325,7 @@ struct Composer: View {
                                  })) {
                 Label("Tools", systemImage: "wrench.and.screwdriver")
             }
+            if chat.skillStore != nil { skillMenu }
             if canAttachImages {
                 Divider()
                 // Every image entry point clears the FOCUS STATE, not just the first responder: a bare
@@ -339,7 +351,7 @@ struct Composer: View {
                 } label: { Label("Paste Image", systemImage: "doc.on.clipboard") }
             }
         } label: {
-            let active = chat.toolsEnabled || (thinkingCapable && chat.thinkingEnabled)
+            let active = chat.toolsEnabled || (thinkingCapable && chat.thinkingEnabled) || chat.activeSkill != nil
             Image(systemName: "plus")
                 .font(.body.weight(.medium))
                 .foregroundStyle(active ? Theme.accent : Theme.textTertiary)
@@ -350,6 +362,64 @@ struct Composer: View {
         .menuIndicator(.hidden)
         .accessibilityLabel("Chat options")
         .accessibilityHint("Thinking, tools and image attachments")
+    }
+
+    // MARK: Skill
+
+    /// The Skill submenu inside the [+] menu: None + every skill (checkmark on the active one) + a route
+    /// into the management sheet. Explicit per-conversation selection (Skills v1 — no auto-routing).
+    private var skillMenu: some View {
+        Menu {
+            Button { chat.setActiveSkill(nil) } label: {
+                if chat.activeSkill == nil { Label("None", systemImage: "checkmark") } else { Text("None") }
+            }
+            if !chat.availableSkills.isEmpty { Divider() }
+            ForEach(chat.availableSkills) { skill in
+                Button { chat.setActiveSkill(skill.id) } label: {
+                    if chat.activeSkill?.id == skill.id {
+                        Label("\(skill.emoji)  \(skill.name)", systemImage: "checkmark")
+                    } else {
+                        Text("\(skill.emoji)  \(skill.name)")
+                    }
+                }
+            }
+            Divider()
+            Button {
+                focused = false
+                showSkills = true
+            } label: { Label("Manage Skills…", systemImage: "slider.horizontal.3") }
+        } label: {
+            Label("Skill", systemImage: "sparkles")
+        }
+    }
+
+    /// The active-skill chip above the input — same visual family as the pending-image chips, with an x to
+    /// deactivate the skill for this thread.
+    private func activeSkillChip(_ skill: Skill) -> some View {
+        HStack(spacing: 0) {
+            HStack(spacing: Theme.Space.xs) {
+                Text(skill.emoji).font(.caption).accessibilityHidden(true)
+                Text(skill.name)
+                    .font(.caption.weight(.medium)).foregroundStyle(Theme.accent)
+                    .lineLimit(1)
+                Button { chat.setActiveSkill(nil) } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(Theme.accent, Theme.accentSoft)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Deactivate skill")
+            }
+            .padding(.leading, Theme.Space.sm).padding(.trailing, Theme.Space.xs)
+            .padding(.vertical, Theme.Space.xs)
+            .background(Theme.accentSoft, in: Capsule())
+            .overlay(Capsule().strokeBorder(Theme.accent.opacity(0.25)))
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Active skill: \(skill.name)")
     }
 
     // MARK: Send / Stop

@@ -16,6 +16,9 @@ public final class AppContainer {
     public let conversationStore: ConversationStore
     public let models: ModelManager
     public let chat: ChatStore
+    /// The per-conversation skill packs (Skills v1). Persisted beside the conversation records + tool
+    /// memory; surfaced to the composer's Skill menu and the management screen.
+    public let skills: SkillStore
     /// The privacy-gated tool seams, also surfaced to the Tools settings screen so flipping a toggle can
     /// request the system permission right there (nil in tests/previews — the screen then skips prompting).
     public let toolEventStore: (any EventStoring)?
@@ -53,11 +56,15 @@ public final class AppContainer {
         // tests never touch EventKit / CoreLocation. They request TCC access only lazily, on first tool
         // invocation, and are only assembled into the registry when the user enables that tool (off by default).
         let memoryStore = MemoryStore(fileURL: store.directory.appending(component: "memory.json"))
+        // Skills live beside memory.json (same durable, atomic store) so a thread's activated skill survives
+        // relaunch and a corrupt file is backed up, not wiped.
+        let skillStore = SkillStore(fileURL: store.directory.appending(component: "skills.json"))
+        self.skills = skillStore
         self.toolEventStore = eventStore
         self.toolLocationProvider = locationProvider
         self.chat = ChatStore(engine: engine, store: store, settings: settings,
                               memoryStore: memoryStore, eventStore: eventStore,
-                              locationProvider: locationProvider)
+                              locationProvider: locationProvider, skillStore: skillStore)
         // Reload a suspended model right before the next turn (its memory is freed while idle).
         chat.ensureModelReady = { [weak self] in await self?.reloadIfSuspended() }
         // Opening a conversation brings back ITS model (when installed) instead of whatever is resident —
@@ -105,6 +112,7 @@ public final class AppContainer {
         // Merge persisted community (Explore) models before resolving the default, so an adopted default
         // and the storage/switcher lists see them (DESIGN §2.4). This also rescans install state.
         await models.loadAdoptedRegistry()
+        await skills.load()   // seed the built-in skills on first launch, else read them back from disk
         await chat.load()
         // Boot into the model the ACTIVE conversation was using (when installed) — falling back to the
         // last-used default. One activation either way; a thread must not silently switch models just

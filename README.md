@@ -48,6 +48,12 @@ nothing you type ever leaves the device.
   recognizer, on-device where supported; long-press to pick the recognition language (System / 中文 /
   English — one recognizer is bound to one language). A camera capture option sits beside the photo
   library and paste in the composer's [+] menu.
+- ✨ **Skills — reusable instruction packs.** Five built-ins (Translator, Proofreader, Code Explainer,
+  Researcher — which teaches the search→read→cite tool chain — and Concise Mode) plus your own; activate
+  one per conversation from the composer's [+] menu and the thread remembers it. **Compatible with
+  [AI Edge Gallery community skills](https://github.com/google-ai-edge/gallery/discussions/categories/skills)**:
+  import any `SKILL.md` by URL or paste, export yours in the same format (skills that need the Gallery's
+  `run_js` JS runtime are flagged honestly — that runtime isn't on iOS yet).
 - 🧵 **Conversations remember their model.** Every send stamps the thread with the model that answered;
   reopening a thread (or relaunching the app) brings that model back. There is no "default model"
   setting to manage — a new chat starts on whatever you used last, and the empty-state title

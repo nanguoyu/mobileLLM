@@ -22,6 +22,11 @@ extension ChatStore {
     }
 }
 
+extension SkillStore {
+    /// Seed the built-in skills in memory (previews render the Skill menu + management list without disk I/O).
+    func previewSeed() { skills = Skill.builtIns }
+}
+
 extension ModelManager {
     /// Mark every catalog variant as installed (previews show a working library).
     func previewInstallAll() {
@@ -49,6 +54,7 @@ extension AppContainer {
             availableMemory: { .max })
 
         container.models.previewInstallAll()
+        container.skills.previewSeed()
         let model = LLMCatalog.bonsai8b
         let loaded = LoadedModel(model: model, variant: model.defaultVariantValue)
         container.models.previewSetActive(loaded)

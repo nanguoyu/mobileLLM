@@ -117,6 +117,19 @@ schemas into the system turn (Qwen/ChatML convention); `ToolCallProcessor` extra
   servers that fail to connect. Tools are **off by default** (they add a round-trip and small models call them
   unevenly).
 
+## Skills
+
+A `Skill` is a named instruction pack (`name`, emoji, one-line summary, instructions) persisted in a
+durable JSON store beside the conversation records, seeded once with five built-ins (immutable;
+duplicate-to-edit). Activation is **explicit and per-conversation** — the thread records its `skillID`,
+the composer's [+] menu switches it, and the system prompt is composed as base + "## Active skill" so the
+context meter charges it honestly. There is deliberately no model self-routing of skills in v1: 2–8B
+on-device models pick badly from catalogs, so the human picks. Interop: `SkillIO` parses and emits the
+AI Edge Gallery community `SKILL.md` format (frontmatter `name`/`description`/`metadata`, markdown body),
+with URL normalization for webhost/repo links and honest capability flags on import — a skill whose
+instructions invoke the Gallery's `run_js` tool needs a JS runtime this app doesn't ship (a
+WKWebView/JavaScriptCore bridge is the v2 path), and `require-secret` declarations aren't wired.
+
 ## Image input (vision GGUF) + dictation
 
 Vision runs entirely on the **llama.cpp** side through the `mtmd` API already inside the vendored
