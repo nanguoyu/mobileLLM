@@ -5,9 +5,9 @@
 # mobileLLM
 
 **A private, open-source chat app that runs open-weight language models fully on your device** —
-macOS + iOS, native Swift + SwiftUI. Two inference engines — Apple [MLX](https://github.com/ml-explore/mlx-swift)
-and [llama.cpp](https://github.com/ggml-org/llama.cpp) — sit behind one protocol. No account, no cloud;
-nothing you type ever leaves the device.
+macOS + iOS, native Swift + SwiftUI. Three inference engines — Apple [MLX](https://github.com/ml-explore/mlx-swift),
+[llama.cpp](https://github.com/ggml-org/llama.cpp), and Apple Intelligence's own on-device model — sit
+behind one protocol. No account, no cloud; nothing you type ever leaves the device.
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
@@ -28,19 +28,30 @@ nothing you type ever leaves the device.
 - 🔒 **100% on-device.** Chats, prompts, and models stay on your device — no account, no server, no telemetry.
 - 💬 **Streamed chat with thinking disclosure.** Tokens stream one by one; for reasoning models the `<think>`
   trace shows in a disclosure that auto-collapses to "Thought for Ns" when the answer starts (or always-expand / hidden).
-- ⚡ **Two engines, one protocol.** **MLX** (resident weights) and **llama.cpp** (memory-mapped GGUF) both
-  conform to a single `LLMEngine`; a `RoutingEngine` keeps at most one resident. Pick the engine per model,
-  or let **Auto** choose the greenest fit for your device.
+- ⚡ **Three engines, one protocol.** **MLX** (resident weights), **llama.cpp** (memory-mapped GGUF), and
+  **Apple Intelligence** (the OS's own model, on eligible devices) all conform to a single `LLMEngine`; a
+  `RoutingEngine` keeps at most one resident. Pick the engine per model, or let **Auto** choose the greenest
+  fit for your device.
+- 🍎 **Apple Intelligence as a zero-download model.** On a device with it enabled, the system model shows up
+  in the model list at 0 bytes — nothing to download, and it always fits, because the OS holds the weights
+  outside our process. When it isn't available the card says exactly why (turned off, not eligible, still
+  downloading) instead of pretending. Requires iOS 26 / macOS 26; the app still builds and runs on iOS 17 /
+  macOS 14, where the framework is weak-linked and simply absent.
 - 📊 **Honest memory fit + a model-aware context ladder.** Every model shows a per-device fit badge
   (*Runs great* / *Tight* / *Needs more memory*) from your actual RAM, and the context-length options are
   capped by what the model was trained for and re-scored per rung — a setting that buys memory, not capability.
 - 🛠️ **Tool calling + MCP.** An on-device agent loop with a real toolbox: keyless **web search**
   (DuckDuckGo first, Bing fall-through — scraped result pages, no API key), a **webpage reader**
-  (readable-text extraction with SSRF guards), **persistent memory** (`remember`/`recall` across chats),
-  Wikipedia, calculator, clock — plus permission-gated **calendar, reminders and location** tools (off
+  (readable-text extraction with SSRF guards), Wikipedia, calculator, clock — plus permission-gated
+  **calendar, reminders and location** tools (off
   until you enable them; the system prompt appears on first use). Every tool has its own toggle in
   Settings → Manage tools, and any remote **MCP** server you configure layers on top (Streamable HTTP,
   per-server enable + per-tool mute). Tools are off by default.
+- 🧠 **Memory you can read and correct.** Tell it something worth keeping and it notes it down; the notes
+  relevant to your question are folded into the prompt before it answers, so memory works without the model
+  having to remember to look. Everything it saved is listed in Settings → Behavior → Memory — who wrote each
+  note (it or you) and when — where you can edit, delete, add your own, or forget everything. On-device,
+  like the rest.
 - 🖼️ **Image input (vision GGUF models).** Attach photos (picker or paste, up to 3, downscaled to 1568 px
   JPEG on-device) and ask about them — Qwen3.5 and Gemma 4 run their official `mmproj` projector through
   llama.cpp's mtmd. The photo button appears only when the active model can actually see.
@@ -96,28 +107,36 @@ projector alongside the weights (adds 0.16–1 GB) and the composer accepts imag
 
 ## Architecture
 
-Six Swift packages, MLX quarantined to one of them:
+Seven Swift packages, MLX quarantined to one of them:
 
 ```
 mobileLLM.app  (Xcode target — build via xcodebuild)
 ├── MobileLLMUI      SwiftUI chat / models / settings + @Observable stores   (MLX-free)
 ├── LLMEngineMLX     the MLX engine — resident weights, PrismML 1-bit fork    (Metal)
 ├── LLMEngineLlama   the llama.cpp engine — mmap'd GGUF, vendored xcframework  (Metal)
+├── LLMEngineApple   the Apple Intelligence engine — weak-linked, no weights   (MLX-free)
 ├── LLMCore          catalog + schema, RoutingEngine, governor, tools/MCP,     (MLX-free)
 │                    context policy, Explore, ThinkSplitter, LLMEngine protocol
 ├── AppRuntime       downloader, memory/thermal governors, durable store       (MLX-free)
 └── AppUI            ink-wash design tokens + shared controls                   (MLX-free)
 ```
 
-Two engines behind one `LLMEngine` protocol, fronted by a `RoutingEngine` that keeps at most one resident —
-so the UI, downloader, and governance are engine-agnostic and unit-testable against a mock. The four MLX-free
-packages keep a fast `swift test` loop; only the two engine packages need the Metal toolchain.
+Three engines behind one `LLMEngine` protocol, fronted by a `RoutingEngine` that keeps at most one resident —
+so the UI, downloader, and governance are engine-agnostic and unit-testable against a mock. The five MLX-free
+packages keep a fast `swift test` loop; only the two local-weight engines need the Metal toolchain.
 
 - **MLX engine** — resident weights via the PrismML 1-bit fork; the fastest path on Mac.
 - **llama.cpp engine** — memory-mapped GGUF, so large models fit on memory-tight phones (clean, file-backed
   weight pages are reclaimable and don't count like anonymous dirty memory against the iOS jetsam limit).
   It vendors a prebuilt `llama.xcframework` (mainline llama.cpp, Metal embedded); it isn't committed —
   regenerate it with `scripts/build-llama-xcframework.sh`.
+- **Apple Intelligence engine** — the OS's own model via `FoundationModels`. No weights, no download, no
+  Metal: the framework is weak-linked and every use is gated behind `#if canImport` + `@available(iOS 26,
+  macOS 26, *)`, so the package targets the repo's own iOS 17 / macOS 14 floor and is simply inert on older
+  systems. Availability decides whether the model is "installed" — never a disk probe. Because a test can't
+  even name the framework's types below macOS 26, every decision it makes is a pure function over plain
+  types (`SystemModelStatus`, `AppleChatMapping`, `SnapshotDiffer`), leaving the gated code as translation —
+  so its suite runs anywhere, with no Apple Intelligence required.
 
 See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the current package graph, routing, governor,
 tools/MCP, and design tokens, and **[docs/WIRING.md](docs/WIRING.md)** for the 1-bit fork + llama.cpp
@@ -149,13 +168,14 @@ open mobileLLM.xcodeproj
 Build the app with **Xcode / `xcodebuild`** (MLX's Metal kernels require it). Inference (the 1-bit MLX
 kernels and GGUF Metal) is validated on **real devices** — the simulator has no Metal path for it.
 
-For a fast inner loop, the four MLX-free packages need none of the above and run under plain SwiftPM:
+For a fast inner loop, the five MLX-free packages need none of the above and run under plain SwiftPM:
 
 ```sh
 swift test --package-path Packages/AppUI
 swift test --package-path Packages/AppRuntime
 swift test --package-path Packages/LLMCore
 swift test --package-path Packages/MobileLLMUI
+swift test --package-path Packages/LLMEngineApple
 ```
 
 Two more xcodebuild-only suites: `-scheme EngineTests` runs the engine packages' unit tests (the MLX

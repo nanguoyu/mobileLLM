@@ -1,24 +1,28 @@
 # mobileLLM — Architecture
 
 What the code *is* today (2026-07-16). For the original design intent and how the build diverged from it,
-see the frozen [DESIGN.md](DESIGN.md); for the dependency wiring of the two engines, see [WIRING.md](WIRING.md).
+see the frozen [DESIGN.md](DESIGN.md); for the dependency wiring of the local-weight engines, see
+[WIRING.md](WIRING.md).
 
-mobileLLM is a private, on-device chat app for open-weight LLMs on macOS + iOS. It runs two inference
-engines — Apple **MLX** (resident weights) and **llama.cpp** (memory-mapped GGUF) — behind one protocol,
-so everything above the engine is engine-agnostic and unit-testable without a Metal toolchain.
+mobileLLM is a private, on-device chat app for open-weight LLMs on macOS + iOS. It runs three inference
+engines — Apple **MLX** (resident weights), **llama.cpp** (memory-mapped GGUF), and **Apple Intelligence**
+(the OS's own model, no weights of ours at all) — behind one protocol, so everything above the engine is
+engine-agnostic and unit-testable without a Metal toolchain.
 
 ## Package graph
 
-Six Swift packages plus the app target. MLX and llama.cpp are quarantined to one package each; the other
-four are MLX-free and keep a fast `swift test` loop.
+Seven Swift packages plus the app target. MLX and llama.cpp are quarantined to one package each; the other
+five are MLX-free and keep a fast `swift test` loop.
 
 ```
 App (mobileLLM.app, Xcode target)
-│   assembles RoutingEngine(engines: [.mlx: MLXLLMEngine(), .llamaCpp: LlamaEngine()])
+│   assembles RoutingEngine(engines: [.mlx: MLXLLMEngine(), .llamaCpp: LlamaEngine(),
+│                                     .apple: AppleLLMEngine()])
 │   + the resumable ModelDownloader, injected into the AppContainer composition root
 ├─▶ MobileLLMUI ──▶ AppUI, AppRuntime, LLMCore        SwiftUI surface + @Observable stores   (MLX-free)
 ├─▶ LLMEngineMLX ─▶ LLMCore + PrismML mlx-swift fork   resident-weights MLX engine            (Metal)
-└─▶ LLMEngineLlama ▶ LLMCore + llama.xcframework       mmap'd-GGUF llama.cpp engine            (Metal)
+├─▶ LLMEngineLlama ▶ LLMCore + llama.xcframework       mmap'd-GGUF llama.cpp engine            (Metal)
+└─▶ LLMEngineApple ▶ LLMCore + FoundationModels (weak) Apple Intelligence engine              (MLX-free)
 
 LLMCore ──▶ AppRuntime            catalog + schema, RoutingEngine, governors, tools/MCP,       (MLX-free)
                                   context policy, Explore, ThinkSplitter, LLMEngine protocol
@@ -26,7 +30,7 @@ AppRuntime  (Foundation + CryptoKit)   downloader, memory/thermal governors, Dur
 AppUI       (SwiftUI, no deps)         ink-wash design tokens + shared controls                (MLX-free)
 ```
 
-The app is built with `xcodebuild` (MLX Metal kernels require it); the four MLX-free packages test with
+The app is built with `xcodebuild` (MLX Metal kernels require it); the five MLX-free packages test with
 plain SwiftPM. Inference is validated on real devices — the simulator has no Metal path for the 1-bit MLX
 kernels or GGUF Metal.
 
@@ -48,16 +52,30 @@ closes the stream with `Stats` (tokens, tok/s, peak memory, stop reason).
 
 `RoutingEngine` (an actor conforming to `LLMEngine`) holds one concrete engine per `EngineKind` and keeps
 **at most one resident**. A variant names its engine through `variant.backend.engine` (`mlxFork` /
-`mlxStock` / `awqUnsupported` → `.mlx`; `llamaCppGGUF` → `.llamaCpp`); loading a variant whose engine
-differs from the active one `unload()`s the other first, so two GPU weight stacks never co-reside — the
-on-device memory-safety guarantee. Because the router only knows the protocol, the real engines inject at
-app assembly and the router stays testable with mock engines.
+`mlxStock` / `awqUnsupported` → `.mlx`; `llamaCppGGUF` → `.llamaCpp`; `appleSystem` → `.apple`); loading a
+variant whose engine differs from the active one `unload()`s the other first, so two GPU weight stacks
+never co-reside — the on-device memory-safety guarantee. Because the router only knows the protocol, the
+real engines inject at app assembly and the router stays testable with mock engines.
 
 - **`LLMEngineMLX`** — loads resident weights via `LLMModelFactory`; the 1-bit (`bits=1`) path needs the
   PrismML fork kernel (not in upstream MLX). The single package that sees a non-upstream MLX.
 - **`LLMEngineLlama`** — vendors a prebuilt `llama.xcframework` (mainline llama.cpp, Metal embedded) as a
   binary target and mmaps the GGUF, so weight pages are clean/file-backed and reclaimable under memory
   pressure. No fork, no build macros.
+- **`LLMEngineApple`** — the OS's own model via `FoundationModels`. It owns no weights: `load()` is an
+  availability check that throws the real reason, `unload()` is a genuine no-op, and `generate()` builds a
+  fresh `LanguageModelSession` per call (our contract passes full history every time, so a retained session
+  would replay history onto itself). The framework is weak-linked and every use sits behind `#if
+  canImport(FoundationModels)` + `@available(iOS 26, macOS 26, *)`, so the package keeps the repo's iOS 17 /
+  macOS 14 floor — declaring a 26 platform would make the app unable to link it at all.
+
+  Two consequences worth knowing. `ResponseStream` yields **cumulative** snapshots, so `SnapshotDiffer`
+  subtracts what was already emitted — over unicode scalars, not `Character`s, because a cumulative stream
+  extends grapheme clusters it already sent. And below macOS 26 a test cannot even *name* the framework's
+  types, which is why every decision is factored into pure functions over plain types (`SystemModelStatus`
+  is LLMCore's framework-free availability vocabulary; `AppleChatMapping` decides chat + sampling shape),
+  leaving the gated code as pure translation. `APPLE_LLM_LIVE=1 swift test` runs one real round-trip on an
+  eligible device.
 
 **Auto engine policy** (`AppSettings.preferredVariant`, pure + unit-tested): given a model, a device, and
 an `EnginePreference` (globally `.auto` — there is no user-facing engine setting; the model card's engine
@@ -100,7 +118,7 @@ schemas into the system turn (Qwen/ChatML convention); `ToolCallProcessor` extra
   occasional refresh); `fetch_webpage` — readable-text extraction (boilerplate stripped, 6000-char cap,
   content-type/size guards, and a string-level SSRF host guard that blocks loopback/private/link-local
   hosts but does not resolve DNS); `remember`/`recall` — persistent facts in a durable `MemoryStore`
-  beside the conversation records; `wikipedia` (summary lookup, zh for CJK / en otherwise);
+  beside the conversation records (see **Memory** below); `wikipedia` (summary lookup, zh for CJK / en otherwise);
   `CalculatorTool` (pure-Swift recursive-descent evaluator — malformed input returns an error string,
   never traps) and `DateTimeTool`. Calendar, reminder and location tools ride EventKit/CoreLocation
   behind injectable seams (`EventStoring` / `LocationProviding`) — **off by default**, enabled in
@@ -116,6 +134,29 @@ schemas into the system turn (Qwen/ChatML convention); `ToolCallProcessor` extra
   assembles the standard tools plus every **enabled** server's tools minus the ones the user muted, skipping
   servers that fail to connect. Tools are **off by default** (they add a round-trip and small models call them
   unevenly).
+
+## Memory
+
+Facts live in a durable, atomic `MemoryStore` beside the conversation records, each tagged with its source
+(model-saved or user-added) so the screen can say who wrote it. Records written before that tag existed
+decode as model-saved rather than being rejected — `DurableStore` drops what it can't decode, so a stock
+synthesized `Codable` would have silently forgotten every fact already saved.
+
+Memory does **not** depend on the model calling `recall`. Before every send, `ChatStore` searches the store
+with the outgoing turn (plus one turn of carry-over) and folds a capped block (≤5 facts, ≤400 chars) into
+the system turn after the skill block; the context meter charges for it. That's the reliability win — a 2B
+model rarely thinks to call a tool, which is what made memory effectively write-only. The mirror
+(`MemoryBook`) is refreshed *inside* the generation task, so a fact the model saved last turn is in this
+turn's prompt. `MemoryRanking` is the one ranker the store, the `recall` tool, and the injector all share.
+
+Injection is gated on the memory switch (it *is* an automatic recall) but deliberately **not** on the master
+tools switch — the block calls nothing, so typed facts still reach a model running with no tools. That is
+why the switch lives on the Memory screen (Settings → Behavior → Memory) and not only in Manage tools, whose
+row is hidden when tools are off. Everything the store holds is listed there, with provenance and date:
+editable, deletable, addable by hand.
+
+There is no background extraction pass: a second generation to mine each turn for facts would double
+on-device cost, so v1 is the `remember` tool plus a schema description sharp enough to trigger it.
 
 ## Skills
 
@@ -153,7 +194,10 @@ The model library has two tiers.
   Qwen (Alibaba), Hunyuan (Tencent), DeepSeek, Gemma (Google). See the README table. The schema
   (`LLMModel` → `LLMVariant` → `LLMArchitecture` / `AttentionShape` / `QuantSpec` / `Backend`) is extensible:
   adding a model is an entry with the right `modelType` / `swiftModelClass`, no schema change. A model can
-  ship variants on both engines (e.g. Bonsai as MLX 1-bit + GGUF), keyed uniquely by repo + format tag.
+  ship variants on both local-weight engines (e.g. Bonsai as MLX 1-bit + GGUF), keyed uniquely by repo +
+  format tag. The Apple system model is the one entry that ships none: 0 bytes, no filenames, zeroed
+  architecture (so KV math computes 0 rather than inventing Apple's unpublished shape), and
+  `isSystemProvided` marks it as a category rather than a violation of "every model ships weights".
 - **Explore** (`RemoteCatalog`, live): browses `mlx-community` (MLX) and the GGUF orgs (bartowski, unsloth,
   ggml-org, lmstudio-community) via the public Hugging Face Hub API, grouping repos into models-with-variants
   by peeling the quant descriptor off each repo name (pure + unit-tested). A discovered `RemoteModel` becomes

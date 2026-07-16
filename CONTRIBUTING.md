@@ -32,8 +32,8 @@ simulator has no Metal path for it.
 
 ## Package map
 
-Six Swift packages plus the app target. MLX and llama.cpp are quarantined to one package each — the other
-four are MLX-free and test under plain SwiftPM without any Metal toolchain or the vendored XCFramework.
+Seven Swift packages plus the app target. MLX and llama.cpp are quarantined to one package each — the other
+five are MLX-free and test under plain SwiftPM without any Metal toolchain or the vendored XCFramework.
 
 | Package | What it holds | Toolchain |
 |---|---|---|
@@ -41,6 +41,7 @@ four are MLX-free and test under plain SwiftPM without any Metal toolchain or th
 | `AppRuntime` | Resumable downloader, memory/thermal governors, `DurableStore` (Foundation + CryptoKit) | MLX-free — `swift test` |
 | `LLMCore` | Catalog + schema, `RoutingEngine`, memory governor, context policy, tools/MCP, Explore, `ThinkSplitter`, the `LLMEngine` protocol + a mock | MLX-free — `swift test` |
 | `MobileLLMUI` | SwiftUI chat / models / settings + `@Observable` stores (codes against the `LLMEngine` protocol) | MLX-free — `swift test` |
+| `LLMEngineApple` | The Apple Intelligence engine — weak-linked `FoundationModels`, no weights of ours | MLX-free — `swift test` |
 | `LLMEngineMLX` | The MLX engine — resident weights, PrismML 1-bit fork | Metal — `xcodebuild` |
 | `LLMEngineLlama` | The llama.cpp engine — mmap'd GGUF, vendored `llama.xcframework` | Metal — `xcodebuild` |
 
@@ -49,18 +50,23 @@ for the MLX-fork + llama.cpp dependency pins.
 
 ## Running the tests
 
-The four MLX-free packages are the fast inner loop and the same suites CI runs. Point the build output
+The five MLX-free packages are the fast inner loop and the same suites CI runs. Point the build output
 outside the source tree so nothing stray lands in the repo:
 
 ```sh
-swift test --package-path Packages/AppUI       --scratch-path /tmp/mllm-appui
-swift test --package-path Packages/AppRuntime  --scratch-path /tmp/mllm-appruntime
-swift test --package-path Packages/LLMCore     --scratch-path /tmp/mllm-llmcore
-swift test --package-path Packages/MobileLLMUI --scratch-path /tmp/mllm-ui
+swift test --package-path Packages/AppUI          --scratch-path /tmp/mllm-appui
+swift test --package-path Packages/AppRuntime     --scratch-path /tmp/mllm-appruntime
+swift test --package-path Packages/LLMCore        --scratch-path /tmp/mllm-llmcore
+swift test --package-path Packages/MobileLLMUI    --scratch-path /tmp/mllm-ui
+swift test --package-path Packages/LLMEngineApple --scratch-path /tmp/mllm-apple
 ```
 
-The two engine packages (`LLMEngineMLX`, `LLMEngineLlama`) build and run via `xcodebuild` only — the MLX
-package additionally needs `-skipMacroValidation` (see docs/WIRING.md). Their smoke executables
+`LLMEngineApple`'s suite runs on any macOS — it needs no Apple Intelligence. Two tests skip below macOS 26
+(where the framework's types can't even be named); `APPLE_LLM_LIVE=1` adds one real round-trip on an
+eligible machine.
+
+The two local-weight engine packages (`LLMEngineMLX`, `LLMEngineLlama`) build and run via `xcodebuild` only
+— the MLX package additionally needs `-skipMacroValidation` (see docs/WIRING.md). Their smoke executables
 (`llm-smoke`, `llama-smoke`) run against real weights on a device.
 
 ```sh
@@ -87,7 +93,8 @@ variants there by design; anything MLX is validated on real hardware.
 - **Match the existing idiom.** 4-space indent; `// SPDX-License-Identifier: MIT` as the first line of every
   new Swift file; comments state non-obvious constraints rather than narrating the code.
 - **Keep the MLX-free packages MLX-free.** Anything touching MLX belongs in `LLMEngineMLX`; anything touching
-  llama.cpp belongs in `LLMEngineLlama`. Don't add MLX (or the fork) as a dependency of the other four.
+  llama.cpp belongs in `LLMEngineLlama`; anything touching `FoundationModels` belongs in `LLMEngineApple`.
+  Don't add MLX (or the fork) as a dependency of the other five.
 - **Adding a model?** Prefer a catalog entry in `LLMCatalog` with the right `modelType` / `swiftModelClass`
   and verified figures from a Hugging Face primary source — the schema is built to grow that way.
 - Keep PRs focused, describe the *why*, and confirm the MLX-free suites pass before requesting review.

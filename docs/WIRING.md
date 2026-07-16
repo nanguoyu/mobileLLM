@@ -1,10 +1,12 @@
 # mobileLLM — Dependency wiring (the 1-bit fork)
 
-> **Status (current):** both engines are wired and shipping. The MLX stack below lives in the
-> **`LLMEngineMLX`** package (not `LLMCore`, which stays MLX-free); the second, llama.cpp engine is in
-> **`LLMEngineLlama`** (bottom of this file). `Packages/*/Package.swift` are the source of truth for the
-> exact pins; the ones quoted here are kept in sync with them. See [ARCHITECTURE.md](ARCHITECTURE.md) for
-> how the two engines route.
+> **Status (current):** all three engines are wired and shipping. This file covers the two that carry
+> weights and therefore have non-trivial pins: the MLX stack below lives in the **`LLMEngineMLX`** package
+> (not `LLMCore`, which stays MLX-free), and the llama.cpp engine is in **`LLMEngineLlama`** (bottom of this
+> file). The third, **`LLMEngineApple`**, needs no wiring at all — `FoundationModels` is an OS framework,
+> weak-linked and autolinked, with no package dependency beyond `LLMCore`. `Packages/*/Package.swift` are
+> the source of truth for the exact pins; the ones quoted here are kept in sync with them. See
+> [ARCHITECTURE.md](ARCHITECTURE.md) for how the three engines route.
 
 The only non-trivial dependency is the **1-bit-capable MLX stack**. `bits=1` affine quantized_matmul
 is not in upstream MLX (PR [ml-explore/mlx#3161](https://github.com/ml-explore/mlx/pull/3161), unmerged);
