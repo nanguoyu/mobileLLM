@@ -16,6 +16,10 @@ public final class AppContainer {
     public let conversationStore: ConversationStore
     public let models: ModelManager
     public let chat: ChatStore
+    /// The privacy-gated tool seams, also surfaced to the Tools settings screen so flipping a toggle can
+    /// request the system permission right there (nil in tests/previews — the screen then skips prompting).
+    public let toolEventStore: (any EventStoring)?
+    public let toolLocationProvider: (any LocationProviding)?
 
     /// A one-shot navigation intent the shell (RootView) honors and clears — e.g. a "not installed" error
     /// banner jumping to Models. The container can't push tabs itself (RootView owns the section state).
@@ -49,6 +53,8 @@ public final class AppContainer {
         // tests never touch EventKit / CoreLocation. They request TCC access only lazily, on first tool
         // invocation, and are only assembled into the registry when the user enables that tool (off by default).
         let memoryStore = MemoryStore(fileURL: store.directory.appending(component: "memory.json"))
+        self.toolEventStore = eventStore
+        self.toolLocationProvider = locationProvider
         self.chat = ChatStore(engine: engine, store: store, settings: settings,
                               memoryStore: memoryStore, eventStore: eventStore,
                               locationProvider: locationProvider)

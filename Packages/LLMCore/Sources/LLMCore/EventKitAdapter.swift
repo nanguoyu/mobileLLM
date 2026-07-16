@@ -25,6 +25,27 @@ public final class EventKitStore: EventStoring, @unchecked Sendable {
         if !granted { throw EventStoreError.reminderAccessDenied }
     }
 
+    public func permissionState(for domain: EventDomain) async -> ToolPermission {
+        let status = EKEventStore.authorizationStatus(for: domain == .events ? .event : .reminder)
+        switch status {
+        case .notDetermined: return .notDetermined
+        case .denied, .restricted, .writeOnly: return .denied   // the tools need read+write full access
+        case .fullAccess, .authorized: return .granted
+        @unknown default: return .denied
+        }
+    }
+
+    /// Prompt (or resolve) full access for the domain — the Tools screen calls this the moment the
+    /// toggle flips, so the system dialog appears at the user's own decision point, not mid-chat.
+    public func requestPermission(for domain: EventDomain) async -> ToolPermission {
+        let granted: Bool
+        switch domain {
+        case .events: granted = (try? await store.requestFullAccessToEvents()) ?? false
+        case .reminders: granted = (try? await store.requestFullAccessToReminders()) ?? false
+        }
+        return granted ? .granted : .denied
+    }
+
     public func createEvent(_ draft: CalendarEventDraft) async throws -> String {
         try await ensureEventAccess()
         guard let calendar = store.defaultCalendarForNewEvents else {

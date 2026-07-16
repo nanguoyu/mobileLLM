@@ -43,7 +43,11 @@ struct SettingsView: View {
         }
         // A sheet, not a push: the macOS detail column isn't inside a NavigationStack.
         .sheet(isPresented: $showTools) {
-            NavigationStack { ToolsView(settings: settings) }
+            NavigationStack {
+                ToolsView(settings: settings,
+                          eventStore: container.toolEventStore,
+                          locationProvider: container.toolLocationProvider)
+            }
             #if os(macOS)
             .frame(minWidth: 520, minHeight: 560)
             #endif

@@ -52,6 +52,19 @@ public protocol EventStoring: Sendable {
     func events(daysAhead: Int) async throws -> [CalendarEventInfo]
     /// Create a reminder; returns a short human label on success.
     func createReminder(_ draft: ReminderDraft) async throws -> String
+    /// Current system authorization for a domain, without prompting.
+    func permissionState(for domain: EventDomain) async -> ToolPermission
+    /// Prompt the user if undetermined; resolves immediately when already decided.
+    func requestPermission(for domain: EventDomain) async -> ToolPermission
+}
+
+/// The two EventKit permission domains (separate TCC switches on iOS).
+public enum EventDomain: Sendable { case events, reminders }
+
+/// Defaults keep test fakes to the three data methods.
+public extension EventStoring {
+    func permissionState(for domain: EventDomain) async -> ToolPermission { .granted }
+    func requestPermission(for domain: EventDomain) async -> ToolPermission { .granted }
 }
 
 // MARK: - ISO 8601 parsing

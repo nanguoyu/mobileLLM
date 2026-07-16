@@ -3,6 +3,9 @@
 import SwiftUI
 import AppUI
 import LLMCore
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Settings → Behavior → Manage tools. The built-in tool suite the model may call when Tools are on:
 /// which search engines web search scrapes, per-tool on/off (with the privacy-sensitive three clearly
@@ -11,8 +14,15 @@ import LLMCore
 /// `ChatStore.toolRegistry()`.
 struct ToolsView: View {
     @Bindable var settings: AppSettings
+    /// The privacy-gated seams (nil in previews/tests): enabling calendar/reminders/location asks the
+    /// system RIGHT THEN — the user is at their own decision point, not mid-chat — and a system-level
+    /// denial routes to Settings instead of silently arming a tool that can only fail.
+    var eventStore: (any EventStoring)? = nil
+    var locationProvider: (any LocationProviding)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var showMCP = false
+    /// Which privacy row's "allowed it off in system Settings" alert is up (nil = none).
+    @State private var deniedRow: BuiltInToolRow?
 
     var body: some View {
         ScrollView {
@@ -37,6 +47,15 @@ struct ToolsView: View {
             #if os(macOS)
             .frame(minWidth: 520, minHeight: 560)
             #endif
+        }
+        .alert(deniedRow.map { "\($0.title) access is off" } ?? "",
+               isPresented: Binding(get: { deniedRow != nil }, set: { if !$0 { deniedRow = nil } }),
+               presenting: deniedRow) { _ in
+            Button("Open Settings") { openSystemSettings(); deniedRow = nil }
+            Button("Not now", role: .cancel) { deniedRow = nil }
+        } message: { row in
+            Text("\(row.title) is turned off for mobileLLM in system Settings. The tool stays enabled "
+                 + "here, but the model's calls will fail until you allow access.")
         }
     }
 
@@ -109,7 +128,7 @@ struct ToolsView: View {
                     Text(row.subtitle).font(.caption).foregroundStyle(Theme.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                     if row.privacy {
-                        Label("Asks for system permission the first time the model uses it.",
+                        Label("Asks for system permission when you enable it.",
                               systemImage: "lock.shield")
                             .font(.caption2).foregroundStyle(Theme.textTertiary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -121,7 +140,8 @@ struct ToolsView: View {
     }
 
     /// A row is on when NONE of its underlying tool ids are disabled; toggling flips them all together
-    /// (so "Memory" moves remember + recall, "Calendar" moves create + list, as one switch).
+    /// (so "Memory" moves remember + recall, "Calendar" moves create + list, as one switch). Enabling a
+    /// privacy row immediately runs the system permission flow.
     private func rowBinding(_ row: BuiltInToolRow) -> Binding<Bool> {
         Binding(
             get: { row.isOn(in: settings) },
@@ -131,7 +151,36 @@ struct ToolsView: View {
                     if on { disabled.remove(id.rawValue) } else { disabled.insert(id.rawValue) }
                 }
                 settings.disabledBuiltInTools = disabled
+                if on, row.privacy { Task { await requestSystemPermission(for: row) } }
             })
+    }
+
+    /// Ask the system for the row's permission the moment it's enabled. Undetermined → the real prompt;
+    /// already denied in system Settings → iOS can't re-prompt, so surface the alert that deep-links
+    /// there. The toggle itself stays on either way (the user's intent is recorded; a denied tool call
+    /// returns an instructive error until access is granted).
+    private func requestSystemPermission(for row: BuiltInToolRow) async {
+        let result: ToolPermission?
+        switch row.id {
+        case "calendar": result = await eventStore?.requestPermission(for: .events)
+        case "reminders": result = await eventStore?.requestPermission(for: .reminders)
+        case "location": result = await locationProvider?.requestPermission()
+        default: result = nil
+        }
+        if result == .denied { deniedRow = row }
+    }
+
+    /// Deep-link to the app's page in system Settings — the only path once a permission is denied.
+    private func openSystemSettings() {
+        #if os(iOS)
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+        #elseif os(macOS)
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security") {
+            NSWorkspace.shared.open(url)
+        }
+        #endif
     }
 
     // MARK: Connections

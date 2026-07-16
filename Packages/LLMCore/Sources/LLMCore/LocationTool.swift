@@ -20,9 +20,27 @@ public enum LocationError: Error, Sendable, Equatable {
     case timeout
 }
 
+/// The authorization state of a privacy-gated tool's system permission — drives the Tools settings
+/// screen's flip-the-toggle-and-ask flow (and the "it's off in system Settings" guidance).
+public enum ToolPermission: Sendable, Equatable {
+    case notDetermined
+    case granted
+    case denied
+}
+
 /// The CoreLocation seam. A real `CLLocationManager`-backed adapter conforms on-device; tests inject a fake.
 public protocol LocationProviding: Sendable {
     func currentLocation() async throws -> LocationFix
+    /// Current system authorization, without prompting.
+    func permissionState() async -> ToolPermission
+    /// Prompt the user if undetermined; resolves immediately when already decided.
+    func requestPermission() async -> ToolPermission
+}
+
+/// Defaults keep test fakes and simple providers to the single fetch method.
+public extension LocationProviding {
+    func permissionState() async -> ToolPermission { .granted }
+    func requestPermission() async -> ToolPermission { .granted }
 }
 
 /// Report the user's approximate current location. One-shot, ~100 m accuracy, short timeout — enough for
