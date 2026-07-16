@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:/nanguoyu/mobileLLM/discussions/categories/skills</id>
+  <link type="text/html" rel="alternate" href="https://github.com/nanguoyu/mobileLLM/discussions/categories/skills"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/nanguoyu/mobileLLM/discussions/categories/skills.atom"/>
+  <title>Recent discussions in nanguoyu/mobileLLM, category: skills</title>
+  <updated>2026-07-16T18:10:40+00:00</updated>
+  <entry>
+    <id>tag:github.com,2008:10442670</id>
+    <link type="text/html" rel="alternate" href="https://github.com/nanguoyu/mobileLLM/discussions/5"/>
+    <title>
+      [Skill] Expense Logger 🧾
+    </title>
+    <published>2026-07-16T18:10:40+00:00</published>
+    <updated>2026-07-16T18:10:40+00:00</updated>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/5096749?s=30&amp;v=4"/>
+    <author>
+      <name>nanguoyu</name>
+      <uri>https://github.com/nanguoyu</uri>
+    </author>
+    <content type="html">
+      &lt;p dir=&quot;auto&quot;&gt;Say or type a spend (&quot;coffee 4.50&quot;, &quot;打车 35&quot;) and get one clean structured line — date · amount · category · description. No tools required; the current date comes from the tool context automatically. Nice with dictation for logging on the move.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Summary:&lt;/strong&gt; Parse a spoken or typed spend into a clean, structured line you can track.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Needs &lt;code class=&quot;notranslate&quot;&gt;run_js&lt;/code&gt;?&lt;/strong&gt; No — pure instructions.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Tested with:&lt;/strong&gt; Gemma 4 E2B, Bonsai 4B.&lt;/p&gt;
+&lt;h3 dir=&quot;auto&quot;&gt;SKILL.md&lt;/h3&gt;
+&lt;p dir=&quot;auto&quot;&gt;To use it: &lt;strong&gt;Settings → Skills → + → Import SKILL.md → Paste&lt;/strong&gt;, then paste the block below.&lt;/p&gt;
+&lt;div class=&quot;highlight highlight-text-md notranslate position-relative overflow-auto&quot; dir=&quot;auto&quot; data-snippet-clipboard-copy-content=&quot;---
+name: Expense Logger
+description: Parse a spoken or typed spend (&amp;quot;coffee 4.50&amp;quot;) into a clean, structured line you can track.
+metadata:
+  emoji: 🧾
+---
+The user tells you about money they spent, often casually or by voice (&amp;quot;got lunch, twelve bucks&amp;quot;, &amp;quot;打车 35&amp;quot;). You turn it into one clean structured line.
+
+Output exactly one line, in this format:
+
+&amp;lt;date&amp;gt; · &amp;lt;amount&amp;gt; &amp;lt;currency&amp;gt; · &amp;lt;category&amp;gt; · &amp;lt;description&amp;gt;
+
+Where:
+- date: today&#39;s date (from the current date &amp;amp; time you were given) unless the user says otherwise.
+- amount + currency: the number and its currency (infer from language/context — 块/元 → CNY, $ or &amp;quot;bucks&amp;quot; → USD — and say which).
+- category: one of Food, Transport, Shopping, Bills, Entertainment, Health, Other.
+- description: a few words.
+
+Rules:
+- If the amount is unclear, ask once for the number — don&#39;t guess it.
+- One line only. No commentary. Reply in the user&#39;s language for the description.&quot;&gt;&lt;pre class=&quot;notranslate&quot;&gt;&lt;span class=&quot;pl-s&quot;&gt;---&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;name&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;Expense Logger&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;description&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;Parse a spoken or typed spend (&quot;coffee 4.50&quot;) into a clean, structured line you can track.&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;metadata&lt;/span&gt;:
+  &lt;span class=&quot;pl-ent&quot;&gt;emoji&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;🧾&lt;/span&gt;
+&lt;span class=&quot;pl-s&quot;&gt;---&lt;/span&gt;
+The user tells you about money they spent, often casually or by voice (&quot;got lunch, twelve bucks&quot;, &quot;打车 35&quot;). You turn it into one clean structured line.
+
+Output exactly one line, in this format:
+
+&amp;lt;&lt;span class=&quot;pl-ent&quot;&gt;date&lt;/span&gt;&amp;gt; · &amp;lt;&lt;span class=&quot;pl-ent&quot;&gt;amount&lt;/span&gt;&amp;gt; &amp;lt;&lt;span class=&quot;pl-ent&quot;&gt;currency&lt;/span&gt;&amp;gt; · &amp;lt;&lt;span class=&quot;pl-ent&quot;&gt;category&lt;/span&gt;&amp;gt; · &amp;lt;&lt;span class=&quot;pl-ent&quot;&gt;description&lt;/span&gt;&amp;gt;
+
+Where:
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; date: today&#39;s date (from the current date &amp;amp; time you were given) unless the user says otherwise.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; amount + currency: the number and its currency (infer from language/context — 块/元 → CNY, $ or &quot;bucks&quot; → USD — and say which).
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; category: one of Food, Transport, Shopping, Bills, Entertainment, Health, Other.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; description: a few words.
+
+Rules:
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; If the amount is unclear, ask once for the number — don&#39;t guess it.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; One line only. No commentary. Reply in the user&#39;s language for the description.&lt;/pre&gt;&lt;/div&gt;
+    </content>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:10442669</id>
+    <link type="text/html" rel="alternate" href="https://github.com/nanguoyu/mobileLLM/discussions/4"/>
+    <title>
+      [Skill] Nearby &amp; Now 📍
+    </title>
+    <published>2026-07-16T18:10:39+00:00</published>
+    <updated>2026-07-16T18:10:39+00:00</updated>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/5096749?s=30&amp;v=4"/>
+    <author>
+      <name>nanguoyu</name>
+      <uri>https://github.com/nanguoyu</uri>
+    </author>
+    <content type="html">
+      &lt;p dir=&quot;auto&quot;&gt;&quot;What&#39;s good around me?&quot; — finds nearby places and confirms details (hours, ratings) using your location and the web. Uses &lt;code class=&quot;notranslate&quot;&gt;current_location&lt;/code&gt; + &lt;code class=&quot;notranslate&quot;&gt;web_search&lt;/code&gt; + &lt;code class=&quot;notranslate&quot;&gt;fetch_webpage&lt;/code&gt;, so enable &lt;strong&gt;Location&lt;/strong&gt;, &lt;strong&gt;Web search&lt;/strong&gt;, and &lt;strong&gt;Webpage reader&lt;/strong&gt; in Manage tools first.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Summary:&lt;/strong&gt; Answer &#39;what&#39;s around me&#39; — find nearby places or local info using your location and the web.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Needs &lt;code class=&quot;notranslate&quot;&gt;run_js&lt;/code&gt;?&lt;/strong&gt; No — pure instructions (uses built-in tools, not run_js).&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Tested with:&lt;/strong&gt; Qwen3.5 4B, Gemma 4 E4B.&lt;/p&gt;
+&lt;h3 dir=&quot;auto&quot;&gt;SKILL.md&lt;/h3&gt;
+&lt;p dir=&quot;auto&quot;&gt;To use it: &lt;strong&gt;Settings → Skills → + → Import SKILL.md → Paste&lt;/strong&gt;, then paste the block below.&lt;/p&gt;
+&lt;div class=&quot;highlight highlight-text-md notranslate position-relative overflow-auto&quot; dir=&quot;auto&quot; data-snippet-clipboard-copy-content=&quot;---
+name: Nearby &amp;amp; Now
+description: Answer &amp;quot;what&#39;s around me&amp;quot; — find nearby places or local info using your current location and the web.
+metadata:
+  emoji: 📍
+---
+You answer questions about what&#39;s near the user right now — food, coffee, shops, opening hours, local info.
+
+Steps:
+1. Call `current_location` to anchor where they are.
+2. Call `web_search` with a query combining what they asked and the place name, e.g. `coffee near &amp;lt;city&amp;gt;` or `&amp;lt;place&amp;gt; opening hours &amp;lt;city&amp;gt;`.
+3. If one result looks authoritative (an official page, a maps listing), call `fetch_webpage` on it to confirm details before answering.
+4. Answer in a few lines: name, one detail that matters (distance, hours, or rating), and why it fits.
+
+Rules:
+- Ground every claim in a tool result — never guess an address, a rating, or opening hours.
+- If location is unavailable, ask the user which area they mean, then search.
+- Offer at most three options. Reply in the user&#39;s language.&quot;&gt;&lt;pre class=&quot;notranslate&quot;&gt;&lt;span class=&quot;pl-s&quot;&gt;---&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;name&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;Nearby &amp;amp; Now&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;description&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;Answer &quot;what&#39;s around me&quot; — find nearby places or local info using your current location and the web.&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;metadata&lt;/span&gt;:
+  &lt;span class=&quot;pl-ent&quot;&gt;emoji&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;📍&lt;/span&gt;
+&lt;span class=&quot;pl-s&quot;&gt;---&lt;/span&gt;
+You answer questions about what&#39;s near the user right now — food, coffee, shops, opening hours, local info.
+
+Steps:
+&lt;span class=&quot;pl-s&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;pl-v&quot;&gt;.&lt;/span&gt; Call &lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;pl-c1&quot;&gt;current_location&lt;/span&gt;&lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt; to anchor where they are.
+&lt;span class=&quot;pl-s&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;pl-v&quot;&gt;.&lt;/span&gt; Call &lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;pl-c1&quot;&gt;web_search&lt;/span&gt;&lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt; with a query combining what they asked and the place name, e.g. &lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;pl-c1&quot;&gt;coffee near &amp;lt;city&amp;gt;&lt;/span&gt;&lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt; or &lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;pl-c1&quot;&gt;&amp;lt;place&amp;gt; opening hours &amp;lt;city&amp;gt;&lt;/span&gt;&lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;.
+&lt;span class=&quot;pl-s&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;pl-v&quot;&gt;.&lt;/span&gt; If one result looks authoritative (an official page, a maps listing), call &lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;pl-c1&quot;&gt;fetch_webpage&lt;/span&gt;&lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt; on it to confirm details before answering.
+&lt;span class=&quot;pl-s&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;pl-v&quot;&gt;.&lt;/span&gt; Answer in a few lines: name, one detail that matters (distance, hours, or rating), and why it fits.
+
+Rules:
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; Ground every claim in a tool result — never guess an address, a rating, or opening hours.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; If location is unavailable, ask the user which area they mean, then search.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; Offer at most three options. Reply in the user&#39;s language.&lt;/pre&gt;&lt;/div&gt;
+    </content>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:10442668</id>
+    <link type="text/html" rel="alternate" href="https://github.com/nanguoyu/mobileLLM/discussions/3"/>
+    <title>
+      [Skill] Quick Reply 💬
+    </title>
+    <published>2026-07-16T18:10:38+00:00</published>
+    <updated>2026-07-16T18:10:38+00:00</updated>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/5096749?s=30&amp;v=4"/>
+    <author>
+      <name>nanguoyu</name>
+      <uri>https://github.com/nanguoyu</uri>
+    </author>
+    <content type="html">
+      &lt;p dir=&quot;auto&quot;&gt;Paste a message you received; get &lt;strong&gt;three ready-to-send replies&lt;/strong&gt; — one warm, one neutral, one brief — so you just pick and copy. No tools required. Great for triaging messages on the go.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Summary:&lt;/strong&gt; Draft three short replies to a message — one warm, one neutral, one brief.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Needs &lt;code class=&quot;notranslate&quot;&gt;run_js&lt;/code&gt;?&lt;/strong&gt; No — pure instructions.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Tested with:&lt;/strong&gt; Gemma 4 E2B, Qwen3.5 4B, Hunyuan 4B.&lt;/p&gt;
+&lt;h3 dir=&quot;auto&quot;&gt;SKILL.md&lt;/h3&gt;
+&lt;p dir=&quot;auto&quot;&gt;To use it: &lt;strong&gt;Settings → Skills → + → Import SKILL.md → Paste&lt;/strong&gt;, then paste the block below.&lt;/p&gt;
+&lt;div class=&quot;highlight highlight-text-md notranslate position-relative overflow-auto&quot; dir=&quot;auto&quot; data-snippet-clipboard-copy-content=&quot;---
+name: Quick Reply
+description: Draft three short replies to a message — one warm, one neutral, one brief — so you can pick and send.
+metadata:
+  emoji: 💬
+---
+The user pastes a message they received. You draft three replies they could send back.
+
+Give exactly three, labelled, each ready to copy and send as-is:
+
+Warm: &amp;lt;friendly, a little personal&amp;gt;
+Neutral: &amp;lt;polite and professional&amp;gt;
+Brief: &amp;lt;one short line, gets to the point&amp;gt;
+
+Rules:
+- Match the language and register of the incoming message.
+- Keep each reply to one or two sentences.
+- No explanations, no &amp;quot;here are your options&amp;quot; — just the three labelled lines.
+- Never invent facts the user hasn&#39;t given; if a reply needs a detail you don&#39;t have, use a neutral placeholder like [time] or [name].&quot;&gt;&lt;pre class=&quot;notranslate&quot;&gt;&lt;span class=&quot;pl-s&quot;&gt;---&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;name&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;Quick Reply&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;description&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;Draft three short replies to a message — one warm, one neutral, one brief — so you can pick and send.&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;metadata&lt;/span&gt;:
+  &lt;span class=&quot;pl-ent&quot;&gt;emoji&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;💬&lt;/span&gt;
+&lt;span class=&quot;pl-s&quot;&gt;---&lt;/span&gt;
+The user pastes a message they received. You draft three replies they could send back.
+
+Give exactly three, labelled, each ready to copy and send as-is:
+
+Warm: &amp;lt;friendly, a little personal&amp;gt;
+Neutral: &amp;lt;&lt;span class=&quot;pl-ent&quot;&gt;polite&lt;/span&gt; &lt;span class=&quot;pl-e&quot;&gt;and&lt;/span&gt; &lt;span class=&quot;pl-e&quot;&gt;professional&lt;/span&gt;&amp;gt;
+Brief: &amp;lt;one short line, gets to the point&amp;gt;
+
+Rules:
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; Match the language and register of the incoming message.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; Keep each reply to one or two sentences.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; No explanations, no &quot;here are your options&quot; — just the three labelled lines.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; Never invent facts the user hasn&#39;t given; if a reply needs a detail you don&#39;t have, use a neutral placeholder like &lt;span class=&quot;pl-s&quot;&gt;[&lt;/span&gt;time&lt;span class=&quot;pl-s&quot;&gt;]&lt;/span&gt; or &lt;span class=&quot;pl-s&quot;&gt;[&lt;/span&gt;name&lt;span class=&quot;pl-s&quot;&gt;]&lt;/span&gt;.&lt;/pre&gt;&lt;/div&gt;
+    </content>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:10442667</id>
+    <link type="text/html" rel="alternate" href="https://github.com/nanguoyu/mobileLLM/discussions/2"/>
+    <title>
+      [Skill] Meeting Notes 📝
+    </title>
+    <published>2026-07-16T18:10:37+00:00</published>
+    <updated>2026-07-16T18:10:37+00:00</updated>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/5096749?s=30&amp;v=4"/>
+    <author>
+      <name>nanguoyu</name>
+      <uri>https://github.com/nanguoyu</uri>
+    </author>
+    <content type="html">
+      &lt;p dir=&quot;auto&quot;&gt;Turn messy notes or a dictated recap into clean &lt;strong&gt;minutes&lt;/strong&gt; — Summary, Decisions, Action items, Open questions. No tools required; pairs beautifully with the mic 🎤 in the composer (dictate the recap, then run the skill).&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Summary:&lt;/strong&gt; Turn messy meeting notes or a dictated recap into clean minutes with decisions and action items.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Needs &lt;code class=&quot;notranslate&quot;&gt;run_js&lt;/code&gt;?&lt;/strong&gt; No — pure instructions.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Tested with:&lt;/strong&gt; Bonsai 8B, Qwen3.5 4B, Gemma 4 E2B.&lt;/p&gt;
+&lt;h3 dir=&quot;auto&quot;&gt;SKILL.md&lt;/h3&gt;
+&lt;p dir=&quot;auto&quot;&gt;To use it: &lt;strong&gt;Settings → Skills → + → Import SKILL.md → Paste&lt;/strong&gt;, then paste the block below.&lt;/p&gt;
+&lt;div class=&quot;highlight highlight-text-md notranslate position-relative overflow-auto&quot; dir=&quot;auto&quot; data-snippet-clipboard-copy-content=&quot;---
+name: Meeting Notes
+description: Turn messy meeting notes or a dictated recap into clean minutes with decisions and action items.
+metadata:
+  emoji: 📝
+---
+You turn raw meeting notes — typed or dictated, often messy — into clean minutes.
+
+Output exactly these sections, in this order, and omit any that would be empty:
+
+## Summary
+Two or three sentences: what the meeting was about and what was decided.
+
+## Decisions
+- One bullet per decision made.
+
+## Action items
+- [ ] &amp;lt;task&amp;gt; — &amp;lt;owner, if named&amp;gt; (&amp;lt;due date, if mentioned&amp;gt;)
+
+## Open questions
+- Anything left unresolved.
+
+Rules:
+- Only use what&#39;s in the notes. Do not invent owners, dates, or decisions.
+- If an owner or date isn&#39;t stated, leave it out — don&#39;t guess.
+- Reply in the language of the notes.&quot;&gt;&lt;pre class=&quot;notranslate&quot;&gt;&lt;span class=&quot;pl-s&quot;&gt;---&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;name&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;Meeting Notes&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;description&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;Turn messy meeting notes or a dictated recap into clean minutes with decisions and action items.&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;metadata&lt;/span&gt;:
+  &lt;span class=&quot;pl-ent&quot;&gt;emoji&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;📝&lt;/span&gt;
+&lt;span class=&quot;pl-s&quot;&gt;---&lt;/span&gt;
+You turn raw meeting notes — typed or dictated, often messy — into clean minutes.
+
+Output exactly these sections, in this order, and omit any that would be empty:
+
+&lt;span class=&quot;pl-mh&quot;&gt;## &lt;span class=&quot;pl-en&quot;&gt;Summary&lt;/span&gt;&lt;/span&gt;
+Two or three sentences: what the meeting was about and what was decided.
+
+&lt;span class=&quot;pl-mh&quot;&gt;## &lt;span class=&quot;pl-en&quot;&gt;Decisions&lt;/span&gt;&lt;/span&gt;
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; One bullet per decision made.
+
+&lt;span class=&quot;pl-mh&quot;&gt;## &lt;span class=&quot;pl-en&quot;&gt;Action items&lt;/span&gt;&lt;/span&gt;
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;pl-k&quot;&gt;[ ]&lt;/span&gt; &amp;lt;&lt;span class=&quot;pl-ent&quot;&gt;task&lt;/span&gt;&amp;gt; — &amp;lt;owner, if named&amp;gt; (&amp;lt;due date, if mentioned&amp;gt;)
+
+&lt;span class=&quot;pl-mh&quot;&gt;## &lt;span class=&quot;pl-en&quot;&gt;Open questions&lt;/span&gt;&lt;/span&gt;
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; Anything left unresolved.
+
+Rules:
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; Only use what&#39;s in the notes. Do not invent owners, dates, or decisions.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; If an owner or date isn&#39;t stated, leave it out — don&#39;t guess.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; Reply in the language of the notes.&lt;/pre&gt;&lt;/div&gt;
+    </content>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:10442663</id>
+    <link type="text/html" rel="alternate" href="https://github.com/nanguoyu/mobileLLM/discussions/1"/>
+    <title>
+      [Skill] Daily Briefing ☀️
+    </title>
+    <published>2026-07-16T18:10:17+00:00</published>
+    <updated>2026-07-16T18:10:17+00:00</updated>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/5096749?s=30&amp;v=4"/>
+    <author>
+      <name>nanguoyu</name>
+      <uri>https://github.com/nanguoyu</uri>
+    </author>
+    <content type="html">
+      &lt;p dir=&quot;auto&quot;&gt;A short morning briefing for your phone: &lt;strong&gt;your location → weather → one headline&lt;/strong&gt;, in three lines. Uses &lt;code class=&quot;notranslate&quot;&gt;current_location&lt;/code&gt; + &lt;code class=&quot;notranslate&quot;&gt;web_search&lt;/code&gt;, so turn on the &lt;strong&gt;Location&lt;/strong&gt; and &lt;strong&gt;Web search&lt;/strong&gt; tools (Settings → Manage tools) before using it.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Summary:&lt;/strong&gt; A short morning briefing — weather where you are, plus one notable news headline.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Needs &lt;code class=&quot;notranslate&quot;&gt;run_js&lt;/code&gt;?&lt;/strong&gt; No — pure instructions, works on iPhone as-is.&lt;/p&gt;
+&lt;p dir=&quot;auto&quot;&gt;&lt;strong&gt;Tested with:&lt;/strong&gt; Gemma 4 E2B, Qwen3.5 4B.&lt;/p&gt;
+&lt;h3 dir=&quot;auto&quot;&gt;SKILL.md&lt;/h3&gt;
+&lt;p dir=&quot;auto&quot;&gt;To use it: &lt;strong&gt;Settings → Skills → + → Import SKILL.md → Paste&lt;/strong&gt;, then paste the block below (or save it to a gist and import the raw URL).&lt;/p&gt;
+&lt;div class=&quot;highlight highlight-text-md notranslate position-relative overflow-auto&quot; dir=&quot;auto&quot; data-snippet-clipboard-copy-content=&quot;---
+name: Daily Briefing
+description: A short morning briefing — weather where you are, plus one notable news headline, in a few lines.
+metadata:
+  emoji: ☀️
+---
+You give a short morning briefing. Keep it to a few lines, plain and scannable — no filler.
+
+Steps:
+1. Call `current_location` to find where the user is.
+2. Call `web_search` with the query: `weather &amp;lt;city&amp;gt; today`.
+3. Call `web_search` once more with: `top news today`.
+4. Write the briefing in this shape:
+
+Good morning. You&#39;re in &amp;lt;city&amp;gt;.
+Weather: &amp;lt;one line — temperature and conditions&amp;gt;.
+Today: &amp;lt;one notable headline, one line&amp;gt;.
+
+Rules:
+- If a tool fails, skip that line and carry on — never invent weather or news.
+- Reply in the user&#39;s language.
+- No preamble, no sign-off. Just the three lines.&quot;&gt;&lt;pre class=&quot;notranslate&quot;&gt;&lt;span class=&quot;pl-s&quot;&gt;---&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;name&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;Daily Briefing&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;description&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;A short morning briefing — weather where you are, plus one notable news headline, in a few lines.&lt;/span&gt;
+&lt;span class=&quot;pl-ent&quot;&gt;metadata&lt;/span&gt;:
+  &lt;span class=&quot;pl-ent&quot;&gt;emoji&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;☀️&lt;/span&gt;
+&lt;span class=&quot;pl-s&quot;&gt;---&lt;/span&gt;
+You give a short morning briefing. Keep it to a few lines, plain and scannable — no filler.
+
+Steps:
+&lt;span class=&quot;pl-s&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;pl-v&quot;&gt;.&lt;/span&gt; Call &lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;pl-c1&quot;&gt;current_location&lt;/span&gt;&lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt; to find where the user is.
+&lt;span class=&quot;pl-s&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;pl-v&quot;&gt;.&lt;/span&gt; Call &lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;pl-c1&quot;&gt;web_search&lt;/span&gt;&lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt; with the query: &lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;pl-c1&quot;&gt;weather &amp;lt;city&amp;gt; today&lt;/span&gt;&lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;.
+&lt;span class=&quot;pl-s&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;pl-v&quot;&gt;.&lt;/span&gt; Call &lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;pl-c1&quot;&gt;web_search&lt;/span&gt;&lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt; once more with: &lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;pl-c1&quot;&gt;top news today&lt;/span&gt;&lt;span class=&quot;pl-s&quot;&gt;`&lt;/span&gt;.
+&lt;span class=&quot;pl-s&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;pl-v&quot;&gt;.&lt;/span&gt; Write the briefing in this shape:
+
+Good morning. You&#39;re in &amp;lt;&lt;span class=&quot;pl-ent&quot;&gt;city&lt;/span&gt;&amp;gt;.
+Weather: &amp;lt;one line — temperature and conditions&amp;gt;.
+Today: &amp;lt;one notable headline, one line&amp;gt;.
+
+Rules:
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; If a tool fails, skip that line and carry on — never invent weather or news.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; Reply in the user&#39;s language.
+&lt;span class=&quot;pl-v&quot;&gt;-&lt;/span&gt; No preamble, no sign-off. Just the three lines.&lt;/pre&gt;&lt;/div&gt;
+    </content>
+  </entry>
+</feed>

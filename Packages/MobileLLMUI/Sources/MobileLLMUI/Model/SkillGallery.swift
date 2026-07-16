@@ -345,13 +345,22 @@ final class AtomFeedParser: NSObject, XMLParserDelegate {
         let name = local(element)
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
         switch name {
-        case "entry": entries.append(current); inEntry = false
+        case "entry":
+            // The permalink carries the real discussion number (…/discussions/12) — prefer it over the
+            // id's internal digits so the row identity matches what the board shows.
+            if let n = current.url.split(separator: "/").last.flatMap({ Int($0) }) { current.number = n }
+            entries.append(current)
+            inEntry = false
         case "author": inAuthor = false
         case "title" where inEntry: current.title = value
         case "content" where inEntry: current.content = text   // keep whitespace — it's markdown
         case "name" where inAuthor && inEntry: current.author = value
         case "id" where inEntry:
-            if let n = value.split(separator: "/").last.flatMap({ Int($0) }) { current.number = n }
+            // GitHub's entry id is `tag:github.com,2008:<internal-id>` — NOT a path with the discussion
+            // number. Keep its trailing digits as the identity fallback; `number` prefers the permalink
+            // below (the number a user actually sees). Getting this wrong made every item id 0, which
+            // collapsed the whole list into repeats of the first row under `ForEach`.
+            if let digits = value.split(separator: ":").last.flatMap({ Int($0) }) { current.number = digits }
         default: break
         }
         text = ""

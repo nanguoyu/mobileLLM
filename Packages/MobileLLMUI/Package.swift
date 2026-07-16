@@ -26,6 +26,9 @@ let package = Package(
                 .product(name: "LLMCore", package: "LLMCore"),
             ]
         ),
-        .testTarget(name: "MobileLLMUITests", dependencies: ["MobileLLMUI"]),
+        // The captured live-feed fixture is read source-relative (via #filePath) rather than from a
+        // bundle — declare it so SwiftPM doesn't warn about an unhandled file.
+        .testTarget(name: "MobileLLMUITests", dependencies: ["MobileLLMUI"],
+                    resources: [.copy("live-feed-fixture.xml")]),
     ]
 )

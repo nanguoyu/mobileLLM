@@ -7,10 +7,14 @@ body:
 
         Skills use the same `SKILL.md` format as
         [Google AI Edge Gallery](https://github.com/google-ai-edge/gallery/discussions/categories/skills),
-        so anything shared here imports into either app. In mobileLLM: **Settings → Skills → + → Import
-        SKILL.md**, then paste your link or the markdown itself.
+        so anything shared here imports into either app.
 
-        Please title your post `[Skill] <Name>` and fill in the fields below.
+        **Post it here and it appears in the app**: mobileLLM reads this board directly — your skill shows
+        up under **Settings → Skills → + → Browse Community Skills**, installable with one tap, as long as
+        you paste the full `SKILL.md` into the field below (a link-only post can be read on GitHub but not
+        installed in-app).
+
+        Please title your post `[Skill] <Name>` — the tag and a trailing emoji become the app's row icon.
   - type: input
     id: summary
     attributes:
