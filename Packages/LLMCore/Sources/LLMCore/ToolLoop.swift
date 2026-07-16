@@ -11,7 +11,13 @@ public enum ToolPrompt {
                 .joined(separator: "; ")
             return "- \(s.name): \(s.description)" + (ps.isEmpty ? "" : " Parameters: \(ps).")
         }.joined(separator: "\n")
+        // Small models can't turn "in an hour" into an absolute time without knowing NOW — a 2B model
+        // asked for a 1-hour reminder emitted `now + 1 hour`, got rejected, and gave up. Ground them.
+        let df = DateFormatter()
+        df.dateFormat = "EEEE, yyyy-MM-dd HH:mm (ZZZZZ)"
         return """
+        Current date & time: \(df.string(from: Date())).
+
         You can call tools when they help. Available tools:
         \(list)
 

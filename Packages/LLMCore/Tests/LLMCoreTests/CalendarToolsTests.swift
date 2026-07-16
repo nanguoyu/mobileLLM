@@ -138,7 +138,52 @@ final class CalendarToolsTests: XCTestCase {
         XCTAssertNotNil(ISO8601Parsing.date(from: "2026-07-20T15:00:00+02:00"))
         XCTAssertNotNil(ISO8601Parsing.date(from: "2026-07-20T15:00"))
         XCTAssertNotNil(ISO8601Parsing.date(from: "2026-07-20"))
-        XCTAssertNil(ISO8601Parsing.date(from: "tomorrow"))
         XCTAssertNil(ISO8601Parsing.date(from: ""))
+        XCTAssertNil(ISO8601Parsing.date(from: "whenever you feel like it"))
+    }
+
+    /// The on-device failure this pins: a 2B model asked for a 1-hour reminder emitted `now + 1 hour`,
+    /// the tool rejected it, and the model gave up. The parser now speaks the relative grammar small
+    /// models actually produce, in English and Chinese, with a deterministic injected `now`.
+    func testRelativeDateParsing() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        func delta(_ raw: String) -> TimeInterval? {
+            ISO8601Parsing.date(from: raw, now: now).map { $0.timeIntervalSince(now) }
+        }
+        XCTAssertEqual(delta("now"), 0)
+        XCTAssertEqual(delta("now + 1 hour"), 3600)
+        XCTAssertEqual(delta("Now+30min"), 1800)
+        XCTAssertEqual(delta("now - 15 minutes"), -900)
+        XCTAssertEqual(delta("in 90 seconds"), 90)
+        XCTAssertEqual(delta("2 hours from now"), 7200)
+        XCTAssertEqual(delta("1小时后"), 3600)
+        XCTAssertEqual(delta("30分钟后"), 1800)
+        XCTAssertEqual(delta("2天后"), 172_800)
+
+        // "tomorrow 09:00" lands on the next calendar day at 09:00 local.
+        let tomorrow = ISO8601Parsing.date(from: "tomorrow 09:00", now: now)
+        XCTAssertNotNil(tomorrow)
+        if let d = tomorrow {
+            let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+            XCTAssertEqual(c.hour, 9); XCTAssertEqual(c.minute, 0)
+            XCTAssertGreaterThan(d, now)
+        }
+        XCTAssertNotNil(ISO8601Parsing.date(from: "明天 9:30", now: now))
+        XCTAssertNotNil(ISO8601Parsing.date(from: "后天", now: now))
+    }
+
+    /// End-to-end: the reminder tool accepts the exact string the device model emitted.
+    func testCreateReminderAcceptsRelativeDue() async {
+        let store = FakeEventStore()
+        let tool = CreateReminderTool(store: store)
+        let out = await tool.execute(argumentsJSON: #"{"title":"闹钟提醒","due":"now + 1 hour"}"#)
+        XCTAssertFalse(out.hasPrefix("Error"), "relative due must parse, got: \(out)")
+        let created = await store.createdReminders
+        XCTAssertEqual(created.count, 1)
+        if let due = created.first?.due {
+            XCTAssertEqual(due.timeIntervalSinceNow, 3600, accuracy: 30)
+        } else {
+            XCTFail("due missing")
+        }
     }
 }
