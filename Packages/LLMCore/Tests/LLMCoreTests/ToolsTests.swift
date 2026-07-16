@@ -30,6 +30,25 @@ final class ToolsTests: XCTestCase {
         XCTAssertTrue(r.contains("missing"))
     }
 
+    func testCalculatorHandlesParenthesesAndFloat() async {
+        let paren = await CalculatorTool().execute(argumentsJSON: #"{"expression":"(2+3)*4"}"#)
+        XCTAssertEqual(paren, "20")
+        let frac = await CalculatorTool().execute(argumentsJSON: #"{"expression":"10/4"}"#)
+        XCTAssertEqual(frac, "2.5")
+    }
+
+    func testDateTimeToolReturnsNonEmpty() async {
+        let r = await DateTimeTool().execute(argumentsJSON: "{}")
+        XCTAssertFalse(r.isEmpty)
+        XCTAssertFalse(r.hasPrefix("Error"))
+    }
+
+    func testRegistriesExposeExpectedTools() {
+        XCTAssertEqual(Set(ToolRegistry.builtIn.tools.map { $0.schema.name }), ["calculator", "current_datetime"])
+        XCTAssertTrue(ToolRegistry.standard.tool(named: "web_search") != nil)
+        XCTAssertNil(ToolRegistry.builtIn.tool(named: "web_search"))
+    }
+
     // MARK: ToolCall argument decoding
 
     func testToolCallDecodesStringAndNumberArgs() {

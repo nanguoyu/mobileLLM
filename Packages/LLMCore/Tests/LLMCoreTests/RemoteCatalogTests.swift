@@ -64,4 +64,24 @@ final class RemoteCatalogTests: XCTestCase {
             XCTAssertFalse(RemoteCatalog.isQuantToken(t), "\(t) should NOT be a quant token")
         }
     }
+
+    func testParamCountParsesSizeFromName() {
+        XCTAssertEqual(RemoteModel.paramCount(from: "Qwen3 9B"), 9)
+        XCTAssertEqual(RemoteModel.paramCount(from: "Qwen3-0.6B"), 0.6)
+        XCTAssertEqual(RemoteModel.paramCount(from: "gpt-oss 20b"), 20)
+        XCTAssertEqual(RemoteModel.paramCount(from: "SmolLM 350M"), 0.35)   // M → billions
+        XCTAssertEqual(RemoteModel.paramCount(from: "30B A3B"), 30)         // MoE → the larger (total) count
+        XCTAssertNil(RemoteModel.paramCount(from: "Kimi K2.5"))             // no size token
+    }
+
+    func testEstimateBytesScalesWithParamsAndQuant() {
+        // 9B at 4-bit ≈ 9e9 * 0.55 ≈ 5 GB; 8-bit is ~2x the 4-bit size.
+        let q4 = RemoteModel.estimateBytes(paramsBillions: 9, quant: "4-bit")
+        let q8 = RemoteModel.estimateBytes(paramsBillions: 9, quant: "8-bit")
+        XCTAssertEqual(Double(q4) / 1e9, 4.95, accuracy: 0.6)
+        XCTAssertGreaterThan(q8, q4)
+        // Unknown param count falls back to a ~4B assumption (non-zero, bounded).
+        let fallback = RemoteModel.estimateBytes(paramsBillions: nil, quant: "4-bit")
+        XCTAssertGreaterThan(fallback, 1_000_000_000)
+    }
 }
