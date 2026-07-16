@@ -371,11 +371,57 @@ public enum LLMCatalog {
         ],
         defaultVariant: .gguf4bit)
 
+    // MARK: - Apple Intelligence (the OS's own on-device model, via FoundationModels)
+    //
+    // Unlike every other entry, this one describes a model we neither ship nor fetch: the OS owns the
+    // weights and runs them out of process. So it has no repo, no file, no size and no memory cost, and
+    // it is usable exactly when the system says Apple Intelligence is available (`SystemModelStatus`) —
+    // never because something is on disk.
+
+    public static let appleSystem = LLMModel(
+        id: "apple-system",
+        displayName: "Apple Intelligence",
+        family: .apple,
+        publisher: "Apple",
+        summary: "The model built into the operating system. Nothing to download and no memory cost — "
+               + "it runs outside the app. Available only where Apple Intelligence is on.",
+        license: .appleSystem,
+        architecture: LLMArchitecture(
+            // Apple publishes NO architecture facts for the system model — not in the SDK, not in the
+            // docs — and nothing here needs them: the OS owns the weights AND the KV cache, so the
+            // governor short-circuits this backend to `.comfortable` (see `LLMMemoryGovernor.plan`)
+            // instead of doing weight math. Zeros are the honest entry, and they make `kvBytes` compute
+            // 0, so any caller that DOES consult the shape adds nothing to our budget rather than a
+            // number we made up.
+            modelType: "apple-system", swiftModelClass: "",
+            hidden: 0, layers: 0, vocab: 0, tieWordEmbeddings: false,
+            attention: .fullAttention(kvHeads: 0, headDim: 0, layers: 0),
+            // Apple documents a 4K context window for the on-device system model; the SDK exposes no
+            // constant to read it from. This figure bounds only OUR context picker — we never hand a
+            // context to the session, which owns its real window and raises `exceededContextWindowSize`
+            // itself. That error, not this number, is the authority.
+            nativeContext: 4096,
+            // No reasoning trace: the system model streams a plain answer (it has no <think> convention).
+            thinkingCapable: false, eos: "",
+            // The OS applies its own chat formatting; we hand it roles, never a template string.
+            chatTemplate: .builtin("apple-system"),
+            promptTemplate: .auto, reasoningStyle: .none),
+        variants: [
+            // `onDiskBytes: 0` + no `fileName` ⇒ empty `requiredFileNames`, so the storage total counts
+            // nothing and the download/delete paths have nothing to act on. The source id is synthetic
+            // and never fetched — there IS no repo; it exists only to give the variant a stable `id`
+            // ("apple/system-language-model#apple").
+            LLMVariant(quant: .other("System"), backend: .appleSystem, onDiskBytes: 0,
+                       source: ModelSource(huggingFaceRepo: "apple/system-language-model")),
+        ],
+        defaultVariant: .other("System"))
+
     /// All catalog models, in device-recommended order (largest first for Bonsai, then the new families).
     public static let all: [LLMModel] = [
         bonsai27b, bonsai8b, bonsai4b, bonsai1_7b,
         qwen35_4b, qwen35_9b, qwen36_27b, hunyuan4b, deepseekR1Qwen8b,
         gemma4E2B, gemma4E4B, gemma4_12B,
+        appleSystem,
     ]
 
     /// Look a model up by id.

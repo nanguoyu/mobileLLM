@@ -44,6 +44,7 @@ public final class AppContainer {
                 conversationStore: ConversationStore? = nil,
                 memoryStore: (any MemoryStoring)? = nil,
                 installProbe: @escaping @Sendable (LLMVariant, URL) -> Bool = ModelManager.defaultInstallProbe(),
+                systemModelProbe: @escaping @Sendable () -> SystemModelStatus = { .unavailable(.unsupportedOS) },
                 availableMemory: @escaping @Sendable () -> Int64 = { Int64(bitPattern: MemoryProbe.availableBytes()) },
                 eventStore: (any EventStoring)? = nil,
                 locationProvider: (any LocationProviding)? = nil) {
@@ -53,6 +54,7 @@ public final class AppContainer {
         self.conversationStore = store
         self.models = ModelManager(engine: engine, device: device, downloadBase: downloadBase,
                                    downloader: downloader, installProbe: installProbe,
+                                   systemModelProbe: systemModelProbe,
                                    availableMemory: availableMemory)
         // Tool seams for the agent loop. The memory store lives beside the conversation records (durable +
         // atomic — losing saved facts is annoying). The privacy-gated calendar / location adapters are
@@ -147,7 +149,14 @@ public final class AppContainer {
         models.allModels
             .flatMap { model in model.variants.map { (model, $0) } }
             .filter { $0.1.id != failedID && models.isInstalled($0.1) }
-            .min { $0.1.onDiskBytes < $1.1.onDiskBytes }
+            // Smallest first (most likely to load) — but a model the user actually DOWNLOADED outranks the
+            // OS's own, which is 0 bytes and would otherwise always win on size and quietly displace their
+            // choice. The system model stays the last resort, which is exactly its value here: when it's
+            // available, it always loads.
+            .min { a, b in
+                if a.1.isSystemProvided != b.1.isSystemProvided { return !a.1.isSystemProvided }
+                return a.1.onDiskBytes < b.1.onDiskBytes
+            }
     }
 
     /// The launch activation target: the active conversation's remembered (model, variant) if that model

@@ -62,4 +62,33 @@ final class MemoryGovernorTests: XCTestCase {
         XCTAssertEqual(LLMMemoryGovernor.residentCeilingBytes(for: phone12), 8_640_000_000)   // 0.72 · 12e9
         XCTAssertEqual(LLMMemoryGovernor.residentCeilingBytes(for: mac16), 12_000_000_000)     // min(12e9, 12.8e9)
     }
+
+    // MARK: - The OS-provided system model (the `.apple` engine)
+
+    /// The system model is free: the OS holds the weights AND the KV cache out of process, so it reads
+    /// `.comfortable` on every device at every context — including the smallest phone at the longest
+    /// context, where every resident model is unsupported. None of this is weight math.
+    func testSystemModelIsAlwaysComfortable() {
+        let model = LLMCatalog.appleSystem
+        let variant = model.defaultVariantValue
+        for device in [phone8, phone12, mac16] {
+            for context in [0, 4096, 262_144] {
+                XCTAssertEqual(LLMMemoryGovernor.plan(model: model, variant: variant,
+                                                      device: device, context: context),
+                               .comfortable,
+                               "the system model costs us nothing (\(device.physicalMemoryBytes) B, \(context) ctx)")
+            }
+        }
+    }
+
+    /// The verdict must not depend on the device at all — not even one far too small to hold any model.
+    /// This pins that `plan` SHORT-CIRCUITS for `.apple`, rather than happening to pass the resident
+    /// weight math because the catalog entry's inputs are zeros.
+    func testSystemModelIgnoresDeviceSize() {
+        let tiny = DeviceTier(physicalMemoryBytes: 1_000_000, isPhone: true)
+        XCTAssertEqual(LLMMemoryGovernor.plan(model: LLMCatalog.appleSystem,
+                                              variant: LLMCatalog.appleSystem.defaultVariantValue,
+                                              device: tiny, context: 262_144),
+                       .comfortable)
+    }
 }

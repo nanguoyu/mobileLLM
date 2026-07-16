@@ -6,11 +6,12 @@ import MobileLLMUI
 import LLMCore
 import LLMEngineMLX
 import LLMEngineLlama
+import LLMEngineApple
 
-/// App assembly: a `RoutingEngine` fronting both concrete engines (MLX-fork + llama.cpp) and the
-/// resumable `ModelDownloader` are injected into the `AppContainer` composition root here; everywhere
-/// else runs against the `LLMEngine` protocol. The router loads each variant on the engine its
-/// `backend` names and keeps at most one resident, so switching engines never doubles memory.
+/// App assembly: a `RoutingEngine` fronting the three concrete engines (MLX-fork, llama.cpp, and Apple's
+/// system model) and the resumable `ModelDownloader` are injected into the `AppContainer` composition root
+/// here; everywhere else runs against the `LLMEngine` protocol. The router loads each variant on the engine
+/// its `backend` names and keeps at most one resident, so switching engines never doubles memory.
 @main
 struct MobileLLMApp: App {
     @State private var container: AppContainer
@@ -22,9 +23,13 @@ struct MobileLLMApp: App {
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         let downloader = ModelDownloader(downloadBase: base)
         // App.init runs on the main thread; adopt that isolation to build the @MainActor container.
+        // The Apple engine is registered unconditionally, even on an OS with no FoundationModels: it owns
+        // no weights and costs nothing to hold, and being present is what lets the Models card say WHY the
+        // system model can't run instead of the UI having to guess.
         let engine = RoutingEngine(engines: [
             .mlx: MLXLLMEngine(),
             .llamaCpp: LlamaEngine(),
+            .apple: AppleLLMEngine(),
         ])
         // The privacy-gated tool adapters are wired here (the composition root for platform frameworks,
         // like the engines above): construction is cheap and prompts for nothing — EventKit/CoreLocation
@@ -46,6 +51,9 @@ struct MobileLLMApp: App {
                 downloader: { repoId, globs, progress in
                     _ = try await downloader.download(repoId: repoId, matching: globs, progress: progress)
                 },
+                // The model layer is engine-free, so only this layer can ask the OS about its own model.
+                // This IS the system model's install state: available ⇒ ready to use, nothing downloaded.
+                systemModelProbe: { AppleSystemModel.status() },
                 eventStore: eventStore,
                 locationProvider: locationProvider)
         }

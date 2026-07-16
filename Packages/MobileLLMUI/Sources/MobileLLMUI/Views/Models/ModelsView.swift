@@ -69,7 +69,7 @@ struct ModelsView: View {
     private var featuredScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.md) {
-                if models.installed.isEmpty { firstRunHeader }
+                if hasNoDownloadedModel { firstRunHeader }
                 activeSection
                 storageHeader
                 searchField
@@ -109,6 +109,16 @@ struct ModelsView: View {
                           onUse: onUse,
                           onDelete: { variant in pendingDelete = (model, variant) })
             }
+        }
+    }
+
+    /// Nothing DOWNLOADABLE is on disk yet. The OS-provided model deliberately doesn't count: it needs no
+    /// download, so having it doesn't mean the user has fetched a model of their own — and "Get started"
+    /// is exactly the nudge to do that. Keying this off `installed.isEmpty` would silently hide the
+    /// first-run guidance on every device with Apple Intelligence switched on.
+    private var hasNoDownloadedModel: Bool {
+        !models.allModels.contains { model in
+            model.variants.contains { !$0.isSystemProvided && models.isInstalled($0) }
         }
     }
 
@@ -243,8 +253,12 @@ struct ModelsView: View {
         if !q.isEmpty, !"\(model.displayName) \(model.publisher)".lowercased().contains(q) { return false }
         switch filter {
         case .all: return true
-        case .runs: return model.variants.contains {
-            models.fitPresentation(model, $0, context: settings.contextLength) != .unsupported
+        case .runs: return model.variants.contains { variant in
+            // For the OS-provided model, "runs here" is an availability question, not a memory one: its
+            // fit is always comfortable, so keying off fit alone would list it under "Runs here" on a
+            // device where Apple Intelligence is off or ineligible.
+            if variant.isSystemProvided { return models.systemModelStatus.isAvailable }
+            return models.fitPresentation(model, variant, context: settings.contextLength) != .unsupported
         }
         case .installed: return model.variants.contains { models.isInstalled($0) }
         case .reasoning: return model.architecture.thinkingCapable
@@ -306,6 +320,16 @@ struct ModelCard: View {
     private var presentation: ModelManager.FitPresentation {
         models.fitPresentation(model, variant, context: context)
     }
+
+    /// The OS's model is usable only when the system says so — memory was never the question, and the fit
+    /// verdict for it is always `.comfortable` (it costs us nothing). So when it ISN'T available the fit
+    /// affordances are suppressed rather than rendered: a green "Runs great" beside "Apple Intelligence is
+    /// turned off" contradicts itself, and a gray "Needs more memory" would blame the wrong thing entirely.
+    /// The row states the real reason instead.
+    private var systemModelBlocked: Bool {
+        variant.isSystemProvided && !models.systemModelStatus.isAvailable
+    }
+
     private var isActive: Bool { models.active?.variant.id == variant.id }
     private var isInstalled: Bool { models.isInstalled(variant) }
     private var download: VariantDownload? { models.downloadState(variant) }
@@ -364,7 +388,7 @@ struct ModelCard: View {
                 .lineLimit(1).minimumScaleFactor(0.7).layoutPriority(1)
             if isRecommended { Chip(text: "Recommended", filled: true) }
             Spacer()
-            LLMFitBadge(presentation: presentation)
+            if !systemModelBlocked { LLMFitBadge(presentation: presentation) }
         }
     }
 
@@ -391,7 +415,11 @@ struct ModelCard: View {
             HStack(spacing: Theme.Space.xs) {
                 Text(variant.quant.displayName).font(.caption.weight(.medium)).foregroundStyle(Theme.textSecondary)
                 Text("·").foregroundStyle(Theme.textTertiary)
-                Text(Format.bytes(variant.onDiskBytes)).font(.caption.monospacedDigit()).foregroundStyle(Theme.textPrimary)
+                // An OS-provided model has no download: "Zero KB" would be a technically-true absurdity,
+                // so say what's actually true instead.
+                Text(variant.isSystemProvided ? "Built into the system"
+                                              : Format.bytes(variant.onDiskBytes))
+                    .font(.caption.monospacedDigit()).foregroundStyle(Theme.textPrimary)
                 Spacer()
             }
             .padding(.top, 1)
@@ -428,9 +456,12 @@ struct ModelCard: View {
         .accessibilityAddTraits(on ? [.isSelected] : [])
     }
 
-    /// The fit dot colour for a precision on this device (each chip rates its own variant).
+    /// The fit dot colour for a precision on this device (each chip rates its own variant). A system
+    /// model the OS won't give us reads gray — it can't be used — but never green, which is what the
+    /// memory-only verdict would otherwise say.
     private func fitColor(for q: QuantSpec) -> Color {
         guard let v = model.variant(engine: engine, quant: q) else { return Theme.fitGray }
+        if systemModelBlocked { return Theme.fitGray }
         switch models.fitPresentation(model, v, context: context) {
         case .comfortable: return Theme.fitGreen
         case .tight, .experimental: return Theme.fitAmber
@@ -440,6 +471,9 @@ struct ModelCard: View {
 
     private func fitWord(for q: QuantSpec) -> String {
         guard let v = model.variant(engine: engine, quant: q) else { return "unavailable" }
+        // Gray here is not a memory verdict, so don't say "won't fit" — it fits fine; the OS just isn't
+        // offering it.
+        if systemModelBlocked { return "unavailable" }
         switch models.fitPresentation(model, v, context: context) {
         case .comfortable: return "runs great"
         case .tight: return "tight"
@@ -451,7 +485,11 @@ struct ModelCard: View {
     // MARK: Action area (tri-state)
 
     @ViewBuilder private var actionArea: some View {
-        if let download, models.isDownloading(variant) {
+        // The OS-provided model is a different shape entirely: it has no download, paused, error or
+        // delete state — only "ready to use" or "here's exactly why it isn't".
+        if variant.isSystemProvided {
+            systemModelRow
+        } else if let download, models.isDownloading(variant) {
             downloadingRow(download)
         } else if let download, download.isPaused {
             pausedRow(download)
@@ -461,6 +499,42 @@ struct ModelCard: View {
             installedRow
         } else {
             downloadRow
+        }
+    }
+
+    /// The OS's own model: nothing to download, nothing to delete. When Apple Intelligence is off or the
+    /// device isn't eligible, the card states the real reason from the system's own verdict and offers NO
+    /// button — a Use that can only fail is worse than no Use at all (A4). No fake progress either: there
+    /// is no download to show, and `.modelNotReady` resolves itself without us.
+    @ViewBuilder private var systemModelRow: some View {
+        if let reason = models.systemModelStatus.unavailableReason {
+            Label(reason.message, systemImage: "exclamationmark.circle")
+                .font(.caption).foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("\(model.displayName) is unavailable. \(reason.message)")
+        } else if isActive {
+            Label("Active", systemImage: "checkmark.circle.fill")
+                .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
+        } else {
+            HStack(spacing: Theme.Space.sm) {
+                Button { onUse(model, variant, false) } label: {
+                    if isActivating {
+                        HStack(spacing: Theme.Space.xs) {
+                            ProgressView().controlSize(.small).tint(Theme.onAccent)
+                            Text("Loading…")
+                        }
+                    } else {
+                        Label("Use", systemImage: "bolt.fill")
+                    }
+                }
+                .buttonStyle(StudioButtonStyle(.primary))
+                .disabled(activationBusy)
+                .accessibilityLabel(isActivating ? "Loading \(model.displayName)" : "Use \(model.displayName)")
+                Text("Ready — no download needed")
+                    .font(.caption2).foregroundStyle(Theme.textTertiary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Spacer(minLength: 0)
+            }
         }
     }
 

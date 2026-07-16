@@ -10,22 +10,29 @@ final class EngineCatalogTests: XCTestCase {
 
     private let bonsaiIDs: Set<String> = ["bonsai-27b", "bonsai-8b", "bonsai-4b", "bonsai-1.7b"]
 
-    /// Backend → engine mapping (AWQ maps to MLX; GGUF to llama.cpp).
+    /// Backend → engine mapping (AWQ maps to MLX; GGUF to llama.cpp; the system model to Apple).
     func testBackendEngineMapping() {
         XCTAssertEqual(Backend.mlxFork.engine, .mlx)
         XCTAssertEqual(Backend.mlxStock.engine, .mlx)
         XCTAssertEqual(Backend.awqUnsupported.engine, .mlx)
         XCTAssertEqual(Backend.llamaCppGGUF.engine, .llamaCpp)
+        XCTAssertEqual(Backend.appleSystem.engine, .apple)
+        // The OS runs the system model out of process: none of it lands in our footprint.
+        XCTAssertEqual(Backend.appleSystem.runtimeOverheadBytes, 0)
+        XCTAssertEqual(Backend.appleSystem.formatTag, "apple")
     }
 
     func testEngineLabels() {
         XCTAssertEqual(EngineKind.mlx.label, "MLX")
         XCTAssertEqual(EngineKind.llamaCpp.label, "llama.cpp")
+        XCTAssertEqual(EngineKind.apple.label, "Apple Intelligence")
     }
 
-    /// Every model ships at least one GGUF variant, each with a real single-file `.gguf` name + size.
+    /// Every DOWNLOADABLE model ships at least one GGUF variant, each with a real single-file `.gguf`
+    /// name + size. The OS-provided system model is exempt by construction: it has no weights to fetch,
+    /// so it can't have a GGUF (or any) file — `testAppleSystemModelShipsNoWeights` pins that instead.
     func testEveryModelHasAGGUFVariant() {
-        for model in LLMCatalog.all {
+        for model in LLMCatalog.all where !model.isSystemProvided {
             let ggufs = model.variants(for: .llamaCpp)
             XCTAssertGreaterThanOrEqual(ggufs.count, 1, "\(model.id) must ship a GGUF variant")
             for v in ggufs {
@@ -50,11 +57,33 @@ final class EngineCatalogTests: XCTestCase {
             XCTAssertEqual(model.defaultVariantValue.engine, .mlx)
         }
         XCTAssertEqual(LLMCatalog.bonsai8b.engines, [.mlx, .llamaCpp])
-        // GGUF-only newcomers default to their llama.cpp variant.
-        for model in LLMCatalog.all where !bonsaiIDs.contains(model.id) {
+        // GGUF-only newcomers default to their llama.cpp variant. The system model is neither Bonsai nor
+        // GGUF — it downloads nothing — so it's excluded here and pinned on its own below.
+        for model in LLMCatalog.all where !bonsaiIDs.contains(model.id) && !model.isSystemProvided {
             XCTAssertEqual(model.engines, [.llamaCpp], "\(model.id) is GGUF-only")
             XCTAssertEqual(model.defaultVariantValue.engine, .llamaCpp)
         }
+    }
+
+    /// The Apple system model is in the catalog like any other model, but ships NO weights: zero bytes,
+    /// no files to fetch, and no memory cost. This is what lets the Models card offer it with no download
+    /// and the governor skip weight math entirely.
+    func testAppleSystemModelShipsNoWeights() {
+        let model = LLMCatalog.appleSystem
+        XCTAssertTrue(LLMCatalog.all.contains { $0.id == model.id }, "it must appear in the catalog")
+        XCTAssertTrue(model.isSystemProvided)
+        XCTAssertEqual(model.engines, [.apple])
+        let variant = model.defaultVariantValue
+        XCTAssertEqual(variant.backend, .appleSystem)
+        XCTAssertEqual(variant.onDiskBytes, 0)
+        XCTAssertTrue(variant.requiredFileNames.isEmpty, "there is no file to download")
+        XCTAssertNil(variant.source.fileName)
+        XCTAssertFalse(variant.supportsVisionInput)
+        XCTAssertTrue(variant.id.hasSuffix("#apple"))
+        // No fabricated architecture: Apple publishes none, so the KV shape must cost nothing.
+        XCTAssertEqual(model.architecture.attention.kvBytes(tokens: 4096), 0)
+        XCTAssertFalse(model.architecture.thinkingCapable)
+        XCTAssertEqual(model.architecture.reasoningStyle, .none)
     }
 
     /// Variant ids are unique across the whole catalog even though MLX + GGUF share the 1-bit quant.

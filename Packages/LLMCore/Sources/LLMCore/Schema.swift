@@ -14,6 +14,7 @@ public enum LLMFamily: String, Sendable, Hashable, CaseIterable, Codable {
     case hunyuan
     case deepseek
     case gemma
+    case apple
     public var displayName: String {
         switch self {
         case .bonsai: "Bonsai"
@@ -22,6 +23,7 @@ public enum LLMFamily: String, Sendable, Hashable, CaseIterable, Codable {
         case .hunyuan: "Hunyuan"
         case .deepseek: "DeepSeek"
         case .gemma: "Gemma"
+        case .apple: "Apple"
         }
     }
 }
@@ -32,6 +34,9 @@ public enum ModelLicense: String, Sendable, Hashable, Codable {
     case mit = "MIT"
     case tencentHunyuan = "Tencent Hunyuan Community"
     case gemma = "Gemma Terms of Use"
+    /// Not an open-source licence: the system model is part of the OS and is covered by its terms.
+    /// There is no repo, no weights file, and nothing for the user to accept here.
+    case appleSystem = "Included with Apple Intelligence"
     public var displayName: String { rawValue }
 }
 
@@ -49,19 +54,73 @@ public struct ModelSource: Sendable, Hashable, Codable {
     }
 }
 
-/// Which inference engine runs a variant's weights (DESIGN §1 / §6). Two engines sit behind the one
-/// `LLMEngine` protocol: the resident-weights MLX engine today, and a llama.cpp engine (mmap'd GGUF)
-/// for large models on memory-tight phones.
+/// Which inference engine runs a variant's weights (DESIGN §1 / §6). Three engines sit behind the one
+/// `LLMEngine` protocol: the resident-weights MLX engine, a llama.cpp engine (mmap'd GGUF) for large
+/// models on memory-tight phones, and Apple's system model (FoundationModels) — which owns no weights
+/// of ours at all.
 public enum EngineKind: String, Sendable, Codable, CaseIterable, Hashable {
     case mlx
     case llamaCpp
+    case apple
 
     /// Human-facing name for the picker + subtitles.
     public var label: String {
         switch self {
         case .mlx: "MLX"
         case .llamaCpp: "llama.cpp"
+        case .apple: "Apple Intelligence"
         }
+    }
+}
+
+/// Whether the OS's own system model (the `.apple` engine) can be used right now, and if not, why.
+///
+/// This is the app's framework-free vocabulary for `FoundationModels.SystemLanguageModel.availability`:
+/// that type is `@available(iOS 26, macOS 26)`, so nothing below those OSes — including this package and
+/// its tests — can even name it. The engine package maps the framework enum onto these cases; everything
+/// else (the install probe, the Models card) reads only this.
+public enum SystemModelStatus: Sendable, Equatable {
+    case available
+    case unavailable(Reason)
+
+    /// Why the system model can't be used. Mirrors the framework's `UnavailableReason`, plus the two
+    /// cases the framework can't express: an OS that predates it, and a reason a future OS adds.
+    public enum Reason: Sendable, Equatable {
+        /// This OS ships no system model (below iOS 26 / macOS 26), or the app was built without the SDK.
+        case unsupportedOS
+        /// The hardware isn't eligible for Apple Intelligence.
+        case deviceNotEligible
+        /// Apple Intelligence is switched off in Settings.
+        case notEnabled
+        /// Eligible and switched on, but the model is still downloading.
+        case modelNotReady
+        /// The framework reported a reason this build doesn't know about.
+        case unknown
+
+        /// User-facing text for the Models card. Each names the real reason and, where the user can
+        /// actually do something, the action — never a bare enum dump, and never a fake "download".
+        public var message: String {
+            switch self {
+            case .unsupportedOS:
+                return "Apple Intelligence needs a newer version of this operating system."
+            case .deviceNotEligible:
+                return "This device isn't eligible for Apple Intelligence, so its built-in model can't run here."
+            case .notEnabled:
+                return "Apple Intelligence is turned off. Switch it on in Settings to use the built-in model."
+            case .modelNotReady:
+                return "Apple Intelligence is still downloading its model. It'll be ready shortly."
+            case .unknown:
+                return "Apple Intelligence isn't available on this device right now."
+            }
+        }
+    }
+
+    public var isAvailable: Bool { self == .available }
+
+    /// The reason it's unusable, or `nil` when it's ready.
+    public var unavailableReason: Reason? {
+        if case .unavailable(let reason) = self { return reason }
+        return nil
     }
 }
 
@@ -125,6 +184,10 @@ public enum Backend: Sendable, Hashable, Codable {
     case mlxStock         // ternary 2-bit, upstream `bits ∈ {2,…}`
     case llamaCppGGUF     // GGUF weights on the (planned) llama.cpp engine — mmap'd, memory-tight phones
     case awqUnsupported   // AWQ-gemm + fp16 vision tower — excluded
+    /// The OS's own model, reached through FoundationModels. There are no weights to fetch, load or
+    /// budget for: the system owns them, out of process. A variant on this backend is `onDiskBytes: 0`,
+    /// is never downloaded or deleted, and is "installed" exactly when the OS says the model is available.
+    case appleSystem
 
     /// Which inference engine this backend runs on. AWQ is treated as an MLX target (it's excluded, but
     /// architecturally it belongs to the MLX side, never llama.cpp).
@@ -132,6 +195,7 @@ public enum Backend: Sendable, Hashable, Codable {
         switch self {
         case .mlxFork, .mlxStock, .awqUnsupported: .mlx
         case .llamaCppGGUF: .llamaCpp
+        case .appleSystem: .apple
         }
     }
 
@@ -140,10 +204,15 @@ public enum Backend: Sendable, Hashable, Codable {
     /// anonymous/dirty working set resident; llama.cpp mmaps the GGUF and keeps a slimmer ~0.35 GB of
     /// non-weight scratch (the bulk of its weight pages are clean/file-backed — the governor discounts
     /// those separately). Per-engine so the honest fit differs between the two.
+    ///
+    /// The system model costs us ZERO: inference happens in the OS's own process, so none of its weights
+    /// or scratch land in our footprint. This is why the governor hands `.apple` a `.comfortable` plan
+    /// instead of doing weight math (`LLMMemoryGovernor.plan`).
     public var runtimeOverheadBytes: Int64 {
         switch engine {
         case .mlx: 500_000_000
         case .llamaCpp: 350_000_000
+        case .apple: 0
         }
     }
 
@@ -154,6 +223,7 @@ public enum Backend: Sendable, Hashable, Codable {
         case .mlxFork, .mlxStock: "mlx"
         case .llamaCppGGUF: "gguf"
         case .awqUnsupported: "awq"
+        case .appleSystem: "apple"
         }
     }
 }
@@ -332,6 +402,11 @@ public struct LLMVariant: Sendable, Hashable, Codable, Identifiable {
     /// composer's attach-image affordance and the engine's mtmd path).
     public var supportsVisionInput: Bool { visionProjector != nil }
 
+    /// True when the OS provides this variant's weights (the `.apple` engine): there is nothing to
+    /// download, delete, size or budget for. The Models card renders it without any download affordance,
+    /// and its "installed" state comes from `SystemModelStatus`, never from a disk probe.
+    public var isSystemProvided: Bool { backend == .appleSystem }
+
     /// The repo-relative files this variant must download to be usable, in fetch order: the primary
     /// single weight file (when it pulls one file from a shared repo — e.g. a GGUF) plus its vision
     /// projector when present. Empty = fetch the whole flat repo (the MLX case). Pure and the single
@@ -412,6 +487,9 @@ public struct LLMModel: Sendable, Hashable, Codable, Identifiable {
     public var defaultVariantValue: LLMVariant {
         variant(for: defaultVariant) ?? variants[0]
     }
+
+    /// True when every variant is OS-provided (the Apple system model) — nothing to fetch or delete.
+    public var isSystemProvided: Bool { variants.allSatisfy { $0.isSystemProvided } }
 
     /// The engines this model ships a variant for, in a stable order (MLX first, then llama.cpp).
     public var engines: [EngineKind] {
