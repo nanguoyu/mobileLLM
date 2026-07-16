@@ -59,10 +59,12 @@ app assembly and the router stays testable with mock engines.
   binary target and mmaps the GGUF, so weight pages are clean/file-backed and reclaimable under memory
   pressure. No fork, no build macros.
 
-**Auto engine policy** (`AppSettings.preferredVariant`, pure + unit-tested): given a model, device, and the
-user's `EnginePreference` (`.auto` / `.mlx` / `.llamaCpp`), pick a variant by greenest governor fit, then the
-device-preferred engine (**MLX on Mac, llama.cpp on iPhone**), then the model's default quant, then the
-smaller download. An explicit pin scopes to that engine, falling back only if the model lacks it.
+**Auto engine policy** (`AppSettings.preferredVariant`, pure + unit-tested): given a model, a device, and
+an `EnginePreference` (globally `.auto` — there is no user-facing engine setting; the model card's engine
+picker chooses per activation), pick a variant by greenest governor fit, then the device-preferred engine
+(**MLX on Mac, llama.cpp on iPhone**), then the model's default quant, then the smaller download. In the
+simulator the policy never picks MLX (it can't run there); a pinned engine scopes to it, falling back only
+if the model lacks it.
 
 ## Memory governor + context policy
 
@@ -145,14 +147,31 @@ handles the implicit-open convention (DeepSeek-R1 distills stream reasoning firs
 
 Chat data lives in **files** (not SwiftData), built on `AppRuntime.DurableStore` — versioned Codable
 manifest, atomic writes, corrupt-manifest → backup-not-wipe recovery. `AppSettings` persists one small
-Codable snapshot to `UserDefaults` (default model, engine preference, system prompt, thinking mode, tools +
-MCP servers, sampling, context length, appearance), with hand-written decoding so older snapshots migrate
-rather than throw. Multi-GB weights live under a no-backup Application Support dir so they don't hit iCloud.
+Codable snapshot to `UserDefaults` (system prompt, thinking mode, tools + MCP servers, dictation language,
+sampling, context length, appearance), with hand-written decoding so older snapshots migrate rather than
+throw. There is deliberately **no user-facing default-model or engine-preference setting**: each
+conversation records the (model, variant) that actually answered it — restamped on every send, restored
+when the thread is opened and at launch — and `defaultModelID` survives only as an auto-tracked
+"last successfully used" fallback. Engine choice lives on the model card; the Auto policy picks the
+greenest-fitting variant per device (and never picks MLX in the simulator, where it can't run — activation
+refuses it with a typed error rather than hanging Metal init). Multi-GB weights live under a no-backup Application Support dir so they don't hit iCloud.
 
 `MemoryProbe` reads `phys_footprint` (the number iOS jetsams on); an OOM pre-flight refuses recoverably
 before a load that wouldn't fit; `ThermalGovernor` throttles on a wall-clock boundary and pauses on
 `.critical`; `DeviceTier` classifies the hardware. When the app backgrounds (`scenePhase → .background`) it
 frees the resident model, so a multi-GB model isn't holding RAM while unused.
+
+## Keyboard (the hard-won part)
+
+SwiftUI's automatic keyboard avoidance is **half-broken** in this app's TabView → NavigationStack →
+pushed-detail tree: it moves nothing, yet still folds the keyboard height into `safeAreaInsets.bottom`.
+The composer therefore does what UIKit apps do (and what FlowDown's `SafeInputView` does): a tracker view
+pinned between `keyboardLayoutGuide.top` and the window bottom measures the true overlap
+(`KeyboardHeight.swift`), the net lift is computed against **UIKit's** `window.safeAreaInsets.bottom`
+(which never includes the keyboard), and the composer pads by it while `.ignoresSafeArea(.keyboard)`
+keeps the broken automatic path switched off. Keyboard notifications are not used — sheet present/dismiss
+storms strand them. The geometry is pinned by an XCUITest (`UITests/KeyboardUITests.swift`): composer hugs
+the bottom at rest, the input row sits above the keyboard while focused, tapping blank space dismisses.
 
 ## Design tokens (ink-wash 水墨)
 

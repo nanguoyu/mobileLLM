@@ -63,6 +63,20 @@ The two engine packages (`LLMEngineMLX`, `LLMEngineLlama`) build and run via `xc
 package additionally needs `-skipMacroValidation` (see docs/WIRING.md). Their smoke executables
 (`llm-smoke`, `llama-smoke`) run against real weights on a device.
 
+```sh
+# Engine unit tests (macOS destination; SwiftPM can't build the MLX package's macros):
+xcodebuild -skipMacroValidation -scheme EngineTests -destination platform=macOS test
+
+# Keyboard/composer geometry (XCUITest, iOS simulator). Prerequisites: seed a small GGUF into the sim
+# app container (see the header of UITests/KeyboardUITests.swift) and disable the hardware keyboard
+# (defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false):
+xcodebuild -skipMacroValidation -scheme UITests \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test
+```
+
+Note the simulator runs **llama.cpp on CPU only and cannot run MLX at all** — activation refuses MLX
+variants there by design; anything MLX is validated on real hardware.
+
 ## Pull requests
 
 - **Tests stay green.** Add or update tests for the behavior you change; existing tests are pinned behavior

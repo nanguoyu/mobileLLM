@@ -41,7 +41,13 @@ nothing you type ever leaves the device.
   JPEG on-device) and ask about them — Qwen3.5 and Gemma 4 run their official `mmproj` projector through
   llama.cpp's mtmd. The photo button appears only when the active model can actually see.
 - 🎤 **Dictation.** A mic button in the composer transcribes speech into the draft via Apple's speech
-  recognizer, on-device where supported.
+  recognizer, on-device where supported; long-press to pick the recognition language (System / 中文 /
+  English — one recognizer is bound to one language). A camera capture option sits beside the photo
+  library and paste in the composer's [+] menu.
+- 🧵 **Conversations remember their model.** Every send stamps the thread with the model that answered;
+  reopening a thread (or relaunching the app) brings that model back. There is no "default model"
+  setting to manage — a new chat starts on whatever you used last, and the empty-state title
+  ("Chat with … ⌄") is itself the model picker.
 - 🧭 **Explore — live Hugging Face browse.** Search `mlx-community` (MLX) and the GGUF orgs (bartowski,
   unsloth, ggml-org, lmstudio-community) by download count, pick a precision, and install. Community models
   load from their own chat template, so they're clearly flagged **Unverified**.
@@ -140,6 +146,11 @@ swift test --package-path Packages/AppRuntime
 swift test --package-path Packages/LLMCore
 swift test --package-path Packages/MobileLLMUI
 ```
+
+Two more xcodebuild-only suites: `-scheme EngineTests` runs the engine packages' unit tests (the MLX
+package's macros can't build under plain SwiftPM), and `-scheme UITests` drives the keyboard/composer
+geometry on an iOS simulator with XCUITest (needs a small GGUF seeded into the app container and the
+simulator's hardware keyboard disabled — see `UITests/KeyboardUITests.swift`).
 
 See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup and package map.
 
