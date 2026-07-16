@@ -27,6 +27,8 @@ struct Composer: View {
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false
     @State private var showCamera = false
+    /// Stop stays disarmed for a beat after send so the tail of a double-tap can't cancel the turn.
+    @State private var stopArmed = false
     /// Composer controls scale with Dynamic Type instead of a hard 44pt.
     @ScaledMetric(relativeTo: .body) private var controlSize: CGFloat = 44
 
@@ -45,11 +47,9 @@ struct Composer: View {
             if !chat.pendingImages.isEmpty { pendingImageChips }
             if chat.hasModel {
                 HStack(alignment: .bottom, spacing: Theme.Space.sm) {
-                    if thinkingCapable { thinkingToggle }
-                    toolsToggle
-                    if canAttachImages { photoButton }
-                    micButton
+                    plusMenu
                     field
+                    micButton
                     sendOrStop
                 }
             } else {
@@ -218,36 +218,6 @@ struct Composer: View {
 
     // MARK: Photo attach
 
-    private var photoButton: some View {
-        Menu {
-            Button {
-                showPhotoPicker = true
-            } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
-            #if os(iOS)
-            if CameraPicker.isAvailable {
-                Button {
-                    ChatThreadView.dismissKeyboard()
-                    showCamera = true
-                } label: { Label("Take Photo", systemImage: "camera") }
-            }
-            #endif
-            Button {
-                pasteImage()
-            } label: { Label("Paste", systemImage: "doc.on.clipboard") }
-        } label: {
-            Image(systemName: "photo")
-                .font(.body)
-                .foregroundStyle(chat.canAttachMoreImages ? Theme.textTertiary : Theme.fitGray)
-                .frame(width: controlSize, height: controlSize)
-                .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
-        }
-        .menuIndicator(.hidden)
-        .disabled(!chat.canAttachMoreImages)
-        .accessibilityLabel("Attach image")
-        .accessibilityHint(chat.canAttachMoreImages ? "Add a photo to your message"
-                                                     : "Attachment limit reached")
-    }
-
     /// Thumbnail chips for staged (not-yet-sent) images, each with a remove control.
     private var pendingImageChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -317,45 +287,53 @@ struct Composer: View {
 
     // MARK: Thinking toggle
 
-    private var thinkingToggle: some View {
-        Button {
-            withAnimation(Motion.select) { chat.thinkingEnabled.toggle() }
+    /// One [+] gathers every secondary control (thinking, tools, image sources) — four separate 44pt
+    /// buttons squeezed the text field to a sliver on iPhone. The icon tints accent while thinking or
+    /// tools is on, so state stays visible at a glance; menu rows carry the explicit checkmarks.
+    private var plusMenu: some View {
+        Menu {
+            if thinkingCapable {
+                Toggle(isOn: Binding(get: { chat.thinkingEnabled },
+                                     set: { chat.thinkingEnabled = $0 })) {
+                    Label("Thinking", systemImage: "brain")
+                }
+            }
+            Toggle(isOn: Binding(get: { chat.toolsEnabled },
+                                 set: { newValue in
+                                     chat.toolsEnabled = newValue
+                                     chat.showToast(Toast(newValue
+                                         ? "Tools on — calculator, clock, Wikipedia + your MCP servers."
+                                         : "Tools off.", autoDismiss: 3))
+                                 })) {
+                Label("Tools", systemImage: "wrench.and.screwdriver")
+            }
+            if canAttachImages {
+                Divider()
+                Button { showPhotoPicker = true } label: {
+                    Label("Photo Library", systemImage: "photo.on.rectangle")
+                }
+                #if os(iOS)
+                if CameraPicker.isAvailable {
+                    Button {
+                        ChatThreadView.dismissKeyboard()
+                        showCamera = true
+                    } label: { Label("Take Photo", systemImage: "camera") }
+                }
+                #endif
+                Button { pasteImage() } label: { Label("Paste Image", systemImage: "doc.on.clipboard") }
+            }
         } label: {
-            Image(systemName: "brain")
-                .font(.body)
-                .foregroundStyle(chat.thinkingEnabled ? Theme.accent : Theme.textTertiary)
+            let active = chat.toolsEnabled || (thinkingCapable && chat.thinkingEnabled)
+            Image(systemName: "plus")
+                .font(.body.weight(.medium))
+                .foregroundStyle(active ? Theme.accent : Theme.textTertiary)
                 .frame(width: controlSize, height: controlSize)
-                .background(chat.thinkingEnabled ? Theme.accentSoft : Theme.surface2,
+                .background(active ? Theme.accentSoft : Theme.surface2,
                             in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Thinking mode")
-        .accessibilityValue(chat.thinkingEnabled ? "On" : "Off")
-        .accessibilityAddTraits(chat.thinkingEnabled ? [.isSelected] : [])
-    }
-
-    /// The tools switch, IN the composer — mirrors Settings → Tools. Without a visible state here, "the
-    /// model didn't call my MCP server" is indistinguishable from "tools were never on".
-    private var toolsToggle: some View {
-        Button {
-            withAnimation(Motion.select) { chat.toolsEnabled.toggle() }
-            chat.showToast(Toast(chat.toolsEnabled
-                                 ? "Tools on — calculator, clock, Wikipedia + your MCP servers."
-                                 : "Tools off.",
-                                 autoDismiss: 3))
-        } label: {
-            Image(systemName: "wrench.and.screwdriver")
-                .font(.body)
-                .foregroundStyle(chat.toolsEnabled ? Theme.accent : Theme.textTertiary)
-                .frame(width: controlSize, height: controlSize)
-                .background(chat.toolsEnabled ? Theme.accentSoft : Theme.surface2,
-                            in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Tools")
-        .accessibilityValue(chat.toolsEnabled ? "On" : "Off")
-        .accessibilityHint("Lets the model call the calculator, clock, Wikipedia and your MCP servers")
-        .accessibilityAddTraits(chat.toolsEnabled ? [.isSelected] : [])
+        .menuIndicator(.hidden)
+        .accessibilityLabel("Chat options")
+        .accessibilityHint("Thinking, tools and image attachments")
     }
 
     // MARK: Send / Stop
@@ -378,7 +356,18 @@ struct Composer: View {
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
-        .disabled(!chat.isStreaming && !chat.canSend)
+        // The button morphs Send→Stop under the finger while the keyboard collapse shifts the layout —
+        // the tail of a double-tap on Send used to land on Stop and kill the turn instantly ("Stopped ·
+        // Retry" on device). Arm Stop only after a short beat; ⌘. and deliberate stops still work.
+        .disabled(chat.isStreaming ? !stopArmed : !chat.canSend)
+        .onChange(of: chat.isStreaming) { _, streaming in
+            stopArmed = false
+            guard streaming else { return }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                if chat.isStreaming { stopArmed = true }
+            }
+        }
         .accessibilityLabel(chat.isStreaming ? "Stop" : "Send")
     }
 

@@ -338,6 +338,7 @@ public final class ChatStore {
         guard let convo = conversations.first(where: { $0.id == conversationID }) else { return }
         var state = StreamingState(messageID: assistantID)
         state.phase = .warming
+        if settings.toolsEnabled { state.warmingNote = "Connecting tools…" }
         streaming = state
         streamingMessageID = assistantID
 
@@ -496,7 +497,9 @@ public final class ChatStore {
     }
 
     /// Cooperative boundary-stop (DESIGN §2.3 critique D1): not instant — lands at the next token
-    /// boundary and always commits the partial answer.
+    /// boundary and always commits the partial answer. Always honored — the accidental-double-tap
+    /// protection lives on the composer's Stop BUTTON (briefly disabled after send), not here, so an
+    /// intentional stop during a long warm-up still works.
     public func stop() {
         guard streaming != nil else { return }
         streaming?.phase = .stopping

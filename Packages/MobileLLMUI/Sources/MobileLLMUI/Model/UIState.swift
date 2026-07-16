@@ -52,6 +52,9 @@ public struct StreamingState: Equatable {
     public var thinkingDuration: TimeInterval?
     /// Tools invoked so far this turn (the last one is "running" until its result lands).
     public var toolActivity: [ToolRun] = []
+    /// One-line caption under the warming shimmer ("Connecting tools…") — long tool/MCP warm-ups read
+    /// as hangs without it, and users stop them.
+    public var warmingNote: String?
 
     public init(messageID: UUID) { self.messageID = messageID }
 

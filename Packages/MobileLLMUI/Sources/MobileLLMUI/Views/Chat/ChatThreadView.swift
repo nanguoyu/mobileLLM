@@ -273,7 +273,13 @@ private struct StreamingRow: View {
         Group {
             if let s = chat.streaming {
                 if s.phase == .warming && !s.hasAnyContent {
-                    WarmingShimmer().frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                        WarmingShimmer()
+                        if let note = s.warmingNote {
+                            Text(note).font(.caption).foregroundStyle(Theme.textTertiary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     AssistantView(
                         reasoning: displayedReasoning(s),

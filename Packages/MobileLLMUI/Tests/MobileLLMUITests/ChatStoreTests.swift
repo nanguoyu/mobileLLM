@@ -73,8 +73,14 @@ final class ChatStoreTests: XCTestCase {
 
         chat.draft = "go"
         chat.send()
-        // Let a little of the answer stream in, then stop.
-        try await Task.sleep(nanoseconds: 60_000_000)
+        // Wait until ANSWER text has actually streamed before stopping — a fixed sleep raced the mock on
+        // slow CI runners: stop-before-first-token commits the (by design) stats-free Stopped state, and
+        // ChatStore's double-tap grace window also ignores a stop that early. Deterministic: poll for text.
+        let deadline = Date().addingTimeInterval(5)
+        while (chat.streaming?.answer.isEmpty ?? true) && Date() < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertFalse(chat.streaming?.answer.isEmpty ?? true, "the mock should have streamed some answer")
         chat.stop()
         try await waitUntilIdle(chat)
 
