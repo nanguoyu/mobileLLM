@@ -135,6 +135,9 @@ public final class AppContainer {
         do {
             try await models.activate(model, variant: variant, context: settings.contextLength, force: force)
             syncActive()
+            // "Default model" is not a setting anymore — it auto-tracks the last successfully used model,
+            // so a fresh launch (or a brand-new thread) lands on what you were actually using.
+            settings.defaultModelID = model.id
             if announce { chat.showToast(Toast("\(model.displayName) is ready", kind: .success)) }
         } catch let error as ModelActivationError {
             presentActivationError(error, model: model, variant: variant, force: force)

@@ -22,7 +22,6 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
-                modelSection
                 behaviorSection
                 samplingSection
                 appearanceSection
@@ -67,38 +66,10 @@ struct SettingsView: View {
 
     // MARK: Model
 
-    private var modelSection: some View {
-        section("Model", icon: "cpu") {
-            HStack {
-                Text("Default model").font(.subheadline).foregroundStyle(Theme.textSecondary)
-                Spacer()
-                Menu {
-                    // Spans adopted community models too, so a downloaded Explore model can be the default.
-                    ForEach(container.models.allModels) { model in
-                        Button(model.displayName) { settings.defaultModelID = model.id }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(container.models.model(id: settings.defaultModelID)?.displayName ?? "Choose")
-                            .font(.subheadline).foregroundStyle(Theme.accent)
-                        Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(Theme.textTertiary)
-                    }
-                }
-                .fixedSize()
-            }
-            Text("Used for new chats. Manage downloads on the Models screen.")
-                .font(.caption).foregroundStyle(Theme.textTertiary)
-            Divider().background(Theme.hairline)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Inference engine").font(.subheadline).foregroundStyle(Theme.textSecondary)
-                Segmented(selection: $settings.enginePreference, options: EnginePreference.allCases) { $0.label }
-                    .accessibilityLabel("Inference engine")
-                Text("Auto picks the best-fitting engine for your device. MLX keeps weights resident; "
-                     + "llama.cpp memory-maps them — better for large models on memory-tight phones.")
-                    .font(.caption).foregroundStyle(Theme.textTertiary)
-            }
-        }
-    }
+    // There is deliberately NO "default model" or "engine preference" here anymore: conversations
+    // remember their own model, a new chat uses whatever is loaded, launch restores the last-used one,
+    // and Auto picks the engine per device — two settings whose only job was to be forgotten about.
+    // `settings.defaultModelID` lives on as the auto-tracked "last used" fallback, never user-facing.
 
     // MARK: Behavior
 
@@ -242,7 +213,7 @@ struct SettingsView: View {
 
     /// The model the ladder is measured against — whatever a new chat will actually load (adopted too).
     private var contextModel: LLMModel? {
-        container.models.model(id: settings.defaultModelID) ?? container.models.active?.model
+        container.models.active?.model ?? container.models.model(id: settings.defaultModelID)
     }
 
     /// Green / amber / red per rung. `.tight` alone isn't the answer — it's returned both for "runs, but

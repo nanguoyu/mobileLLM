@@ -26,7 +26,20 @@ public final class ChatStore {
     /// only this leaf changes at start/stop, so the whole `ForEach` no longer re-diffs on every token.
     public private(set) var streamingMessageID: UUID?
     /// The model the engine is loaded with (kept in sync with `ModelManager.active` at the app shell).
-    public var activeModel: LoadedModel?
+    /// An EMPTY active conversation reseeds its remembered model to follow the switch — its record was
+    /// only ever a placeholder, and leaving the stale seed made a relaunch "forget" the model you had
+    /// switched to before saying anything.
+    public var activeModel: LoadedModel? {
+        didSet {
+            guard let m = activeModel, let i = conversations.firstIndex(where: { $0.id == activeID }),
+                  conversations[i].messages.isEmpty,
+                  conversations[i].modelID != m.model.id || conversations[i].variantID != m.variant.id
+            else { return }
+            conversations[i].modelID = m.model.id
+            conversations[i].variantID = m.variant.id
+            persist(conversations[i])
+        }
+    }
     /// The composer's per-thread thinking toggle (seeded from Settings' default).
     public var thinkingEnabled: Bool
     /// Dictation language passthrough (the composer owns the mic UI but not AppSettings).
@@ -147,9 +160,16 @@ public final class ChatStore {
     /// is stamped on the first send).
     @discardableResult
     public func newConversation() -> Conversation? {
-        if let existing = conversations.first(where: { $0.messages.isEmpty }) {
+        if let existing = conversations.first(where: { $0.messages.isEmpty }),
+           let i = conversations.firstIndex(where: { $0.id == existing.id }) {
+            // Reusing a leftover empty thread must also refresh its model seed — it may have been
+            // created under a different model, and a stale seed survives relaunch as a surprise switch.
+            if let m = activeModel {
+                conversations[i].modelID = m.model.id
+                conversations[i].variantID = m.variant.id
+            }
             activeID = existing.id
-            return existing
+            return conversations[i]
         }
         let convo = Conversation(modelID: activeModel?.model.id ?? settings.defaultModelID,
                                  variantID: activeModel?.variant.id ?? "")
@@ -355,7 +375,11 @@ public final class ChatStore {
         guard let convo = conversations.first(where: { $0.id == conversationID }) else { return }
         var state = StreamingState(messageID: assistantID)
         state.phase = .warming
-        if settings.toolsEnabled { state.warmingNote = "Connecting tools…" }
+        // Only a real network handshake earns the note — local tools connect to nothing, and a lingering
+        // "Connecting tools…" over plain prefill reads as a hang. Cleared as soon as the registry is up.
+        if settings.toolsEnabled, settings.mcpServers.contains(where: { $0.isEnabled && !$0.url.isEmpty }) {
+            state.warmingNote = "Connecting tools…"
+        }
         streaming = state
         streamingMessageID = assistantID
 
@@ -392,6 +416,7 @@ public final class ChatStore {
                     // Agent loop: the model may call the local calculator/clock, a Wikipedia lookup, or any
                     // tool exposed by a configured MCP server before answering.
                     let registry = await self?.toolRegistry() ?? .standard
+                    self?.streaming?.warmingNote = nil   // handshake done — the rest is plain prefill
                     let loop = ToolLoop(engine: engine, registry: registry)
                     for try await event in loop.run(messages: turns, params: params) {
                         guard let self, self.streaming?.messageID == assistantID else { return }

@@ -309,9 +309,13 @@ struct Composer: View {
             }
             if canAttachImages {
                 Divider()
-                Button { showPhotoPicker = true } label: {
-                    Label("Photo Library", systemImage: "photo.on.rectangle")
-                }
+                // Every image entry point drops the keyboard first: the staged-thumbnail row appearing
+                // UNDER an open keyboard grows the composer downward behind it (the input row ends up
+                // buried) — attach with the keyboard closed and the next focus measures the full height.
+                Button {
+                    ChatThreadView.dismissKeyboard()
+                    showPhotoPicker = true
+                } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
                 #if os(iOS)
                 if CameraPicker.isAvailable {
                     Button {
@@ -320,7 +324,10 @@ struct Composer: View {
                     } label: { Label("Take Photo", systemImage: "camera") }
                 }
                 #endif
-                Button { pasteImage() } label: { Label("Paste Image", systemImage: "doc.on.clipboard") }
+                Button {
+                    ChatThreadView.dismissKeyboard()
+                    pasteImage()
+                } label: { Label("Paste Image", systemImage: "doc.on.clipboard") }
             }
         } label: {
             let active = chat.toolsEnabled || (thinkingCapable && chat.thinkingEnabled)
