@@ -30,22 +30,25 @@ guard var model = LLMCatalog.model(id: modelID) else {
     exit(2)
 }
 
-// --style=none|think|implicit overrides the model's reasoning style (for per-model tuning experiments).
-if let styleArg = args.first(where: { $0.hasPrefix("--style=") })?.split(separator: "=").last.map(String.init) {
-    let style: ReasoningStyle? = switch styleArg {
-        case "none": .none; case "think": .thinkTags; case "implicit": .thinkTagsImplicitOpen; default: nil }
-    if let style {
-        let a = model.architecture
-        let arch = LLMArchitecture(
-            modelType: a.modelType, swiftModelClass: a.swiftModelClass, hidden: a.hidden, layers: a.layers,
-            vocab: a.vocab, tieWordEmbeddings: a.tieWordEmbeddings, attention: a.attention,
-            nativeContext: a.nativeContext, thinkingCapable: a.thinkingCapable, eos: a.eos,
-            chatTemplate: a.chatTemplate, promptTemplate: a.promptTemplate, reasoningStyle: style)
-        model = LLMModel(id: model.id, displayName: model.displayName, family: model.family,
-                         publisher: model.publisher, summary: model.summary, license: model.license,
-                         architecture: arch, variants: model.variants, defaultVariant: model.defaultVariant)
-        FileHandle.standardError.write(Data("(style override: \(styleArg))\n".utf8))
-    }
+// --style=none|think|implicit overrides the reasoning style; --auto forces the GGUF's embedded template
+// (the Explore path) instead of the hand-written builder. Both are per-model tuning experiments.
+let styleArg = args.first(where: { $0.hasPrefix("--style=") })?.split(separator: "=").last.map(String.init)
+let forceAuto = args.contains("--auto")
+if styleArg != nil || forceAuto {
+    let style: ReasoningStyle = switch styleArg {
+        case "none": .none; case "think": .thinkTags; case "implicit": .thinkTagsImplicitOpen
+        default: model.architecture.reasoningStyle }
+    let a = model.architecture
+    let arch = LLMArchitecture(
+        modelType: a.modelType, swiftModelClass: a.swiftModelClass, hidden: a.hidden, layers: a.layers,
+        vocab: a.vocab, tieWordEmbeddings: a.tieWordEmbeddings, attention: a.attention,
+        nativeContext: a.nativeContext, thinkingCapable: a.thinkingCapable, eos: a.eos,
+        chatTemplate: a.chatTemplate, promptTemplate: forceAuto ? .auto : a.promptTemplate,
+        reasoningStyle: style, modalities: a.modalities)
+    model = LLMModel(id: model.id, displayName: model.displayName, family: model.family,
+                     publisher: model.publisher, summary: model.summary, license: model.license,
+                     architecture: arch, variants: model.variants, defaultVariant: model.defaultVariant)
+    FileHandle.standardError.write(Data("(override: template=\(forceAuto ? "auto" : a.promptTemplate.rawValue) style=\(style.rawValue))\n".utf8))
 }
 guard let variant = model.variants(for: .llamaCpp).first else {
     FileHandle.standardError.write(Data("'\(modelID)' has no GGUF variant\n".utf8))

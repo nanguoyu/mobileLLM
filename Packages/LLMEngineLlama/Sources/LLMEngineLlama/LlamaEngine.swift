@@ -128,8 +128,17 @@ public actor LlamaEngine: LLMEngine {
             guard let context else { throw EngineError.contextInitFailed }
 
             let wantThinking = params.thinking && reasoningStyle.canThink
-            let prompt = Self.buildPrompt(messages: messages, template: promptTemplate,
+            // `.auto` (Explore's community checkpoints) renders with the GGUF's own embedded template;
+            // everything else uses its hand-verified builder. Auto falls back to ChatML if the GGUF
+            // carries no template.
+            let prompt: String
+            if promptTemplate == .auto, let m = model,
+               let rendered = Self.autoPrompt(messages, modelPtr: m, reasoning: reasoningStyle, thinking: wantThinking) {
+                prompt = rendered
+            } else {
+                prompt = Self.buildPrompt(messages: messages, template: promptTemplate,
                                           reasoning: reasoningStyle, thinking: wantThinking)
+            }
             var promptTokens = Self.tokenize(vocab: vocab, text: prompt, addSpecial: true)
             // Guard the KV window: keep the most recent tokens if the prompt overflows the context.
             let room = contextCap - max(8, params.maxTokens > 0 ? min(params.maxTokens, 256) : 256)
@@ -235,7 +244,39 @@ public actor LlamaEngine: LLMEngine {
         case .deepSeek: return deepSeekPrompt(messages, reasoning: reasoning, thinking: thinking)
         case .hunyuan:  return hunyuanPrompt(messages, reasoning: reasoning, thinking: thinking)
         case .gemma:    return gemmaPrompt(messages)
+        case .auto:     return chatMLPrompt(messages, reasoning: reasoning, thinking: thinking)  // fallback
         }
+    }
+
+    /// Render the prompt with the template EMBEDDED IN THE GGUF via llama.cpp — the path for arbitrary
+    /// community checkpoints (Explore), where no hand-written builder exists. Returns nil when the model
+    /// ships no template or llama.cpp can't render it, so the caller can fall back to ChatML.
+    static func autoPrompt(_ messages: [ChatTurn], modelPtr: OpaquePointer,
+                           reasoning: ReasoningStyle, thinking: Bool) -> String? {
+        guard let tmpl = llama_model_chat_template(modelPtr, nil) else { return nil }
+        var owned: [UnsafeMutablePointer<CChar>] = []
+        defer { owned.forEach { free($0) } }
+        var chat: [llama_chat_message] = []
+        for m in messages {
+            let role: String
+            switch m.role { case .system: role = "system"; case .user: role = "user"; case .assistant: role = "assistant" }
+            guard let r = strdup(role), let c = strdup(m.content) else { return nil }
+            owned.append(r); owned.append(c)
+            chat.append(llama_chat_message(role: UnsafePointer(r), content: UnsafePointer(c)))
+        }
+        var buf = [CChar](repeating: 0, count: 1 << 15)
+        var n = chat.withUnsafeBufferPointer {
+            llama_chat_apply_template(tmpl, $0.baseAddress, chat.count, true, &buf, Int32(buf.count))
+        }
+        if n > Int32(buf.count) {                       // grow once if the template needs more room
+            buf = [CChar](repeating: 0, count: Int(n) + 1)
+            n = chat.withUnsafeBufferPointer {
+                llama_chat_apply_template(tmpl, $0.baseAddress, chat.count, true, &buf, Int32(buf.count))
+            }
+        }
+        guard n > 0 else { return nil }
+        let rendered = String(decoding: buf.prefix(Int(n)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        return rendered + thinkSuffix(reasoning, thinking: thinking)
     }
 
     /// The `<think>` control suffix appended after the assistant-turn opener:
@@ -371,7 +412,7 @@ public actor LlamaEngine: LLMEngine {
     static func answerStripTags(for template: PromptTemplate) -> [String] {
         switch template {
         case .hunyuan: ["<answer>", "</answer>"]
-        case .chatML, .deepSeek, .gemma: []
+        case .chatML, .deepSeek, .gemma, .auto: []
         }
     }
 

@@ -74,6 +74,49 @@ final class RemoteCatalogTests: XCTestCase {
         XCTAssertNil(RemoteModel.paramCount(from: "Kimi K2.5"))             // no size token
     }
 
+    // MARK: GGUF source (one repo = one model; quants are files)
+
+    func testGGUFModelNameStripsSuffixAndOrgPrefix() {
+        XCTAssertEqual(RemoteCatalog.ggufModelName("Qwen_Qwen3.5-9B-GGUF"), "Qwen3.5 9B")
+        XCTAssertEqual(RemoteCatalog.ggufModelName("Llama-3.2-1B-Instruct-GGUF"), "Llama 3.2 1B")
+        XCTAssertEqual(RemoteCatalog.ggufModelName("google_gemma-4-E2B-it-GGUF"), "gemma 4 E2B")
+    }
+
+    func testGGUFQuantLabelFromFilename() {
+        XCTAssertEqual(RemoteCatalog.ggufQuantLabel("Llama-3.2-1B-Instruct-Q4_K_M.gguf"), "Q4_K_M")
+        XCTAssertEqual(RemoteCatalog.ggufQuantLabel("x-IQ4_XS.gguf"), "IQ4_XS")
+        XCTAssertEqual(RemoteCatalog.ggufQuantLabel("x-f16.gguf"), "F16")
+        // Not quant files: the vision projector, a shard part, a non-gguf, a name with no quant tail.
+        XCTAssertNil(RemoteCatalog.ggufQuantLabel("mmproj-F16.gguf"))
+        XCTAssertNil(RemoteCatalog.ggufQuantLabel("model-00001-of-00002.gguf"))
+        XCTAssertNil(RemoteCatalog.ggufQuantLabel("README.md"))
+        XCTAssertNil(RemoteCatalog.ggufQuantLabel("model-instruct.gguf"))
+    }
+
+    func testParseGGUFTreeBuildsSortedVariants() {
+        // Shape mirrors the live HF tree API (path + top-level size).
+        let json = """
+        [{"path":"a-Q8_0.gguf","size":900},{"path":"a-Q4_K_M.gguf","size":500},
+         {"path":"mmproj-F16.gguf","size":100},{"path":"README.md","size":10}]
+        """
+        let vs = RemoteCatalog.parseGGUFTree(Data(json.utf8), repo: "org/a-GGUF")
+        XCTAssertEqual(vs.map(\.quantLabel), ["Q4_K_M", "Q8_0"], "sorted low→high precision; mmproj skipped")
+        XCTAssertEqual(vs.first?.fileName, "a-Q4_K_M.gguf")
+        XCTAssertEqual(vs.first?.sizeBytes, 500)
+        XCTAssertEqual(vs.first?.repo, "org/a-GGUF")
+    }
+
+    func testGGUFExploreModelUsesEmbeddedTemplate() {
+        let remote = RemoteModel(id: "org/x-GGUF", name: "X 7B", publisher: "org", engine: .llamaCpp,
+                                 downloads: 1, variants: [RemoteVariant(quantLabel: "Q4_K_M", repo: "org/x-GGUF",
+                                                                        fileName: "x-Q4_K_M.gguf", sizeBytes: 4_000_000_000)])
+        let model = remote.asLLMModel(paramsBillions: 7)
+        XCTAssertEqual(model.architecture.promptTemplate, .auto,
+                       "an arbitrary community GGUF must render with its own embedded template")
+        XCTAssertEqual(model.variants.first?.backend, .llamaCppGGUF)
+        XCTAssertEqual(model.variants.first?.source.fileName, "x-Q4_K_M.gguf")
+    }
+
     func testEstimateBytesScalesWithParamsAndQuant() {
         // 9B at 4-bit ≈ 9e9 * 0.55 ≈ 5 GB; 8-bit is ~2x the 4-bit size.
         let q4 = RemoteModel.estimateBytes(paramsBillions: 9, quant: "4-bit")

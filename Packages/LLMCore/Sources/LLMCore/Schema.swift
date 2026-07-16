@@ -191,6 +191,24 @@ public enum AttentionShape: Sendable, Hashable, Codable {
     }
 }
 
+/// An input the model can natively take. NOTE: the app currently runs every model **text-only** — we load
+/// just the language weights and skip the vision/audio projector — so this describes the CHECKPOINT's own
+/// capability, which the UI surfaces so you know what a model could do once we wire those inputs.
+public enum Modality: String, Sendable, Hashable, Codable, CaseIterable {
+    case text, vision, audio, video
+
+    public var label: String {
+        switch self {
+        case .text: "Text"; case .vision: "Vision"; case .audio: "Audio"; case .video: "Video"
+        }
+    }
+    public var icon: String {
+        switch self {
+        case .text: "text.alignleft"; case .vision: "eye"; case .audio: "waveform"; case .video: "video"
+        }
+    }
+}
+
 /// How the runtime obtains the chat template. Every seed repo ships a `chat_template.jinja` (ChatML/Qwen).
 public enum ChatTemplateSource: Sendable, Hashable, Codable {
     case repoFile(String)   // a template file bundled in the weights repo (e.g. "chat_template.jinja")
@@ -205,6 +223,9 @@ public enum PromptTemplate: String, Sendable, Hashable, Codable {
     case deepSeek   // <｜begin▁of▁sentence｜>{sys}<｜User｜>…<｜Assistant｜>  — DeepSeek(-R1 distills)
     case hunyuan    // <｜hy_begin▁of▁sentence｜>{sys}<｜hy_User｜>…<｜hy_Assistant｜>  — Tencent Hunyuan
     case gemma      // <|turn>role\n…<turn|>\n  — Google Gemma 4 (asymmetric open/close markers)
+    /// Use the template EMBEDDED IN THE GGUF (llama.cpp applies it). The only way an arbitrary community
+    /// checkpoint from Explore can be prompted correctly — we can't hand-write a builder per model.
+    case auto
 }
 
 /// How a model delimits its reasoning, so the engine can build the prompt + split the stream correctly.
@@ -239,6 +260,12 @@ public struct LLMArchitecture: Sendable, Hashable, Codable {
     /// seed models; a non-Qwen GGUF sets these to onboard cleanly without touching the engine).
     public let promptTemplate: PromptTemplate
     public let reasoningStyle: ReasoningStyle
+    /// What the checkpoint natively accepts. We run text-only today, so anything beyond `.text` is shown
+    /// as a capability of the model, not of the app (yet).
+    public let modalities: [Modality]
+
+    /// Native inputs beyond text (empty for a pure text model) — what the UI badges.
+    public var extraModalities: [Modality] { modalities.filter { $0 != .text } }
 
     /// The hybrid Gated-DeltaNet arch (qwen3_5) — unconfirmed on mainline llama.cpp (held experimental).
     public var isHybrid: Bool { attention.isHybrid }
@@ -247,7 +274,9 @@ public struct LLMArchitecture: Sendable, Hashable, Codable {
                 tieWordEmbeddings: Bool, attention: AttentionShape, nativeContext: Int,
                 thinkingCapable: Bool, eos: String, chatTemplate: ChatTemplateSource,
                 promptTemplate: PromptTemplate = .chatML,
-                reasoningStyle: ReasoningStyle = .thinkTags) {
+                reasoningStyle: ReasoningStyle = .thinkTags,
+                modalities: [Modality] = [.text]) {
+        self.modalities = modalities
         self.modelType = modelType
         self.swiftModelClass = swiftModelClass
         self.hidden = hidden

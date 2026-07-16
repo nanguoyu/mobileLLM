@@ -175,7 +175,8 @@ public enum LLMCatalog {
             attention: .hybridLinear(fullLayers: 8, kvHeads: 4, headDim: 256, recurrent: 24),
             nativeContext: 262_144, thinkingCapable: true, eos: "<|im_end|>",
             chatTemplate: .repoFile("chat_template.jinja"),
-            promptTemplate: .chatML, reasoningStyle: .thinkTagsImplicitOpen),
+            promptTemplate: .chatML, reasoningStyle: .thinkTagsImplicitOpen,
+            modalities: [.text, .vision]),   // VL checkpoint (vision_config + mmproj); we load text-only
         variants: [
             LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 2_740_937_888,
                        source: ModelSource(huggingFaceRepo: "unsloth/Qwen3.5-4B-GGUF",
@@ -196,7 +197,8 @@ public enum LLMCatalog {
             attention: .hybridLinear(fullLayers: 8, kvHeads: 4, headDim: 256, recurrent: 24),
             nativeContext: 262_144, thinkingCapable: true, eos: "<|im_end|>",
             chatTemplate: .repoFile("chat_template.jinja"),
-            promptTemplate: .chatML, reasoningStyle: .thinkTagsImplicitOpen),
+            promptTemplate: .chatML, reasoningStyle: .thinkTagsImplicitOpen,
+            modalities: [.text, .vision]),
         variants: [
             LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 5_680_522_464,
                        source: ModelSource(huggingFaceRepo: "unsloth/Qwen3.5-9B-GGUF",
@@ -218,7 +220,8 @@ public enum LLMCatalog {
             attention: .hybridLinear(fullLayers: 16, kvHeads: 4, headDim: 256, recurrent: 48),
             nativeContext: 262_144, thinkingCapable: true, eos: "<|im_end|>",
             chatTemplate: .repoFile("chat_template.jinja"),
-            promptTemplate: .chatML, reasoningStyle: .thinkTagsImplicitOpen),
+            promptTemplate: .chatML, reasoningStyle: .thinkTagsImplicitOpen,
+            modalities: [.text, .vision]),
         variants: [
             // Official ggml-org repo ships only Q8_0; Q4_K_M lives in the unsloth repo (verified size).
             LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 16_817_244_384,
@@ -298,7 +301,8 @@ public enum LLMCatalog {
             attention: .fullAttention(kvHeads: 1, headDim: 256, layers: 35),
             nativeContext: 131_072, thinkingCapable: false, eos: "<eos>",
             chatTemplate: .repoFile("chat_template.jinja"),
-            promptTemplate: .gemma, reasoningStyle: .none),
+            promptTemplate: .gemma, reasoningStyle: .none,
+            modalities: [.text, .vision, .audio]),   // Gemma 4's template carries image/audio tokens
         variants: [
             LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 3_106_736_256,
                        source: ModelSource(huggingFaceRepo: "unsloth/gemma-4-E2B-it-GGUF",
@@ -319,7 +323,8 @@ public enum LLMCatalog {
             attention: .fullAttention(kvHeads: 2, headDim: 256, layers: 42),
             nativeContext: 131_072, thinkingCapable: false, eos: "<eos>",
             chatTemplate: .repoFile("chat_template.jinja"),
-            promptTemplate: .gemma, reasoningStyle: .none),
+            promptTemplate: .gemma, reasoningStyle: .none,
+            modalities: [.text, .vision, .audio]),   // Gemma 4's template carries image/audio tokens
         variants: [
             LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 4_977_169_568,
                        source: ModelSource(huggingFaceRepo: "unsloth/gemma-4-E4B-it-GGUF",
@@ -340,7 +345,8 @@ public enum LLMCatalog {
             attention: .fullAttention(kvHeads: 8, headDim: 256, layers: 48),
             nativeContext: 262_144, thinkingCapable: false, eos: "<eos>",
             chatTemplate: .repoFile("chat_template.jinja"),
-            promptTemplate: .gemma, reasoningStyle: .none),
+            promptTemplate: .gemma, reasoningStyle: .none,
+            modalities: [.text, .vision, .audio]),   // Gemma 4's template carries image/audio tokens
         variants: [
             LLMVariant(quant: .gguf4bit, backend: .llamaCppGGUF, onDiskBytes: 7_381_382_048,
                        source: ModelSource(huggingFaceRepo: "ggml-org/gemma-4-12B-it-GGUF",

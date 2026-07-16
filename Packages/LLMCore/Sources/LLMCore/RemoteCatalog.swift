@@ -44,7 +44,11 @@ extension RemoteModel {
             modelType: "generic", swiftModelClass: "", hidden: 0, layers: 0, vocab: 0,
             tieWordEmbeddings: false, attention: .fullAttention(kvHeads: 8, headDim: 128, layers: 32),
             nativeContext: 32_768, thinkingCapable: true, eos: "<|im_end|>",
-            chatTemplate: .repoFile("chat_template.jinja"), promptTemplate: .chatML, reasoningStyle: .thinkTags)
+            chatTemplate: .repoFile("chat_template.jinja"),
+            // A GGUF from Explore renders with its OWN embedded template (`.auto`); MLX applies the repo's
+            // jinja itself, so its prompt template is moot.
+            promptTemplate: engine == .mlx ? .chatML : .auto,
+            reasoningStyle: .thinkTags)
         let backend: Backend = engine == .mlx ? .mlxStock : .llamaCppGGUF
         let vs = variants.map { v in
             LLMVariant(quant: .other(v.quantLabel), backend: backend,
@@ -98,28 +102,105 @@ public enum RemoteCatalog {
 
     /// The MLX checkpoint source (the org FlowDown browses too). Hundreds of pre-quantized models.
     public static let mlxOrg = "mlx-community"
+    /// GGUF publishers, most prolific first. Unlike MLX (one repo per quant), a GGUF repo holds MANY
+    /// quant FILES, so a repo == a model and its quants are fetched lazily (`quants(for:)`).
+    public static let ggufOrgs = ["bartowski", "unsloth", "ggml-org", "lmstudio-community"]
+
+    /// Which checkpoint world to browse.
+    public enum Source: String, Sendable, CaseIterable, Hashable {
+        case mlx, gguf
+        public var label: String { self == .mlx ? "MLX" : "GGUF" }
+        public var engine: EngineKind { self == .mlx ? .mlx : .llamaCpp }
+    }
 
     public enum CatalogError: Error, Sendable { case badResponse }
 
-    /// Trending MLX models, most-downloaded first, grouped into models-with-variants.
-    public static func trending(limit: Int = 80,
+    /// Trending models for a source, most-downloaded first.
+    public static func trending(source: Source = .mlx, limit: Int = 80,
                                 session: URLSession = .shared) async throws -> [RemoteModel] {
-        let raw = try await fetch(
-            "https://huggingface.co/api/models?author=\(mlxOrg)&pipeline_tag=text-generation"
-            + "&sort=downloads&direction=-1&limit=\(min(limit * 3, 300))&full=false", session: session)
-        return group(raw, publisher: mlxOrg, engine: .mlx).prefix(limit).map { $0 }
+        try await list(source: source, query: nil, limit: limit, session: session)
     }
 
-    /// Search MLX models by free text (HF full-text search over the org).
-    public static func search(_ query: String, limit: Int = 60,
+    /// Search a source by free text (HF full-text search scoped to the orgs).
+    public static func search(_ query: String, source: Source = .mlx, limit: Int = 60,
                               session: URLSession = .shared) async throws -> [RemoteModel] {
         let q = query.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return try await trending(limit: limit, session: session) }
-        let enc = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
-        let raw = try await fetch(
-            "https://huggingface.co/api/models?author=\(mlxOrg)&search=\(enc)"
-            + "&sort=downloads&direction=-1&limit=\(min(limit * 3, 300))&full=false", session: session)
-        return group(raw, publisher: mlxOrg, engine: .mlx).prefix(limit).map { $0 }
+        return try await list(source: source, query: q.isEmpty ? nil : q, limit: limit, session: session)
+    }
+
+    private static func list(source: Source, query: String?, limit: Int,
+                             session: URLSession) async throws -> [RemoteModel] {
+        let enc = query?.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        switch source {
+        case .mlx:
+            var url = "https://huggingface.co/api/models?author=\(mlxOrg)&pipeline_tag=text-generation"
+                    + "&sort=downloads&direction=-1&limit=\(min(limit * 3, 300))&full=false"
+            if let enc { url += "&search=\(enc)" }
+            return group(try await fetch(url, session: session), publisher: mlxOrg, engine: .mlx)
+                .prefix(limit).map { $0 }
+        case .gguf:
+            // One repo == one model; quants are files inside it, fetched on demand.
+            var models: [RemoteModel] = []
+            for org in ggufOrgs {
+                var url = "https://huggingface.co/api/models?author=\(org)&search=\(enc.map { "\($0)%20GGUF" } ?? "GGUF")"
+                        + "&sort=downloads&direction=-1&limit=\(max(8, limit / 2))&full=false"
+                if enc == nil { url += "&pipeline_tag=text-generation" }
+                guard let raw = try? await fetch(url, session: session) else { continue }
+                for (repo, dl) in raw {
+                    let leaf = repo.split(separator: "/").last.map(String.init) ?? repo
+                    guard leaf.lowercased().contains("gguf"), isChatModel(leaf) else { continue }
+                    models.append(RemoteModel(id: repo, name: ggufModelName(leaf), publisher: org,
+                                              engine: .llamaCpp, downloads: dl, variants: []))
+                }
+            }
+            return models.sorted { $0.downloads > $1.downloads }.prefix(limit).map { $0 }
+        }
+    }
+
+    /// The quant files inside a GGUF repo → variants (with real byte sizes). Called when a row is opened,
+    /// since listing files for every repo up front would be hundreds of requests.
+    public static func quants(for model: RemoteModel, session: URLSession = .shared) async throws -> [RemoteVariant] {
+        guard model.engine == .llamaCpp else { return model.variants }
+        guard let url = URL(string: "https://huggingface.co/api/models/\(model.id)/tree/main?recursive=true") else {
+            throw CatalogError.badResponse
+        }
+        var req = URLRequest(url: url); req.setValue("mobileLLM", forHTTPHeaderField: "User-Agent")
+        let (data, resp) = try await session.data(for: req)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw CatalogError.badResponse }
+        return parseGGUFTree(data, repo: model.id)
+    }
+
+    /// Pure: turn an HF file tree into GGUF quant variants (skipping mmproj + sharded parts).
+    static func parseGGUFTree(_ data: Data, repo: String) -> [RemoteVariant] {
+        guard let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        var out: [RemoteVariant] = []
+        for item in items {
+            guard let path = item["path"] as? String, let quant = ggufQuantLabel(path) else { continue }
+            let size = (item["size"] as? Int64) ?? (item["lfs"] as? [String: Any])?["size"] as? Int64
+            out.append(RemoteVariant(quantLabel: quant, repo: repo, fileName: path, sizeBytes: size))
+        }
+        return out.sorted { quantRank($0.quantLabel) < quantRank($1.quantLabel) }
+    }
+
+    /// `bartowski/Qwen_Qwen3.5-9B-GGUF` → "Qwen3.5 9B" (drop the -GGUF suffix + the `Org_` prefix).
+    static func ggufModelName(_ leaf: String) -> String {
+        var s = leaf
+        for suffix in ["-GGUF", "-gguf", "-Gguf"] where s.hasSuffix(suffix) { s.removeLast(suffix.count) }
+        if let underscore = s.firstIndex(of: "_") { s = String(s[s.index(after: underscore)...]) }
+        return prettify(s)
+    }
+
+    /// The quant label from a `.gguf` filename ("…-Q4_K_M.gguf" → "Q4_K_M"); nil for mmproj/shards/other.
+    static func ggufQuantLabel(_ path: String) -> String? {
+        let file = path.split(separator: "/").last.map(String.init) ?? path
+        guard file.lowercased().hasSuffix(".gguf"), !file.lowercased().contains("mmproj") else { return nil }
+        let name = String(file.dropLast(5))
+        if name.range(of: #"-\d{5}-of-\d{5}$"#, options: .regularExpression) != nil { return nil }  // shard part
+        guard let dash = name.lastIndex(of: "-") else { return nil }
+        let tail = String(name[name.index(after: dash)...])
+        let ok = tail.range(of: #"^(I?Q\d+(_\w+)*|f16|bf16|f32|MXFP4(_\w+)?)$"#,
+                            options: [.regularExpression, .caseInsensitive]) != nil
+        return ok ? tail.uppercased() : nil
     }
 
     // MARK: - Fetch

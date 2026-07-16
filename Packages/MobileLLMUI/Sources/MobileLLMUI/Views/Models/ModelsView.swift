@@ -261,6 +261,7 @@ struct ModelCard: View {
             header
             Text("\(model.publisher) · \(model.summary)")
                 .font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(3)
+            if !model.architecture.extraModalities.isEmpty { modalityRow }
             engineAndQuant
             if presentation == .experimental && !isActive {
                 Text("This model is larger than the safe budget on this device — it may be interrupted "
@@ -272,6 +273,26 @@ struct ModelCard: View {
         .studioCard()
         .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
             .strokeBorder(isActive ? Theme.accent : .clear, lineWidth: 1.5))
+    }
+
+    /// What the checkpoint natively accepts beyond text. The app still runs every model text-only, so the
+    /// chips are quiet + carry an honest "text-only for now" note rather than implying image input works.
+    private var modalityRow: some View {
+        HStack(spacing: Theme.Space.xs) {
+            ForEach(model.architecture.extraModalities, id: \.self) { m in
+                Label(m.label, systemImage: m.icon)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.horizontal, Theme.Space.xs).padding(.vertical, 3)
+                    .background(Theme.surface2, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Theme.hairline))
+                    .accessibilityLabel("Model supports \(m.label) input")
+            }
+            Text("· text-only here for now")
+                .font(.caption2).foregroundStyle(Theme.textTertiary)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Spacer(minLength: 0)
+        }
     }
 
     private var header: some View {
@@ -318,8 +339,10 @@ struct ModelCard: View {
     private func matrixRow<Content: View>(label: String, @ViewBuilder _ content: () -> Content) -> some View {
         HStack(alignment: .center, spacing: Theme.Space.sm) {
             Text(label.uppercased())
-                .font(.caption2.weight(.bold)).tracking(0.6).foregroundStyle(Theme.textTertiary)
-                .frame(width: 58, alignment: .leading)
+                .font(.caption2.weight(.bold)).tracking(0.5).foregroundStyle(Theme.textTertiary)
+                .lineLimit(1).minimumScaleFactor(0.7)   // never hyphenate ("PRECI-SION") — shrink instead
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: 74, alignment: .leading)
             content()
         }
     }

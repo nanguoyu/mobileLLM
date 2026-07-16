@@ -89,7 +89,9 @@ public struct CalculatorTool: Tool {
         let expr = raw.replacingOccurrences(of: "×", with: "*").replacingOccurrences(of: "÷", with: "/")
                       .replacingOccurrences(of: "^", with: "**").replacingOccurrences(of: " ", with: "")
         guard Self.isSafe(expr) else { return "Error: unsupported characters in expression." }
-        let ns = NSExpression(format: expr)
+        // NSExpression does INTEGER division on integer literals ("10/4" → 2), so promote every integer
+        // to a double first — otherwise the model gets a silently wrong answer.
+        let ns = NSExpression(format: Self.floatify(expr))
         guard let value = ns.expressionValue(with: nil, context: nil) as? NSNumber else {
             return "Error: couldn't evaluate \"\(raw)\"."
         }
@@ -98,6 +100,11 @@ public struct CalculatorTool: Tool {
     /// Only digits, operators, dots and parentheses — never let `NSExpression` reach a function/keypath.
     static func isSafe(_ s: String) -> Bool {
         !s.isEmpty && s.allSatisfy { "0123456789.+-*/()% ".contains($0) }
+    }
+    /// "10/4" → "10.0/4.0" so the arithmetic is floating-point.
+    static func floatify(_ s: String) -> String {
+        guard let re = try? NSRegularExpression(pattern: #"(?<![\d.])(\d+)(?![\d.])"#) else { return s }
+        return re.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s), withTemplate: "$1.0")
     }
     private func numberString(_ n: NSNumber) -> String {
         let d = n.doubleValue
