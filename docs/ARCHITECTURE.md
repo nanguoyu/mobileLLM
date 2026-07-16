@@ -94,11 +94,21 @@ generate → detect a `<tool_call>{…}</tool_call>` in the stream → run the t
 `<tool_response>` back → generate again, up to `maxIterations`. `ToolPrompt` folds the advertised tool
 schemas into the system turn (Qwen/ChatML convention); `ToolCallProcessor` extracts calls from plain text.
 
-- **Built-in tools** (`Tool` protocol): `CalculatorTool` (a pure-Swift recursive-descent evaluator —
-  float semantics, `%` as remainder, `**` power; malformed input returns an error string, never traps),
-  `DateTimeTool` (on-device clock), and `WebSearchTool` (Wikipedia summary, zh for CJK / en otherwise —
-  the one that touches the network). `ToolRegistry.standard` is the three; `.builtIn` is the two offline
-  ones. Tool results are framed as untrusted external data before being fed back to the model.
+- **Built-in tools** (`Tool` protocol): `web_search` — real, keyless SERP search (DuckDuckGo's html
+  endpoint first, Bing fall-through; heuristic parsers over scraped result pages, tracker unwrapping,
+  ≤6 results — inherently brittle, so failures degrade to a readable string and the fixtures need
+  occasional refresh); `fetch_webpage` — readable-text extraction (boilerplate stripped, 6000-char cap,
+  content-type/size guards, and a string-level SSRF host guard that blocks loopback/private/link-local
+  hosts but does not resolve DNS); `remember`/`recall` — persistent facts in a durable `MemoryStore`
+  beside the conversation records; `wikipedia` (summary lookup, zh for CJK / en otherwise);
+  `CalculatorTool` (pure-Swift recursive-descent evaluator — malformed input returns an error string,
+  never traps) and `DateTimeTool`. Calendar, reminder and location tools ride EventKit/CoreLocation
+  behind injectable seams (`EventStoring` / `LocationProviding`) — **off by default**, enabled in
+  Settings → Manage tools, TCC permission requested lazily on first invocation, denial answered with an
+  instructive string. `ToolRegistry.assemble(config:)` is the config-driven builder: a tool materializes
+  only when its toggle is on AND its dependency seam is injected, so tests and previews never touch the
+  network, EventKit or GPS. Tool results are framed as untrusted external data before being fed back to
+  the model.
 - **MCP** (`MCPClient`): a self-contained JSON-RPC 2.0 client over **Streamable HTTP** (protocol
   `2025-11-25`), handling both plain-JSON and single-event SSE replies, session ids, and pagination — enough
   to `initialize`, `tools/list`, and `tools/call` a user-configured remote server (sandboxed iOS can't reach

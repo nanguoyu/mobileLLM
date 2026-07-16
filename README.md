@@ -34,9 +34,13 @@ nothing you type ever leaves the device.
 - 📊 **Honest memory fit + a model-aware context ladder.** Every model shows a per-device fit badge
   (*Runs great* / *Tight* / *Needs more memory*) from your actual RAM, and the context-length options are
   capped by what the model was trained for and re-scored per rung — a setting that buys memory, not capability.
-- 🛠️ **Tool calling + MCP.** An on-device agent loop lets a model call a calculator and clock (no network),
-  a Wikipedia `web_search`, and the tools of any remote **MCP** server you configure (Streamable HTTP,
-  per-server enable + per-tool mute). Off by default.
+- 🛠️ **Tool calling + MCP.** An on-device agent loop with a real toolbox: keyless **web search**
+  (DuckDuckGo first, Bing fall-through — scraped result pages, no API key), a **webpage reader**
+  (readable-text extraction with SSRF guards), **persistent memory** (`remember`/`recall` across chats),
+  Wikipedia, calculator, clock — plus permission-gated **calendar, reminders and location** tools (off
+  until you enable them; the system prompt appears on first use). Every tool has its own toggle in
+  Settings → Manage tools, and any remote **MCP** server you configure layers on top (Streamable HTTP,
+  per-server enable + per-tool mute). Tools are off by default.
 - 🖼️ **Image input (vision GGUF models).** Attach photos (picker or paste, up to 3, downscaled to 1568 px
   JPEG on-device) and ask about them — Qwen3.5 and Gemma 4 run their official `mmproj` projector through
   llama.cpp's mtmd. The photo button appears only when the active model can actually see.
