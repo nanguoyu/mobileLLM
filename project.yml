@@ -24,6 +24,7 @@ packages:
   LLMCore: { path: Packages/LLMCore }
   LLMEngineMLX: { path: Packages/LLMEngineMLX }
   LLMEngineLlama: { path: Packages/LLMEngineLlama }
+  LLMEngineApple: { path: Packages/LLMEngineApple }
   MobileLLMUI: { path: Packages/MobileLLMUI }
 
 targets:
@@ -68,6 +69,11 @@ targets:
         product: LLMEngineMLX
       - package: LLMEngineLlama
         product: LLMEngineLlama
+      # Apple's system model (FoundationModels). The framework is iOS 26 / macOS 26 and weak-links, so
+      # this builds and runs on the app's lower deployment targets — the engine just reports the system
+      # model as unavailable there.
+      - package: LLMEngineApple
+        product: LLMEngineApple
       - package: AppRuntime
 
   # UI regression tests (iOS simulator): the keyboard/composer geometry that burned four blind fixes —
@@ -104,6 +110,9 @@ schemes:
       targets:
         - package: LLMEngineMLX/LLMEngineMLXTests
         - package: LLMEngineLlama/LLMEngineLlamaTests
+        # LLMEngineApple's tests also run under plain `swift test` (they're pure + framework-free); they
+        # ride along here so one scheme covers every engine.
+        - package: LLMEngineApple/LLMEngineAppleTests
   # The keyboard/composer geometry tests. Simulator-only (XCUITest drives real taps + the software
   # keyboard); needs a small GGUF pre-seeded in the app container — see UITests/KeyboardUITests.swift.
   UITests:

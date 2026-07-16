@@ -278,6 +278,11 @@ public enum RemoteCatalog {
                 return ResolvedArchitecture(architecture: fallback, isResolved: false)
             }
             return ResolvedArchitecture(architecture: arch, isResolved: true)
+        case .apple:
+            // Unreachable: Explore browses Hugging Face and `Source.engine` only ever yields .mlx or
+            // .llamaCpp — the OS's system model has no repo to discover, let alone a config to resolve.
+            // If one ever reaches here, "unresolved" is the honest answer; there is nothing to fetch.
+            return ResolvedArchitecture(architecture: fallback, isResolved: false)
         }
     }
 

@@ -106,8 +106,13 @@ public final class ModelManager {
         Task { try? await store.save(keep) }
     }
 
-    /// Repo ids of variants present on disk.
+    /// Repo ids of variants present on disk — plus any OS-provided model the system says is available
+    /// (nothing of it is ever on disk; see `refreshInstalled`).
     public internal(set) var installed: Set<String> = []
+    /// Whether the OS's own model (the `.apple` engine) can be used right now, and if not, why. Refreshed
+    /// on every `refreshInstalled` — Apple Intelligence can be switched off while the app is running — and
+    /// read by the Models card to say exactly what's wrong instead of offering a dead button.
+    public private(set) var systemModelStatus: SystemModelStatus
     /// The resident model, if any (one active model — decode is bandwidth-bound).
     public internal(set) var active: LoadedModel?
     /// In-flight downloads keyed by variant repo id.
@@ -128,6 +133,9 @@ public final class ModelManager {
     private let downloadBase: URL
     private let downloader: Downloader
     private let installProbe: @Sendable (LLMVariant, URL) -> Bool
+    /// Asks the OS whether its system model is usable. Injected because only the Apple engine package can
+    /// talk to FoundationModels, and this package is deliberately engine-free.
+    private let systemModelProbe: @Sendable () -> SystemModelStatus
     private let availableMemory: @Sendable () -> Int64
     private var downloadTasks: [String: Task<Void, Never>] = [:]
     /// Durable JSON registry of adopted community models (Application Support, beside `models/`).
@@ -138,12 +146,17 @@ public final class ModelManager {
                 downloadBase: URL,
                 downloader: @escaping Downloader,
                 installProbe: @escaping @Sendable (LLMVariant, URL) -> Bool = ModelManager.defaultInstallProbe(),
+                systemModelProbe: @escaping @Sendable () -> SystemModelStatus = { .unavailable(.unsupportedOS) },
                 availableMemory: @escaping @Sendable () -> Int64 = { Int64(bitPattern: MemoryProbe.availableBytes()) }) {
         self.engine = engine
         self.device = device
         self.downloadBase = downloadBase
         self.downloader = downloader
         self.installProbe = installProbe
+        // Defaults to "this OS has no system model", so previews and unit tests never pretend one is
+        // ready: only app assembly, which links the Apple engine, can answer this for real.
+        self.systemModelProbe = systemModelProbe
+        self.systemModelStatus = systemModelProbe()
         self.availableMemory = availableMemory
         // Rooted at the download base so the registry sits beside the weights it tracks (and tests that
         // inject a temp base are automatically isolated).
@@ -194,12 +207,22 @@ public final class ModelManager {
         return supportsImageInput(active.variant)
     }
 
-    /// Refresh install state by re-scanning the weights directory (rebuildable registry, DESIGN §2.4).
+    /// Refresh install state by re-scanning the weights directory (rebuildable registry, DESIGN §2.4), and
+    /// re-ask the OS about its own model.
+    ///
+    /// An OS-provided variant is never probed on disk — nothing of it is ever there. It counts as
+    /// installed exactly when the system says the model is AVAILABLE, so switching Apple Intelligence off
+    /// takes it out of the installed set (and the switcher, and the "Installed" filter) on the next scan,
+    /// exactly as deleting weights would for any other model.
     public func refreshInstalled() {
+        systemModelStatus = systemModelProbe()
         var present: Set<String> = []
         for model in allModels {
-            for variant in model.variants where installProbe(variant, downloadBase) {
-                present.insert(variant.id)
+            for variant in model.variants {
+                let isPresent = variant.isSystemProvided
+                    ? systemModelStatus.isAvailable
+                    : installProbe(variant, downloadBase)
+                if isPresent { present.insert(variant.id) }
             }
         }
         installed = present
@@ -255,6 +278,11 @@ public final class ModelManager {
     /// amber-but-refused bug came from.
     ///
     static func estimatedResidentPeakBytes(model: LLMModel, variant: LLMVariant, context: Int) -> Int64 {
+        // The OS-provided model costs this process nothing — no weights, no KV cache, no runtime — so
+        // there is nothing to weigh and the pre-flight must never refuse it. Short-circuited for the same
+        // reason `LLMMemoryGovernor.plan` is: its catalog entry's architecture is honest zeros (Apple
+        // publishes none), so running the KV math over it would be arithmetic on placeholders.
+        if variant.isSystemProvided { return 0 }
         let overhead = variant.backend.runtimeOverheadBytes
         // Same weight base as the governor: model file + vision projector (the mmproj is mmap'd GGUF too,
         // so the discount applies to the sum). Diverging from the governor here is exactly the
@@ -352,6 +380,9 @@ public final class ModelManager {
     /// Start (or resume) a foreground download for a variant. Resumable via the reused downloader's
     /// `.part` streaming; a pause just cancels the task and keeps the partial (DESIGN §4 / critique D2).
     public func download(_ variant: LLMVariant) {
+        // An OS-provided model has no repo to fetch — its source id is synthetic. The card never offers a
+        // download for one; this guard makes sure no other path can start a doomed 404 against it either.
+        guard !variant.isSystemProvided else { return }
         let repoId = variant.source.huggingFaceRepo
         guard downloadTasks[repoId] == nil else { return }
         var progress = downloads[repoId] ?? VariantDownload()
@@ -431,6 +462,10 @@ public final class ModelManager {
     /// (GGUF) variants — removes just that file (+ any `.part`), so a shared repo's other files survive
     /// — and whole-repo for flat MLX variants.
     public func delete(_ variant: LLMVariant) {
+        // Nothing of an OS-provided model is ours to delete: no weights, no directory. (The card offers no
+        // delete for one — this keeps any other caller from removing a directory that isn't there, or
+        // worse, deactivating the model as a side effect.)
+        guard !variant.isSystemProvided else { return }
         let repoId = variant.source.huggingFaceRepo
         pauseDownload(variant)
         downloads[repoId] = nil

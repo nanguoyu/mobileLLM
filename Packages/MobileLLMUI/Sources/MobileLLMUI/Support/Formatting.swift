@@ -44,8 +44,15 @@ enum Format {
     }
 
     /// The quiet per-message stats footer (DESIGN §4): "Bonsai 8B · 41 tok · 23 tok/s · stop: eos".
+    ///
+    /// A zero count means "this engine doesn't report one", not "it generated nothing" — the Apple system
+    /// engine has no token counters to read — so it's omitted rather than printed as a false `0 tok`. Same
+    /// rule the rate has always followed.
     static func statsFooter(_ stats: Stats, modelName: String) -> String {
-        var parts = [modelName, "\(stats.genTokens) tok"]
+        var parts = [modelName]
+        if stats.genTokens > 0 {
+            parts.append("\(stats.genTokens) tok")
+        }
         if stats.tokensPerSecond > 0 {
             parts.append(String(format: "%.0f tok/s", stats.tokensPerSecond))
         }

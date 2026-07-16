@@ -62,8 +62,16 @@ public enum LLMMemoryGovernor {
         switch variant.engine {
         case .mlx:      return planMLX(model: model, variant: variant, device: device, context: context)
         case .llamaCpp: return planLlamaCpp(model: model, variant: variant, device: device, context: context)
+        case .apple:    return planSystem()
         }
     }
+
+    /// The OS's system model always fits: it holds no weights in OUR address space and its KV cache is
+    /// the system's, not ours, so there is nothing to weigh against the jetsam ceiling. Running the
+    /// weight math here would be worse than pointless — Apple publishes no architecture facts for the
+    /// system model, so every input to it would be invented. Whether it can run at all is an
+    /// AVAILABILITY question (`SystemModelStatus`), which the install probe answers; not a memory one.
+    private static func planSystem() -> LLMFit { .comfortable }
 
     /// Resident-weights MLX planner — the original model, kept byte-for-byte (regression-guarded).
     private static func planMLX(model: LLMModel, variant: LLMVariant,
