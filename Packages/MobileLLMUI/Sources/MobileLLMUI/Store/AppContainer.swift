@@ -186,6 +186,9 @@ public final class AppContainer {
             // The old "Download" forward did nothing. Jump to Models so the user can actually get it.
             chat.showToast(Toast(error.message, kind: .error, actionTitle: "Open Models", autoDismiss: nil),
                            action: { [weak self] in self?.navigationRequest = .models })
+        case .engineUnavailable:
+            // Environment limit (MLX in the simulator) — nothing to retry; say it and stop.
+            chat.showToast(Toast(error.message, kind: .error, autoDismiss: 5))
         }
     }
 

@@ -215,13 +215,20 @@ public extension AppSettings {
     /// Nonisolated + pure so it's unit-testable off the main actor; the governor call is MLX-free.
     nonisolated static func preferredVariant(for model: LLMModel, device: DeviceTier,
                                              preference: EnginePreference, context: Int) -> LLMVariant {
-        let candidates: [LLMVariant]
+        var candidates: [LLMVariant]
         if let pinned = preference.pinnedEngine {
             let scoped = model.variants(for: pinned)
             candidates = scoped.isEmpty ? model.variants : scoped
         } else {
             candidates = model.variants
         }
+        #if targetEnvironment(simulator)
+        // MLX can't run in the simulator — never auto-pick it there when a GGUF exists (llama.cpp
+        // drops to CPU and works). Activation has its own hard guard; this keeps Auto from steering
+        // into it in the first place.
+        let simulatorSafe = candidates.filter { $0.engine == .llamaCpp }
+        if !simulatorSafe.isEmpty { candidates = simulatorSafe }
+        #endif
         guard !candidates.isEmpty else { return model.defaultVariantValue }
 
         let tieBreakEngine: EngineKind = device.isPhone ? .llamaCpp : .mlx

@@ -15,6 +15,8 @@ public enum ModelActivationError: Error, Equatable {
     case insufficientMemory(needed: Int64, available: Int64)
     /// The variant's weights aren't on disk yet.
     case notInstalled
+    /// The variant's engine can't run in this environment (MLX in the simulator).
+    case engineUnavailable(engine: String, reason: String)
 
     public var message: String {
         switch self {
@@ -24,6 +26,8 @@ public enum ModelActivationError: Error, Equatable {
                  + "\(f.string(fromByteCount: available)) free). Close other apps, or try it anyway."
         case .notInstalled:
             return "Download this model before switching to it."
+        case let .engineUnavailable(engine, reason):
+            return "\(engine) can't run here — \(reason)."
         }
     }
 
@@ -31,6 +35,7 @@ public enum ModelActivationError: Error, Equatable {
         switch self {
         case .insufficientMemory: "Switch to 8B"
         case .notInstalled: "Download"
+        case .engineUnavailable: nil
         }
     }
 }
@@ -269,6 +274,16 @@ public final class ModelManager {
                          force: Bool = false) async throws -> LoadedModel {
         guard installed.contains(variant.id) else { throw ModelActivationError.notInstalled }
 
+        #if targetEnvironment(simulator)
+        // MLX does not run in the simulator (no MLX-capable Metal device) — an attempted load fails
+        // late or hangs Metal init, which deadlocks bootstrap/UI tests behind `switching`. Refuse
+        // up-front with a clear error; GGUF variants run fine (llama.cpp drops to CPU in the sim).
+        guard variant.engine != .mlx else {
+            throw ModelActivationError.engineUnavailable(engine: EngineKind.mlx.label,
+                                                         reason: "the simulator can't run MLX — use the GGUF variant")
+        }
+        #endif
+
         // OOM pre-flight — for the NON-forced "Use" path only: refuse recoverably if the estimate says
         // it won't fit, so a casual tap doesn't hard-quit. But "Try anyway" (force) is the user's
         // explicit, informed attempt: DON'T second-guess it — attempt the resident load and let the
@@ -279,7 +294,10 @@ public final class ModelManager {
         // outright by an over-counted raw-bytes check.
         let peak = Self.estimatedResidentPeakBytes(model: model, variant: variant, context: context)
         let available = availableMemory()
-        if !force, available != Int64.max, peak > available {
+        // `available <= 0` means the probe couldn't answer (the simulator's os_proc_available_memory
+        // returns 0), not "zero bytes free" — refusing on it produced a bogus "Zero KB free" banner.
+        // Unknown headroom attempts the load; only a real, positive reading below the peak refuses.
+        if !force, available > 0, available != Int64.max, peak > available {
             throw ModelActivationError.insufficientMemory(needed: peak, available: available)
         }
 

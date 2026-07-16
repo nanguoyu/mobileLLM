@@ -38,6 +38,16 @@ final class ActivationPreflightTests: XCTestCase {
         XCTAssertEqual(mlxPeak, rawPeak(model, mlx, context: 4096), "MLX weights are all hard-resident")
     }
 
+    /// A memory probe that can't answer (the simulator's os_proc_available_memory returns 0) must read as
+    /// UNKNOWN and attempt the load — refusing on it produced a bogus "needs 1.4 GB, Zero KB free" banner.
+    func testUnknownAvailableMemoryDoesNotRefuse() async throws {
+        let model = LLMCatalog.bonsai8b
+        let gguf = model.variant(engine: .llamaCpp, quant: .binary1bit)!
+        let m = manager(available: 0)
+        _ = try await m.activate(model, variant: gguf, context: 4096)   // must not throw insufficientMemory
+        XCTAssertEqual(m.active?.variant.id, gguf.id)
+    }
+
     /// THE fix: a GGUF that fits only via the mmap discount must not be refused when raw bytes exceed free
     /// memory — the badge shows it runnable, so a non-forced Use loads it instead of dead-ending.
     func testGGUFFitsViaDiscountIsNotRefused() async throws {
