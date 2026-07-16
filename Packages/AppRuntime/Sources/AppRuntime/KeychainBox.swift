@@ -5,7 +5,7 @@ import Security
 
 /// A minimal generic-password Keychain store (A2.9): save / read / delete a small secret by account key.
 ///
-/// Items are pinned to THIS device (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`) — never synced to
+/// Items are pinned to THIS device (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) — never synced to
 /// iCloud, and readable only after the first unlock following a boot. `service` scopes the items so
 /// several boxes (or the test suite) don't collide on the same account name. No UI and no app dependency;
 /// the Settings migration that moves secrets off `UserDefaults` wires this in a later wave.
@@ -33,7 +33,7 @@ public struct KeychainBox: Sendable {
         SecItemDelete(baseQuery(account: account) as CFDictionary)
         var attributes = baseQuery(account: account)
         attributes[kSecValueData as String] = secret
-        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         let status = SecItemAdd(attributes as CFDictionary, nil)
         guard status == errSecSuccess else { throw KeychainError.unexpectedStatus(status) }
     }

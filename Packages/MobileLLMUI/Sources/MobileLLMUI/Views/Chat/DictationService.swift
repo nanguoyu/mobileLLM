@@ -80,6 +80,13 @@ public final class DictationService {
             #endif
             let input = engine.inputNode
             let format = input.outputFormat(forBus: 0)
+            // A denied/absent input device reports 0 channels, and installTap raises an ObjC exception on
+            // such a format (uncatchable from Swift) — bail to the unavailable state instead of crashing.
+            guard format.channelCount > 0, format.sampleRate > 0 else {
+                teardown()
+                state = .unavailable
+                return
+            }
             input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
                 request.append(buffer)
             }

@@ -81,7 +81,8 @@ macros → it needs **neither `-skipMacroValidation` nor a special toolchain** (
 `./build-xcframework.sh` (Metal **embedded** — no `.metallib` to ship), trims to the **iOS + macOS** slices,
 and installs it to `Packages/LLMEngineLlama/Vendor/llama.xcframework` (~355 MB, **gitignored** — a fresh
 checkout regenerates it). The framework module is `llama` (`import llama`); headers include `llama.h`,
-`ggml-metal.h`, `gguf.h`.
+`ggml-metal.h`, `gguf.h`, and the multimodal API `mtmd.h` / `mtmd-helper.h` (the image-input path — the
+official build ships them in every slice, no extra flags needed).
 
 ### Why a second engine
 MLX keeps weights in **anonymous/dirty** buffers that count fully against the iOS jetsam ceiling; llama.cpp

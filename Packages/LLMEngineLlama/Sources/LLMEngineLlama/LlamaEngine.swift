@@ -169,6 +169,10 @@ public actor LlamaEngine: LLMEngine {
             return
         }
         if let context { llama_free(context) }
+        // Reset BEFORE the fallible init below: if llama_init_from_model throws out of this function,
+        // `context` must not keep pointing at the freed allocation (a retry would double-free, and the
+        // reuse branch above would llama_memory_clear freed memory — a user-reachable UAF via kvBits).
+        context = nil; contextCap = 0; contextKVBits = -1
         var cp = llama_context_default_params()
         cp.n_ctx = UInt32(target)
         cp.n_batch = 512                                          // small compute buffer; prefill is chunked
@@ -211,11 +215,19 @@ public actor LlamaEngine: LLMEngine {
         do {
             guard model != nil, let vocab else { throw EngineError.notLoaded }
             guard messages.contains(where: { $0.role == .user }) else { throw EngineError.noUserMessage }
-            // An attached image with no vision projector loaded fails fast (rather than being silently
-            // dropped): the model literally can't see it. Checked on the full history so a NEW image in the
-            // final turn is always caught, before we spend anything building a context.
-            if mtmdContext == nil, messages.contains(where: { !$0.images.isEmpty }) {
-                throw EngineError.visionUnavailable
+            // An image the user is sending NOW with no vision projector loaded fails fast (rather than
+            // being silently dropped): the model literally can't see it. Only the FINAL turn is held to
+            // that bar — images on HISTORY turns (a thread continued after switching to a text-only
+            // model) are dropped instead, because failing there would brick the whole conversation and
+            // the past answers already reflect what the previous model saw.
+            var messages = messages
+            if mtmdContext == nil {
+                if let last = messages.last, !last.images.isEmpty {
+                    throw EngineError.visionUnavailable
+                }
+                messages = messages.map { turn in
+                    turn.images.isEmpty ? turn : ChatTurn(role: turn.role, content: turn.content)
+                }
             }
 
             try ensureContext(cap: params.contextTokenCap, kvBits: params.kvBits)

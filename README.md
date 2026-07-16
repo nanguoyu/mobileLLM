@@ -18,10 +18,8 @@ nothing you type ever leaves the device.
 </p>
 
 <!-- Hero image. To refresh, replace assets/screenshot.jpg in place (same path/name) — nothing else
-     references it. The current capture predates the ink-wash redesign; see the caption below. -->
-<img src="assets/screenshot.jpg" width="300" alt="mobileLLM running an on-device model on iPhone" />
-
-<sub><i>Screenshot from an earlier build — the UI is mid-refresh to the ink-wash palette described below.</i></sub>
+     references it. -->
+<img src="assets/screenshot.jpg" width="300" alt="mobileLLM first launch on iPhone — ink-wash palette" />
 
 </div>
 
@@ -39,6 +37,11 @@ nothing you type ever leaves the device.
 - 🛠️ **Tool calling + MCP.** An on-device agent loop lets a model call a calculator and clock (no network),
   a Wikipedia `web_search`, and the tools of any remote **MCP** server you configure (Streamable HTTP,
   per-server enable + per-tool mute). Off by default.
+- 🖼️ **Image input (vision GGUF models).** Attach photos (picker or paste, up to 3, downscaled to 1568 px
+  JPEG on-device) and ask about them — Qwen3.5 and Gemma 4 run their official `mmproj` projector through
+  llama.cpp's mtmd. The photo button appears only when the active model can actually see.
+- 🎤 **Dictation.** A mic button in the composer transcribes speech into the draft via Apple's speech
+  recognizer, on-device where supported.
 - 🧭 **Explore — live Hugging Face browse.** Search `mlx-community` (MLX) and the GGUF orgs (bartowski,
   unsloth, ggml-org, lmstudio-community) by download count, pick a precision, and install. Community models
   load from their own chat template, so they're clearly flagged **Unverified**.
@@ -59,20 +62,20 @@ adds hundreds more live from the Hub.
 | Bonsai 8B | Bonsai · Prism ML | 8B | 1-bit 1.3 GB · ternary 2.3 GB · GGUF 1.2 GB | MLX + llama.cpp | Apache-2.0 |
 | Bonsai 4B | Bonsai · Prism ML | 4B | 1-bit 0.6 GB · ternary 1.1 GB · GGUF 0.6 GB | MLX + llama.cpp | Apache-2.0 |
 | Bonsai 1.7B | Bonsai · Prism ML | 1.7B | 1-bit 0.3 GB · ternary 0.5 GB · GGUF 0.2 GB | MLX + llama.cpp | Apache-2.0 |
-| Qwen3.5 4B | Qwen · Alibaba | 4B ᴴ | Q4_K_M 2.7 GB | llama.cpp | Apache-2.0 |
-| Qwen3.5 9B | Qwen · Alibaba | 9B ᴴ | Q4_K_M 5.7 GB | llama.cpp | Apache-2.0 |
+| Qwen3.5 4B | Qwen · Alibaba | 4B ᴴ | Q4_K_M 2.7 GB ᵛ | llama.cpp | Apache-2.0 |
+| Qwen3.5 9B | Qwen · Alibaba | 9B ᴴ | Q4_K_M 5.7 GB ᵛ | llama.cpp | Apache-2.0 |
 | Qwen3.6 27B | Qwen · Alibaba | 27B ᴴ | Q4_K_M 16.8 GB | llama.cpp | Apache-2.0 |
 | Hunyuan 4B | Hunyuan · Tencent | 4B | Q4_K_M 2.6 GB | llama.cpp | Tencent Hunyuan Community |
 | DeepSeek-R1 Qwen3 8B | DeepSeek | 8B | Q4_K_M 5.0 GB | llama.cpp | MIT |
-| Gemma 4 E2B | Gemma · Google | ~2B ᴹ | Q4_K_M 3.1 GB | llama.cpp | Apache-2.0 \* |
-| Gemma 4 E4B | Gemma · Google | ~4B ᴹ | Q4_K_M 5.0 GB | llama.cpp | Apache-2.0 \* |
-| Gemma 4 12B | Gemma · Google | 12B | Q4_K_M 7.4 GB | llama.cpp | Apache-2.0 \* |
+| Gemma 4 E2B | Gemma · Google | ~2B ᴹ | Q4_K_M 3.1 GB ᵛ | llama.cpp | Gemma Terms of Use |
+| Gemma 4 E4B | Gemma · Google | ~4B ᴹ | Q4_K_M 5.0 GB ᵛ | llama.cpp | Gemma Terms of Use |
+| Gemma 4 12B | Gemma · Google | 12B | Q4_K_M 7.4 GB ᵛ | llama.cpp | Gemma Terms of Use |
 
 <sub>Sizes are decimal GB (bytes ÷ 10⁹), rounded. **ᴴ** hybrid Gated-DeltaNet (qwen3_5) — only the
 full-attention layers grow a KV cache, so memory stays near-constant as context grows. **ᴹ** Gemma
 MatFormer "effective" size. **MLX 1-bit** needs the PrismML fork kernel; **ternary 2-bit** is upstream MLX;
-**GGUF** runs on llama.cpp. **\*** the catalog tags Gemma `Apache-2.0`, but Gemma models ship under the
-Gemma Terms of Use — the app shows each model's actual license on its card.</sub>
+**GGUF** runs on llama.cpp. **ᵛ** vision-capable: the app downloads the model's official `mmproj`
+projector alongside the weights (adds 0.16–1 GB) and the composer accepts image attachments.</sub>
 
 ## Architecture
 

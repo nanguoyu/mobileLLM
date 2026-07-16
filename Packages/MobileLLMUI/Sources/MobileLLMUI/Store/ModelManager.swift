@@ -251,9 +251,13 @@ public final class ModelManager {
     ///
     static func estimatedResidentPeakBytes(model: LLMModel, variant: LLMVariant, context: Int) -> Int64 {
         let overhead = variant.backend.runtimeOverheadBytes
+        // Same weight base as the governor: model file + vision projector (the mmproj is mmap'd GGUF too,
+        // so the discount applies to the sum). Diverging from the governor here is exactly the
+        // amber-but-refused bug, twice now — keep the two maths identical.
+        let weightBytes = variant.onDiskBytes + (variant.visionProjector?.sizeBytes ?? 0)
         let weights = variant.engine == .llamaCpp
-            ? Int64(Double(variant.onDiskBytes) * LLMMemoryGovernor.mmapResidentFraction)
-            : variant.onDiskBytes
+            ? Int64(Double(weightBytes) * LLMMemoryGovernor.mmapResidentFraction)
+            : weightBytes
         return weights + overhead + model.architecture.attention.kvBytes(tokens: context)
     }
 

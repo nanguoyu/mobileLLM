@@ -61,9 +61,10 @@ public actor ConversationStore {
         try? Data(contentsOf: attachmentURL(for: id))
     }
 
-    /// Remove the files backing a set of attachment refs (used when a thread is hard-deleted). Best-effort
-    /// — a missing file is already the desired state.
-    private func removeAttachments(_ refs: [ImageRef]) {
+    /// Remove the files backing a set of attachment refs. Best-effort — a missing file is already the
+    /// desired state. Public because truncation flows (regenerate / edit-and-resend) drop image-bearing
+    /// turns from LIVE threads and must purge their pixels too, not just hard-delete.
+    public func removeAttachments(_ refs: [ImageRef]) {
         for ref in refs { try? FileManager.default.removeItem(at: attachmentURL(for: ref.id)) }
     }
 

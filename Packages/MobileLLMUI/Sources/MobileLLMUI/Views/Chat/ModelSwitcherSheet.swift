@@ -55,9 +55,12 @@ struct ModelSwitcherSheet: View {
         .onChange(of: container.models.active?.variant.id) { _, newID in
             if let activating, newID == activating { dismiss() }
         }
-        // Failure: activation ended without becoming resident → stop the spinner, keep the sheet up.
+        // Activation ended: if the tapped variant is now resident, close (covers re-tapping the ALREADY
+        // active model, where `active?.variant.id` never *changes* so the onChange above can't fire);
+        // otherwise it failed → stop the spinner, keep the sheet up.
         .onChange(of: container.models.activatingVariantID) { _, current in
-            if current == nil, container.models.active?.variant.id != activating { activating = nil }
+            guard current == nil, let tapped = activating else { return }
+            if container.models.active?.variant.id == tapped { dismiss() } else { activating = nil }
         }
     }
 

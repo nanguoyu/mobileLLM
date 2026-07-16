@@ -101,9 +101,12 @@ public final class AppSettings {
         let servers = (snap?.mcpServers ?? []).map { server -> MCPServer in
             var s = server
             if let plaintext = server.token, !plaintext.isEmpty {
-                // Legacy: the token rode along in UserDefaults. Move it to the Keychain, keep it in memory.
-                try? keychain?.save(plaintext, account: server.id)
-                migrated = true
+                // Legacy: the token rode along in UserDefaults. Move it to the Keychain — and only mark it
+                // migrated when the save actually LANDED; scrubbing the plaintext on a failed save would
+                // destroy the only copy of the secret.
+                if let keychain, (try? keychain.save(plaintext, account: server.id)) != nil {
+                    migrated = true
+                }
             } else if markers.contains(server.id), let keychain {
                 s.token = (try? keychain.readString(account: server.id)) ?? nil
             }

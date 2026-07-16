@@ -92,9 +92,11 @@ generate → detect a `<tool_call>{…}</tool_call>` in the stream → run the t
 `<tool_response>` back → generate again, up to `maxIterations`. `ToolPrompt` folds the advertised tool
 schemas into the system turn (Qwen/ChatML convention); `ToolCallProcessor` extracts calls from plain text.
 
-- **Built-in tools** (`Tool` protocol): `CalculatorTool` (`NSExpression`, on-device, float-promoted),
+- **Built-in tools** (`Tool` protocol): `CalculatorTool` (a pure-Swift recursive-descent evaluator —
+  float semantics, `%` as remainder, `**` power; malformed input returns an error string, never traps),
   `DateTimeTool` (on-device clock), and `WebSearchTool` (Wikipedia summary, zh for CJK / en otherwise —
-  the one that touches the network). `ToolRegistry.standard` is the three; `.builtIn` is the two offline ones.
+  the one that touches the network). `ToolRegistry.standard` is the three; `.builtIn` is the two offline
+  ones. Tool results are framed as untrusted external data before being fed back to the model.
 - **MCP** (`MCPClient`): a self-contained JSON-RPC 2.0 client over **Streamable HTTP** (protocol
   `2025-11-25`), handling both plain-JSON and single-event SSE replies, session ids, and pagination — enough
   to `initialize`, `tools/list`, and `tools/call` a user-configured remote server (sandboxed iOS can't reach
@@ -102,6 +104,21 @@ schemas into the system turn (Qwen/ChatML convention); `ToolCallProcessor` extra
   assembles the standard tools plus every **enabled** server's tools minus the ones the user muted, skipping
   servers that fail to connect. Tools are **off by default** (they add a round-trip and small models call them
   unevenly).
+
+## Image input (vision GGUF) + dictation
+
+Vision runs entirely on the **llama.cpp** side through the `mtmd` API already inside the vendored
+xcframework. A vision-capable catalog variant declares its official `mmproj` projector
+(`LLMVariant.visionProjector`); the downloader fetches it alongside the weight file (both required for
+"installed"), the memory governor counts its bytes, and `LlamaEngine` opens an `mtmd` context at load.
+When a turn carries images (`ChatTurn.images`, encoded JPEG/PNG bytes), the templated prompt gets one
+media marker per image and prefill runs through `mtmd_tokenize` + chunked `mtmd_helper_eval` before the
+normal decode loop continues; with no image the text path is byte-identical. In the UI the composer's
+photo button appears only when the active model can actually see (PhotosPicker + paste, ≤3 images,
+downscaled to 1568 px JPEG); attachment bytes persist as files under `attachments/` — never inlined into
+conversation JSON — and are purged with their turns (hard-delete, delete-all, regenerate/edit truncation).
+Dictation is a separate composer affordance: `DictationService` (SFSpeechRecognizer + AVAudioEngine,
+on-device recognition where supported) streams partial transcripts into the draft.
 
 ## Catalog — Featured + Explore
 

@@ -237,7 +237,7 @@ public final class ChatStore {
         // block the send with an actionable toast so the user can switch this model to its GGUF variant
         // (C2.3). Draft + staged images are kept so the retry after switching loses nothing.
         if !images.isEmpty, activeModel?.variant.engine == .mlx {
-            showToast(Toast("此模型引擎暂不支持图片 — switch this model to its GGUF/llama.cpp variant",
+            showToast(Toast("This engine can't read images yet — switch this model to its GGUF (llama.cpp) variant.",
                             kind: .warning, autoDismiss: 5))
             return
         }
@@ -275,11 +275,21 @@ public final class ChatStore {
               let mi = conversations[ci].messages.firstIndex(where: { $0.id == assistantMessageID }),
               conversations[ci].messages[mi].role == .assistant else { return }
         let parentID = conversations[ci].messages[mi].parentID
+        purgeAttachments(of: Array(conversations[ci].messages[mi...]))
         conversations[ci].messages.removeSubrange(mi...)
         let fresh = Message(role: .assistant, answer: "", parentID: parentID)
         conversations[ci].messages.append(fresh)
         conversations[ci].updatedAt = Date()
         startGeneration(assistantID: fresh.id, in: conversations[ci].id)
+    }
+
+    /// Truncation flows drop whole turns from a LIVE thread — their attachment pixels must leave the disk
+    /// with them (the same privacy promise hard-delete keeps), or regenerate/edit quietly leaks orphans.
+    private func purgeAttachments(of dropped: [Message]) {
+        let refs = dropped.compactMap(\.attachments).flatMap { $0 }
+        guard !refs.isEmpty else { return }
+        let store = self.store
+        Task { await store.removeAttachments(refs) }
     }
 
     /// True when `id` is the newest assistant turn in `convo` — regenerating it discards nothing after it,
@@ -303,6 +313,7 @@ public final class ChatStore {
               let ci = conversations.firstIndex(where: { $0.id == activeID }),
               let mi = conversations[ci].messages.firstIndex(where: { $0.id == userMessageID }),
               conversations[ci].messages[mi].role == .user else { return }
+        purgeAttachments(of: Array(conversations[ci].messages[(mi + 1)...]))
         conversations[ci].messages.removeSubrange((mi + 1)...)
         conversations[ci].messages[mi].answer = text
         let assistant = Message(role: .assistant, answer: "", parentID: userMessageID)
@@ -328,6 +339,10 @@ public final class ChatStore {
         let engine = self.engine
         let toolsOn = settings.toolsEnabled
         let store = self.store
+        // Replay history images only when the ACTIVE model can actually see them (llama.cpp + projector).
+        // After switching an image-bearing thread to a text-only model, the engine would refuse the whole
+        // conversation otherwise — history degrades to text, exactly like the engine-side guard.
+        let imageCapable = activeModel.map { $0.variant.engine == .llamaCpp && $0.variant.supportsVisionInput } ?? false
 
         genTask = Task { @MainActor [weak self] in
             do {
@@ -340,7 +355,7 @@ public final class ChatStore {
                 // turn AND earlier ones — so a follow-up question still sees the image context. Loaded only
                 // while generating (this local map is released when the task ends) and bounded by the
                 // thread's image count, keeping memory honest on the phone.
-                let imagesByMessage = await Self.loadAttachmentImages(for: history, from: store)
+                let imagesByMessage = imageCapable ? await Self.loadAttachmentImages(for: history, from: store) : [:]
                 let turns = Self.chatTurns(messages: history, systemPrompt: systemPrompt,
                                            cap: params.contextTokenCap,
                                            images: { imagesByMessage[$0.id] ?? [] })
