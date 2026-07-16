@@ -24,6 +24,9 @@ public final class AppSettings {
     /// Let the model call on-device tools (calculator, date/time) via the agent loop. Off by default —
     /// it adds a round-trip and only some models call tools reliably.
     public var toolsEnabled: Bool { didSet { persist() } }
+    /// Dictation language as a locale identifier (`nil` = follow the system). One recognizer = one
+    /// language, so code-switching users pick explicitly via the mic's long-press menu.
+    public var dictationLocale: String? { didSet { persist() } }
     /// Remote MCP servers whose tools join the agent's tool set when tools are on. Bearer tokens are kept
     /// in the Keychain, not this snapshot (A2.9) — the didSet reconciles them on every change.
     public var mcpServers: [MCPServer] {
@@ -77,6 +80,7 @@ public final class AppSettings {
         thinkingDefault = snap?.thinkingDefault ?? true
         thinkingDisplay = snap?.thinkingDisplay ?? .autoCollapse
         toolsEnabled = snap?.toolsEnabled ?? false
+        dictationLocale = snap?.dictationLocale ?? nil
         let (servers, migrated) = Self.loadMCPServers(from: snap, keychain: keychain)
         mcpServers = servers
         temperature = snap?.temperature ?? 0.7
@@ -161,6 +165,7 @@ public final class AppSettings {
         var thinkingDefault: Bool
         var thinkingDisplay: ThinkingDisplayMode
         var toolsEnabled: Bool? = false   // optional → old snapshots decode
+        var dictationLocale: String? = nil
         var mcpServers: [MCPServer]? = []
         /// Ids of servers whose bearer token lives in the Keychain (A2.9). Absent in pre-migration
         /// snapshots — the loader then treats any inline `token` as legacy plaintext to migrate.
@@ -184,7 +189,8 @@ public final class AppSettings {
         let snap = Snapshot(defaultModelID: defaultModelID, enginePreference: enginePreference,
                             systemPrompt: systemPrompt, systemPromptSeeded: true,
                             thinkingDefault: thinkingDefault, thinkingDisplay: thinkingDisplay,
-                            toolsEnabled: toolsEnabled, mcpServers: scrubbed, mcpTokenMarkers: markers,
+                            toolsEnabled: toolsEnabled, dictationLocale: dictationLocale,
+                            mcpServers: scrubbed, mcpTokenMarkers: markers,
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
                             contextLength: contextLength, kvBits: kvBits, appearance: appearance)

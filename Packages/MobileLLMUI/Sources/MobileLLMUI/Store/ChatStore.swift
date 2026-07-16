@@ -29,6 +29,11 @@ public final class ChatStore {
     public var activeModel: LoadedModel?
     /// The composer's per-thread thinking toggle (seeded from Settings' default).
     public var thinkingEnabled: Bool
+    /// Dictation language passthrough (the composer owns the mic UI but not AppSettings).
+    public var dictationLocale: String? {
+        get { settings.dictationLocale }
+        set { settings.dictationLocale = newValue }
+    }
     public private(set) var banner: Toast?
     /// Images staged in the composer for the next send — already downscaled + JPEG-re-encoded (never the
     /// raw 48 MP original). Capped at `maxAttachments`; cleared when the turn is sent. Held in memory

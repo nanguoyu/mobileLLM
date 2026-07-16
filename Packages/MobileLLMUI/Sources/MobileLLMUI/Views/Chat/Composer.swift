@@ -26,6 +26,7 @@ struct Composer: View {
     /// Photo-library picks (loaded async into `chat.pendingImages`), and the flag that presents the picker.
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false
+    @State private var showCamera = false
     /// Composer controls scale with Dynamic Type instead of a hard 44pt.
     @ScaledMetric(relativeTo: .body) private var controlSize: CGFloat = 44
 
@@ -60,6 +61,17 @@ struct Composer: View {
         .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItems,
                       maxSelectionCount: ChatStore.maxAttachments, matching: .images)
         .onChange(of: pickerItems) { _, items in loadPickedImages(items) }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { data in
+                showCamera = false
+                if let data, !chat.attach(imageData: data) {
+                    chat.showToast(Toast("Couldn't add that photo.", kind: .warning, autoDismiss: 3))
+                }
+            }
+            .ignoresSafeArea()
+        }
+        #endif
         .onChange(of: dictation.transcript) { _, transcript in
             guard dictation.isRecording else { return }
             chat.draft = merge(base: dictationBase, dictated: transcript)
@@ -156,12 +168,21 @@ struct Composer: View {
 
     // MARK: Dictation
 
+    /// Dictation language choices: one `SFSpeechRecognizer` = one language, so a code-switching user
+    /// picks explicitly. `nil` follows the system locale.
+    private static let dictationLanguages: [(id: String?, label: String)] = [
+        (nil, "System language"),
+        ("zh-CN", "中文（普通话）"),
+        ("en-US", "English"),
+    ]
+
     private var micButton: some View {
         Button {
             if dictation.isRecording {
                 dictation.stop()
             } else {
                 dictationBase = chat.draft
+                dictation.localeIdentifier = chat.dictationLocale
                 dictation.start()
             }
         } label: {
@@ -174,8 +195,23 @@ struct Composer: View {
                 .overlay(alignment: .topTrailing) { if dictation.isRecording { RecordingDot() } }
         }
         .buttonStyle(.plain)
+        // Long-press: pick the recognition language (persisted; applies from the next recording).
+        .contextMenu {
+            ForEach(Self.dictationLanguages, id: \.label) { lang in
+                Button {
+                    chat.dictationLocale = lang.id
+                } label: {
+                    if chat.dictationLocale == lang.id {
+                        Label(lang.label, systemImage: "checkmark")
+                    } else {
+                        Text(lang.label)
+                    }
+                }
+            }
+        }
         .accessibilityLabel("Dictate")
         .accessibilityValue(dictation.isRecording ? "Recording" : "Off")
+        .accessibilityHint("Long-press to choose the dictation language")
         .accessibilityAddTraits(dictation.isRecording ? [.isSelected] : [])
     }
 
@@ -186,6 +222,14 @@ struct Composer: View {
             Button {
                 showPhotoPicker = true
             } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
+            #if os(iOS)
+            if CameraPicker.isAvailable {
+                Button {
+                    ChatThreadView.dismissKeyboard()
+                    showCamera = true
+                } label: { Label("Take Photo", systemImage: "camera") }
+            }
+            #endif
             Button {
                 pasteImage()
             } label: { Label("Paste", systemImage: "doc.on.clipboard") }

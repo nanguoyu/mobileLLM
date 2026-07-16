@@ -3,10 +3,21 @@
 import SwiftUI
 import AppUI
 import LLMCore
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Tracks the bottom anchor's position in the scroll's coordinate space so we can detect "scrolled
 /// away" (for the scroll-to-bottom pill) and sticky-bottom autoscroll on iOS 17 / macOS 14.
 private struct BottomOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Tracks the thread content's own height so autoscroll can tell "content fits the viewport" apart from
+/// "scrolled to the bottom of overflowing content" — scrollTo on under-filled content makes the whole
+/// view judder on every token instead of scrolling.
+private struct ContentHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
@@ -25,6 +36,8 @@ struct ChatThreadView: View {
     var onOpenModels: () -> Void
 
     @State private var atBottom = true
+    /// True once the thread content is taller than the viewport — the precondition for follow-scrolling.
+    @State private var overflowing = false
     @State private var editing: Message?
     @State private var editText = ""
     /// A mid-history regenerate awaiting confirmation (nil = none pending).
@@ -87,15 +100,26 @@ struct ChatThreadView: View {
                     .padding(Theme.Space.lg)
                     .frame(maxWidth: Theme.Layout.readingColumn, alignment: .leading)
                     .frame(maxWidth: .infinity)
+                    .background(GeometryReader { g in
+                        Color.clear.preference(key: ContentHeightKey.self, value: g.size.height)
+                    })
                 }
                 .scrollDismissesKeyboard(.interactively)   // drag the thread down to dismiss the keyboard
+                // Tapping blank space dismisses the keyboard too (simultaneous, so taps that land on
+                // buttons/rows still do their job) — otherwise the keyboard camps over the composer's
+                // attach controls with no way out but scrolling.
+                .simultaneousGesture(TapGesture().onEnded { Self.dismissKeyboard() })
                 .coordinateSpace(name: "thread")
                 .background(Theme.bg)
                 // A leaf that alone observes `streaming` and nudges the scroll — throttled, so the thread's
                 // ForEach never re-lays-out for scrolling and streaming stays smooth.
-                .background { AutoScrollFollower(chat: chat, proxy: proxy, bottomID: bottomID, atBottom: atBottom) }
+                .background { AutoScrollFollower(chat: chat, proxy: proxy, bottomID: bottomID,
+                                                 atBottom: atBottom, overflowing: overflowing) }
                 .onPreferenceChange(BottomOffsetKey.self) { maxY in
                     atBottom = maxY <= outer.size.height + 40
+                }
+                .onPreferenceChange(ContentHeightKey.self) { h in
+                    overflowing = h > outer.size.height + 1
                 }
                 .onChange(of: convo.messages.count) { _, _ in scrollToBottom(proxy, animated: false) }
                 .onChange(of: chat.activeID) { _, _ in scrollToBottom(proxy, animated: false) }
@@ -171,6 +195,14 @@ struct ChatThreadView: View {
         .padding(.bottom, Theme.Space.md)
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .accessibilityLabel("Scroll to latest")
+    }
+
+    /// Resign whatever is first responder (the composer field) — SwiftUI has no global "dismiss keyboard",
+    /// and threading a FocusState binding up from the composer for one tap isn't worth the coupling.
+    static func dismissKeyboard() {
+        #if os(iOS)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
@@ -277,6 +309,10 @@ private struct AutoScrollFollower: View {
     let proxy: ScrollViewProxy
     let bottomID: String
     let atBottom: Bool
+    /// Content taller than the viewport. Following an UNDER-filled thread pins the bottom marker to the
+    /// viewport's bottom edge on every tick while the text grows — the whole view judders violently until
+    /// the first screenful fills. There is nothing to scroll until it overflows, so don't.
+    let overflowing: Bool
 
     @State private var lastFollowAt = Date.distantPast
 
@@ -295,7 +331,7 @@ private struct AutoScrollFollower: View {
     }
 
     private func follow() {
-        guard atBottom else { return }
+        guard atBottom, overflowing else { return }
         let now = Date()
         guard now.timeIntervalSince(lastFollowAt) >= 0.1 else { return }   // ~10 Hz
         lastFollowAt = now

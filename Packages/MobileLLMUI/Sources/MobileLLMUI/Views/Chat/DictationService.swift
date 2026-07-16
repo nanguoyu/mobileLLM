@@ -29,7 +29,13 @@ public final class DictationService {
 
     public var isRecording: Bool { state == .recording }
 
-    private let recognizer = SFSpeechRecognizer()
+    /// The recognition language as a locale identifier; `nil` follows the system. An `SFSpeechRecognizer`
+    /// is bound to ONE language — a 中英 code-switching user picks explicitly (long-press the mic), because
+    /// mixed-language recognition is only as good as the chosen model's tolerance for the other language.
+    /// Takes effect on the NEXT start (changing it mid-recording would drop the in-flight session).
+    public var localeIdentifier: String?
+
+    private var recognizer: SFSpeechRecognizer?
     private var audioEngine: AVAudioEngine?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
@@ -65,6 +71,9 @@ public final class DictationService {
     }
 
     private func run() {
+        // (Re)build the recognizer for the CURRENT language choice — nil identifier = system locale.
+        recognizer = localeIdentifier.flatMap { SFSpeechRecognizer(locale: Locale(identifier: $0)) }
+                   ?? SFSpeechRecognizer()
         guard let recognizer, recognizer.isAvailable else { state = .unavailable; return }
         let engine = AVAudioEngine()
         let request = SFSpeechAudioBufferRecognitionRequest()

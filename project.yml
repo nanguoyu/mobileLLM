@@ -56,6 +56,7 @@ targets:
         # Usage strings for the chat workstream's dictation feature (Speech + microphone).
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "mobileLLM uses the microphone so you can dictate messages."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "mobileLLM uses speech recognition to turn your dictation into text."
+        INFOPLIST_KEY_NSCameraUsageDescription: "mobileLLM uses the camera so you can photograph something and ask the model about it."
     dependencies:
       - package: MobileLLMUI
       - package: LLMEngineMLX
