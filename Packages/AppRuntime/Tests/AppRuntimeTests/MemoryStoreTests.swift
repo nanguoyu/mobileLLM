@@ -145,3 +145,63 @@ final class MemoryStoreTests: XCTestCase {
         XCTAssertEqual(hits.map(\.text), ["newer"], "a blank query is 'what's freshest', not 'nothing'")
     }
 }
+
+/// Query tokenization — pinned because getting it wrong fails silently. The ranker drops any fact scoring
+/// zero, so a tokenizer that can't find word boundaries doesn't merely reorder results, it returns NONE:
+/// `memoryBlock` goes nil and the model is never told what it knows.
+///
+/// That is what shipped. Splitting on non-alphanumerics assumes spaces separate words; every CJK character
+/// is `isLetter`, so a whole Chinese question came out as ONE token and `contains` it against a fact was
+/// never true. Memory worked in English and was dead in Chinese — in the half of the feature whose entire
+/// point is reaching the model without the model having to ask for it.
+final class MemoryRankingTokenizationTests: XCTestCase {
+
+    private func fact(_ text: String, _ t: TimeInterval = 0) -> MemoryFact {
+        MemoryFact(text: text, createdAt: Date(timeIntervalSince1970: t))
+    }
+
+    /// The regression in the user's own words: "我叫什么名字？" against a fact saved in Chinese.
+    func testAChineseQuestionFindsAChineseFact() {
+        let name = fact("用户的名字是 Dong", 2)
+        let other = fact("用户喜欢喝茶", 1)
+        let hits = MemoryRanking.rank([name, other], query: "我叫什么名字？", limit: 5)
+        XCTAssertTrue(hits.contains { $0.text == "用户的名字是 Dong" },
+                      "a Chinese question must reach a Chinese fact — got \(hits.map(\.text))")
+    }
+
+    /// The tokenizer has to see words inside a space-less script at all. One token for a whole sentence is
+    /// the shipped bug's signature.
+    func testCJKIsSegmentedIntoWordsNotOneToken() {
+        XCTAssertEqual(MemoryRanking.tokenize("我叫什么名字"), ["我", "叫", "什么", "名字"])
+        XCTAssertEqual(MemoryRanking.tokenize("こんにちは世界"), ["こんにちは", "世界"])
+    }
+
+    /// Mixed CJK + Latin is the normal case here (product names, code, brands) — both sides must survive.
+    func testMixedScriptQueryTokenizesBothSides() {
+        XCTAssertEqual(MemoryRanking.tokenize("我用 Swift 写 iOS app"),
+                       ["我", "用", "swift", "写", "ios", "app"])
+    }
+
+    /// English keeps working exactly as before — punctuation dropped, case folded.
+    func testEnglishStillTokenizesOnWords() {
+        XCTAssertEqual(MemoryRanking.tokenize("What is my dog's name?"), ["what", "is", "my", "dog's", "name"])
+    }
+
+    /// Scoring still ranks by hit count then recency, now in Chinese too.
+    func testChineseRanksByHitCountThenRecency() {
+        let both = fact("用户的猫和狗都住在南京", 1)
+        let one = fact("用户有一只猫", 3)
+        let none = fact("用户是工程师", 2)
+        let hits = MemoryRanking.rank([both, one, none], query: "猫和狗", limit: 5)
+        XCTAssertEqual(hits.map(\.text), ["用户的猫和狗都住在南京", "用户有一只猫"],
+                       "more token hits win; the fact matching nothing is excluded")
+    }
+
+    /// The honest limit, pinned so it isn't mistaken for a regression later: matching is word overlap, so a
+    /// fact saved in one language is NOT reachable from a question in another. `RememberTool` asks the model
+    /// to save in the user's language — that, not the tokenizer, is what keeps both sides in one vocabulary.
+    func testCrossLanguageIsNotMatched() {
+        let english = fact("The user's name is Dong")
+        XCTAssertTrue(MemoryRanking.rank([english], query: "我叫什么名字？", limit: 5).isEmpty)
+    }
+}

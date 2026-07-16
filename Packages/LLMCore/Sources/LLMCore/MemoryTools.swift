@@ -23,8 +23,15 @@ public struct RememberTool: Tool {
                               + "constraint (allergy, deadline, the tools they use), or context that will "
                               + "still matter next week. Save it in the same turn they say it — don't wait "
                               + "to be asked. Do NOT save one-off chatter, or things they merely asked about.",
+                   // "In the user's own language" is load-bearing, not politeness: a fact is retrieved by
+                   // word overlap with the user's question, so one saved in English is unreachable from a
+                   // question asked in Chinese. The example is bilingual for the same reason — a lone
+                   // English example steers the model into English notes for every user.
                    parameters: [ToolParam(name: "text", kind: .string,
-                                          description: "One self-contained fact, e.g. \"The user's dog is named Momo\"")])
+                                          description: "One self-contained fact, written in the user's own "
+                                                     + "language — the words they'd use to ask about it "
+                                                     + "later. E.g. \"The user's dog is named Momo\" / "
+                                                     + "\"用户的狗叫 Momo\"")])
     }
 
     public func execute(argumentsJSON: String) async -> String {

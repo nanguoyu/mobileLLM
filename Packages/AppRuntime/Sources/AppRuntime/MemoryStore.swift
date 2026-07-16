@@ -45,12 +45,32 @@ public struct MemoryFact: Codable, Sendable, Hashable, Identifiable {
 /// tool-private function; the store and the injector need the same answer, not a lookalike).
 public enum MemoryRanking {
 
+    /// Split a query into words. Uses Foundation's ICU word segmentation rather than splitting on
+    /// non-alphanumerics, because that rule cannot see a word boundary in a language without spaces: every
+    /// CJK character is `isLetter`, so "我叫什么名字" came out as ONE token and `contains` it against a saved
+    /// fact was never true. Chinese queries therefore scored 0 against every fact and the injected memory
+    /// block was always nil — memory looked dead in Chinese while working in English. ICU segments it to
+    /// ["我","叫","什么","名字"], and "名字" matches.
+    ///
+    /// `.byWords` without `.localized` on purpose: this ranker is shared by the store, the `recall` tool and
+    /// the injector, so it must give the same answer regardless of the device's locale (and its tests must
+    /// be stable). Verified to segment zh / ja / mixed CJK+Latin identically either way.
+    static func tokenize(_ query: String) -> [String] {
+        var tokens: [String] = []
+        query.enumerateSubstrings(in: query.startIndex..<query.endIndex, options: .byWords) { word, _, _, _ in
+            if let w = word?.lowercased(), !w.isEmpty { tokens.append(w) }
+        }
+        return tokens
+    }
+
     /// A fact scores by how many query tokens it contains (case-insensitive substring), ties broken
     /// newest-first, capped at `limit`. A blank query returns the most recent facts. Pure + unit-tested.
-    /// (Deliberately simple: no stemming or fuzzy matching.)
+    /// (Deliberately simple: no stemming or fuzzy matching — so a fact saved in one language is not found
+    /// by a question asked in another. `RememberTool` tells the model to save in the user's own language,
+    /// which is what keeps the two sides in the same vocabulary.)
     public static func rank(_ facts: [MemoryFact], query: String, limit: Int) -> [MemoryFact] {
         let byRecency = facts.sorted { $0.createdAt > $1.createdAt }
-        let tokens = query.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        let tokens = tokenize(query)
         guard !tokens.isEmpty else { return Array(byRecency.prefix(limit)) }
         let scored: [(fact: MemoryFact, score: Int)] = byRecency.compactMap { fact in
             let hay = fact.text.lowercased()
