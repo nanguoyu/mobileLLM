@@ -118,6 +118,21 @@ public actor ConversationStore {
         try? FileManager.default.removeItem(at: fileURL(for: id))
     }
 
+    /// Hard-delete every tombstone whose deletion is older than `age` (the retention window) — the
+    /// privacy promise that a soft-deleted chat doesn't linger on disk indefinitely. Returns the swept
+    /// ids. `now` is injectable for tests. Live (non-tombstoned) threads are never touched.
+    @discardableResult
+    public func sweepExpiredTombstones(olderThan age: TimeInterval, now: Date = Date()) async -> [UUID] {
+        var swept: [UUID] = []
+        for entry in await index.load() {
+            if let deletedAt = entry.deletedAt, now.timeIntervalSince(deletedAt) >= age {
+                try? await hardDelete(entry.id)
+                swept.append(entry.id)
+            }
+        }
+        return swept
+    }
+
     /// Remove every conversation + index (Settings → Delete all data).
     public func deleteAll() async throws {
         for entry in await index.load() {

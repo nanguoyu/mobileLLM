@@ -21,6 +21,10 @@ public final class ChatStore {
     public var draft: String = ""
     /// Live in-flight turn; `nil` when idle.
     public private(set) var streaming: StreamingState?
+    /// The id of the assistant message currently streaming, published separately from `streaming` so the
+    /// thread list can decide *which* row is live WITHOUT re-reading the per-token `streaming` struct —
+    /// only this leaf changes at start/stop, so the whole `ForEach` no longer re-diffs on every token.
+    public private(set) var streamingMessageID: UUID?
     /// The model the engine is loaded with (kept in sync with `ModelManager.active` at the app shell).
     public var activeModel: LoadedModel?
     /// The composer's per-thread thinking toggle (seeded from Settings' default).
@@ -37,6 +41,17 @@ public final class ChatStore {
     /// so the value type stays `Equatable`.
     private var bannerAction: (@MainActor () -> Void)?
     private var bannerDismissTask: Task<Void, Never>?
+    /// Conversations whose last autosave threw (disk full / unwritable), keyed by id so a Retry can
+    /// re-persist exactly what failed. A save success clears its entry.
+    private var pendingSaveFailures: [UUID: Conversation] = [:]
+    /// The id of the save-failure banner currently on screen, so a burst of failures shows ONE banner
+    /// (not one per turn) yet a later failure — after the banner is gone — surfaces a fresh one.
+    private var persistFailureBannerID: UUID?
+    /// How long a soft-deleted conversation stays undoable in-session before its file is purged from disk
+    /// (the privacy promise — a deleted chat mustn't linger). Matches the Undo banner's auto-dismiss.
+    static let undoWindow: TimeInterval = 5
+    /// Tombstones older than this are swept (hard-deleted) on the next `load()`.
+    static let tombstoneRetention: TimeInterval = 24 * 60 * 60
     /// Set by the app shell: reloads the active model if it was suspended to free memory while idle.
     /// Awaited right before generation, so a suspended big model comes back on the next send.
     public var ensureModelReady: (@Sendable () async -> Void)?
@@ -52,8 +67,10 @@ public final class ChatStore {
 
     // MARK: - Loading
 
-    /// Hydrate the mirror from disk (call once at launch).
+    /// Hydrate the mirror from disk (call once at launch). Sweeps stale tombstones first so a deleted
+    /// chat doesn't survive on disk past its retention window (DESIGN §2.4 — the privacy promise).
     public func load() async {
+        await store.sweepExpiredTombstones(olderThan: Self.tombstoneRetention)
         conversations = await store.loadAllLive().sorted(by: Self.recency)
         if activeID == nil { activeID = conversations.first?.id }
     }
@@ -76,16 +93,19 @@ public final class ChatStore {
 
     // MARK: - Conversation lifecycle
 
-    /// Create + activate a fresh conversation for the current model (no-op if the newest thread is
-    /// already an empty, unused one).
+    /// Create + activate a fresh conversation (no-op if the newest thread is already an empty, unused
+    /// one). Deliberately does NOT require a resident model — a flagship lets you create and browse
+    /// threads model-less and gates only SENDING (`send`/`canSend`), so the pencil + empty-state CTA are
+    /// never dead. The record seeds its model id from the active model, else the default (its real model
+    /// is stamped on the first send).
     @discardableResult
     public func newConversation() -> Conversation? {
-        guard let m = activeModel else { return nil }
         if let existing = conversations.first(where: { $0.messages.isEmpty }) {
             activeID = existing.id
             return existing
         }
-        let convo = Conversation(modelID: m.model.id, variantID: m.variant.id)
+        let convo = Conversation(modelID: activeModel?.model.id ?? settings.defaultModelID,
+                                 variantID: activeModel?.variant.id ?? "")
         conversations.insert(convo, at: 0)
         activeID = convo.id
         return convo
@@ -116,22 +136,55 @@ public final class ChatStore {
     }
 
     /// Soft-delete with an Undo affordance (DESIGN §4 — irreversible loss gets undo, not just confirm).
+    /// Rolls the mirror back if the on-disk tombstone write fails (so mirror and disk never diverge), and
+    /// schedules a hard-delete once the Undo window lapses so a "deleted" chat doesn't linger on disk.
     public func delete(_ id: UUID) {
         guard let removed = conversations.first(where: { $0.id == id }) else { return }
+        let previousActive = activeID
         conversations.removeAll { $0.id == id }
         if activeID == id { activeID = conversations.first?.id }
-        Task { try? await store.softDelete(id) }
-        showToast(Toast("Conversation deleted", actionTitle: "Undo", autoDismiss: 5), action: { [weak self] in
-            self?.restore(removed)
-        })
+        // Optimistic: offer Undo instantly. The disk write + failure-rollback happen behind it.
+        showToast(Toast("Conversation deleted", actionTitle: "Undo", autoDismiss: Self.undoWindow),
+                  action: { [weak self] in self?.restore(removed) })
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await self.store.softDelete(id)
+                self.scheduleTombstoneSweep(id)
+            } catch {
+                // Roll the mirror back — disk still has it live, so the list must too (guarded so a race
+                // with a just-tapped Undo can't double-insert it).
+                if !self.conversations.contains(where: { $0.id == id }) {
+                    self.conversations.append(removed)
+                    self.conversations.sort(by: Self.recency)
+                    self.activeID = previousActive
+                }
+                self.showToast(Toast("Couldn't delete the conversation.", kind: .error, autoDismiss: 4))
+            }
+        }
     }
 
     private func restore(_ convo: Conversation) {
-        Task {
-            try? await store.restore(convo.id)
-            conversations.append(convo)
-            conversations.sort(by: Self.recency)
-            activeID = convo.id
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await self.store.restore(convo.id)   // only re-add on success, else mirror/disk diverge
+                self.conversations.append(convo)
+                self.conversations.sort(by: Self.recency)
+                self.activeID = convo.id
+            } catch {
+                self.showToast(Toast("Couldn't restore the conversation.", kind: .error, autoDismiss: 4))
+            }
+        }
+    }
+
+    /// Purge a soft-deleted conversation's file once its in-session Undo window has passed — unless it was
+    /// undone (restored back into the mirror). Keeps the tombstone honest without stranding data on disk.
+    private func scheduleTombstoneSweep(_ id: UUID) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64((Self.undoWindow + 0.5) * 1_000_000_000))
+            guard let self, !self.conversations.contains(where: { $0.id == id }) else { return }
+            try? await self.store.hardDelete(id)
         }
     }
 
@@ -150,6 +203,11 @@ public final class ChatStore {
         // Auto-title from the first user line (model-summarized titling is TODO(v1.0)).
         if conversations[idx].messages.filter({ $0.role == .user }).count == 1 {
             conversations[idx].title = Self.autoTitle(from: text)
+            // Stamp the model that's actually answering — a thread created model-less carries a placeholder.
+            if let m = activeModel {
+                conversations[idx].modelID = m.model.id
+                conversations[idx].variantID = m.variant.id
+            }
         }
         let assistant = Message(role: .assistant, answer: "", parentID: user.id)
         conversations[idx].messages.append(assistant)
@@ -170,6 +228,19 @@ public final class ChatStore {
         conversations[ci].messages.append(fresh)
         conversations[ci].updatedAt = Date()
         startGeneration(assistantID: fresh.id, in: conversations[ci].id)
+    }
+
+    /// True when `id` is the newest assistant turn in `convo` — regenerating it discards nothing after it,
+    /// so it can stay one-tap; regenerating an earlier one silently drops later turns and needs a confirm.
+    public func isLastAssistantMessage(_ id: UUID, in convo: Conversation) -> Bool {
+        convo.messages.last(where: { $0.role == .assistant })?.id == id
+    }
+
+    /// How many later turns regenerating the assistant message `id` would drop (everything after it).
+    public func discardedTurnCount(regeneratingFrom id: UUID) -> Int {
+        guard let convo = activeConversation,
+              let mi = convo.messages.firstIndex(where: { $0.id == id }) else { return 0 }
+        return convo.messages.count - (mi + 1)
     }
 
     /// Edit a user turn and resend: truncate from it, replace the text, and regenerate (branch pager
@@ -193,6 +264,7 @@ public final class ChatStore {
         var state = StreamingState(messageID: assistantID)
         state.phase = .warming
         streaming = state
+        streamingMessageID = assistantID
 
         let history = convo.messages.filter { $0.id != assistantID }
         // "Hidden" thinking ⇒ don't GENERATE reasoning. This model's think-boundary isn't a literal
@@ -227,7 +299,7 @@ public final class ChatStore {
             } catch is CancellationError {
                 self?.finalizeIfNeeded(stopReason: .cancelled)
             } catch {
-                self?.finalizeIfNeeded(stopReason: .cancelled)
+                self?.finalizeIfNeeded(stopReason: .cancelled, failed: true)
                 self?.present(error)
             }
         }
@@ -292,16 +364,17 @@ public final class ChatStore {
 
     /// Commit the streamed reasoning/answer into the assistant message + autosave. Called on `.done`,
     /// on clean stream end, and on Stop/cancel (which always commits the partial — never discards).
-    private func finalizeIfNeeded(stopReason: StopReason) {
+    private func finalizeIfNeeded(stopReason: StopReason, failed: Bool = false) {
         guard streaming != nil else { return }   // already committed by `.done`
-        commit(stopReason: stopReason, stats: nil)
+        commit(stopReason: stopReason, stats: nil, failed: failed)
     }
 
-    private func commit(stopReason: StopReason, stats: Stats?) {
+    private func commit(stopReason: StopReason, stats: Stats?, failed: Bool = false) {
         guard let state = streaming,
               let ci = conversations.firstIndex(where: { $0.messages.contains { $0.id == state.messageID } }),
               let mi = conversations[ci].messages.firstIndex(where: { $0.id == state.messageID }) else {
             streaming = nil
+            streamingMessageID = nil
             return
         }
         conversations[ci].messages[mi].answer = state.answer
@@ -310,12 +383,21 @@ public final class ChatStore {
         conversations[ci].messages[mi].thinkingSeconds =
             state.reasoning.isEmpty ? nil : (state.thinkingDuration ?? state.thinkingStartedAt.map { Date().timeIntervalSince($0) })
         conversations[ci].messages[mi].toolRuns = state.toolActivity.isEmpty ? nil : state.toolActivity
-        conversations[ci].messages[mi].stats = stats ?? Stats(
-            promptTokens: 0, genTokens: 0, promptTPS: 0,
-            tokensPerSecond: 0, peakMemoryBytes: 0, stopReason: stopReason)
+        if state.answer.isEmpty {
+            // Nothing was generated — do NOT fake a "0 tok · stop:…" stats line (the ghost reply). Mark
+            // the outcome so the row renders a compact Stopped / Failed — Retry instead.
+            conversations[ci].messages[mi].emptyOutcome = failed ? .failed : .stopped
+            conversations[ci].messages[mi].stats = nil
+        } else {
+            conversations[ci].messages[mi].emptyOutcome = nil
+            conversations[ci].messages[mi].stats = stats ?? Stats(
+                promptTokens: 0, genTokens: 0, promptTPS: 0,
+                tokensPerSecond: 0, peakMemoryBytes: 0, stopReason: stopReason)
+        }
         conversations[ci].updatedAt = Date()
         let convo = conversations[ci]
         streaming = nil
+        streamingMessageID = nil
         genTask = nil
         conversations.sort(by: Self.recency)
         persist(convo)
@@ -336,10 +418,11 @@ public final class ChatStore {
         // The meter must show the cap the engine actually runs at, not the requested one.
         let cap = settings.effectiveContext(for: activeModel?.model)
         guard let convo = activeConversation else { return (0, cap) }
-        var used = max(1, settings.systemPrompt.count / 4)
-        if settings.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { used = 0 }
+        // CJK-aware throughout (`TokenEstimate`) so a Chinese thread's meter isn't ~3× under.
+        let system = settings.systemPrompt
+        var used = system.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : TokenEstimate.tokens(in: system)
         for message in convo.messages where !message.answer.isEmpty { used += message.approximateTokens }
-        used += streaming.map { max(0, ($0.answer.count + $0.reasoning.count) / 4) } ?? 0
+        used += streaming.map { TokenEstimate.tokens(in: $0.answer) + TokenEstimate.tokens(in: $0.reasoning) } ?? 0
         return (used, cap)
     }
 
@@ -385,7 +468,34 @@ public final class ChatStore {
     // MARK: - Persistence
 
     private func persist(_ conversation: Conversation) {
-        Task { try? await store.save(conversation) }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await self.store.save(conversation)
+                self.pendingSaveFailures[conversation.id] = nil   // this thread is safe on disk again
+            } catch {
+                // Disk full / unwritable: don't lose the turn silently. Remember it for Retry and surface
+                // one banner for the burst.
+                self.pendingSaveFailures[conversation.id] = conversation
+                self.surfacePersistFailure()
+            }
+        }
+    }
+
+    /// One save-failure banner per burst: suppressed while its banner is still on screen, re-shown once
+    /// that banner is gone and a later save fails.
+    private func surfacePersistFailure() {
+        if let id = persistFailureBannerID, banner?.id == id { return }
+        let toast = Toast("Couldn't save changes — the device may be out of storage.",
+                          kind: .error, actionTitle: "Retry", autoDismiss: nil)
+        persistFailureBannerID = toast.id
+        showToast(toast, action: { [weak self] in self?.retryPersist() })
+    }
+
+    private func retryPersist() {
+        let pending = Array(pendingSaveFailures.values)
+        pendingSaveFailures.removeAll()
+        for convo in pending { persist(convo) }
     }
 
     // MARK: - Pure helpers (unit-tested)
@@ -398,7 +508,7 @@ public final class ChatStore {
         var systemTokens = 0
         if let prompt = systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines), !prompt.isEmpty {
             systemTurn = ChatTurn(role: .system, content: prompt)
-            systemTokens = max(1, prompt.count / 4)
+            systemTokens = TokenEstimate.tokens(in: prompt)   // CJK-aware, matching the per-message estimate
         }
         let candidates = messages.filter { $0.role != .system && !$0.answer.isEmpty }
         var budget = max(0, cap - systemTokens)

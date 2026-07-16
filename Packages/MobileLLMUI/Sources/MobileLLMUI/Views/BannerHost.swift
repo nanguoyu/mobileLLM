@@ -30,18 +30,19 @@ struct BannerHost: ViewModifier {
                 .foregroundStyle(Theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: Theme.Space.sm)
+            // Show the forward action AND the dismiss together — an action-carrying sticky banner (a
+            // non-auto-dismissing error with "Retry"/"Switch to 8B") was previously undismissable.
             if let title = toast.actionTitle {
                 Button(title) { chat.runBannerAction() }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.accent)
                     .buttonStyle(.plain)
-            } else {
-                Button { chat.dismissBanner() } label: {
-                    Image(systemName: "xmark").font(.caption.weight(.semibold)).foregroundStyle(Theme.textTertiary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss")
             }
+            Button { chat.dismissBanner() } label: {
+                Image(systemName: "xmark").font(.caption.weight(.semibold)).foregroundStyle(Theme.textTertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, Theme.Space.lg).padding(.vertical, Theme.Space.md)
         .background(Theme.surface, in: Capsule())

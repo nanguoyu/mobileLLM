@@ -25,10 +25,17 @@ final class AppUITests: XCTestCase {
         XCTAssertEqual(Theme.Space.xxl, 28)
     }
 
+    func testLayoutWidthTokens() {
+        // Reading + form measures — lock them so views adopting the tokens can't silently drift.
+        XCTAssertEqual(Theme.Layout.readingColumn, 700)
+        XCTAssertEqual(Theme.Layout.form, 640)
+    }
+
     func testControlsConstruct() {
         // Compile-coverage: the ported controls exist with their public initializers.
         _ = Chip(text: "1-bit")
         _ = Chip(text: "Ternary", filled: true)
+        _ = Chip(text: "Q4_K_M", filled: false, size: .small)
         _ = StudioButtonStyle(.primary)
         _ = StudioButtonStyle(.secondary)
         _ = DotLabelStyle()

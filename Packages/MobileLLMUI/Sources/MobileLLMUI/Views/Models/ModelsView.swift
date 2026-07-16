@@ -69,6 +69,7 @@ struct ModelsView: View {
     private var featuredScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.md) {
+                if models.installed.isEmpty { firstRunHeader }
                 storageHeader
                 searchField
                 filterChips
@@ -81,6 +82,35 @@ struct ModelsView: View {
             .frame(maxWidth: 720)
             .frame(maxWidth: .infinity)
         }
+    }
+
+    /// First-run guidance (DESIGN §4): nothing is installed yet, so make the very first action obvious —
+    /// a pinned card for the device-recommended model with a one-tap "Get started" download.
+    private var firstRunHeader: some View {
+        let model = models.recommendedModel
+        let variant = AppSettings.preferredVariant(for: model, device: models.device,
+                                                   preference: settings.enginePreference,
+                                                   context: settings.contextLength)
+        let downloading = models.isDownloading(variant)
+        return VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            Label("Get started", systemImage: "sparkles")
+                .font(.headline).foregroundStyle(Theme.textPrimary)
+            Text("Download \(model.displayName) to start chatting on-device. Everything runs locally — "
+                 + "no account, and nothing leaves your device.")
+                .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button { models.download(variant) } label: {
+                Label(downloading ? "Downloading \(model.displayName)…"
+                                  : "Get \(model.displayName) · \(Format.bytes(variant.onDiskBytes))",
+                      systemImage: "arrow.down.circle.fill")
+            }
+            .buttonStyle(StudioButtonStyle(.primary))
+            .disabled(downloading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .studioCard()
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
+            .strokeBorder(Theme.accent.opacity(0.4), lineWidth: 1))
     }
 
     // MARK: Family sections
@@ -284,11 +314,18 @@ struct ModelCard: View {
                     .overlay(Capsule().strokeBorder(Theme.hairline))
                     .accessibilityLabel("Model supports \(m.label) input")
             }
-            Text("· text-only here for now")
+            Text(modalityFootnote)
                 .font(.caption2).foregroundStyle(Theme.textTertiary)
                 .lineLimit(1).minimumScaleFactor(0.8)
             Spacer(minLength: 0)
         }
+    }
+
+    /// Honest modality status: image input over llama.cpp's mmproj is landing next wave for GGUF vision
+    /// models, so say so for those; MLX vision + audio aren't wired, so they stay "text-only".
+    private var modalityFootnote: String {
+        let ggufVision = model.architecture.modalities.contains(.vision) && !model.variants(for: .llamaCpp).isEmpty
+        return ggufVision ? "· image input coming soon (GGUF); text-only today" : "· text-only here for now"
     }
 
     private var header: some View {
@@ -438,6 +475,15 @@ struct ModelCard: View {
         }
     }
 
+    /// This variant is the one currently loading (the user tapped Use / Try anyway).
+    private var isActivating: Bool { models.activatingVariantID == variant.id }
+    /// An activation is in flight somewhere — every Use button disables so a second tap can't re-enter it.
+    private var activationBusy: Bool { models.activatingVariantID != nil }
+    private var loadingLabel: String {
+        if let p = models.loadProgress { return "Loading \(Int(p * 100))%" }
+        return "Loading…"
+    }
+
     @ViewBuilder private var installedRow: some View {
         HStack(spacing: Theme.Space.sm) {
             if isActive {
@@ -449,16 +495,27 @@ struct ModelCard: View {
                 Button {
                     onUse(model, variant, presentation == .experimental)
                 } label: {
-                    Label(presentation == .experimental ? "Try anyway" : "Use",
-                          systemImage: presentation == .experimental ? "exclamationmark.triangle" : "bolt.fill")
+                    if isActivating {
+                        HStack(spacing: Theme.Space.xs) {
+                            ProgressView().controlSize(.small).tint(Theme.onAccent)
+                            Text(loadingLabel)
+                        }
+                    } else {
+                        Label(presentation == .experimental ? "Try anyway" : "Use",
+                              systemImage: presentation == .experimental ? "exclamationmark.triangle" : "bolt.fill")
+                    }
                 }
                 .buttonStyle(StudioButtonStyle(.primary))
+                // Disable every Use while a load is running (per-variant spinner shows which one).
+                .disabled(activationBusy)
+                .accessibilityLabel(isActivating ? "Loading \(model.displayName)"
+                                    : (presentation == .experimental ? "Try \(model.displayName) anyway" : "Use \(model.displayName)"))
             }
             Spacer()
             Button(role: .destructive) { onDelete(variant) } label: {
                 Image(systemName: "trash").foregroundStyle(Theme.textSecondary)
             }
-            .buttonStyle(.plain).accessibilityLabel("Delete \(model.displayName)")
+            .buttonStyle(.plain).disabled(isActivating).accessibilityLabel("Delete \(model.displayName)")
         }
     }
 

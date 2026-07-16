@@ -23,6 +23,11 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
         case system, user, assistant
     }
 
+    /// Why an assistant turn ended with no answer text — the user tapped Stop, or generation errored.
+    /// Drives the compact "Stopped / Failed — Retry" row instead of a ghost "0 tok" stats line. Optional
+    /// → older records (and every normal turn) decode as nil.
+    public enum EmptyOutcome: String, Codable, Sendable, Equatable { case stopped, failed }
+
     public let id: UUID
     public var role: Role
     public var createdAt: Date
@@ -30,6 +35,9 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
     public var answer: String
     /// The `<think>` reasoning, if the turn produced any (nil for user/system turns).
     public var reasoning: String?
+    /// Set when an assistant turn committed with an empty answer (interrupted before the first token or
+    /// failed). nil for every turn that produced text.
+    public var emptyOutcome: EmptyOutcome?
     /// Wall-clock the model spent inside its `<think>` block, persisted so the collapsed reasoning tile
     /// shows an honest "Thought for Xs" (optional → old records without it decode as nil).
     public var thinkingSeconds: Double?
@@ -43,7 +51,8 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
 
     public init(id: UUID = UUID(), role: Role, createdAt: Date = Date(),
                 answer: String, reasoning: String? = nil, thinkingSeconds: Double? = nil,
-                toolRuns: [ToolRun]? = nil, stats: Stats? = nil, parentID: UUID? = nil) {
+                toolRuns: [ToolRun]? = nil, stats: Stats? = nil, parentID: UUID? = nil,
+                emptyOutcome: EmptyOutcome? = nil) {
         self.id = id
         self.role = role
         self.createdAt = createdAt
@@ -53,10 +62,12 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
         self.toolRuns = toolRuns
         self.stats = stats
         self.parentID = parentID
+        self.emptyOutcome = emptyOutcome
     }
 
-    /// A rough char→token proxy (matches `MockLLMEngine`), used for context-window trimming.
-    var approximateTokens: Int { max(1, answer.count / 4) }
+    /// A CJK-aware token estimate (`LLMCore.TokenEstimate`) used for context-window trimming — the old
+    /// `count / 4` under-counted Chinese/Japanese/Korean ~3× and let the window silently overrun.
+    var approximateTokens: Int { TokenEstimate.tokens(in: answer) }
 }
 
 /// A chat thread (DESIGN §2.4). Persisted one-record-per-file by `ConversationStore`; a lightweight

@@ -5,14 +5,18 @@ import AppUI
 import LLMCore
 
 /// The quick model switcher (DESIGN §4): the active model is a header tap-target that opens this
-/// sheet to activate any installed model, or points at Models to download one.
+/// sheet to activate any installed model, or points at Models to download one. A tapped row shows an
+/// inline spinner and the sheet stays up until the load succeeds (then dismisses) or fails (stays, so
+/// you can pick another) — never a silent dismiss into a still-loading model.
 struct ModelSwitcherSheet: View {
     let container: AppContainer
     var onOpenModels: () -> Void
     @Environment(\.dismiss) private var dismiss
+    /// The variant this sheet kicked off (drives the row spinner + the dismiss-on-success).
+    @State private var activating: String?
 
     private var installed: [(LLMModel, LLMVariant)] {
-        container.models.catalog.flatMap { model in
+        container.models.allModels.flatMap { model in
             model.variants.filter { container.models.isInstalled($0) }.map { (model, $0) }
         }
     }
@@ -47,14 +51,23 @@ struct ModelSwitcherSheet: View {
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 360)
         #endif
+        // Success: the model we kicked off is now resident → close the sheet.
+        .onChange(of: container.models.active?.variant.id) { _, newID in
+            if let activating, newID == activating { dismiss() }
+        }
+        // Failure: activation ended without becoming resident → stop the spinner, keep the sheet up.
+        .onChange(of: container.models.activatingVariantID) { _, current in
+            if current == nil, container.models.active?.variant.id != activating { activating = nil }
+        }
     }
 
     private func row(_ model: LLMModel, _ variant: LLMVariant) -> some View {
         let isActive = container.models.active?.variant.id == variant.id
+        let isActivating = activating == variant.id || container.models.activatingVariantID == variant.id
         let presentation = container.models.fitPresentation(model, variant, context: container.settings.contextLength)
         return Button {
+            activating = variant.id
             container.activate(model, variant: variant, force: presentation == .experimental)
-            dismiss()
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -64,7 +77,9 @@ struct ModelSwitcherSheet: View {
                         .font(.caption).foregroundStyle(Theme.textSecondary)
                 }
                 Spacer()
-                if isActive {
+                if isActivating {
+                    ProgressView().controlSize(.small).tint(Theme.accent)
+                } else if isActive {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
                 } else {
                     LLMFitBadge(presentation: presentation)
@@ -73,8 +88,10 @@ struct ModelSwitcherSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(container.models.activatingVariantID != nil)
         .listRowBackground(isActive ? Theme.accentSoft : Color.clear)
         .accessibilityLabel("\(model.displayName), \(variant.quant.displayName), \(variant.engine.label)")
+        .accessibilityValue(isActivating ? "Loading" : (isActive ? "Active" : ""))
         .accessibilityAddTraits(isActive ? [.isSelected] : [])
     }
 }

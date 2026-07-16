@@ -58,12 +58,13 @@ struct SettingsView: View {
                 Text("Default model").font(.subheadline).foregroundStyle(Theme.textSecondary)
                 Spacer()
                 Menu {
-                    ForEach(container.models.catalog) { model in
+                    // Spans adopted community models too, so a downloaded Explore model can be the default.
+                    ForEach(container.models.allModels) { model in
                         Button(model.displayName) { settings.defaultModelID = model.id }
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text(LLMCatalog.model(id: settings.defaultModelID)?.displayName ?? "Choose")
+                        Text(container.models.model(id: settings.defaultModelID)?.displayName ?? "Choose")
                             .font(.subheadline).foregroundStyle(Theme.accent)
                         Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(Theme.textTertiary)
                     }
@@ -185,7 +186,8 @@ struct SettingsView: View {
                         }
                         .fixedSize()
                     }
-                    Text("4-bit KV keeps context memory low with little quality cost — the main memory lever.")
+                    Text("4-bit KV keeps context memory low with little quality cost — the main memory lever. "
+                         + "It's active on both engines; a change takes effect from your next message.")
                         .font(.caption).foregroundStyle(Theme.textTertiary)
                 }
                 .padding(.top, Theme.Space.xs)
@@ -228,9 +230,9 @@ struct SettingsView: View {
         }
     }
 
-    /// The model the ladder is measured against — whatever a new chat will actually load.
+    /// The model the ladder is measured against — whatever a new chat will actually load (adopted too).
     private var contextModel: LLMModel? {
-        LLMCatalog.model(id: settings.defaultModelID) ?? container.models.active?.model
+        container.models.model(id: settings.defaultModelID) ?? container.models.active?.model
     }
 
     /// Green / amber / red per rung. `.tight` alone isn't the answer — it's returned both for "runs, but
@@ -280,9 +282,9 @@ struct SettingsView: View {
 
     private var privacySection: some View {
         section("Data & Privacy", icon: "lock.shield") {
-            Text("Everything is on-device. Your chats, prompts, and the model all stay on this device — "
-                 + "nothing is sent to a server, and there's no account.")
+            Text(privacyBlurb)
                 .font(.caption).foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             row("Conversations on disk", Format.bytes(storageBytes))
             Button { Task { await exportAll() } } label: {
                 Label("Export all chats (JSON)", systemImage: "square.and.arrow.up")
@@ -295,6 +297,21 @@ struct SettingsView: View {
         }
     }
 
+    /// Honest privacy copy: local by default, but tell the truth about what Tools can send and only when.
+    /// Claiming "nothing is sent to a server" is false the moment a tool call reaches Wikipedia or an MCP
+    /// server, so the sentence changes with the Tools setting.
+    private var privacyBlurb: String {
+        let base = "Your chats, prompts, and the models stay on this device — there's no account and no telemetry."
+        guard settings.toolsEnabled else {
+            return base + " Nothing is sent to a server. (Turning on Tools lets the model reach Wikipedia, or "
+                 + "an MCP server you configure, but only when it invokes that tool.)"
+        }
+        let hasMCP = settings.mcpServers.contains(where: \.isEnabled)
+        return base + " Tools are on: when the model uses one, it sends that query or its arguments to that "
+             + "endpoint — Wikipedia for a lookup"
+             + (hasMCP ? ", or an MCP server you've enabled." : " (and any MCP server you add).")
+    }
+
     // MARK: About
 
     private var aboutSection: some View {
@@ -302,8 +319,9 @@ struct SettingsView: View {
             row("Version", appVersion)
             row("Engine", "Pure Swift · MLX + llama.cpp")
             Text("A private, open-source runner for open-weight language models — everything runs on your "
-                 + "device, nothing is sent to a server. Each model's provider and license are shown on "
-                 + "its card in Models.")
+                 + "device by default, with no account. The optional Tools feature can reach Wikipedia or "
+                 + "MCP servers you configure, only when the model calls them. Each model's provider and "
+                 + "license are shown on its card in Models.")
                 .font(.caption).foregroundStyle(Theme.textTertiary)
         }
     }
@@ -392,6 +410,25 @@ struct SettingsView: View {
         .accessibilityValue("\(value.wrappedValue)")
     }
 }
+
+#if os(macOS)
+/// The content of the macOS Settings scene (⌘,). Public so the App's `Settings { }` scene can host the
+/// (internal) `SettingsView` with the app's tint + appearance applied. `NavigationStack` gives the sheets
+/// it presents (MCP servers) a bar to hang their Done button on.
+public struct MacSettingsWindow: View {
+    private let container: AppContainer
+    public init(container: AppContainer) { self.container = container }
+    public var body: some View {
+        NavigationStack {
+            SettingsView(container: container)
+        }
+        .frame(minWidth: 480, minHeight: 560)
+        .tint(Theme.accent)
+        .background(Theme.bg)
+        .preferredColorScheme(container.settings.appearance.colorScheme)
+    }
+}
+#endif
 
 #if DEBUG
 #Preview("Settings") {

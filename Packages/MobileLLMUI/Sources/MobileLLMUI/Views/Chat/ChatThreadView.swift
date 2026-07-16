@@ -12,26 +12,38 @@ private struct BottomOffsetKey: PreferenceKey {
 }
 
 /// The message list + streaming surface (DESIGN §4). User turns are right-aligned bubbles; assistant
-/// turns are full-width document text. Sticky-bottom autoscroll with a "⌄ new" pill when scrolled
-/// away; warming shimmer before the first token.
+/// turns are full-width document text. History ALWAYS renders (a suspended/absent model never hides the
+/// thread); a distinct loading state owns a cold-start load; sticky-bottom autoscroll with a "⌄ new"
+/// pill when scrolled away.
 struct ChatThreadView: View {
-    @Bindable var chat: ChatStore
+    let chat: ChatStore
     let displayMode: ThinkingDisplayMode
+    /// A model is loading (cold start / switch) — shown as its own state, never as "no model".
+    var isLoadingModel: Bool = false
+    /// Best-effort name of the model being loaded (for the loading state).
+    var loadingModelName: String = "your model"
     var onOpenModels: () -> Void
 
     @State private var atBottom = true
     @State private var editing: Message?
     @State private var editText = ""
+    /// A mid-history regenerate awaiting confirmation (nil = none pending).
+    @State private var regenTarget: Message?
     private let bottomID = "thread-bottom"
 
     private var conversation: Conversation? { chat.activeConversation }
+    /// Stable across tokens (only flips at generation start/stop), so reading it here never makes the
+    /// whole thread re-diff mid-stream — the live row observes `streaming` on its own.
+    private var isBusy: Bool { chat.streamingMessageID != nil }
 
     var body: some View {
         Group {
-            if !chat.hasModel {
+            if let convo = conversation, !convo.messages.isEmpty {
+                thread(convo)                                  // history first — never hidden by model state
+            } else if isLoadingModel {
+                ModelLoadingState(modelName: loadingModelName) // honest loading, not "no model"
+            } else if !chat.hasModel {
                 NoModelState(onOpenModels: onOpenModels)
-            } else if let convo = conversation, !convo.messages.isEmpty {
-                thread(convo)
             } else {
                 EmptyChatState(modelName: chat.activeModel?.model.displayName ?? "your model") { prompt in
                     chat.draft = prompt
@@ -40,6 +52,18 @@ struct ChatThreadView: View {
             }
         }
         .sheet(item: $editing) { message in editSheet(message) }
+        .alert("Regenerate this reply?",
+               isPresented: Binding(get: { regenTarget != nil }, set: { if !$0 { regenTarget = nil } }),
+               presenting: regenTarget) { message in
+            let n = chat.discardedTurnCount(regeneratingFrom: message.id)
+            Button("Discard \(n) later turn\(n == 1 ? "" : "s")", role: .destructive) {
+                chat.regenerate(assistantMessageID: message.id)
+                regenTarget = nil
+            }
+            Button("Cancel", role: .cancel) { regenTarget = nil }
+        } message: { _ in
+            Text("Regenerating an earlier reply removes every turn after it.")
+        }
     }
 
     // MARK: Thread
@@ -61,18 +85,19 @@ struct ChatThreadView: View {
                             })
                     }
                     .padding(Theme.Space.lg)
-                    .frame(maxWidth: 760, alignment: .leading)
+                    .frame(maxWidth: Theme.Layout.readingColumn, alignment: .leading)
                     .frame(maxWidth: .infinity)
                 }
                 .scrollDismissesKeyboard(.interactively)   // drag the thread down to dismiss the keyboard
                 .coordinateSpace(name: "thread")
                 .background(Theme.bg)
+                // A leaf that alone observes `streaming` and nudges the scroll — throttled, so the thread's
+                // ForEach never re-lays-out for scrolling and streaming stays smooth.
+                .background { AutoScrollFollower(chat: chat, proxy: proxy, bottomID: bottomID, atBottom: atBottom) }
                 .onPreferenceChange(BottomOffsetKey.self) { maxY in
                     atBottom = maxY <= outer.size.height + 40
                 }
-                .onChange(of: streamSignature) { _, _ in
-                    if atBottom { scrollToBottom(proxy) }
-                }
+                .onChange(of: convo.messages.count) { _, _ in scrollToBottom(proxy, animated: false) }
                 .onChange(of: chat.activeID) { _, _ in scrollToBottom(proxy, animated: false) }
                 .onAppear { scrollToBottom(proxy, animated: false) }
                 .overlay(alignment: .bottom) {
@@ -82,20 +107,14 @@ struct ChatThreadView: View {
         }
     }
 
-    /// Changes whenever the visible content grows — drives sticky-bottom autoscroll.
-    private var streamSignature: Int {
-        (conversation?.messages.count ?? 0)
-            &+ (chat.streaming?.answer.count ?? 0)
-            &+ (chat.streaming?.reasoning.count ?? 0)
-    }
-
     @ViewBuilder private func row(_ message: Message) -> some View {
         if message.role == .user {
             UserBubble(message: message,
-                       onEdit: chat.isStreaming ? nil : { beginEdit(message) },
+                       onEdit: isBusy ? nil : { beginEdit(message) },
                        onCopy: { Clipboard.copy(message.answer); chat.showToast(Toast("Copied")) })
-        } else if let streaming = chat.streaming, streaming.messageID == message.id {
-            streamingAssistant(streaming)
+        } else if message.id == chat.streamingMessageID {
+            StreamingRow(chat: chat, displayMode: displayMode,
+                         modelName: chat.activeModel?.model.displayName ?? "Model")
         } else {
             AssistantView(
                 reasoning: message.reasoning ?? "",
@@ -106,25 +125,20 @@ struct ChatThreadView: View {
                 stats: message.stats,
                 modelName: chat.activeModel?.model.displayName ?? "Model",
                 toolRuns: message.toolRuns ?? [],
+                emptyOutcome: message.emptyOutcome,
                 onCopy: { Clipboard.copy(message.answer); chat.showToast(Toast("Copied")) },
-                onRegenerate: chat.isStreaming ? nil : { chat.regenerate(assistantMessageID: message.id) })
+                onRegenerate: isBusy ? nil : { requestRegenerate(message) })
         }
     }
 
-    @ViewBuilder private func streamingAssistant(_ streaming: StreamingState) -> some View {
-        if streaming.phase == .warming && !streaming.hasAnyContent {
-            WarmingShimmer().frame(maxWidth: .infinity, alignment: .leading)
+    /// One-tap regenerate for the newest assistant turn; confirm first when regenerating an earlier one
+    /// (it silently drops every turn after it — DESIGN §4, no unrecoverable surprise).
+    private func requestRegenerate(_ message: Message) {
+        guard let convo = conversation else { return }
+        if chat.isLastAssistantMessage(message.id, in: convo) {
+            chat.regenerate(assistantMessageID: message.id)
         } else {
-            AssistantView(
-                reasoning: streaming.reasoning,
-                answer: streaming.answer,
-                disclosurePhase: streaming.phase == .thinking ? .thinking
-                    : .answered(seconds: streaming.thinkingDuration),
-                displayMode: displayMode,
-                isStreaming: true,
-                stats: nil,
-                modelName: chat.activeModel?.model.displayName ?? "Model",
-                toolRuns: streaming.toolActivity)
+            regenTarget = message
         }
     }
 
@@ -144,7 +158,7 @@ struct ChatThreadView: View {
             atBottom = true
             scrollToBottom(proxy)
         } label: {
-            Label(chat.isStreaming ? "New" : "Latest", systemImage: "chevron.down")
+            Label(isBusy ? "New" : "Latest", systemImage: "chevron.down")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Theme.textPrimary)
                 .padding(.horizontal, Theme.Space.md).padding(.vertical, Theme.Space.xs)
@@ -180,6 +194,7 @@ struct ChatThreadView: View {
                     .font(.caption).foregroundStyle(Theme.textSecondary)
                 TextEditor(text: $editText)
                     .font(.body)
+                    .foregroundStyle(Theme.textPrimary)
                     .frame(minHeight: 140)
                     .padding(Theme.Space.sm)
                     .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
@@ -205,5 +220,84 @@ struct ChatThreadView: View {
         #if os(macOS)
         .frame(minWidth: 440, minHeight: 280)
         #endif
+    }
+}
+
+/// The single live assistant row — the ONLY view that observes the per-token `streaming` state, so the
+/// rest of the thread stays put while it types. Reasoning is throttled to the same ~50 ms gate the
+/// answer uses.
+private struct StreamingRow: View {
+    let chat: ChatStore
+    let displayMode: ThinkingDisplayMode
+    let modelName: String
+
+    @State private var shownReasoning = ""
+    @State private var lastReasoningAt = Date.distantPast
+
+    var body: some View {
+        Group {
+            if let s = chat.streaming {
+                if s.phase == .warming && !s.hasAnyContent {
+                    WarmingShimmer().frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    AssistantView(
+                        reasoning: displayedReasoning(s),
+                        answer: s.answer,
+                        disclosurePhase: s.phase == .thinking ? .thinking
+                            : .answered(seconds: s.thinkingDuration),
+                        displayMode: displayMode,
+                        isStreaming: true,
+                        stats: nil,
+                        modelName: modelName,
+                        toolRuns: s.toolActivity)
+                }
+            }
+        }
+        .onAppear { shownReasoning = chat.streaming?.reasoning ?? "" }
+        .onChange(of: chat.streaming?.reasoning ?? "") { _, new in
+            let now = Date()
+            if now.timeIntervalSince(lastReasoningAt) >= 0.05 || new.count - shownReasoning.count > 24 {
+                shownReasoning = new
+                lastReasoningAt = now
+            }
+        }
+    }
+
+    /// Throttled while thinking; the full text once thinking ends, so the frozen block is exact.
+    private func displayedReasoning(_ s: StreamingState) -> String {
+        s.phase == .thinking ? shownReasoning : s.reasoning
+    }
+}
+
+/// An invisible leaf that follows the stream to the bottom — throttled to ~10 Hz, no animation (a jump,
+/// not an animated scroll, every token). It observes `streaming` so the thread's `ForEach` doesn't have to.
+private struct AutoScrollFollower: View {
+    let chat: ChatStore
+    let proxy: ScrollViewProxy
+    let bottomID: String
+    let atBottom: Bool
+
+    @State private var lastFollowAt = Date.distantPast
+
+    var body: some View {
+        // A full-size but non-interactive clear layer (kept alive by SwiftUI) whose only job is to watch
+        // the stream and nudge the scroll — it must not intercept the thread's scroll gesture.
+        Color.clear
+            .allowsHitTesting(false)
+            .onChange(of: signature) { _, _ in follow() }
+    }
+
+    /// Grows as the live answer/reasoning grows — the only signal that should nudge the scroll.
+    private var signature: Int {
+        guard let s = chat.streaming else { return 0 }
+        return s.answer.count &+ s.reasoning.count
+    }
+
+    private func follow() {
+        guard atBottom else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastFollowAt) >= 0.1 else { return }   // ~10 Hz
+        lastFollowAt = now
+        proxy.scrollTo(bottomID, anchor: .bottom)
     }
 }

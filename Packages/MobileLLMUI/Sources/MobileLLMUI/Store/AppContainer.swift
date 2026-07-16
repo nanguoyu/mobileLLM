@@ -17,6 +17,15 @@ public final class AppContainer {
     public let models: ModelManager
     public let chat: ChatStore
 
+    /// A one-shot navigation intent the shell (RootView) honors and clears — e.g. a "not installed" error
+    /// banner jumping to Models. The container can't push tabs itself (RootView owns the section state).
+    public var navigationRequest: AppSection?
+    /// Raised by the macOS/iPad "Switch Model" menu command; the split shell shows the quick switcher.
+    public var switcherRequested = false
+    /// Guards `bootstrap()` so the App scene + RootView both awaiting it decode sessions / load the default
+    /// model exactly once (DESIGN §2 — the two `.task` sites used to race).
+    private var bootstrapTask: Task<Void, Never>?
+
     public init(engine: any LLMEngine,
                 downloadBase: URL,
                 downloader: @escaping ModelManager.Downloader,
@@ -51,10 +60,21 @@ public final class AppContainer {
     }
 
     /// Load persisted chats + install state, then auto-activate the default model if it's on disk.
+    /// Idempotent: concurrent callers (the App scene and RootView both `.task`-await it at launch) share one
+    /// run, so sessions never decode twice and the default model never loads back-to-back.
     public func bootstrap() async {
-        models.refreshInstalled()
+        if let bootstrapTask { return await bootstrapTask.value }
+        let task = Task { await performBootstrap() }
+        bootstrapTask = task
+        await task.value
+    }
+
+    private func performBootstrap() async {
+        // Merge persisted community (Explore) models before resolving the default, so an adopted default
+        // and the storage/switcher lists see them (DESIGN §2.4). This also rescans install state.
+        await models.loadAdoptedRegistry()
         await chat.load()
-        let model = LLMCatalog.model(id: settings.defaultModelID) ?? models.recommendedModel
+        let model = models.model(id: settings.defaultModelID) ?? models.recommendedModel
         if let variant = bootVariant(for: model) {
             await activateAndSync(model, variant, force: false, announce: false)
         }
@@ -85,24 +105,46 @@ public final class AppContainer {
             syncActive()
             if announce { chat.showToast(Toast("\(model.displayName) is ready", kind: .success)) }
         } catch let error as ModelActivationError {
-            chat.showToast(Toast(error.message, kind: .error, actionTitle: error.forwardTitle, autoDismiss: nil),
-                           action: { [weak self] in self?.handleForwardAction(for: error) })
+            presentActivationError(error, model: model, variant: variant, force: force)
         } catch {
             chat.showToast(Toast(error.localizedDescription, kind: .error, autoDismiss: 4))
         }
     }
 
-    private func handleForwardAction(for error: ModelActivationError) {
+    /// Turn an activation refusal into an actionable banner — never a dead end (DESIGN §2.5). Each carries
+    /// a forward action, so it's always dismissable by acting on it (and the banner host also renders a
+    /// close control for sticky banners).
+    private func presentActivationError(_ error: ModelActivationError, model: LLMModel,
+                                        variant: LLMVariant, force: Bool) {
         switch error {
         case .insufficientMemory:
-            // "Switch to 8B": activate the safe hero if it's installed.
-            let safe = LLMCatalog.bonsai8b
-            if let variant = safe.variant(for: .binary1bit), models.isInstalled(variant) {
-                activate(safe, variant: variant, force: false)
+            // Physically conceivable — the raw weights fit RAM, they're just over the LIVE free headroom
+            // right now? Offer "Try anyway" (forced): the estimate is only an estimate and the device is
+            // the authority. Only when the model can't fit RAM at all do we steer to the safe 8B instead.
+            let conceivable = variant.onDiskBytes + variant.backend.runtimeOverheadBytes
+                <= models.device.physicalMemoryBytes
+            if conceivable, !force {
+                chat.showToast(Toast(error.message, kind: .error, actionTitle: "Try anyway", autoDismiss: nil),
+                               action: { [weak self] in self?.activate(model, variant: variant, force: true) })
+            } else if let safe = safe8BVariant {
+                chat.showToast(Toast(error.message, kind: .error, actionTitle: "Switch to 8B", autoDismiss: nil),
+                               action: { [weak self] in self?.activate(LLMCatalog.bonsai8b, variant: safe, force: false) })
+            } else {
+                chat.showToast(Toast(error.message, kind: .error, autoDismiss: nil))
             }
         case .notInstalled:
-            break   // the Models screen's Download button handles this
+            // The old "Download" forward did nothing. Jump to Models so the user can actually get it.
+            chat.showToast(Toast(error.message, kind: .error, actionTitle: "Open Models", autoDismiss: nil),
+                           action: { [weak self] in self?.navigationRequest = .models })
         }
+    }
+
+    /// The safe iPhone hero's installed variant (for the "Switch to 8B" fallback), or nil if it isn't down.
+    private var safe8BVariant: LLMVariant? {
+        let safe = LLMCatalog.bonsai8b
+        guard let variant = safe.variant(for: .binary1bit) ?? safe.variants.first,
+              models.isInstalled(variant) else { return nil }
+        return variant
     }
 
     /// Mirror the resident model into the chat store so the composer + thread reflect it.

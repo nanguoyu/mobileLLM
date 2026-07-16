@@ -29,10 +29,13 @@ struct ConversationListView: View {
                                 message: "Start a new chat — everything stays on your device.",
                                 actionTitle: "New chat", action: { startNew() })
             } else {
-                list
+                VStack(spacing: 0) {
+                    searchField
+                    list
+                }
+                .background(Theme.bg)
             }
         }
-        .searchable(text: $query, prompt: "Search chats")
         .alert("Rename chat", isPresented: Binding(get: { renaming != nil },
                                                    set: { if !$0 { renaming = nil } })) {
             TextField("Title", text: $renameText)
@@ -42,6 +45,29 @@ struct ConversationListView: View {
                 renaming = nil
             }
         }
+    }
+
+    /// The app's warm search field (replaces the system `.searchable` chrome so search matches the
+    /// ink-wash surface instead of a stark platform bar).
+    private var searchField: some View {
+        HStack(spacing: Theme.Space.sm) {
+            Image(systemName: "magnifyingglass").font(.subheadline).foregroundStyle(Theme.textTertiary)
+            TextField("Search chats", text: $query)
+                .textFieldStyle(.plain)
+                .font(.subheadline)
+                .foregroundStyle(Theme.textPrimary)
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, Theme.Space.md).padding(.vertical, Theme.Space.sm)
+        .background(Theme.surface2, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.hairline))
+        .padding(.horizontal, Theme.Space.lg).padding(.top, Theme.Space.sm).padding(.bottom, Theme.Space.xs)
     }
 
     private var list: some View {
@@ -104,6 +130,7 @@ struct ConversationListView: View {
         .listRowBackground(convo.id == chat.activeID ? Theme.accentSoft : Color.clear)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) { chat.delete(convo.id) } label: { Label("Delete", systemImage: "trash") }
+                .tint(Theme.danger)
         }
         .swipeActions(edge: .leading) {
             Button { chat.togglePin(convo.id) } label: {

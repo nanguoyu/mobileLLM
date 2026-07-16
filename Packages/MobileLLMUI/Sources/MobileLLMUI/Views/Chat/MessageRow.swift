@@ -84,6 +84,40 @@ struct ToolActivityRow: View {
     private var prettyName: String { run.name.replacingOccurrences(of: "_", with: " ").capitalized }
 }
 
+/// A committed assistant turn that produced no answer — the user tapped Stop, or generation failed.
+/// A compact, honest row with a working Retry, in place of the old "0 tok · stop: cancelled" ghost.
+struct EmptyReplyRow: View {
+    let outcome: Message.EmptyOutcome
+    var onRetry: (() -> Void)?
+
+    private var label: String { outcome == .stopped ? "Stopped" : "Couldn't generate a reply" }
+    private var icon: String { outcome == .stopped ? "stop.circle" : "exclamationmark.triangle" }
+    private var tint: Color { outcome == .stopped ? Theme.textTertiary : Theme.danger }
+
+    var body: some View {
+        HStack(spacing: Theme.Space.sm) {
+            Image(systemName: icon).font(.caption).foregroundStyle(tint)
+            Text(label).font(.subheadline).foregroundStyle(Theme.textSecondary)
+            if let onRetry {
+                Button { onRetry() } label: {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Retry")
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Theme.Space.md).padding(.vertical, Theme.Space.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
+    }
+}
+
 /// The assistant turn — full-width document text (no bubble) so markdown + code read cleanly
 /// (DESIGN §4). Drives the thinking disclosure, an optional streaming caret, and a quiet action bar.
 struct AssistantView: View {
@@ -95,6 +129,9 @@ struct AssistantView: View {
     let stats: Stats?
     let modelName: String
     var toolRuns: [ToolRun] = []
+    /// Set when a completed turn produced no answer (stopped / failed) — renders the Retry row instead of
+    /// a ghost stats line.
+    var emptyOutcome: Message.EmptyOutcome?
     var onCopy: (() -> Void)?
     var onRegenerate: (() -> Void)?
 
@@ -110,6 +147,9 @@ struct AssistantView: View {
             }
             if !answer.isEmpty {
                 answerBody
+            } else if !isStreaming, let emptyOutcome {
+                // Interrupted/failed before the first token: an honest, retryable row — not a "0 tok" ghost.
+                EmptyReplyRow(outcome: emptyOutcome, onRetry: onRegenerate)
             } else if isStreaming && reasoning.isEmpty {
                 // Warming: nothing to show yet — the composer owns the shimmer; keep a caret anchor.
                 HStack(spacing: 4) { TypingCaret() }

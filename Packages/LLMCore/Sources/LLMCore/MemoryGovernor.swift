@@ -34,7 +34,9 @@ public enum LLMMemoryGovernor {
     /// anonymous/dirty resident weights — so only a portion is truly "hard" resident. An **estimate**
     /// (iOS 18+ residency sets can wire GPU buffers and erase this discount → the experimental hybrid
     /// is never allowed green regardless; see below).
-    private static let mmapResidentFraction = 0.60
+    /// Public so the activation pre-flight computes the SAME engine-aware peak the fit badge shows —
+    /// two copies of this constant already diverged once (a model shown amber refused to even try).
+    public static let mmapResidentFraction = 0.60
 
     /// The usable resident ceiling for a device (DESIGN §1.2):
     ///   • phone ≤ 8.5 GB (the 8 GB 16 Pro) → a hard 5.3 GB (jetsam ~5.5 GB);

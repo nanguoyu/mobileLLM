@@ -1,5 +1,10 @@
 # XcodeGen spec — regenerate the .xcodeproj with `xcodegen generate`.
 # The project is not committed; the packages + this spec + Signing.xcconfig are the source of truth.
+#
+# Run the engine unit tests (they can't build under plain `swift test` — the MLX package's HF macros
+# need xcodebuild -skipMacroValidation):
+#   xcodegen generate
+#   xcodebuild -skipMacroValidation -scheme EngineTests -destination platform=macOS test
 name: mobileLLM
 options:
   bundleIdPrefix: com.example
@@ -25,19 +30,32 @@ targets:
   mobileLLM:
     type: application
     supportedDestinations: [iOS, macOS]
-    sources: [App]
+    sources:
+      - App
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        CODE_SIGN_ENTITLEMENTS: App/mobileLLM.entitlements
+        # Per-platform entitlements: the iOS file keeps the increased-memory-limit; macOS App Store needs
+        # App Sandbox + the network-client exception (downloads / MCP / Wikipedia) instead.
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]": App/mobileLLM.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": App/mobileLLM.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/mobileLLM-macOS.entitlements
+        SWIFT_VERSION: "6.0"
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
-        SWIFT_VERSION: "6.0"
+        # App Store submission: declares no non-exempt encryption, so it skips the export-compliance prompt.
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_CFBundleDisplayName: mobileLLM
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.productivity"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        # iPhone stays portrait + landscape (no upside-down); iPad supports all four so Split View / Slide
+        # Over multitasking works (a multitasking-capable app must not lock orientation on iPad).
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        "INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad": "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        # Usage strings for the chat workstream's dictation feature (Speech + microphone).
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "mobileLLM uses the microphone so you can dictate messages."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "mobileLLM uses speech recognition to turn your dictation into text."
     dependencies:
       - package: MobileLLMUI
       - package: LLMEngineMLX
@@ -45,3 +63,23 @@ targets:
       - package: LLMEngineLlama
         product: LLMEngineLlama
       - package: AppRuntime
+
+schemes:
+  # The app scheme is declared explicitly because defining any scheme below turns off Xcode's implicit
+  # per-target scheme (otherwise `-scheme mobileLLM` disappears).
+  mobileLLM:
+    build:
+      targets:
+        mobileLLM: all
+  # Engine unit tests that the plain `swift test` loop can't build (the MLX package's HF load macros).
+  # `test.targets` references the local package test targets with xcodegen's `package:` form; `build`
+  # needs a real project target, so it builds the app (which links both engine packages).
+  # Prove: xcodebuild -skipMacroValidation -scheme EngineTests -destination platform=macOS test
+  EngineTests:
+    build:
+      targets:
+        mobileLLM: [test]
+    test:
+      targets:
+        - package: LLMEngineMLX/LLMEngineMLXTests
+        - package: LLMEngineLlama/LLMEngineLlamaTests

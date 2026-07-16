@@ -20,6 +20,9 @@ struct ExploreView: View {
     @State private var detail: LLMModel?
     @State private var opening: String?
     @State private var notice: String?
+    /// Adopted model ids whose REAL context/KV shape couldn't be fetched (we fell back to the generic
+    /// guess) — surfaced honestly in the detail sheet rather than presenting an invented 32K as fact.
+    @State private var unresolvedContext: Set<String> = []
     @State private var selEngine: [String: EngineKind] = [:]
     @State private var selQuant: [String: QuantSpec] = [:]
 
@@ -160,6 +163,14 @@ struct ExploreView: View {
                     Text("Community model from \(model.publisher). It loads from its own chat template — "
                          + "sizes are estimates and behavior isn't hand-verified.")
                         .font(.caption).foregroundStyle(Theme.textSecondary)
+                    if unresolvedContext.contains(model.id) {
+                        Label("Context length couldn't be verified — assuming \(Format.shortCount(model.architecture.nativeContext)).",
+                              systemImage: "questionmark.circle")
+                            .font(.caption).foregroundStyle(Theme.fitAmber)
+                    } else {
+                        Text("Context window: up to \(Format.shortCount(model.architecture.nativeContext)) tokens.")
+                            .font(.caption).foregroundStyle(Theme.textTertiary)
+                    }
                     ModelCard(models: models, model: model, context: settings.contextLength,
                               enginePreference: settings.enginePreference, isRecommended: false,
                               engineSel: Binding(get: { selEngine[model.id] }, set: { selEngine[model.id] = $0 }),
@@ -184,27 +195,34 @@ struct ExploreView: View {
 
     // MARK: Logic
 
-    /// Open a row: MLX models already carry their quants; a GGUF repo's quant files are fetched now.
+    /// Open a row: list a GGUF repo's quant files (MLX models already carry theirs), then resolve the
+    /// model's REAL architecture before adopting it — so a community model gets its own context ceiling +
+    /// KV shape, not the fabricated generic 32K that defeats the ContextPolicy clamp (A2.5).
     private func open(_ remote: RemoteModel) {
         guard opening == nil else { return }
-        if !remote.variants.isEmpty { return present(remote) }
         opening = remote.id
         Task {
-            let quants = (try? await RemoteCatalog.quants(for: remote)) ?? []
-            await MainActor.run {
-                opening = nil
+            var resolved = remote
+            if remote.variants.isEmpty {
+                let quants = (try? await RemoteCatalog.quants(for: remote)) ?? []
                 guard !quants.isEmpty else {
-                    notice = "No usable quant files in \(remote.name)."
+                    await MainActor.run { opening = nil; notice = "No usable quant files in \(remote.name)." }
                     return
                 }
-                present(RemoteModel(id: remote.id, name: remote.name, publisher: remote.publisher,
-                                    engine: remote.engine, downloads: remote.downloads, variants: quants))
+                resolved = RemoteModel(id: remote.id, name: remote.name, publisher: remote.publisher,
+                                       engine: remote.engine, downloads: remote.downloads, variants: quants)
             }
+            // Its own config.json / GGUF metadata → honest context + KV shape. On any failure this returns
+            // the generic fallback marked `isResolved: false`, so we badge the context as unverified.
+            let arch = await RemoteCatalog.realArchitecture(for: resolved)
+            await MainActor.run { opening = nil; present(resolved, architecture: arch) }
         }
     }
 
-    private func present(_ remote: RemoteModel) {
-        let model = remote.asLLMModel(paramsBillions: RemoteModel.paramCount(from: remote.name))
+    private func present(_ remote: RemoteModel, architecture: ResolvedArchitecture) {
+        let model = remote.asLLMModel(paramsBillions: RemoteModel.paramCount(from: remote.name),
+                                      architecture: architecture.architecture)
+        if architecture.isResolved { unresolvedContext.remove(model.id) } else { unresolvedContext.insert(model.id) }
         models.adopt(model)
         detail = model
     }

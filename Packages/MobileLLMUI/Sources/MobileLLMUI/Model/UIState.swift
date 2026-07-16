@@ -96,3 +96,21 @@ public enum AppearanceMode: String, CaseIterable, Codable, Sendable {
         }
     }
 }
+
+/// The three top-level sections (DESIGN §4 IA). Lives here (not in the view) so the composition root can
+/// raise a navigation intent — e.g. an error banner's "Download" jumping to Models — without importing the
+/// shell.
+public enum AppSection: String, CaseIterable, Identifiable, Sendable {
+    case chat, models, settings
+    public var id: String { rawValue }
+    public var title: String {
+        switch self { case .chat: "Chat"; case .models: "Models"; case .settings: "Settings" }
+    }
+    public var icon: String {
+        switch self {
+        case .chat: "bubble.left.and.bubble.right"
+        case .models: "square.stack.3d.up"
+        case .settings: "gearshape"
+        }
+    }
+}

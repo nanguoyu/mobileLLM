@@ -95,6 +95,40 @@ final class ConversationStoreTests: XCTestCase {
         XCTAssertEqual(emptyQuery.count, 2, "empty query returns the full live index")
     }
 
+    func testSweepRemovesOnlyExpiredTombstones() async throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let deletedA = makeConversation(title: "Old A", body: "a")
+        let deletedB = makeConversation(title: "Old B", body: "b")
+        let liveOne = makeConversation(title: "Keep", body: "keep")
+        try await store.save(deletedA)
+        try await store.save(deletedB)
+        try await store.save(liveOne)
+        try await store.softDelete(deletedA.id)   // tombstoned ≈ now
+        try await store.softDelete(deletedB.id)
+
+        // Sweep as if 48h have passed: only tombstones older than the 24h window go; a live thread never does.
+        let future = Date().addingTimeInterval(48 * 60 * 60)
+        let swept = await store.sweepExpiredTombstones(olderThan: 24 * 60 * 60, now: future)
+        XCTAssertEqual(Set(swept), Set([deletedA.id, deletedB.id]))
+        let loadedA = await store.load(deletedA.id)
+        let loadedB = await store.load(deletedB.id)
+        let loadedLive = await store.load(liveOne.id)
+        XCTAssertNil(loadedA, "expired tombstone's file is purged")
+        XCTAssertNil(loadedB)
+        XCTAssertNotNil(loadedLive, "a live conversation is never swept")
+
+        // A recent tombstone survives a present-time sweep (still undoable).
+        let recent = makeConversation(title: "Recent", body: "r")
+        try await store.save(recent)
+        try await store.softDelete(recent.id)
+        let sweptNow = await store.sweepExpiredTombstones(olderThan: 24 * 60 * 60, now: Date())
+        let loadedRecent = await store.load(recent.id)
+        XCTAssertTrue(sweptNow.isEmpty, "a fresh tombstone is kept")
+        XCTAssertNotNil(loadedRecent)
+    }
+
     func testHardDeleteRemovesFile() async throws {
         let (store, dir) = tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }

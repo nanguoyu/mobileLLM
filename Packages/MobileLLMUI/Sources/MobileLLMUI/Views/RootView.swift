@@ -14,28 +14,16 @@ extension AppearanceMode {
     }
 }
 
-/// The three top-level sections (DESIGN §4 IA).
-enum AppSection: String, CaseIterable, Identifiable {
-    case chat, models, settings
-    var id: String { rawValue }
-    var title: String {
-        switch self { case .chat: "Chat"; case .models: "Models"; case .settings: "Settings" }
-    }
-    var icon: String {
-        switch self {
-        case .chat: "bubble.left.and.bubble.right"
-        case .models: "square.stack.3d.up"
-        case .settings: "gearshape"
-        }
-    }
-}
-
-/// The app shell (DESIGN §4): iOS TabView (Chat / Models / Settings), macOS NavigationSplitView
-/// (sidebar list + thread). Teal tint, appearance override, and the shared banner host. Bootstraps
-/// persisted chats + install state, then auto-activates the default model.
+/// The app shell (DESIGN §4): a compact iPhone uses a TabView (Chat / Models / Settings); an iPad
+/// (regular width) and macOS use a NavigationSplitView (sidebar list + thread), so the iPad isn't just a
+/// stretched phone. Accent tint, appearance override, and the shared banner host. Bootstraps persisted
+/// chats + install state, then auto-activates the default model.
 public struct RootView: View {
     @Bindable var container: AppContainer
     @State private var section: AppSection = .chat
+    #if !os(macOS)
+    @Environment(\.horizontalSizeClass) private var hSize
+    #endif
 
     public init(container: AppContainer) {
         self.container = container
@@ -48,21 +36,30 @@ public struct RootView: View {
             .preferredColorScheme(container.settings.appearance.colorScheme)
             .bannerHost(container.chat)
             .task { await container.bootstrap() }
+            // A navigation intent from the container (e.g. a "not installed" banner's "Open Models") drives
+            // the shell's section; clear it once honored so it fires once.
+            .onChange(of: container.navigationRequest) { _, request in
+                guard let request else { return }
+                section = request
+                container.navigationRequest = nil
+            }
     }
 
     @ViewBuilder private var shell: some View {
         #if os(macOS)
-        macShell
+        splitShell
         #else
-        iosShell
+        // iPad (regular width) is a real two-column app, not a stretched iPhone; the phone stays a TabView.
+        if hSize == .regular { splitShell } else { tabShell }
         #endif
     }
 
-    // MARK: iOS
+    // MARK: Compact (iPhone) — TabView
 
     #if !os(macOS)
-    private var iosShell: some View {
-        TabView {
+    private var tabShell: some View {
+        // `selection` is bound so a navigation intent can switch tabs programmatically.
+        TabView(selection: $section) {
             NavigationStack {
                 ConversationListView(chat: container.chat) { _ in }
                     .navigationTitle("Chat")
@@ -76,6 +73,7 @@ public struct RootView: View {
                         }
                     }
             }
+            .tag(AppSection.chat)
             .tabItem { Label("Chat", systemImage: AppSection.chat.icon) }
 
             NavigationStack {
@@ -84,11 +82,13 @@ public struct RootView: View {
                 }
                 .navigationTitle("Models")
             }
+            .tag(AppSection.models)
             .tabItem { Label("Models", systemImage: AppSection.models.icon) }
 
             NavigationStack {
                 SettingsView(container: container).navigationTitle("Settings")
             }
+            .tag(AppSection.settings)
             .tabItem { Label("Settings", systemImage: AppSection.settings.icon) }
         }
     }
@@ -100,10 +100,9 @@ public struct RootView: View {
     }
     #endif
 
-    // MARK: macOS
+    // MARK: Regular (iPad + macOS) — NavigationSplitView
 
-    #if os(macOS)
-    private var macShell: some View {
+    private var splitShell: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
                 if section == .chat {
@@ -122,12 +121,23 @@ public struct RootView: View {
                         Image(systemName: "square.and.pencil")
                     }
                     .help("New chat")
+                    // On macOS the New Chat command (⌘N) lives in the menu bar; on iPad the toolbar owns it.
+                    #if !os(macOS)
                     .keyboardShortcut("n", modifiers: .command)
+                    #endif
                 }
             }
         } detail: {
             detail.frame(minWidth: 520, minHeight: 480)
         }
+        // The Switch-Model menu command (⌘L) opens the quick switcher over the split shell.
+        .sheet(isPresented: switcherBinding) {
+            ModelSwitcherSheet(container: container, onOpenModels: { section = .models })
+        }
+    }
+
+    private var switcherBinding: Binding<Bool> {
+        Binding(get: { container.switcherRequested }, set: { container.switcherRequested = $0 })
     }
 
     private var sidebarFooter: some View {
@@ -164,7 +174,6 @@ public struct RootView: View {
             SettingsView(container: container).navigationTitle("Settings")
         }
     }
-    #endif
 }
 
 #if DEBUG

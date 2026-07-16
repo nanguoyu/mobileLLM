@@ -14,7 +14,7 @@ struct ChatPlaceholder: View {
     var body: some View {
         VStack(spacing: Theme.Space.md) {
             Image(systemName: icon)
-                .font(.system(size: 34, weight: .light))
+                .font(.largeTitle.weight(.light))   // semantic size → scales with Dynamic Type
                 .foregroundStyle(Theme.accent)
             Text(title)
                 .font(.title3.weight(.semibold))
@@ -51,6 +51,26 @@ struct NoModelState: View {
     }
 }
 
+/// A distinct model-loading state (DESIGN §6): a slow cold-start load is honest work, not "no model
+/// loaded" — so it gets its own spinner + the model name, never the no-model dead-end.
+struct ModelLoadingState: View {
+    let modelName: String
+    var body: some View {
+        VStack(spacing: Theme.Space.md) {
+            ProgressView().controlSize(.large).tint(Theme.accent)
+            Text("Loading \(modelName)…")
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(Theme.Space.xxl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.bg)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Loading \(modelName)")
+    }
+}
+
 /// The empty-conversation state with a few example prompts to tap (DESIGN §4 onboarding echo).
 struct EmptyChatState: View {
     let modelName: String
@@ -68,7 +88,7 @@ struct EmptyChatState: View {
             Spacer()
             VStack(spacing: Theme.Space.sm) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 32, weight: .light))
+                    .font(.largeTitle.weight(.light))   // semantic size → scales with Dynamic Type
                     .foregroundStyle(Theme.accent)
                 Text("Chat with \(modelName)")
                     .font(.title3.weight(.semibold))

@@ -40,15 +40,53 @@ struct MobileLLMApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(container: container)
-                .task { await container.bootstrap() }
-                // Free the resident model when the app leaves the foreground: it stops a 5 GB model
-                // hogging memory while unused and stops iOS jetsam-killing the app in the background.
+                // `bootstrap()` is awaited by RootView's own `.task` and is idempotent — a second `.task`
+                // here would race it (sessions decoded twice, default model loaded back-to-back), so it's
+                // deliberately NOT started from the App scene.
                 .onChange(of: scenePhase) { _, phase in
+                    // Free the resident model when the app leaves the foreground: it stops a 5 GB model
+                    // hogging memory while unused and stops iOS jetsam-killing the app in the background.
                     if phase == .background { container.suspendModel() }
                 }
         }
+        // A postfix `#if` may contain ONLY member-expression continuations (SE-0308), so the Settings
+        // scene sits in its own block below rather than sharing this one.
         #if os(macOS)
         .defaultSize(width: 1100, height: 760)
+        .commands { AppCommands(container: container) }
+        #endif
+
+        // macOS Settings scene (⌘,) — the same Settings surface, hosted in its own window.
+        #if os(macOS)
+        Settings {
+            MacSettingsWindow(container: container)
+        }
         #endif
     }
 }
+
+#if os(macOS)
+/// The macOS menu-bar commands (DESIGN §4): the keyboard-first affordances a Mac app is expected to have,
+/// acting on the container the App owns. New Chat (⌘N, replacing the default File ▸ New), and a Model menu
+/// with Switch Model (⌘L → the quick switcher), Toggle Thinking (⇧⌘T), and Stop Generating (⌘.).
+struct AppCommands: Commands {
+    let container: AppContainer
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Chat") { container.chat.newConversation() }
+                .keyboardShortcut("n", modifiers: .command)
+        }
+        CommandMenu("Model") {
+            Button("Switch Model…") { container.switcherRequested = true }
+                .keyboardShortcut("l", modifiers: .command)
+            Button("Toggle Thinking") { container.chat.thinkingEnabled.toggle() }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+            Divider()
+            Button("Stop Generating") { container.chat.stop() }
+                .keyboardShortcut(".", modifiers: .command)
+                .disabled(!container.chat.isStreaming)
+        }
+    }
+}
+#endif

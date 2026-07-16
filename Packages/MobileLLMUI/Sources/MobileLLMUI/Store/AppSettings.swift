@@ -24,8 +24,14 @@ public final class AppSettings {
     /// Let the model call on-device tools (calculator, date/time) via the agent loop. Off by default —
     /// it adds a round-trip and only some models call tools reliably.
     public var toolsEnabled: Bool { didSet { persist() } }
-    /// Remote MCP servers whose tools join the agent's tool set when tools are on.
-    public var mcpServers: [MCPServer] { didSet { persist() } }
+    /// Remote MCP servers whose tools join the agent's tool set when tools are on. Bearer tokens are kept
+    /// in the Keychain, not this snapshot (A2.9) — the didSet reconciles them on every change.
+    public var mcpServers: [MCPServer] {
+        didSet {
+            if !loading { syncMCPTokens(old: oldValue) }
+            persist()
+        }
+    }
 
     // MARK: Sampling
     public var temperature: Double { didSet { persist() } }
@@ -44,10 +50,18 @@ public final class AppSettings {
     private let key = "mobileLLM.settings.v1"
     /// Suppresses `persist()` during the initial load so `didSet` doesn't re-write while decoding.
     private var loading = true
+    /// Where MCP bearer tokens live (A2.9). Optional so tests can opt out; nil = tokens simply aren't
+    /// persisted (they still work in memory for the session).
+    private let keychain: KeychainBox?
+
+    /// Default Keychain scope for MCP bearer tokens: reverse-DNS, stored this-device-only + off-backup.
+    public nonisolated static var defaultKeychainService: String { "\(Bundle.main.bundleIdentifier ?? "mobileLLM").mcp" }
 
     public init(defaults: UserDefaults = .standard,
-                fallbackDefaultModelID: String = "bonsai-8b") {
+                fallbackDefaultModelID: String = "bonsai-8b",
+                keychain: KeychainBox? = KeychainBox(service: AppSettings.defaultKeychainService)) {
         self.defaults = defaults
+        self.keychain = keychain
         let snap = Self.loadSnapshot(from: defaults, key: key)
         defaultModelID = snap?.defaultModelID ?? fallbackDefaultModelID
         enginePreference = snap?.enginePreference ?? .auto
@@ -63,7 +77,8 @@ public final class AppSettings {
         thinkingDefault = snap?.thinkingDefault ?? true
         thinkingDisplay = snap?.thinkingDisplay ?? .autoCollapse
         toolsEnabled = snap?.toolsEnabled ?? false
-        mcpServers = snap?.mcpServers ?? []
+        let (servers, migrated) = Self.loadMCPServers(from: snap, keychain: keychain)
+        mcpServers = servers
         temperature = snap?.temperature ?? 0.7
         topP = snap?.topP ?? 0.95
         topK = snap?.topK ?? 20
@@ -73,6 +88,45 @@ public final class AppSettings {
         kvBits = snap?.kvBits ?? 4
         appearance = snap?.appearance ?? .system
         loading = false
+        // First launch after the update: any plaintext token was just moved into the Keychain — re-persist
+        // now so the scrubbed snapshot (no plaintext) replaces the one still on disk.
+        if migrated { persist() }
+    }
+
+    /// Decode the persisted MCP servers, moving any legacy plaintext token into the Keychain and hydrating
+    /// marked servers' tokens back from it. Returns whether a plaintext token was migrated (→ re-persist).
+    private static func loadMCPServers(from snap: Snapshot?, keychain: KeychainBox?) -> (servers: [MCPServer], migrated: Bool) {
+        let markers = snap?.mcpTokenMarkers ?? []
+        var migrated = false
+        let servers = (snap?.mcpServers ?? []).map { server -> MCPServer in
+            var s = server
+            if let plaintext = server.token, !plaintext.isEmpty {
+                // Legacy: the token rode along in UserDefaults. Move it to the Keychain, keep it in memory.
+                try? keychain?.save(plaintext, account: server.id)
+                migrated = true
+            } else if markers.contains(server.id), let keychain {
+                s.token = (try? keychain.readString(account: server.id)) ?? nil
+            }
+            return s
+        }
+        return (servers, migrated)
+    }
+
+    /// Reconcile the Keychain with the current server list: store each server's token, and delete tokens
+    /// for servers that were removed. Runs only after the initial load (guarded in the didSet).
+    private func syncMCPTokens(old: [MCPServer]) {
+        guard let keychain else { return }
+        let currentIDs = Set(mcpServers.map(\.id))
+        for server in old where !currentIDs.contains(server.id) {
+            try? keychain.delete(account: server.id)   // removed → drop its secret
+        }
+        for server in mcpServers {
+            if let token = server.token, !token.isEmpty {
+                try? keychain.save(token, account: server.id)
+            } else {
+                try? keychain.delete(account: server.id)
+            }
+        }
     }
 
     /// Build the engine `Sampling` from the current settings + a per-turn thinking override.
@@ -105,6 +159,9 @@ public final class AppSettings {
         var thinkingDisplay: ThinkingDisplayMode
         var toolsEnabled: Bool? = false   // optional → old snapshots decode
         var mcpServers: [MCPServer]? = []
+        /// Ids of servers whose bearer token lives in the Keychain (A2.9). Absent in pre-migration
+        /// snapshots — the loader then treats any inline `token` as legacy plaintext to migrate.
+        var mcpTokenMarkers: Set<String>? = []
         var temperature: Double
         var topP: Double
         var topK: Int
@@ -117,10 +174,14 @@ public final class AppSettings {
 
     private func persist() {
         guard !loading else { return }
+        // NEVER write a bearer token to UserDefaults (it rides device backups) — scrub them out and keep
+        // only a marker of which servers have one. The secrets live in the Keychain (A2.9).
+        let scrubbed = mcpServers.map { server -> MCPServer in var s = server; s.token = nil; return s }
+        let markers = Set(mcpServers.filter { $0.token?.isEmpty == false }.map(\.id))
         let snap = Snapshot(defaultModelID: defaultModelID, enginePreference: enginePreference,
                             systemPrompt: systemPrompt, systemPromptSeeded: true,
                             thinkingDefault: thinkingDefault, thinkingDisplay: thinkingDisplay,
-                            toolsEnabled: toolsEnabled, mcpServers: mcpServers,
+                            toolsEnabled: toolsEnabled, mcpServers: scrubbed, mcpTokenMarkers: markers,
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
                             contextLength: contextLength, kvBits: kvBits, appearance: appearance)

@@ -2,6 +2,7 @@
 
 import SwiftUI
 import AppUI
+import LLMCore
 
 /// One conversation surface: the message thread + the composer, with a header that surfaces the
 /// active model as a tap-target to the quick switcher (DESIGN §4).
@@ -12,14 +13,26 @@ struct ChatDetailView: View {
 
     private var chat: ChatStore { container.chat }
 
+    /// Best-effort name of the model currently loading — the active model if we have it, else the default
+    /// (the cold-start case the loading state exists for).
+    private var loadingModelName: String {
+        chat.activeModel?.model.displayName
+            ?? LLMCatalog.model(id: container.settings.defaultModelID)?.displayName
+            ?? "your model"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ChatThreadView(chat: container.chat,
                            displayMode: container.settings.thinkingDisplay,
+                           isLoadingModel: container.models.switching,
+                           loadingModelName: loadingModelName,
                            onOpenModels: onOpenModels)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             Composer(chat: container.chat,
-                     thinkingCapable: chat.activeModel?.model.architecture.thinkingCapable ?? true)
+                     thinkingCapable: chat.activeModel?.model.architecture.thinkingCapable ?? true,
+                     isLoadingModel: container.models.switching,
+                     onOpenModels: onOpenModels)
         }
         .background(Theme.bg)
         .navigationTitle(chat.activeConversation?.title ?? "New Chat")

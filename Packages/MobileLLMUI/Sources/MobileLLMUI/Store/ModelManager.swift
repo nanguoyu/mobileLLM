@@ -4,6 +4,9 @@ import Foundation
 import Observation
 import AppRuntime
 import LLMCore
+#if canImport(UIKit)
+import UIKit   // isIdleTimerDisabled — keep the phone awake during active downloads only
+#endif
 
 /// Recoverable failures raised before/around a resident load (DESIGN §2.5). Never a silent crash —
 /// each carries a forward action so the UI never dead-ends.
@@ -18,7 +21,7 @@ public enum ModelActivationError: Error, Equatable {
         case let .insufficientMemory(needed, available):
             let f = ByteCountFormatter()
             return "Not enough free memory right now (needs ~\(f.string(fromByteCount: needed)), "
-                 + "\(f.string(fromByteCount: available)) free). Try the 8B model or close other apps."
+                 + "\(f.string(fromByteCount: available)) free). Close other apps, or try it anyway."
         case .notInstalled:
             return "Download this model before switching to it."
         }
@@ -57,16 +60,45 @@ public final class ModelManager {
     public let device: DeviceTier
 
     /// Community models adopted from the Explore tier (Hugging Face browse). Kept separate from the
-    /// curated `catalog` but flow through the same download / fit / activate path once adopted.
+    /// curated `catalog` but flow through the same download / fit / activate path once adopted. Persisted
+    /// so a downloaded community model survives relaunch instead of vanishing from every list (§2.4).
     public private(set) var exploreModels: [LLMModel] = []
     /// Curated + adopted-explore models — the set install state is scanned over.
     public var allModels: [LLMModel] { catalog + exploreModels }
 
+    /// Look a model up across BOTH curated + adopted models (the default-model menu / switcher / bootstrap
+    /// resolve adopted ids too, not just the catalog).
+    public func model(id: String) -> LLMModel? { allModels.first { $0.id == id } }
+
     /// Register a discovered model so it participates in install tracking + activation. Idempotent.
+    /// Persists the adopted registry when the model has weights on disk (a merely-browsed model isn't
+    /// worth keeping across launches — it can be re-browsed).
     public func adopt(_ model: LLMModel) {
         guard !allModels.contains(where: { $0.id == model.id }) else { return }
         exploreModels.append(model)
         refreshInstalled()
+        persistAdoptedRegistry()
+    }
+
+    /// Load the persisted adopted-model registry and merge it into `exploreModels`, then rescan install
+    /// state. Called once at bootstrap so downloaded community models reappear in the switcher / Settings /
+    /// storage total. Idempotent — an id already present (curated or adopted) is skipped.
+    public func loadAdoptedRegistry() async {
+        let persisted = await registryStore.load()
+        for model in persisted where !allModels.contains(where: { $0.id == model.id }) {
+            exploreModels.append(model)
+        }
+        refreshInstalled()
+    }
+
+    /// Persist the adopted models that are actually worth keeping: those with at least one variant on disk
+    /// (or downloading). Fire-and-forget — a failed write just means the registry rebuilds next adopt.
+    private func persistAdoptedRegistry() {
+        let keep = exploreModels.filter { model in
+            model.variants.contains { installed.contains($0.id) || downloads[$0.source.huggingFaceRepo] != nil }
+        }
+        let store = registryStore
+        Task { try? await store.save(keep) }
     }
 
     /// Repo ids of variants present on disk.
@@ -77,6 +109,12 @@ public final class ModelManager {
     public private(set) var downloads: [String: VariantDownload] = [:]
     /// True while a model swap is serializing (unload → drain → load), per DESIGN §2.3.
     public private(set) var switching = false
+    /// The variant currently being activated (user tapped Use / Try anyway), so the UI can show a
+    /// per-variant inline spinner and disable re-taps until it finishes. `nil` = no activation in flight.
+    public private(set) var activatingVariantID: String?
+    /// Determinate load progress (0…1) for the activating variant, or `nil` when the engine can't report
+    /// it (the UI then shows an indeterminate spinner).
+    public private(set) var loadProgress: Double?
     /// Whether the engine currently holds `active`'s weights in memory. Suspended (false) when we free
     /// the weights while idle (background / leaving a chat); reloaded on the next generation.
     public private(set) var engineResident = false
@@ -87,6 +125,8 @@ public final class ModelManager {
     private let installProbe: @Sendable (LLMVariant, URL) -> Bool
     private let availableMemory: @Sendable () -> Int64
     private var downloadTasks: [String: Task<Void, Never>] = [:]
+    /// Durable JSON registry of adopted community models (Application Support, beside `models/`).
+    private let registryStore: DurableStore<LLMModel>
 
     public init(engine: any LLMEngine,
                 device: DeviceTier = .current,
@@ -100,6 +140,9 @@ public final class ModelManager {
         self.downloader = downloader
         self.installProbe = installProbe
         self.availableMemory = availableMemory
+        // Rooted at the download base so the registry sits beside the weights it tracks (and tests that
+        // inject a temp base are automatically isolated).
+        self.registryStore = DurableStore(fileURL: downloadBase.appending(component: "adopted-models.json"))
     }
 
     /// Default probe: the reused `ModelDownloader` reports the variant as fully downloaded. Single-file
@@ -172,15 +215,32 @@ public final class ModelManager {
         }
     }
 
-    /// Total on-disk bytes of installed variants (Settings → storage total).
+    /// Total on-disk bytes of installed variants (Settings → storage total). Spans adopted community
+    /// models too, so the storage figure counts every multi-GB download, not just the curated catalog.
     public var installedBytes: Int64 {
-        catalog.flatMap { $0.variants }.filter { installed.contains($0.id) }.reduce(0) { $0 + $1.onDiskBytes }
+        allModels.flatMap { $0.variants }.filter { installed.contains($0.id) }.reduce(0) { $0 + $1.onDiskBytes }
     }
 
     // MARK: - Activation
 
+    /// The estimated HARD-resident peak bytes for a variant at a context — the number the live OOM
+    /// pre-flight compares against free memory. Engine-aware, and consistent with `LLMMemoryGovernor`'s
+    /// mmap discount: MLX weights are all anonymous/dirty resident, but a llama.cpp GGUF's mmap'd weights
+    /// are clean, reclaimable pages, so only a fraction counts as hard-resident. Without this discount the
+    /// pre-flight refuses (raw bytes > free) a GGUF the fit badge says runs — the exact inconsistency the
+    /// amber-but-refused bug came from.
+    ///
+    static func estimatedResidentPeakBytes(model: LLMModel, variant: LLMVariant, context: Int) -> Int64 {
+        let overhead = variant.backend.runtimeOverheadBytes
+        let weights = variant.engine == .llamaCpp
+            ? Int64(Double(variant.onDiskBytes) * LLMMemoryGovernor.mmapResidentFraction)
+            : variant.onDiskBytes
+        return weights + overhead + model.architecture.attention.kvBytes(tokens: context)
+    }
+
     /// Serialized swap: cancel/unload the current model, run the OOM pre-flight, load the new one, and
     /// publish `active` (DESIGN §2.3 / §2.5). Throws a recoverable `ModelActivationError` on refusal.
+    /// Publishes `activatingVariantID` + `loadProgress` while loading so the UI shows per-variant feedback.
     @discardableResult
     public func activate(_ model: LLMModel, variant: LLMVariant, context: Int,
                          force: Bool = false) async throws -> LoadedModel {
@@ -191,21 +251,26 @@ public final class ModelManager {
         // explicit, informed attempt: DON'T second-guess it — attempt the resident load and let the
         // device give the real answer. The estimate is only an estimate; the phone is the authority.
         // (A mid-load jetsam can't be caught, so a forced attempt may hard-quit — that's the honest
-        // outcome the user opted into, not something we pre-empt.)
-        let base = variant.onDiskBytes + variant.backend.runtimeOverheadBytes
-        let peak = base + model.architecture.attention.kvBytes(tokens: context)
+        // outcome the user opted into, not something we pre-empt.) The estimate is engine-aware +
+        // governor-consistent, so a model the fit badge shows amber is offered "Try anyway", not refused
+        // outright by an over-counted raw-bytes check.
+        let peak = Self.estimatedResidentPeakBytes(model: model, variant: variant, context: context)
         let available = availableMemory()
         if !force, available != Int64.max, peak > available {
             throw ModelActivationError.insufficientMemory(needed: peak, available: available)
         }
 
+        activatingVariantID = variant.id
+        loadProgress = nil
         switching = true
-        defer { switching = false }
+        defer { switching = false; activatingVariantID = nil; loadProgress = nil }
 
         await engine.unload()   // serialize: drop the old weights before loading new ones
         let weightsDir = ModelDownloader(downloadBase: downloadBase)
             .localURL(repoId: variant.source.huggingFaceRepo)
-        try await engine.load(model: model, variant: variant, weightsDir: weightsDir, progress: { _ in })
+        try await engine.load(model: model, variant: variant, weightsDir: weightsDir) { [weak self] fraction in
+            Task { @MainActor in self?.loadProgress = min(1, max(0, fraction)) }
+        }
         let loaded = LoadedModel(model: model, variant: variant)
         active = loaded
         engineResident = true
@@ -266,10 +331,12 @@ public final class ModelManager {
                 self.finishDownload(repoId, error: nil)
             } catch is CancellationError {
                 self.downloadTasks[repoId] = nil   // paused: keep the partial, no error
+                self.updateIdleTimer()
             } catch {
                 self.finishDownload(repoId, error: error.localizedDescription)
             }
         }
+        updateIdleTimer()
     }
 
     private func applyProgress(_ fraction: Double, to repoId: String) {
@@ -283,10 +350,13 @@ public final class ModelManager {
         downloadTasks[repoId] = nil
         if let error {
             downloads[repoId]?.error = error
+            updateIdleTimer()
             return
         }
         downloads[repoId] = nil
         refreshInstalled()
+        persistAdoptedRegistry()   // a just-downloaded community model is now worth keeping across launches
+        updateIdleTimer()
     }
 
     /// Pause: cancel the task; the `.part` stays on disk and a later `download` resumes via Range.
@@ -295,6 +365,15 @@ public final class ModelManager {
         downloadTasks[repoId]?.cancel()
         downloadTasks[repoId] = nil
         downloads[repoId]?.isPaused = true
+        updateIdleTimer()
+    }
+
+    /// Keep the device awake only while a download is actually running (iOS): a multi-GB fetch shouldn't
+    /// die to the auto-lock, but we must release the assertion the instant the last download ends.
+    private func updateIdleTimer() {
+        #if os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = !downloadTasks.isEmpty
+        #endif
     }
 
     public func isDownloading(_ variant: LLMVariant) -> Bool {
@@ -322,5 +401,8 @@ public final class ModelManager {
         }
         if active?.variant.id == variant.id { Task { await deactivate() } }
         refreshInstalled()
+        // Deleting the last installed variant of an adopted model drops it from the persisted registry
+        // (persist keeps only models with weights still on disk); it stays in memory for this session.
+        persistAdoptedRegistry()
     }
 }

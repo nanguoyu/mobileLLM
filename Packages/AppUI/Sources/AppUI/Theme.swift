@@ -67,6 +67,10 @@ public enum Theme {
     public static let surface     = dynamic(dark: 0x221B12, light: 0xF7F1E7)
     /// Inset fields, segmented track, chip fill.
     public static let surface2    = dynamic(dark: 0x2A2117, light: 0xEFE7D9)
+    /// The raised tile under a selected segment. Must sit LIGHTER than the `surface2` track so it reads
+    /// as raised, not recessed — in dark mode the old `surface` (0x221B12) was darker than the track and
+    /// inverted the affordance. Light keeps the lifted paper of `surface`.
+    public static let segmentSelected = dynamic(dark: 0x352A1D, light: 0xF7F1E7)
     /// All 1px borders — warm ink hairline.
     public static let hairline    = dynamic(dark: .white, darkA: 0.09, light: 0x211400, lightA: 0.09)
 
@@ -74,8 +78,10 @@ public enum Theme {
     public static let textPrimary   = dynamic(dark: 0xEFE6D5, light: 0x211B12)
     /// Body, captions, labels, keys.
     public static let textSecondary = dynamic(dark: 0xB0A491, light: 0x5B5245)
-    /// Section headers, chevrons, hints — 远山 mountain grey.
-    public static let textTertiary  = dynamic(dark: 0x7C7160, light: 0x8E8574)
+    /// Section headers, chevrons, hints — 远山 mountain grey. Tuned to clear WCAG AA (≥4.5:1) for the
+    /// 11pt captions it carries: the old light 0x8E8574 was 2.7:1 on `bg` and the dark 0x7C7160 was
+    /// 3.9:1 — both below AA. Darkened (light) / lightened (dark) in lightness only; the warm hue holds.
+    public static let textTertiary  = dynamic(dark: 0x968A73, light: 0x655E4D)
 
     /// 印章红 seal cinnabar accent (mobileLLM's identity — the seal = a stamp of authenticity).
     public static let accent     = dynamic(dark: 0xD06450, light: 0x9F3C2E)
@@ -84,12 +90,15 @@ public enum Theme {
     /// Text / icon on a filled accent surface — warm cream, not stark white.
     public static let onAccent   = dynamic(dark: 0x1C110D, light: 0xF6EFE4)
 
+    // Fit tokens double as badge TEXT (`LLMFitBadge` renders the colored label), so each must clear WCAG
+    // AA as small text. The old light ochre/celadon/grey were 2.3–3.3:1 on `bg`; darkened here so the
+    // badge label passes without touching the dot-plus-neutral pattern. Lightness-only — the hues hold.
     /// Fit badge — comfortable / runs resident — 青瓷 celadon green (calm, ink-wash-friendly).
-    public static let fitGreen = dynamic(dark: 0x7FA383, light: 0x5E7F63)
+    public static let fitGreen = dynamic(dark: 0x7FA383, light: 0x476A4C)
     /// Fit badge — tight / experimental — 赭 ochre.
-    public static let fitAmber = dynamic(dark: 0xD69B4C, light: 0xB67C2E)
-    /// Fit badge — needs more memory / unsupported — mountain grey.
-    public static let fitGray  = dynamic(dark: 0x7C7361, light: 0x9A9382)
+    public static let fitAmber = dynamic(dark: 0xD69B4C, light: 0x7E5014)
+    /// Fit badge — needs more memory / unsupported — mountain grey (dark lightened to pass on cards too).
+    public static let fitGray  = dynamic(dark: 0x928872, light: 0x685F4E)
 
     /// Failed-state / destructive text — a brighter pure red, kept distinct from the brick-red accent.
     public static let danger = dynamic(dark: 0xF06A5A, light: 0xC02617)
@@ -110,6 +119,15 @@ public enum Theme {
         public static let lg: CGFloat = 16
         public static let xl: CGFloat = 20
         public static let xxl: CGFloat = 28
+    }
+
+    /// Max content widths, so long-form and form surfaces settle into a comfortable measure on wide
+    /// windows instead of stretching edge-to-edge.
+    public enum Layout {
+        /// Long-form reading column (chat thread, prose) — ~70–80 characters at body size.
+        public static let readingColumn: CGFloat = 700
+        /// Settings / form column.
+        public static let form: CGFloat = 640
     }
 
     /// KEPT for source compat (studioCard, card overlay strokes). Equals `Radius.card`.
@@ -172,18 +190,26 @@ public enum Motion {
 
 // MARK: - Chip
 
-/// A small pill (tag, quant chip).
+/// A small pill (tag, quant chip). One component, two size variants — the `.regular` tag and a `.small`
+/// used for dense metadata rows — so every chip in the app shares one anatomy.
 public struct Chip: View {
+    public enum Size { case small, regular }
     let text: String
     var filled = false
-    public init(text: String, filled: Bool = false) {
-        self.text = text; self.filled = filled
+    var size: Size = .regular
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    public init(text: String, filled: Bool = false, size: Size = .regular) {
+        self.text = text; self.filled = filled; self.size = size
     }
     public var body: some View {
         Text(text)
-            .font(.caption2.weight(.medium))
-            .lineLimit(1).fixedSize()   // a chip is a tag — keep it one line at its intrinsic width
-            .padding(.horizontal, 8).padding(.vertical, 3)
+            .font((size == .small ? Font.caption2 : .caption2).weight(.medium))
+            // A chip is a tag — one line at its intrinsic width. But at accessibility text sizes a forced
+            // single line clips the label, so let it wrap and give up the fixed width there.
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+            .fixedSize(horizontal: !typeSize.isAccessibilitySize, vertical: false)
+            .padding(.horizontal, size == .small ? 6 : 8).padding(.vertical, size == .small ? 2 : 3)
             .background(filled ? Theme.accentSoft : Theme.surface2, in: Capsule())
             .foregroundStyle(filled ? Theme.accent : Theme.textSecondary)
     }
@@ -196,11 +222,22 @@ public struct Chip: View {
 public struct DotLabelStyle: LabelStyle {
     public init() {}
     public func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 5) {
-            configuration.icon.font(.system(size: 7))
-            // Keep the badge to one line at its intrinsic width so it never wraps or steals width from a
-            // sibling title in a tight row (the model name beside it shrinks instead).
-            configuration.title.lineLimit(1).fixedSize()
+        DotLabel(configuration: configuration)
+    }
+
+    /// Split out so it can read `dynamicTypeSize` — a `LabelStyle.makeBody` can't hold `@Environment`.
+    private struct DotLabel: View {
+        let configuration: Configuration
+        @Environment(\.dynamicTypeSize) private var typeSize
+        var body: some View {
+            HStack(spacing: 5) {
+                configuration.icon.font(.system(size: 7))
+                // Keep the badge to one line at its intrinsic width so it never wraps or steals width from
+                // a sibling title in a tight row — but at accessibility sizes let it wrap so it isn't clipped.
+                configuration.title
+                    .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+                    .fixedSize(horizontal: !typeSize.isAccessibilitySize, vertical: false)
+            }
         }
     }
 }
@@ -225,21 +262,27 @@ public struct Segmented<T: Hashable>: View {
         HStack(spacing: 0) {
             ForEach(options, id: \.self) { opt in
                 let isSelected = opt == selection
-                Text(label(opt))
-                    .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
-                    .background {
-                        if isSelected {
-                            RoundedRectangle(cornerRadius: Theme.Radius.control - 2, style: .continuous)
-                                .fill(Theme.surface)
-                                .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
-                                .matchedGeometryEffect(id: "seg", in: ns)
+                // Real Buttons, not a bare `onTapGesture`, so each segment is a focusable, VoiceOver- and
+                // keyboard-reachable control that reports `.isSelected` — the tap-gesture version was
+                // invisible to assistive tech.
+                Button { withAnimation(Motion.spring) { selection = opt } } label: {
+                    Text(label(opt))
+                        .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background {
+                            if isSelected {
+                                RoundedRectangle(cornerRadius: Theme.Radius.control - 2, style: .continuous)
+                                    .fill(Theme.segmentSelected)
+                                    .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+                                    .matchedGeometryEffect(id: "seg", in: ns)
+                            }
                         }
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture { withAnimation(Motion.spring) { selection = opt } }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
             }
         }
         .padding(3)

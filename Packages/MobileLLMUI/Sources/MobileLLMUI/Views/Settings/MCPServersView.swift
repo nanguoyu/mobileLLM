@@ -283,7 +283,7 @@ struct MCPServerDetailView: View {
                     Text(server.url).font(.caption.monospaced()).foregroundStyle(Theme.textSecondary)
                         .textSelection(.enabled)
                     if server.token?.isEmpty == false {
-                        Label("Bearer token saved", systemImage: "key.fill")
+                        Label("Bearer token saved to Keychain", systemImage: "key.fill")
                             .font(.caption2).foregroundStyle(Theme.textTertiary)
                     }
                 }
@@ -422,6 +422,9 @@ struct MCPEditorView: View {
                     field("Name", text: $name, placeholder: "DeepWiki")
                     field("Server URL", text: $url, placeholder: "https://host/mcp", mono: true)
                     field("Bearer token (optional)", text: $token, placeholder: "", mono: true, secure: true)
+                    Label("Kept in the device Keychain — never written to settings or backups.",
+                          systemImage: "lock.fill")
+                        .font(.caption2).foregroundStyle(Theme.textTertiary)
                     if !trimmedURL.isEmpty, !trimmedURL.lowercased().hasPrefix("https://") {
                         Label("Not https — iOS will refuse to connect on device.",
                               systemImage: "exclamationmark.triangle.fill")
