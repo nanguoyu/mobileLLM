@@ -40,5 +40,8 @@ let package = Package(
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/usr/lib"])]),
         .executableTarget(name: "LLMDecode", dependencies: ["LLMEngineMLX"],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/usr/lib"])]),
+        // Pure, weight-free unit tests over the ChatTurn→Chat.Message mapping. Building this links MLX
+        // (LLMEngineMLX pulls it in) but the tests never allocate an MLXArray or load a model.
+        .testTarget(name: "LLMEngineMLXTests", dependencies: ["LLMEngineMLX"]),
     ]
 )

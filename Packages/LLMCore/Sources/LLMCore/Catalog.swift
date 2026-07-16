@@ -261,6 +261,10 @@ public enum LLMCatalog {
     // MARK: - DeepSeek-R1-0528-Qwen3-8B (DeepSeek, MIT) — R1 reasoning distilled onto a Qwen3-8B dense
     // base. DeepSeek chat format (<｜User｜>/<｜Assistant｜>); the model emits its own <think> (explicit).
     // The strongest small reasoner; a Mac model.
+    // reasoningStyle is .thinkTags (NOT implicit-open): verified against the GGUF's own chat_template —
+    // unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF ends with a bare `<｜Assistant｜>` on add_generation_prompt
+    // (no pre-filled <think>), and its Ollama template only injects an EMPTY <think></think> when
+    // thinking is OFF. The R1-0528 update dropped the forced-<think> prefill the older R1 distills used.
 
     public static let deepseekR1Qwen8b = LLMModel(
         id: "deepseek-r1-qwen3-8b",
@@ -294,7 +298,7 @@ public enum LLMCatalog {
         family: .gemma,
         publisher: "Google",
         summary: "Google's newest edge model — multilingual, compact. Non-thinking. Gemma chat format.",
-        license: .apache2,   // Gemma models ship under the Gemma Terms; shown per-card in the app.
+        license: .gemma,
         architecture: LLMArchitecture(
             modelType: "gemma4_text", swiftModelClass: "Gemma4Model",
             hidden: 1536, layers: 35, vocab: 262_144, tieWordEmbeddings: true,
@@ -316,7 +320,7 @@ public enum LLMCatalog {
         family: .gemma,
         publisher: "Google",
         summary: "The flagship Gemma 4 edge model — stronger, still on-device. Non-thinking.",
-        license: .apache2,
+        license: .gemma,
         architecture: LLMArchitecture(
             modelType: "gemma4_text", swiftModelClass: "Gemma4Model",
             hidden: 2560, layers: 42, vocab: 262_144, tieWordEmbeddings: true,
@@ -338,7 +342,7 @@ public enum LLMCatalog {
         family: .gemma,
         publisher: "Google",
         summary: "Gemma 4 12B — the Mac-comfortable Google model, broad multilingual coverage.",
-        license: .apache2,
+        license: .gemma,
         architecture: LLMArchitecture(
             modelType: "gemma4_unified_text", swiftModelClass: "Gemma4Model",
             hidden: 3840, layers: 48, vocab: 262_144, tieWordEmbeddings: true,

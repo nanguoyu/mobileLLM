@@ -72,7 +72,13 @@ public struct ToolRegistry: Sendable {
 
 // MARK: - Built-in local tools
 
-/// Evaluate an arithmetic expression on-device via `NSExpression` (+, −, ×, ÷, %, parentheses, powers).
+/// Evaluate an arithmetic expression on-device (+, −, ×, ÷, %, parentheses, powers).
+///
+/// The evaluation is a pure-Swift recursive-descent parser (`ExpressionEvaluator`), NOT
+/// `NSExpression(format:)`: `NSExpression` raises an ObjC `NSException` on malformed input — a bare `%`,
+/// unbalanced parens, an operator run — and an ObjC exception is UNCATCHABLE from Swift, so one bad
+/// model-generated expression crashed the whole app. The evaluator instead throws a Swift error we turn
+/// into a result STRING the model can read and recover from.
 public struct CalculatorTool: Tool {
     public init() {}
     public var schema: ToolSchema {
@@ -85,30 +91,143 @@ public struct CalculatorTool: Tool {
         guard let raw = ToolCall(name: "calculator", argumentsJSON: argumentsJSON).arg("expression") else {
             return "Error: missing 'expression'."
         }
-        // Normalize common unicode operators the model might emit.
+        // Normalize common unicode operators the model might emit (`^` → `**` power).
         let expr = raw.replacingOccurrences(of: "×", with: "*").replacingOccurrences(of: "÷", with: "/")
                       .replacingOccurrences(of: "^", with: "**").replacingOccurrences(of: " ", with: "")
         guard Self.isSafe(expr) else { return "Error: unsupported characters in expression." }
-        // NSExpression does INTEGER division on integer literals ("10/4" → 2), so promote every integer
-        // to a double first — otherwise the model gets a silently wrong answer.
-        let ns = NSExpression(format: Self.floatify(expr))
-        guard let value = ns.expressionValue(with: nil, context: nil) as? NSNumber else {
-            return "Error: couldn't evaluate \"\(raw)\"."
+        do {
+            let value = try ExpressionEvaluator.evaluate(expr)
+            // Overflow / divide-by-zero produce ±inf or NaN — report rather than print "inf".
+            guard value.isFinite else { return "Error: couldn’t evaluate “\(raw)”." }
+            return numberString(value)
+        } catch {
+            return "Error: couldn’t evaluate “\(raw)”."
         }
-        return numberString(value)
     }
-    /// Only digits, operators, dots and parentheses — never let `NSExpression` reach a function/keypath.
+    /// A cheap first-line filter: digits, operators, dots and parentheses only, so obvious junk (letters,
+    /// unicode digits, `@`) is rejected before parsing. Structural cases it lets through — a bare `%`,
+    /// unbalanced parens — are caught safely by `ExpressionEvaluator`, which never traps.
     static func isSafe(_ s: String) -> Bool {
         !s.isEmpty && s.allSatisfy { "0123456789.+-*/()% ".contains($0) }
     }
-    /// "10/4" → "10.0/4.0" so the arithmetic is floating-point.
-    static func floatify(_ s: String) -> String {
-        guard let re = try? NSRegularExpression(pattern: #"(?<![\d.])(\d+)(?![\d.])"#) else { return s }
-        return re.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s), withTemplate: "$1.0")
+    private func numberString(_ d: Double) -> String {
+        d == d.rounded() && abs(d) < 1e15 ? String(Int64(d)) : String(d)
     }
-    private func numberString(_ n: NSNumber) -> String {
-        let d = n.doubleValue
-        return d == d.rounded() && abs(d) < 1e15 ? String(Int64(d)) : String(d)
+}
+
+/// A tiny pure-Swift arithmetic evaluator (tokenizer + recursive-descent parser). Float semantics
+/// throughout (`10/4 == 2.5`); `%` is `truncatingRemainder`; `**` is right-associative power that binds
+/// tighter than unary `-` on the left (`-2**2 == -4`, Python-style). Every malformed input throws
+/// `EvalError` — it never calls `fatalError`/traps — so the calculator can turn it into a result string.
+enum ExpressionEvaluator {
+    enum EvalError: Error { case malformed }
+
+    static func evaluate(_ s: String) throws -> Double {
+        var parser = Parser(tokens: try tokenize(s))
+        let value = try parser.parseExpression()
+        guard parser.isAtEnd else { throw EvalError.malformed }   // trailing junk, e.g. "2)" or "2 3"
+        return value
+    }
+
+    // MARK: Tokens
+
+    enum Token: Equatable { case number(Double), plus, minus, star, slash, percent, power, lparen, rparen }
+
+    static func tokenize(_ s: String) throws -> [Token] {
+        var tokens: [Token] = []
+        let chars = Array(s)
+        var i = 0
+        while i < chars.count {
+            let c = chars[i]
+            switch c {
+            case "0"..."9", ".":
+                var lit = ""
+                while i < chars.count, ("0"..."9").contains(chars[i]) || chars[i] == "." { lit.append(chars[i]); i += 1 }
+                guard let d = Double(lit) else { throw EvalError.malformed }   // e.g. ".", "1.2.3"
+                tokens.append(.number(d))
+                continue
+            case "+": tokens.append(.plus)
+            case "-": tokens.append(.minus)
+            case "*":
+                if i + 1 < chars.count, chars[i + 1] == "*" { tokens.append(.power); i += 2; continue }
+                tokens.append(.star)
+            case "/": tokens.append(.slash)
+            case "%": tokens.append(.percent)
+            case "(": tokens.append(.lparen)
+            case ")": tokens.append(.rparen)
+            default: throw EvalError.malformed
+            }
+            i += 1
+        }
+        return tokens
+    }
+
+    // MARK: Parser — precedence: (+ −) < (* / %) < unary < (**)
+
+    struct Parser {
+        let tokens: [Token]
+        var pos = 0
+        var isAtEnd: Bool { pos >= tokens.count }
+        private func peek() -> Token? { pos < tokens.count ? tokens[pos] : nil }
+
+        // expression := term (('+' | '-') term)*
+        mutating func parseExpression() throws -> Double {
+            var value = try parseTerm()
+            while let t = peek(), t == .plus || t == .minus {
+                pos += 1
+                let rhs = try parseTerm()
+                value = (t == .plus) ? value + rhs : value - rhs
+            }
+            return value
+        }
+        // term := unary (('*' | '/' | '%') unary)*
+        mutating func parseTerm() throws -> Double {
+            var value = try parseUnary()
+            while let t = peek(), t == .star || t == .slash || t == .percent {
+                pos += 1
+                let rhs = try parseUnary()
+                switch t {
+                case .star:    value *= rhs
+                case .slash:   value /= rhs
+                case .percent: value = value.truncatingRemainder(dividingBy: rhs)
+                default:       break
+                }
+            }
+            return value
+        }
+        // unary := ('+' | '-') unary | power   — power binds tighter, so "-2**2" is -(2**2).
+        mutating func parseUnary() throws -> Double {
+            if let t = peek(), t == .plus || t == .minus {
+                pos += 1
+                let v = try parseUnary()
+                return t == .minus ? -v : v
+            }
+            return try parsePower()
+        }
+        // power := primary ('**' unary)?   — right-associative (the exponent recurses through unary).
+        mutating func parsePower() throws -> Double {
+            let base = try parsePrimary()
+            if peek() == .power {
+                pos += 1
+                let exp = try parseUnary()
+                return pow(base, exp)
+            }
+            return base
+        }
+        // primary := number | '(' expression ')'
+        mutating func parsePrimary() throws -> Double {
+            guard let t = peek() else { throw EvalError.malformed }
+            switch t {
+            case .number(let d): pos += 1; return d
+            case .lparen:
+                pos += 1
+                let v = try parseExpression()
+                guard peek() == .rparen else { throw EvalError.malformed }   // unbalanced "(2+3"
+                pos += 1
+                return v
+            default: throw EvalError.malformed   // bare operator, e.g. "%" or "*3"
+            }
+        }
     }
 }
 

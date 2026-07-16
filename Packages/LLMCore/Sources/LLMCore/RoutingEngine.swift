@@ -3,18 +3,27 @@
 import Foundation
 
 /// Errors from the engine router.
-public enum RoutingEngineError: Error, Equatable {
+public enum RoutingEngineError: Error, Equatable, LocalizedError {
     /// No engine was registered for the kind a variant needs.
     case noEngine(EngineKind)
     /// `generate` was called before any successful `load`.
     case noActiveEngine
+
+    public var errorDescription: String? {
+        switch self {
+        case .noEngine(let kind):
+            return "This build has no \(kind.label) engine available, so this model can’t run. Pick a variant that runs on a supported engine."
+        case .noActiveEngine:
+            return "No model is loaded yet. Choose and load a model before sending a message."
+        }
+    }
 }
 
 /// Routes `LLMEngine` calls to the right concrete engine by `variant.engine` (DESIGN §1 / §6). It holds
-/// one engine per `EngineKind` (injected at init) and keeps AT MOST ONE resident at a time: loading a
-/// variant on a *different* engine first `unload()`s the previously-active one, so two GPU/accelerator
-/// weight stacks never co-reside — the on-device memory-safety guarantee. `generate` forwards to the
-/// last-loaded engine; `unload` releases it.
+/// one engine per `EngineKind` (injected at init) and keeps AT MOST ONE resident at a time: every `load`
+/// first `unload()`s whatever is currently loaded — whether switching engines OR reloading a new model on
+/// the same engine — so two multi-GB weight stacks never co-reside, even momentarily (the on-device
+/// memory-safety guarantee). `generate` forwards to the last-loaded engine; `unload` releases it.
 ///
 /// MLX-free: it only knows the `LLMEngine` protocol, so the real MLX + llama.cpp engines inject here at
 /// app assembly and this router (and its behavior) stays CLI-testable with mock engines.
@@ -28,16 +37,19 @@ public actor RoutingEngine: LLMEngine {
         self.engines = engines
     }
 
-    /// Load `variant` on its engine. If a *different* engine is currently active, it is unloaded first
-    /// (never keep two resident). The new engine becomes active before the load runs, so a mid-load
-    /// failure still leaves `unload()` able to release it.
+    /// Load `variant` on its engine. Whatever is currently loaded is unloaded FIRST — a cross-engine
+    /// switch drops the other engine's stack, and a same-engine reload frees the old model's weights
+    /// before the engine allocates the new ones — so multi-GB weights are never briefly doubled. The
+    /// target becomes active before the load runs, so a mid-load failure still leaves `unload()` able to
+    /// release it. (The `noEngine` guard runs before any unload, so a bad variant leaves the current
+    /// model untouched.)
     public func load(model: LLMModel, variant: LLMVariant, weightsDir: URL,
                      progress: @escaping @Sendable (Double) -> Void) async throws {
         let kind = variant.engine
         guard let target = engines[kind] else { throw RoutingEngineError.noEngine(kind) }
 
-        if let active, active.kind != kind {
-            await active.engine.unload()   // cross-engine switch: drop the other stack first
+        if let active {
+            await active.engine.unload()   // never hold two weight stacks at once (switch or reload)
         }
         active = (kind, target)
         try await target.load(model: model, variant: variant, weightsDir: weightsDir, progress: progress)

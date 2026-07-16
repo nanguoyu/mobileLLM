@@ -85,7 +85,8 @@ public struct ModelDownloader: Sendable {
     public func isDownloaded(repoId: String, fileName: String) -> Bool {
         let fm = FileManager.default
         let root = localURL(repoId: repoId)
-        let file = root.appending(component: fileName)
+        // The fileName comes from remote catalog metadata — never let a "../…" escape the repo root.
+        guard let file = Self.safeDestination(root: root, relativePath: fileName) else { return false }
         guard fm.fileExists(atPath: file.path) else { return false }
         if fm.fileExists(atPath: file.appendingPathExtension("part").path) { return false }
         return Self.verifyManifestIfPresent(at: root)
@@ -114,7 +115,11 @@ public struct ModelDownloader: Sendable {
         var completedBytes: Int64 = 0
         let session = Self.makeSession()
         for file in selected {
-            let destination = root.appendingPathComponent(file.path)
+            // `file.path` is taken verbatim from the HF tree API — sanitize it against zip-slip before
+            // it becomes a write destination (a malicious repo could list "../../…").
+            guard let destination = Self.safeDestination(root: root, relativePath: file.path) else {
+                throw ModelDownloadError.unsafePath(file.path)
+            }
             if Self.fileMatches(destination, expectedSize: file.size, expectedSHA256: file.sha256) {
                 completedBytes += file.size ?? Self.fileSize(destination)
                 progress(min(1, Double(completedBytes) / Double(totalBytes)))
@@ -148,6 +153,23 @@ public struct ModelDownloader: Sendable {
 
     private static func matchesAny(_ globs: [String], _ path: String) -> Bool {
         globs.contains { matches(path, glob: $0) }
+    }
+
+    /// Resolve a remote-supplied RELATIVE path to a write destination inside `root`, or `nil` if it would
+    /// escape (zip-slip / path traversal). HF hands us file paths verbatim, so a hostile repo could list
+    /// an absolute path or one with `..` components; either must be refused BEFORE any write. Rejects:
+    /// empty, absolute (leading `/`), any `..` component, and — belt-and-braces — anything whose
+    /// standardized path doesn't stay under the standardized `root`.
+    static func safeDestination(root: URL, relativePath: String) -> URL? {
+        guard !relativePath.isEmpty, !relativePath.hasPrefix("/") else { return nil }
+        let components = relativePath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        guard !components.isEmpty else { return nil }
+        for c in components where c == ".." || c.contains("\\") { return nil }   // parent-traversal / Windows escape
+        let dest = components.reduce(root) { $0.appending(component: $1) }
+        let rootStd = root.standardizedFileURL.path
+        let destStd = dest.standardizedFileURL.path
+        guard destStd == rootStd || destStd.hasPrefix(rootStd + "/") else { return nil }
+        return dest
     }
 
     /// Shell-style glob match (`*`, `?`). Falls back to a literal/prefix check where `fnmatch` is
@@ -449,6 +471,7 @@ public enum ModelDownloadError: LocalizedError {
     case incompleteDownload(String)
     case invalidURL(String)
     case hashMismatch(String)
+    case unsafePath(String)
     public var errorDescription: String? {
         switch self {
         case .emptyFileList(let repo):
@@ -459,6 +482,8 @@ public enum ModelDownloadError: LocalizedError {
             return "Invalid download URL: \(url)"
         case .hashMismatch(let file):
             return "Hash verification failed for \(file). Tap download again to retry."
+        case .unsafePath(let path):
+            return "Refused an unsafe file path from the model repo: \(path)."
         }
     }
 }

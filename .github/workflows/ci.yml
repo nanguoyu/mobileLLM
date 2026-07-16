@@ -1,0 +1,74 @@
+name: CI
+
+# Tests the four MLX-free Swift packages under plain SwiftPM. These need no Metal toolchain and no
+# vendored XCFramework, so they run fast on a stock macOS runner. The full app build (and the two
+# engine packages) require the ~355 MB llama.xcframework and the MLX fork — see the commented job below.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: swift test (MLX-free packages)
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select latest stable Xcode
+        # /Applications/Xcode.app is the runner image's default (latest stable) Xcode. Bump the runner
+        # image (macos-15 → newer) to move to a newer default toolchain.
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          swift --version
+          xcodebuild -version
+
+      - name: Test AppUI
+        run: swift test --package-path Packages/AppUI
+
+      - name: Test AppRuntime
+        run: swift test --package-path Packages/AppRuntime
+
+      - name: Test LLMCore
+        run: swift test --package-path Packages/LLMCore
+
+      - name: Test MobileLLMUI
+        run: swift test --package-path Packages/MobileLLMUI
+
+  # ---------------------------------------------------------------------------------------------------
+  # App build (NOT run here). Building mobileLLM.app needs two things CI can't cheaply produce:
+  #   1. the vendored llama.xcframework (~355 MB, ~15–25 min) built by scripts/build-llama-xcframework.sh
+  #   2. the PrismML 1-bit MLX fork + `xcodebuild -skipMacroValidation` (see docs/WIRING.md)
+  # A future job would look roughly like this. The XCFramework is deterministic for a given llama.cpp
+  # pin, so cache it keyed on the pinned commit in the build script (currently
+  # LLAMA_COMMIT=956973c76466b6c791d7bdbe6eed3aa3235b2dc1) to pay the build cost once:
+  #
+  # build-app:
+  #   name: build mobileLLM.app (macOS)
+  #   runs-on: macos-15
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+  #     - run: brew install xcodegen cmake
+  #     - name: Cache llama.xcframework
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: Packages/LLMEngineLlama/Vendor/llama.xcframework
+  #         # Rebuild only when the pinned llama.cpp commit in the script changes.
+  #         key: llama-xcframework-${{ hashFiles('scripts/build-llama-xcframework.sh') }}
+  #     - name: Build XCFramework (on cache miss)
+  #       run: test -d Packages/LLMEngineLlama/Vendor/llama.xcframework || ./scripts/build-llama-xcframework.sh
+  #     - run: cp Signing.xcconfig.example Signing.xcconfig   # unsigned CI build
+  #     - run: xcodegen generate
+  #     - name: Build
+  #       run: |
+  #         xcodebuild build -project mobileLLM.xcodeproj -scheme mobileLLM \
+  #           -destination 'platform=macOS,arch=arm64' -skipMacroValidation \
+  #           CODE_SIGNING_ALLOWED=NO

@@ -54,4 +54,33 @@ final class ModelDownloaderTests: XCTestCase {
         try write(dl.localURL(repoId: repo).appending(component: "model-Q1_0.gguf"), bytes: 2048)
         XCTAssertTrue(dl.isDownloaded(repoId: repo), "a flat repo whose only weight is a .gguf is complete")
     }
+
+    // MARK: Path-traversal sanitizer (A2.8) — pure function, no network
+
+    func testSafeDestinationAcceptsNormalPaths() {
+        let root = base.appending(component: "models/org/repo")
+        for p in ["model.safetensors", "config.json", "onnx/model.onnx", "a/b/c.json", "tokenizer.model"] {
+            guard let dest = ModelDownloader.safeDestination(root: root, relativePath: p) else {
+                return XCTFail("\(p) should be accepted")
+            }
+            XCTAssertTrue(dest.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path + "/"),
+                          "\(p) must resolve under the model root")
+        }
+    }
+
+    func testSafeDestinationRejectsTraversalAndAbsolute() {
+        let root = base.appending(component: "models/org/repo")
+        for p in ["../evil", "../../etc/passwd", "a/../../b", "/etc/passwd", "",
+                  "..\\..\\evil", "foo/../../bar", "weights/../../../../System"] {
+            XCTAssertNil(ModelDownloader.safeDestination(root: root, relativePath: p),
+                         "‘\(p)’ must be refused (zip-slip)")
+        }
+    }
+
+    /// A traversal fileName reads as "not downloaded" — the probe never resolves outside the repo root.
+    func testIsDownloadedRejectsTraversalFileName() {
+        let dl = ModelDownloader(downloadBase: base)
+        XCTAssertFalse(dl.isDownloaded(repoId: "org/repo", fileName: "../../secret.gguf"))
+        XCTAssertFalse(dl.isDownloaded(repoId: "org/repo", fileName: "/etc/passwd"))
+    }
 }

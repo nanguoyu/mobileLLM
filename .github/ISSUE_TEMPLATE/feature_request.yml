@@ -1,0 +1,58 @@
+name: Feature request
+description: Suggest a capability, a model to add, or an improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. mobileLLM is an on-device app — proposals that keep inference local and honest
+        about memory/thermal limits fit best.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: The use case or friction behind the request. What are you trying to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you'd like to see. Sketches, UI ideas, or API shape all welcome.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Chat / conversation
+        - Models & downloads (catalog / Explore)
+        - Inference engine (MLX / llama.cpp)
+        - Tools & MCP
+        - Settings / memory / thermal
+        - Design / accessibility
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: model
+    attributes:
+      label: Model request (if applicable)
+      description: |
+        Suggesting a model? Include the Hugging Face repo, architecture (model_type), parameter count, the
+        quantizations available, its license, and the engine it would run on (MLX or llama.cpp / GGUF).
+        Many models can already be tried today via the Explore tab without a code change.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

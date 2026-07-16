@@ -1,0 +1,113 @@
+name: Bug report
+description: Report a problem in mobileLLM (crash, wrong behavior, memory/thermal, download, UI)
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please fill in the details below — the model, quant, and engine matter a
+        lot for on-device issues. For a security vulnerability, do **not** use this form; see
+        [SECURITY.md](https://github.com/nanguoyu/mobileLLM/blob/main/SECURITY.md) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What went wrong, and what did you expect instead?
+      placeholder: The app crashed when… / I expected… but got…
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Download …
+        3. Send the prompt …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - iOS
+        - macOS
+        - both
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device & OS version
+      description: e.g. iPhone 16 Pro (8 GB) / iOS 18.5, or MacBook Air M2 (16 GB) / macOS 15.5
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App version / commit
+      description: The MARKETING_VERSION shown in the app, or the git commit you built.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Inference engine
+      options:
+        - MLX
+        - llama.cpp
+        - Auto
+        - not sure / not applicable
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: e.g. Bonsai 8B, Qwen3.5 9B, or an Explore (Hugging Face) model — include the repo id.
+    validations:
+      required: false
+
+  - type: input
+    id: quant
+    attributes:
+      label: Quantization
+      description: e.g. 1-bit, ternary (2-bit), Q4_K_M
+    validations:
+      required: false
+
+  - type: input
+    id: context
+    attributes:
+      label: Context length setting
+      description: e.g. 8192 (the value in Settings when it happened)
+    validations:
+      required: false
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Where did the model come from?
+      options:
+        - Featured catalog
+        - Explore (live Hugging Face browse)
+        - not applicable
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Any console output, a crash log, or screenshots. Redact anything private.
+      render: shell
+    validations:
+      required: false

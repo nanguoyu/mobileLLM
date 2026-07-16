@@ -37,6 +37,51 @@ final class ToolsTests: XCTestCase {
         XCTAssertEqual(frac, "2.5")
     }
 
+    /// Power, modulo, and unary minus with their precedence (`**` binds tighter than unary `-`).
+    func testCalculatorPowerModuloUnary() async {
+        await XCTAssertCalc("2**10", "1024")
+        await XCTAssertCalc("10%3", "1")
+        await XCTAssertCalc("10.5%3", "1.5")     // truncatingRemainder, not integer mod
+        await XCTAssertCalc("-5+2", "-3")
+        await XCTAssertCalc("-2**2", "-4")       // -(2**2), Python-style
+        await XCTAssertCalc("2**3**2", "512")    // right-associative: 2**(3**2)
+        await XCTAssertCalc("2^8", "256")        // caret normalized to power
+    }
+
+    /// Fuzz: every malformed expression must return an error STRING and NEVER crash. (If any of these
+    /// reached `NSExpression`, the ObjC exception would kill the test process — so a green run *is* the
+    /// no-crash guarantee.)
+    func testCalculatorMalformedNeverCrashes() async {
+        let bad = [
+            "(2+3",          // unbalanced open paren
+            "2+3)",          // unbalanced close paren
+            "%",             // bare modulo
+            "50%",           // trailing operator, no rhs
+            "%%@",           // junk (also fails the char filter)
+            "3*/2",          // operator run
+            "1//2",          // operator run
+            "**5",           // leading power
+            "2**",           // trailing power, no exponent
+            "1.2.3",         // malformed number literal
+            ".",             // lone dot
+            "10**100000",    // overflow → ±inf, reported not printed
+            "1/0",           // divide by zero → inf
+            "０＋１",          // fullwidth unicode digits
+            "",              // empty
+            "   ",           // whitespace only (→ empty after normalization)
+        ]
+        for expr in bad {
+            let r = await CalculatorTool().execute(argumentsJSON: #"{"expression":"\#(expr)"}"#)
+            XCTAssertTrue(r.hasPrefix("Error"), "‘\(expr)’ must return an error string, got ‘\(r)’")
+        }
+    }
+
+    private func XCTAssertCalc(_ expr: String, _ expected: String,
+                               file: StaticString = #filePath, line: UInt = #line) async {
+        let r = await CalculatorTool().execute(argumentsJSON: #"{"expression":"\#(expr)"}"#)
+        XCTAssertEqual(r, expected, file: file, line: line)
+    }
+
     func testDateTimeToolReturnsNonEmpty() async {
         let r = await DateTimeTool().execute(argumentsJSON: "{}")
         XCTAssertFalse(r.isEmpty)

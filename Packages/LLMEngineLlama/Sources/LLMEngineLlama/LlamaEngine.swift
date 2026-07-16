@@ -13,7 +13,7 @@ import LLMCore
 /// reclaimable under pressure — the difference that lets a 3.8 GB model breathe on an 8 GB phone. To keep
 /// that discount we DISABLE Metal residency sets on iOS (they would wire the GPU buffers and erase it).
 public actor LlamaEngine: LLMEngine {
-    public enum EngineError: Error, Sendable, Equatable {
+    public enum EngineError: Error, Sendable, Equatable, LocalizedError {
         case backendUnavailable
         case weightsNotFound
         case modelLoadFailed
@@ -21,12 +21,39 @@ public actor LlamaEngine: LLMEngine {
         case notLoaded
         case decodeFailed
         case noUserMessage
+        /// The prompt can't be made to fit the context window even after dropping all droppable history
+        /// (system prefix + final user turn alone overflow). Raised instead of truncating mid-token.
+        case contextWindowExceeded
+
+        /// Actionable, user-facing text. Load/context failures point at the real lever (a smaller quant or
+        /// freeing memory); the overflow case names the way out (shorter system prompt / longer context).
+        public var errorDescription: String? {
+            switch self {
+            case .backendUnavailable:
+                return "The on-device inference backend failed to start. Restart the app; if it keeps failing, this build may be missing its Metal support."
+            case .weightsNotFound:
+                return "No GGUF weights were found for this model. Re-download the model, then try again."
+            case .modelLoadFailed:
+                return "Couldn't load the model — most often it's too large for the memory available. Choose a smaller quantization, or free memory by unloading any other model and closing background apps."
+            case .contextInitFailed:
+                return "Couldn't reserve the decode context at this context length. Pick a shorter context length, or free memory before retrying."
+            case .notLoaded:
+                return "No model is loaded yet. Load a model before starting a conversation."
+            case .decodeFailed:
+                return "Generation stopped on an internal decode error. Try again; if it persists, unload and reload the model."
+            case .noUserMessage:
+                return "There's no user message to respond to."
+            case .contextWindowExceeded:
+                return "The system prompt and your latest message alone don't fit this model's context window. Shorten the system prompt or raise the context length, then try again."
+            }
+        }
     }
 
     private var model: OpaquePointer?
     private var vocab: OpaquePointer?
     private var context: OpaquePointer?
     private var contextCap: Int = 0          // the n_ctx the live context was built with
+    private var contextKVBits: Int = -1      // the Sampling.kvBits the live context's KV cache was built for
     private var loadedID: String?
     private var thinkingCapable = true
     private var eosText = "<|im_end|>"
@@ -39,6 +66,16 @@ public actor LlamaEngine: LLMEngine {
 
     public init() {}
     public var isLoaded: Bool { model != nil }
+
+    /// The loaded GGUF's declared training context length (`llama_model_n_ctx_train`) — the model's true
+    /// capability ceiling. Lets the UI stop inventing a `nativeContext` for community (Explore) checkpoints
+    /// that aren't in the catalog. `nil` when nothing is loaded (or the model declares no value). Distinct
+    /// from `contextCap`, which is the size of the CURRENTLY-ALLOCATED decode context, not the ceiling.
+    public var modelTrainingContext: Int? {
+        guard let model else { return nil }
+        let n = llama_model_n_ctx_train(model)
+        return n > 0 ? Int(n) : nil
+    }
 
     // MARK: - Backend (global, once)
 
@@ -56,6 +93,10 @@ public actor LlamaEngine: LLMEngine {
     public func load(model modelSpec: LLMCore.LLMModel, variant: LLMCore.LLMVariant, weightsDir: URL,
                      progress: @Sendable @escaping (Double) -> Void) async throws {
         guard Self.backendReady else { throw EngineError.backendUnavailable }
+        // Reloading over a resident model must free the predecessor first: llama_model_load_from_file
+        // returns a fresh allocation, so overwriting the pointers would leak the old multi-GB model
+        // (and `context = nil` below would leak its context — only llama_free releases it).
+        if model != nil || context != nil { await unload() }
         let path = try Self.resolveGGUF(in: weightsDir, preferred: variant.source.fileName)
 
         var mp = llama_model_default_params()
@@ -77,21 +118,23 @@ public actor LlamaEngine: LLMEngine {
         eosText = modelSpec.architecture.eos
         promptTemplate = modelSpec.architecture.promptTemplate
         reasoningStyle = modelSpec.architecture.reasoningStyle
-        context = nil; contextCap = 0
+        context = nil; contextCap = 0; contextKVBits = -1
         progress(1)
     }
 
     public func unload() async {
         if let context { llama_free(context) }
         if let model { llama_model_free(model) }
-        context = nil; model = nil; vocab = nil; loadedID = nil; contextCap = 0
+        context = nil; model = nil; vocab = nil; loadedID = nil; contextCap = 0; contextKVBits = -1
     }
 
-    /// (Re)create the decode context sized to `cap` tokens. Kept separate from `load` because n_ctx is
-    /// fixed at context-creation on llama.cpp, while the user's context length is a per-generation lever.
-    private func ensureContext(cap: Int) throws {
+    /// (Re)create the decode context sized to `cap` tokens with the requested KV-cache width. Kept separate
+    /// from `load` because n_ctx (and the KV-cache dtype) is fixed at context-creation on llama.cpp, while
+    /// both are per-generation levers. `kvBits` mirrors `Sampling.kvBits`: 0 = f16 (default), 4 = Q4_0,
+    /// 8 = Q8_0. Rebuilds when EITHER the size or the KV width changes.
+    private func ensureContext(cap: Int, kvBits: Int) throws {
         let target = max(512, cap)
-        if let context, contextCap == target {
+        if let context, contextCap == target, contextKVBits == kvBits {
             llama_memory_clear(llama_get_memory(context), true)   // fresh KV: we re-prefill full history
             return
         }
@@ -101,11 +144,26 @@ public actor LlamaEngine: LLMEngine {
         cp.n_batch = 512                                          // small compute buffer; prefill is chunked
         cp.n_threads = nThreads
         cp.n_threads_batch = nThreads
+        // KV-cache quantization. llama.cpp has no non-Flash-Attention matmul for a quantized V-cache, so a
+        // quantized cache REQUIRES Flash Attention (the standard `-fa -ctk qN -ctv qN` config, supported on
+        // Metal for all catalog head dims). We therefore force FA on ONLY in the quantized branch; kvBits 0
+        // leaves both the f16 cache and the library-default (AUTO) attention untouched — no behavior change.
+        switch kvBits {
+        case 4:
+            cp.type_k = GGML_TYPE_Q4_0; cp.type_v = GGML_TYPE_Q4_0
+            cp.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED
+        case 8:
+            cp.type_k = GGML_TYPE_Q8_0; cp.type_v = GGML_TYPE_Q8_0
+            cp.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED
+        default:
+            break   // 0 or unrecognized → f16 cache, attention left at the default
+        }
         guard let model, let ctx = llama_init_from_model(model, cp) else {
             throw EngineError.contextInitFailed
         }
         context = ctx
         contextCap = target
+        contextKVBits = kvBits
     }
 
     // MARK: - Generation
@@ -124,27 +182,34 @@ public actor LlamaEngine: LLMEngine {
             guard model != nil, let vocab else { throw EngineError.notLoaded }
             guard messages.contains(where: { $0.role == .user }) else { throw EngineError.noUserMessage }
 
-            try ensureContext(cap: params.contextTokenCap)
+            try ensureContext(cap: params.contextTokenCap, kvBits: params.kvBits)
             guard let context else { throw EngineError.contextInitFailed }
 
             let wantThinking = params.thinking && reasoningStyle.canThink
             // `.auto` (Explore's community checkpoints) renders with the GGUF's own embedded template;
             // everything else uses its hand-verified builder. Auto falls back to ChatML if the GGUF
-            // carries no template.
-            let prompt: String
-            if promptTemplate == .auto, let m = model,
-               let rendered = Self.autoPrompt(messages, modelPtr: m, reasoning: reasoningStyle, thinking: wantThinking) {
-                prompt = rendered
-            } else {
-                prompt = Self.buildPrompt(messages: messages, template: promptTemplate,
-                                          reasoning: reasoningStyle, thinking: wantThinking)
+            // carries no template. Wrapped so the overflow fitter can re-render any history subset.
+            func renderPrompt(_ msgs: [ChatTurn]) -> String {
+                if promptTemplate == .auto, let m = model,
+                   let rendered = Self.autoPrompt(msgs, modelPtr: m, reasoning: reasoningStyle, thinking: wantThinking) {
+                    return rendered
+                }
+                return Self.buildPrompt(messages: msgs, template: promptTemplate,
+                                        reasoning: reasoningStyle, thinking: wantThinking)
             }
-            var promptTokens = Self.tokenize(vocab: vocab, text: prompt, addSpecial: true)
-            // Guard the KV window: keep the most recent tokens if the prompt overflows the context.
-            let room = contextCap - max(8, params.maxTokens > 0 ? min(params.maxTokens, 256) : 256)
-            if promptTokens.count > room, room > 0 {
-                promptTokens.removeFirst(promptTokens.count - room)
+
+            // Fit the history into the KV window by dropping WHOLE oldest non-system turns and rebuilding —
+            // NEVER by chopping tokens off the front, which would shear the system prompt and the template
+            // head mid-conversation. Reserve room for the answer; if even {system prefix + final user turn}
+            // overflows, fail with a clear error rather than emit garbage from a half-formed prompt.
+            let reserve = max(8, params.maxTokens > 0 ? min(params.maxTokens, 256) : 256)
+            let budget = contextCap - reserve
+            guard budget > 0, let kept = Self.fitMessages(messages, budget: budget, tokenCount: {
+                Self.tokenize(vocab: vocab, text: renderPrompt($0), addSpecial: true).count
+            }) else {
+                throw EngineError.contextWindowExceeded
             }
+            let promptTokens = Self.tokenize(vocab: vocab, text: renderPrompt(kept), addSpecial: true)
 
             let sampler = Self.makeSampler(vocab: vocab, params: params)
             defer { llama_sampler_free(sampler) }
@@ -162,6 +227,11 @@ public actor LlamaEngine: LLMEngine {
                 }
                 guard ok else { throw EngineError.decodeFailed }
                 i = end
+                // Hand the cooperative pool a breath between chunks so downloads/saves keep progressing
+                // (these C calls have no suspension points of their own). The yield is an actor-reentrancy
+                // point: bail if a concurrent unload/reload swapped the context out from under us.
+                await Task.yield()
+                guard self.context == context else { throw CancellationError() }
             }
             let promptSecs = max(Date().timeIntervalSince(prefillStart), 0.0001)
 
@@ -198,7 +268,13 @@ public actor LlamaEngine: LLMEngine {
                     for d in splitter.feed(text) { emit(d) }
                 }
                 genTokens += 1
-                if genTokens & 0b111 == 0 { peak = max(peak, Self.footprintBytes()) }
+                if genTokens & 0b111 == 0 {
+                    peak = max(peak, Self.footprintBytes())
+                    // Every 8 tokens, let downloads/saves make progress (the decode loop is otherwise a
+                    // suspension-free run of C calls that would peg a cooperative-pool thread for minutes).
+                    await Task.yield()
+                    guard self.context == context else { throw CancellationError() }   // reentrant teardown
+                }
 
                 var one = [tokenID]
                 let ok = one.withUnsafeMutableBufferPointer { buf -> Bool in
@@ -237,6 +313,12 @@ public actor LlamaEngine: LLMEngine {
     /// Serialize the chat history into the model's prompt string, dispatching on its `PromptTemplate`
     /// and appending the reasoning-control suffix for its `ReasoningStyle`. `thinking` is the effective
     /// per-turn choice (the caller has already ANDed it with the model's capability).
+    ///
+    /// BOS POLICY (all builders): a builder NEVER writes a literal begin-of-sentence token. Tokenization
+    /// runs with `addSpecial: true`, so llama.cpp prepends the GGUF's own BOS whenever its metadata sets
+    /// `add_bos_token=true`; a literal BOS in the string would then be a SECOND one (`parse_special: true`
+    /// re-tokenizes it), which measurably degrades output. The ChatML/Gemma builders always relied on this;
+    /// the DeepSeek/Hunyuan builders now do too. `PromptBuilderTests` pins that no builder output emits one.
     static func buildPrompt(messages: [ChatTurn], template: PromptTemplate,
                             reasoning: ReasoningStyle, thinking: Bool) -> String {
         switch template {
@@ -246,6 +328,33 @@ public actor LlamaEngine: LLMEngine {
         case .gemma:    return gemmaPrompt(messages)
         case .auto:     return chatMLPrompt(messages, reasoning: reasoning, thinking: thinking)  // fallback
         }
+    }
+
+    /// Choose the chat turns whose rendered prompt fits `budget` tokens, for context-overflow handling.
+    ///
+    /// Policy: keep EVERY system turn and the final turn (the user's current query) unconditionally; if the
+    /// whole history overflows, drop whole non-system turns oldest-first, re-measuring after each drop, and
+    /// stop as soon as it fits — so the system prefix and the live question always survive and the newest
+    /// history is preferred. Returns the kept messages, or `nil` when even {all system turns + the final
+    /// turn} overflows (the caller fails with `.contextWindowExceeded` rather than truncate mid-token).
+    ///
+    /// Pure + tokenizer-free: `tokenCount` renders and measures a candidate (injected so the selection is
+    /// unit-testable without loading a model). Called at most once per droppable turn.
+    static func fitMessages(_ messages: [ChatTurn], budget: Int,
+                            tokenCount: ([ChatTurn]) -> Int) -> [ChatTurn]? {
+        if tokenCount(messages) <= budget { return messages }
+        // Droppable = non-system turns except the final one, oldest first (ascending index order).
+        let lastIndex = messages.indices.last
+        let droppable = messages.indices.filter { $0 != lastIndex && messages[$0].role != .system }
+        var removed = Set<Int>()
+        for idx in droppable {
+            removed.insert(idx)
+            let kept = messages.enumerated().filter { !removed.contains($0.offset) }.map { $0.element }
+            if tokenCount(kept) <= budget { return kept }
+        }
+        // Nothing droppable is left: only the system prefix and the final turn remain.
+        let minimal = messages.enumerated().filter { !removed.contains($0.offset) }.map { $0.element }
+        return tokenCount(minimal) <= budget ? minimal : nil
     }
 
     /// Render the prompt with the template EMBEDDED IN THE GGUF via llama.cpp — the path for arbitrary
@@ -305,12 +414,13 @@ public actor LlamaEngine: LLMEngine {
         return s + thinkSuffix(reasoning, thinking: thinking)
     }
 
-    /// DeepSeek(-R1 distills): BOS + raw system, then each USER turn already carries the trailing
-    /// `<｜Assistant｜>` opener; assistant history turns end with the DeepSeek EOS. The model emits its own
-    /// `<think>` (explicit), so no opener is pre-filled unless we suppress.
+    /// DeepSeek(-R1 distills): raw system, then each USER turn already carries the trailing `<｜Assistant｜>`
+    /// opener; assistant history turns end with the DeepSeek EOS. The model emits its own `<think>`
+    /// (explicit), so no opener is pre-filled unless we suppress. The leading `<｜begin▁of▁sentence｜>` is
+    /// NOT written here — `tokenize(addSpecial: true)` owns the BOS (see `buildPrompt`'s BOS policy).
     static func deepSeekPrompt(_ messages: [ChatTurn], reasoning: ReasoningStyle, thinking: Bool) -> String {
-        let bos = "<｜begin▁of▁sentence｜>", eos = "<｜end▁of▁sentence｜>"
-        var s = bos
+        let eos = "<｜end▁of▁sentence｜>"
+        var s = ""
         if let sys = messages.first(where: { $0.role == .system })?.content, !sys.isEmpty { s += sys }
         for m in messages {
             switch m.role {
@@ -322,11 +432,13 @@ public actor LlamaEngine: LLMEngine {
         return s + thinkSuffix(reasoning, thinking: thinking)
     }
 
-    /// Tencent Hunyuan: BOS + raw system, then each USER turn carries the trailing `<｜hy_Assistant｜>`
-    /// opener; assistant history turns end with the Hunyuan EOS. Explicit `<think>`.
+    /// Tencent Hunyuan: raw system, then each USER turn carries the trailing `<｜hy_Assistant｜>` opener;
+    /// assistant history turns end with the Hunyuan EOS. Explicit `<think>`. The leading
+    /// `<｜hy_begin▁of▁sentence｜>` is NOT written here — `tokenize(addSpecial: true)` owns the BOS (see
+    /// `buildPrompt`'s BOS policy).
     static func hunyuanPrompt(_ messages: [ChatTurn], reasoning: ReasoningStyle, thinking: Bool) -> String {
-        let bos = "<｜hy_begin▁of▁sentence｜>", eos = "<｜hy_place▁holder▁no▁2｜>"
-        var s = bos
+        let eos = "<｜hy_place▁holder▁no▁2｜>"
+        var s = ""
         if let sys = messages.first(where: { $0.role == .system })?.content, !sys.isEmpty { s += sys }
         for m in messages {
             switch m.role {

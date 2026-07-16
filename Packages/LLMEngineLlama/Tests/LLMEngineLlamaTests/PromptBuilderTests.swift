@@ -63,8 +63,9 @@ final class PromptBuilderTests: XCTestCase {
             messages: [ChatTurn(role: .system, content: "sys"),
                        ChatTurn(role: .user, content: "hello")],
             template: .deepSeek, reasoning: .thinkTags, thinking: true)
-        // BOS + raw system + <｜User｜>hello<｜Assistant｜>, model emits its own <think> → no suffix.
-        XCTAssertEqual(p, "<｜begin▁of▁sentence｜>sys<｜User｜>hello<｜Assistant｜>")
+        // Raw system + <｜User｜>hello<｜Assistant｜>, model emits its own <think> → no suffix. NO literal BOS:
+        // tokenize(addSpecial:true) prepends it, so the builder must not (a second one degrades output).
+        XCTAssertEqual(p, "sys<｜User｜>hello<｜Assistant｜>")
     }
 
     func testDeepSeekHistoryEndsAssistantWithEOS() {
@@ -73,7 +74,8 @@ final class PromptBuilderTests: XCTestCase {
                        ChatTurn(role: .assistant, content: "b"),
                        ChatTurn(role: .user, content: "c")],
             template: .deepSeek, reasoning: .thinkTags, thinking: true)
-        XCTAssertEqual(p, "<｜begin▁of▁sentence｜><｜User｜>a<｜Assistant｜>b<｜end▁of▁sentence｜><｜User｜>c<｜Assistant｜>")
+        // Mid-history EOS between turns stays; only the leading BOS is dropped (owned by add_special).
+        XCTAssertEqual(p, "<｜User｜>a<｜Assistant｜>b<｜end▁of▁sentence｜><｜User｜>c<｜Assistant｜>")
     }
 
     // MARK: Hunyuan
@@ -82,7 +84,8 @@ final class PromptBuilderTests: XCTestCase {
         let p = LlamaEngine.buildPrompt(
             messages: [ChatTurn(role: .user, content: "你好")],
             template: .hunyuan, reasoning: .thinkTags, thinking: true)
-        XCTAssertEqual(p, "<｜hy_begin▁of▁sentence｜><｜hy_User｜>你好<｜hy_Assistant｜>")
+        // Tencent special tokens preserved; leading BOS dropped (owned by add_special, never doubled).
+        XCTAssertEqual(p, "<｜hy_User｜>你好<｜hy_Assistant｜>")
     }
 
     // MARK: Gemma 4 (asymmetric turn markers, non-thinking)
@@ -109,5 +112,29 @@ final class PromptBuilderTests: XCTestCase {
                                           template: .chatML, reasoning: .none, thinking: false)
         XCTAssertFalse(on.contains("<think>"))
         XCTAssertFalse(off.contains("<think>"))
+    }
+
+    // MARK: BOS policy — builders never emit a literal begin-of-sentence token
+
+    func testNoBuilderEmitsLiteralBOS() {
+        // add_special owns the BOS; a literal one in the string would double it on GGUFs with
+        // add_bos_token=true. Pin that NO builder writes a family BOS literal, anywhere in its output.
+        let bosLiterals = ["<｜begin▁of▁sentence｜>", "<｜hy_begin▁of▁sentence｜>", "<bos>", "<s>"]
+        let msgs = [ChatTurn(role: .system, content: "S"),
+                    ChatTurn(role: .user, content: "hi"),
+                    ChatTurn(role: .assistant, content: "yo"),
+                    ChatTurn(role: .user, content: "bye")]
+        for template in [PromptTemplate.chatML, .deepSeek, .hunyuan, .gemma, .auto] {
+            for style in [ReasoningStyle.none, .thinkTags, .thinkTagsImplicitOpen] {
+                for thinking in [true, false] {
+                    let p = LlamaEngine.buildPrompt(messages: msgs, template: template,
+                                                    reasoning: style, thinking: thinking)
+                    for bos in bosLiterals {
+                        XCTAssertFalse(p.hasPrefix(bos), "\(template)/\(style): no leading BOS literal")
+                        XCTAssertFalse(p.contains(bos), "\(template)/\(style): no BOS literal anywhere")
+                    }
+                }
+            }
+        }
     }
 }

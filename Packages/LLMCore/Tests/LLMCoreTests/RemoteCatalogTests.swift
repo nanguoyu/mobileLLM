@@ -127,4 +127,126 @@ final class RemoteCatalogTests: XCTestCase {
         let fallback = RemoteModel.estimateBytes(paramsBillions: nil, quant: "4-bit")
         XCTAssertGreaterThan(fallback, 1_000_000_000)
     }
+
+    // MARK: Real architecture resolution (A2.5) — pure parsing, canned JSON, no network
+
+    private var mlxFallback: LLMArchitecture { RemoteCatalog.genericArchitecture(engine: .mlx) }
+    private var ggufFallback: LLMArchitecture { RemoteCatalog.genericArchitecture(engine: .llamaCpp) }
+
+    /// The generic fallback is the fabricated 32K/`fullAttention(8,128,32)` shape the fix exists to avoid
+    /// presenting as fact — pinned here so a regression toward inventing context is caught.
+    func testGenericArchitectureIsTheHonestPlaceholder() {
+        XCTAssertEqual(mlxFallback.nativeContext, 32_768)
+        XCTAssertEqual(mlxFallback.modelType, "generic")
+        XCTAssertEqual(mlxFallback.promptTemplate, .chatML)
+        XCTAssertEqual(ggufFallback.promptTemplate, .auto)
+    }
+
+    /// A real MLX `config.json` (Qwen3 8B shape) parses into the true context + KV shape.
+    func testParseMLXConfigReadsRealShape() throws {
+        let json = """
+        {"model_type":"qwen3","hidden_size":4096,"num_hidden_layers":36,"num_attention_heads":32,
+         "num_key_value_heads":8,"head_dim":128,"vocab_size":151936,"max_position_embeddings":40960,
+         "tie_word_embeddings":false,"eos_token_id":151645}
+        """
+        let arch = try XCTUnwrap(RemoteCatalog.parseMLXConfig(Data(json.utf8), fallback: mlxFallback))
+        XCTAssertEqual(arch.nativeContext, 40960)   // NOT the fabricated 32768
+        XCTAssertEqual(arch.modelType, "qwen3")
+        XCTAssertEqual(arch.hidden, 4096)
+        XCTAssertEqual(arch.layers, 36)
+        XCTAssertEqual(arch.vocab, 151936)
+        XCTAssertFalse(arch.tieWordEmbeddings)
+        guard case let .fullAttention(kvHeads, headDim, layers) = arch.attention else {
+            return XCTFail("expected fullAttention, got \(arch.attention)")
+        }
+        XCTAssertEqual(kvHeads, 8)
+        XCTAssertEqual(headDim, 128)
+        XCTAssertEqual(layers, 36)
+    }
+
+    /// When `head_dim` is absent it is derived from `hidden_size / num_attention_heads`, and
+    /// `num_key_value_heads` defaults to `num_attention_heads` (no GQA).
+    func testParseMLXConfigDerivesHeadDimAndKVHeads() throws {
+        let json = """
+        {"model_type":"llama","hidden_size":2048,"num_hidden_layers":16,"num_attention_heads":16,
+         "vocab_size":32000,"max_position_embeddings":8192,"tie_word_embeddings":true}
+        """
+        let arch = try XCTUnwrap(RemoteCatalog.parseMLXConfig(Data(json.utf8), fallback: mlxFallback))
+        XCTAssertEqual(arch.nativeContext, 8192)
+        XCTAssertTrue(arch.tieWordEmbeddings)
+        guard case let .fullAttention(kvHeads, headDim, _) = arch.attention else {
+            return XCTFail("expected fullAttention")
+        }
+        XCTAssertEqual(headDim, 128)   // 2048 / 16
+        XCTAssertEqual(kvHeads, 16)    // defaults to num_attention_heads
+    }
+
+    /// A VLM config nests the language model under `text_config` — we read that, not the top-level vision.
+    func testParseMLXConfigReadsNestedTextConfig() throws {
+        let json = """
+        {"model_type":"qwen3_vl","text_config":{"model_type":"qwen3","hidden_size":3584,
+         "num_hidden_layers":28,"num_attention_heads":28,"num_key_value_heads":4,"head_dim":128,
+         "vocab_size":152064,"max_position_embeddings":128000,"tie_word_embeddings":false}}
+        """
+        let arch = try XCTUnwrap(RemoteCatalog.parseMLXConfig(Data(json.utf8), fallback: mlxFallback))
+        XCTAssertEqual(arch.nativeContext, 128000)
+        XCTAssertEqual(arch.modelType, "qwen3")
+        guard case let .fullAttention(kvHeads, _, layers) = arch.attention else {
+            return XCTFail("expected fullAttention")
+        }
+        XCTAssertEqual(kvHeads, 4)
+        XCTAssertEqual(layers, 28)
+    }
+
+    /// Garbage / incomplete config → nil, so the caller keeps the honest fallback (never invents).
+    func testParseMLXConfigRejectsIncomplete() {
+        XCTAssertNil(RemoteCatalog.parseMLXConfig(Data("not json".utf8), fallback: mlxFallback))
+        XCTAssertNil(RemoteCatalog.parseMLXConfig(Data(#"{"hidden_size":4096}"#.utf8), fallback: mlxFallback))
+        // Present but non-positive context is not trustworthy either.
+        let zeroCtx = #"{"hidden_size":4096,"num_hidden_layers":1,"num_attention_heads":8,"max_position_embeddings":0}"#
+        XCTAssertNil(RemoteCatalog.parseMLXConfig(Data(zeroCtx.utf8), fallback: mlxFallback))
+    }
+
+    /// GGUF metadata gives the true context_length (+ arch/eos); the KV shape stays the fallback.
+    func testParseGGUFMetadataReadsContext() throws {
+        let json = #"{"gguf":{"architecture":"qwen3","context_length":131072,"eos_token":"<|end|>"}}"#
+        let arch = try XCTUnwrap(RemoteCatalog.parseGGUFMetadata(Data(json.utf8), fallback: ggufFallback))
+        XCTAssertEqual(arch.nativeContext, 131072)   // NOT the fabricated 32768
+        XCTAssertEqual(arch.modelType, "qwen3")
+        XCTAssertEqual(arch.eos, "<|end|>")
+        XCTAssertEqual(arch.promptTemplate, .auto)   // preserved from the GGUF fallback
+    }
+
+    func testParseGGUFMetadataRejectsMissingContext() {
+        XCTAssertNil(RemoteCatalog.parseGGUFMetadata(Data(#"{"gguf":{}}"#.utf8), fallback: ggufFallback))
+        XCTAssertNil(RemoteCatalog.parseGGUFMetadata(Data(#"{}"#.utf8), fallback: ggufFallback))
+    }
+
+    /// The `asLLMModel(paramsBillions:architecture:)` overload honors the supplied (real) architecture
+    /// instead of the fabricated defaults, while preserving the variant / backend wiring.
+    func testAsLLMModelConsumesResolvedArchitecture() {
+        let remote = RemoteModel(id: "mlx-community/Tiny-4bit", name: "Tiny", publisher: "mlx-community",
+                                 engine: .mlx, downloads: 1,
+                                 variants: [RemoteVariant(quantLabel: "4-bit", repo: "mlx-community/Tiny-4bit",
+                                                          fileName: nil, sizeBytes: 1_000_000_000)])
+        let real = LLMArchitecture(
+            modelType: "qwen3", swiftModelClass: "", hidden: 1024, layers: 8, vocab: 32000,
+            tieWordEmbeddings: true, attention: .fullAttention(kvHeads: 2, headDim: 64, layers: 8),
+            nativeContext: 4096, thinkingCapable: true, eos: "<|im_end|>",
+            chatTemplate: .repoFile("chat_template.jinja"), promptTemplate: .chatML, reasoningStyle: .thinkTags)
+        let model = remote.asLLMModel(paramsBillions: 1, architecture: real)
+        XCTAssertEqual(model.architecture.nativeContext, 4096, "the clamp must see the real 4K ceiling, not 32K")
+        XCTAssertEqual(model.architecture.modelType, "qwen3")
+        XCTAssertEqual(model.variants.first?.backend, .mlxStock)
+        XCTAssertEqual(model.variants.first?.source.huggingFaceRepo, "mlx-community/Tiny-4bit")
+        // The generic default path still yields the fabricated 32K (documents the contrast the fix fixes).
+        XCTAssertEqual(remote.asLLMModel(paramsBillions: 1).architecture.nativeContext, 32_768)
+    }
+
+    /// The honest-unknown wrapper: the fallback is marked unresolved so the UI won't present it as fact.
+    func testResolvedArchitectureMarksUnknown() {
+        let unresolved = ResolvedArchitecture(architecture: mlxFallback, isResolved: false)
+        XCTAssertFalse(unresolved.isResolved)
+        XCTAssertEqual(unresolved.architecture.nativeContext, 32_768)
+    }
 }

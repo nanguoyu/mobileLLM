@@ -34,21 +34,36 @@ public struct RemoteVariant: Sendable, Hashable {
     }
 }
 
+/// The outcome of resolving a discovered model's real architecture (A2.5). `isResolved` is false when the
+/// `config.json` / GGUF-metadata fetch or parse failed and we fell back to the generic defaults — so the
+/// UI can badge the context as unverified rather than presenting an INVENTED 32K ceiling as fact.
+public struct ResolvedArchitecture: Sendable, Hashable {
+    public let architecture: LLMArchitecture
+    public let isResolved: Bool
+    public init(architecture: LLMArchitecture, isResolved: Bool) {
+        self.architecture = architecture
+        self.isResolved = isResolved
+    }
+}
+
 extension RemoteModel {
     /// Convert a discovered model into a catalog `LLMModel` so it flows through the same download / fit /
-    /// activate pipeline as the curated models. The architecture is GENERIC — the fit badge uses the
-    /// estimated size, and MLX loads the checkpoint from its own config + jinja template (no hand adapter),
-    /// which is exactly why Explore models are flagged unverified.
+    /// activate pipeline as the curated models. The architecture is GENERIC — a placeholder KV shape + 32K
+    /// context — so the fit badge uses the estimated size and MLX loads the checkpoint from its own config
+    /// + jinja template (no hand adapter), which is exactly why Explore models are flagged unverified.
+    ///
+    /// The generic 32K/`fullAttention(8,128,32)` guess DEFEATS the ContextPolicy clamp for the very models
+    /// it protects (a community checkpoint can be 4K- or 256K-native). Prefer the
+    /// `asLLMModel(paramsBillions:architecture:)` overload fed a `RemoteCatalog.realArchitecture(for:)`
+    /// result, which carries the model's own context/KV shape.
     public func asLLMModel(paramsBillions: Double?) -> LLMModel {
-        let arch = LLMArchitecture(
-            modelType: "generic", swiftModelClass: "", hidden: 0, layers: 0, vocab: 0,
-            tieWordEmbeddings: false, attention: .fullAttention(kvHeads: 8, headDim: 128, layers: 32),
-            nativeContext: 32_768, thinkingCapable: true, eos: "<|im_end|>",
-            chatTemplate: .repoFile("chat_template.jinja"),
-            // A GGUF from Explore renders with its OWN embedded template (`.auto`); MLX applies the repo's
-            // jinja itself, so its prompt template is moot.
-            promptTemplate: engine == .mlx ? .chatML : .auto,
-            reasoningStyle: .thinkTags)
+        asLLMModel(paramsBillions: paramsBillions, architecture: RemoteCatalog.genericArchitecture(engine: engine))
+    }
+
+    /// As `asLLMModel(paramsBillions:)`, but with an explicit architecture — e.g. the corrected one from
+    /// `RemoteCatalog.realArchitecture(for:)`, whose real `nativeContext` + KV shape the fit estimate and
+    /// the context clamp then honor instead of the fabricated defaults.
+    public func asLLMModel(paramsBillions: Double?, architecture: LLMArchitecture) -> LLMModel {
         let backend: Backend = engine == .mlx ? .mlxStock : .llamaCppGGUF
         let vs = variants.map { v in
             LLMVariant(quant: .other(v.quantLabel), backend: backend,
@@ -57,7 +72,7 @@ extension RemoteModel {
         }
         return LLMModel(id: id, displayName: name, family: .qwen, publisher: publisher,
                         summary: "Community model — loaded from its own template. Not hand-verified.",
-                        license: .apache2, architecture: arch, variants: vs,
+                        license: .apache2, architecture: architecture, variants: vs,
                         defaultVariant: vs.first?.quant ?? .gguf4bit)
     }
 
@@ -68,7 +83,7 @@ extension RemoteModel {
         let scanner = name.replacingOccurrences(of: "-", with: " ")
         for token in scanner.split(separator: " ") {
             let t = token.lowercased()
-            if let m = t.range(of: #"^\d+(\.\d+)?[bm]$"#, options: .regularExpression) {
+            if t.range(of: #"^\d+(\.\d+)?[bm]$"#, options: .regularExpression) != nil {
                 let num = Double(t[t.startIndex..<t.index(before: t.endIndex)]) ?? 0
                 let b = t.hasSuffix("m") ? num / 1000 : num
                 if best == nil || b > best! { best = b }
@@ -214,6 +229,99 @@ public enum RemoteCatalog {
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw CatalogError.badResponse }
         let items = try JSONDecoder().decode([HubItem].self, from: data)
         return items.map { (repo: $0.id, dl: $0.downloads ?? 0) }
+    }
+
+    private static func fetchData(_ url: URL, session: URLSession) async throws -> Data {
+        var req = URLRequest(url: url); req.setValue("mobileLLM", forHTTPHeaderField: "User-Agent")
+        let (data, resp) = try await session.data(for: req)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw CatalogError.badResponse }
+        return data
+    }
+
+    // MARK: - Real architecture (A2.5) — fetch a discovered model's true context/KV shape
+
+    /// The generic, UNVERIFIED architecture used for a discovered model before its real config is known: a
+    /// placeholder KV shape + a 32K context. This is a guess; `realArchitecture(for:)` replaces it with the
+    /// model's own `config.json` / GGUF metadata so the ContextPolicy clamp and fit badge are honest.
+    static func genericArchitecture(engine: EngineKind) -> LLMArchitecture {
+        LLMArchitecture(
+            modelType: "generic", swiftModelClass: "", hidden: 0, layers: 0, vocab: 0,
+            tieWordEmbeddings: false, attention: .fullAttention(kvHeads: 8, headDim: 128, layers: 32),
+            nativeContext: 32_768, thinkingCapable: true, eos: "<|im_end|>",
+            chatTemplate: .repoFile("chat_template.jinja"),
+            // A GGUF from Explore renders with its OWN embedded template (`.auto`); MLX applies the repo's
+            // jinja itself, so its prompt template is moot.
+            promptTemplate: engine == .mlx ? .chatML : .auto,
+            reasoningStyle: .thinkTags)
+    }
+
+    /// Fetch a discovered model's REAL architecture, replacing the fabricated generic defaults so the fit
+    /// badge + ContextPolicy clamp stop inventing a 32K ceiling. MLX: the repo's `config.json`. GGUF: the
+    /// HF model API's `gguf` metadata block. On ANY failure it returns the generic fallback marked
+    /// `isResolved: false` — an honest "unknown", never an invented context.
+    public static func realArchitecture(for model: RemoteModel,
+                                        session: URLSession = .shared) async -> ResolvedArchitecture {
+        let fallback = genericArchitecture(engine: model.engine)
+        switch model.engine {
+        case .mlx:
+            guard let repo = model.variants.first?.repo,
+                  let url = URL(string: "https://huggingface.co/\(repo)/resolve/main/config.json"),
+                  let data = try? await fetchData(url, session: session),
+                  let arch = parseMLXConfig(data, fallback: fallback) else {
+                return ResolvedArchitecture(architecture: fallback, isResolved: false)
+            }
+            return ResolvedArchitecture(architecture: arch, isResolved: true)
+        case .llamaCpp:
+            guard let url = URL(string: "https://huggingface.co/api/models/\(model.id)?expand%5B%5D=gguf"),
+                  let data = try? await fetchData(url, session: session),
+                  let arch = parseGGUFMetadata(data, fallback: fallback) else {
+                return ResolvedArchitecture(architecture: fallback, isResolved: false)
+            }
+            return ResolvedArchitecture(architecture: arch, isResolved: true)
+        }
+    }
+
+    /// Pure: parse an MLX repo's `config.json` into a corrected architecture (nil if the essential shape
+    /// fields are absent — the caller then keeps the honest fallback). A VLM config nests the language
+    /// model under `text_config`; we read that when present. `head_dim` falls back to `hidden/heads`.
+    static func parseMLXConfig(_ data: Data, fallback: LLMArchitecture) -> LLMArchitecture? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let cfg = (root["text_config"] as? [String: Any]) ?? root
+        func int(_ key: String) -> Int? { (cfg[key] as? NSNumber)?.intValue ?? (root[key] as? NSNumber)?.intValue }
+        guard let layers = int("num_hidden_layers"),
+              let hidden = int("hidden_size"),
+              let heads = int("num_attention_heads"),
+              let context = int("max_position_embeddings"), context > 0 else { return nil }
+        let kvHeads = int("num_key_value_heads") ?? heads
+        let headDim = int("head_dim") ?? (heads > 0 ? hidden / heads : 128)
+        let vocab = int("vocab_size") ?? fallback.vocab
+        let modelType = (cfg["model_type"] as? String) ?? fallback.modelType
+        let tie = (cfg["tie_word_embeddings"] as? NSNumber)?.boolValue ?? fallback.tieWordEmbeddings
+        return LLMArchitecture(
+            modelType: modelType, swiftModelClass: fallback.swiftModelClass,
+            hidden: hidden, layers: layers, vocab: vocab, tieWordEmbeddings: tie,
+            attention: .fullAttention(kvHeads: max(1, kvHeads), headDim: max(1, headDim), layers: layers),
+            nativeContext: context, thinkingCapable: fallback.thinkingCapable, eos: fallback.eos,
+            chatTemplate: fallback.chatTemplate, promptTemplate: fallback.promptTemplate,
+            reasoningStyle: fallback.reasoningStyle, modalities: fallback.modalities)
+    }
+
+    /// Pure: parse a GGUF repo's HF `gguf` metadata block. The public API exposes `context_length`
+    /// (+ architecture / eos_token) but not the KV-head shape, so we correct the native context — the lever
+    /// the ContextPolicy clamp needs — and keep the fallback KV shape. Nil if `context_length` is absent.
+    static func parseGGUFMetadata(_ data: Data, fallback: LLMArchitecture) -> LLMArchitecture? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let gguf = root["gguf"] as? [String: Any],
+              let context = (gguf["context_length"] as? NSNumber)?.intValue, context > 0 else { return nil }
+        let modelType = (gguf["architecture"] as? String) ?? fallback.modelType
+        let eos = (gguf["eos_token"] as? String) ?? fallback.eos
+        return LLMArchitecture(
+            modelType: modelType, swiftModelClass: fallback.swiftModelClass,
+            hidden: fallback.hidden, layers: fallback.layers, vocab: fallback.vocab,
+            tieWordEmbeddings: fallback.tieWordEmbeddings, attention: fallback.attention,
+            nativeContext: context, thinkingCapable: fallback.thinkingCapable, eos: eos,
+            chatTemplate: fallback.chatTemplate, promptTemplate: fallback.promptTemplate,
+            reasoningStyle: fallback.reasoningStyle, modalities: fallback.modalities)
     }
 
     // MARK: - Grouping (pure — unit-tested)

@@ -91,4 +91,61 @@ final class ThinkSplitterTests: XCTestCase {
         XCTAssertEqual(r, "")
         XCTAssertEqual(a, "just a direct answer")
     }
+
+    // MARK: Bare-close defense (A2.3) — a model emits </think> with no opening <think> ever seen.
+
+    /// A bare closing tag with no opening one: everything before it is reasoning that just ended, and
+    /// must NOT leak into the answer bubble (the pre-fix bug routed it all to .answer).
+    func testBareCloseWithoutOpenIsReasoning() {
+        var s = ThinkSplitter()
+        var out = s.feed("secret reasoning</think>visible answer")
+        out += s.finish()
+        let (r, a) = collect(out)
+        XCTAssertEqual(r, "secret reasoning")
+        XCTAssertEqual(a, "visible answer")
+    }
+
+    /// The reasoning + bare close arriving in one chunk, the answer in the next, still splits correctly.
+    func testBareCloseSplitFromAnswerChunk() {
+        var s = ThinkSplitter()
+        var out = s.feed("thinking out loud</think>")
+        out += s.feed("the answer")
+        out += s.finish()
+        let (r, a) = collect(out)
+        XCTAssertEqual(r, "thinking out loud")
+        XCTAssertEqual(a, "the answer")
+    }
+
+    /// A bare close split across a chunk boundary must not leak the `</think>` marker as answer text.
+    func testBareCloseTagNotLeakedWhenSplit() {
+        var s = ThinkSplitter()
+        var out = s.feed("</thi")
+        out += s.feed("nk>the answer")
+        out += s.finish()
+        let (r, a) = collect(out)
+        XCTAssertEqual(r, "")
+        XCTAssertEqual(a, "the answer", "the split </think> must be consumed, not leaked into the answer")
+    }
+
+    /// Once the boundary is resolved, a SECOND </think> is literal answer text (we only defend the first,
+    /// unseen-open case) — so a normal single-token answer that happens to contain the string is intact.
+    func testSecondCloseAfterDefenseIsLiteral() {
+        var s = ThinkSplitter()
+        var out = s.feed("reason</think>ans</think>more")
+        out += s.finish()
+        let (r, a) = collect(out)
+        XCTAssertEqual(r, "reason")
+        XCTAssertEqual(a, "ans</think>more")
+    }
+
+    /// Regression: a proper <think>…</think> block is unaffected by the defense (the open is seen first,
+    /// so the bare-close path never fires).
+    func testProperBlockUnaffectedByDefense() {
+        var s = ThinkSplitter()
+        var out = s.feed("<think>reasoning</think>answer")
+        out += s.finish()
+        let (r, a) = collect(out)
+        XCTAssertEqual(r, "reasoning")
+        XCTAssertEqual(a, "answer")
+    }
 }

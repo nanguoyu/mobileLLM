@@ -31,6 +31,7 @@ public enum ModelLicense: String, Sendable, Hashable, Codable {
     case apache2 = "Apache-2.0"
     case mit = "MIT"
     case tencentHunyuan = "Tencent Hunyuan Community"
+    case gemma = "Gemma Terms of Use"
     public var displayName: String { rawValue }
 }
 
