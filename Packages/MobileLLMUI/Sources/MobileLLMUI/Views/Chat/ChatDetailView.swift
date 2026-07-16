@@ -10,6 +10,8 @@ struct ChatDetailView: View {
     let container: AppContainer
     var onOpenModels: () -> Void
     @State private var showSwitcher = false
+    /// Manual keyboard tracking (see KeyboardHeight) — automatic avoidance is disabled below.
+    @State private var keyboard = KeyboardHeight()
 
     private var chat: ChatStore { container.chat }
 
@@ -22,23 +24,30 @@ struct ChatDetailView: View {
     }
 
     var body: some View {
-        ChatThreadView(chat: container.chat,
-                       displayMode: container.settings.thinkingDisplay,
-                       isLoadingModel: container.models.switching,
-                       loadingModelName: loadingModelName,
-                       onOpenModels: onOpenModels,
-                       onSwitchModel: { showSwitcher = true })
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // A safe-area inset, not a VStack row: the system then owns keeping the composer above the
-            // keyboard in every container (tab bar + pushed stack included) — the VStack arrangement
-            // left the input row buried under the keyboard on device.
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Composer(chat: container.chat,
-                         thinkingCapable: chat.activeModel?.model.architecture.thinkingCapable ?? true,
-                         canAttachImages: container.models.activeSupportsImageInput,
-                         isLoadingModel: container.models.switching,
-                         onOpenModels: onOpenModels)
-            }
+        // The composer's lift above the keyboard is OURS to compute (the FlowDown approach): SwiftUI's
+        // automatic avoidance never fired in this TabView → NavigationStack tree, so it's switched off
+        // below and the composer is padded by the observed keyboard overlap instead. The overlap covers
+        // the home-indicator region, which the safe-area-respecting composer already clears — subtract it.
+        GeometryReader { geo in
+            ChatThreadView(chat: container.chat,
+                           displayMode: container.settings.thinkingDisplay,
+                           isLoadingModel: container.models.switching,
+                           loadingModelName: loadingModelName,
+                           onOpenModels: onOpenModels,
+                           onSwitchModel: { showSwitcher = true })
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    Composer(chat: container.chat,
+                             thinkingCapable: chat.activeModel?.model.architecture.thinkingCapable ?? true,
+                             canAttachImages: container.models.activeSupportsImageInput,
+                             isLoadingModel: container.models.switching,
+                             onOpenModels: onOpenModels)
+                        .padding(.bottom, max(0, keyboard.overlap - geo.safeAreaInsets.bottom))
+                }
+                #if os(iOS)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+                #endif
+        }
         .background(Theme.bg)
         .navigationTitle(chat.activeConversation?.title ?? "New Chat")
         #if os(iOS)
