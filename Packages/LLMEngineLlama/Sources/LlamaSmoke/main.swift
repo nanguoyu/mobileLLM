@@ -24,7 +24,7 @@ import AppRuntime
 
 let args = CommandLine.arguments
 guard args.count >= 3 else {
-    FileHandle.standardError.write(Data("usage: llama-smoke <catalog-id> <gguf-dir> [prompt] [--think] [--image <path>]… [--mmproj <path>]\n".utf8))
+    FileHandle.standardError.write(Data("usage: llama-smoke <catalog-id> <gguf-dir> [prompt] [--think] [--tools] [--memory-eval] [--image <path>]… [--mmproj <path>]\n".utf8))
     let ids = LLMCatalog.all.map(\.id).joined(separator: ", ")
     FileHandle.standardError.write(Data("catalog ids: \(ids)\n".utf8))
     exit(2)
@@ -90,8 +90,53 @@ if let mmprojPath {
 let engine = LlamaEngine()
 func line(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
 
-/// In-memory store for `--tools`, so the gate can prove a `remember` call actually WROTE something
-/// without touching the app's real memory file.
+/// One labelled turn for `--memory-eval`. Each runs in a FRESH store, so a case can't be carried by what
+/// an earlier one saved.
+struct MemoryEvalCase {
+    let prompt: String
+    let shouldSave: Bool
+    let kind: String
+
+    /// Written to be HARD in both directions, because the two failure modes hide each other.
+    ///
+    /// The positives are stated in PASSING — none of them says "remember this". "请记住我的名字" is the
+    /// easy case and proves almost nothing; real memory has to notice a fact the user just happened to
+    /// mention. They span the categories a person actually has: pet, allergy, work, study, car, hobby,
+    /// family, preference, diet, home.
+    ///
+    /// The negatives include three traps that NAME the same topics without stating a durable fact about
+    /// the user — a model matching on keywords ("猫", "车", "工作") saves these and looks like it has
+    /// great recall. Apple Intelligence saved "似乎每句都记住" on the user's device; that is the failure
+    /// this half exists to catch.
+    static let all: [MemoryEvalCase] = [
+        // — worth keeping, mentioned in passing —
+        .init(prompt: "我养了一只叫Momo的橘猫", shouldSave: true, kind: "pet"),
+        .init(prompt: "我对花生过敏，所以那家店我去不了", shouldSave: true, kind: "allergy"),
+        .init(prompt: "我在一家做医疗影像的公司当后端工程师", shouldSave: true, kind: "work"),
+        .init(prompt: "我在南京大学读计算机，明年毕业", shouldSave: true, kind: "study"),
+        .init(prompt: "我开的是一辆蓝色的 Model 3", shouldSave: true, kind: "car"),
+        .init(prompt: "我周末基本都在爬山", shouldSave: true, kind: "hobby"),
+        .init(prompt: "我有个五岁的女儿", shouldSave: true, kind: "family"),
+        .init(prompt: "我写代码只用 Swift，别的语言我不碰", shouldSave: true, kind: "preference"),
+        .init(prompt: "I'm vegetarian, by the way", shouldSave: true, kind: "diet/en"),
+        .init(prompt: "我住在南京", shouldSave: true, kind: "home"),
+        // — chatter: a permanent note here is a bug —
+        .init(prompt: "你好", shouldSave: false, kind: "greeting"),
+        .init(prompt: "谢谢！", shouldSave: false, kind: "thanks"),
+        .init(prompt: "17+25 等于几？", shouldSave: false, kind: "question"),
+        .init(prompt: "苹果公司是谁创立的？", shouldSave: false, kind: "question"),
+        .init(prompt: "帮我写一个 Python 的快排", shouldSave: false, kind: "task"),
+        .init(prompt: "我现在有点饿", shouldSave: false, kind: "transient"),
+        .init(prompt: "今天天气不错", shouldSave: false, kind: "small talk"),
+        .init(prompt: "我今天有点累", shouldSave: false, kind: "transient"),
+        // — the traps: the topic is named, the fact is not —
+        .init(prompt: "养猫需要注意什么？", shouldSave: false, kind: "trap: cat, not their cat"),
+        .init(prompt: "如果我买辆车，你推荐什么？", shouldSave: false, kind: "trap: hypothetical car"),
+    ]
+}
+
+/// In-memory store for `--tools` and `--memory-eval`, so a gate can prove a `remember` call actually WROTE
+/// something without touching the app's real memory file.
 actor SmokeMemoryStore: MemoryStoring {
     private var facts: [MemoryFact] = []
     func save(_ text: String, source: MemoryFact.Source) async -> MemoryFact {
@@ -115,6 +160,62 @@ do {
     params.thinking = think
     params.temperature = think ? 0.6 : 0
     params.seed = 42
+
+    // --memory-eval: does this model save what's worth keeping AND leave the rest alone? Both halves
+    // matter and they pull against each other — the failure we shipped was invisible in each direction:
+    // a model that saves nothing looks calm, and a model that saves every sentence looks eager. The only
+    // test that separates them is a labelled set run against real weights.
+    if args.contains("--memory-eval") {
+        params.maxTokens = think ? 1024 : 384
+        let dialect = ToolDialect(model.architecture.promptTemplate)
+        line("Memory eval — \(model.displayName), dialect \(dialect.rawValue)\n")
+
+        var passed = 0, failed = 0
+        var savedWhenItShouldnt: [String] = [], missedWhenItShould: [String] = []
+
+        for c in MemoryEvalCase.all {
+            let store = SmokeMemoryStore()
+            let registry = ToolRegistry.assemble(config: .default, memoryStore: store,
+                                                 eventStore: nil, locationProvider: nil)
+            // Clock pinned: the block's date line changes every minute, and at temperature 0 that alone
+            // swings the score by ±2 cases on identical code — enough to credit a prompt change that did
+            // nothing. A gate whose number moves on its own can't be used to decide anything.
+            let loop = ToolLoop(engine: engine, registry: registry, dialect: dialect,
+                                now: Date(timeIntervalSince1970: 1_784_000_000))
+            var reply = ""
+            for try await ev in loop.run(messages: [ChatTurn(role: .user, content: c.prompt)], params: params) {
+                if case .answer(let s) = ev { reply += s }
+            }
+            let facts = await store.list().map(\.text)
+            let didSave = !facts.isEmpty
+            let ok = didSave == c.shouldSave
+            ok ? (passed += 1) : (failed += 1)
+            if !ok && didSave { savedWhenItShouldnt.append("\(c.prompt) → \(facts.joined(separator: " | "))") }
+            if !ok && !didSave { missedWhenItShould.append(c.prompt) }
+            let mark = ok ? "PASS" : "FAIL"
+            line("\(mark) [\(c.kind)] \(c.prompt)")
+            line("       want \(c.shouldSave ? "SAVE" : "no save")  got \(didSave ? facts.joined(separator: " | ") : "(nothing)")")
+            // On a failure the model's reply is the evidence for WHY — whether it considered the fact and
+            // declined, or never noticed it was one. Guessing at that is how prompt tuning turns into
+            // superstition.
+            if !ok { line("       said: \(reply.trimmingCharacters(in: .whitespacesAndNewlines).prefix(160))") }
+        }
+
+        let wanted = MemoryEvalCase.all.filter(\.shouldSave).count
+        let notWanted = MemoryEvalCase.all.count - wanted
+        line("\n=== \(passed)/\(MemoryEvalCase.all.count) — recall \(wanted - missedWhenItShould.count)/\(wanted) "
+             + "· restraint \(notWanted - savedWhenItShouldnt.count)/\(notWanted) ===")
+        if !missedWhenItShould.isEmpty {
+            line("MISSED (a durable fact went unsaved):")
+            missedWhenItShould.forEach { line("  · \($0)") }
+        }
+        if !savedWhenItShouldnt.isEmpty {
+            line("OVER-SAVED (chatter became a permanent note):")
+            savedWhenItShouldnt.forEach { line("  · \($0)") }
+        }
+        await engine.unload()
+        exit(failed == 0 ? 0 : 1)
+    }
 
     var images: [Data] = []
     for p in imagePaths {

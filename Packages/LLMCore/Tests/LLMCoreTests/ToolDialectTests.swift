@@ -96,6 +96,20 @@ final class ToolDialectTests: XCTestCase {
         }
     }
 
+    /// The block is a pure function of its inputs, clock included. Not a testing nicety: that date line
+    /// changes every minute, so at temperature 0 the same prompt produces different output either side of
+    /// a minute boundary — `--memory-eval` swung 16–18/20 on identical code until this was injectable, and
+    /// a gate whose number moves on its own can credit a prompt change that did nothing.
+    func testTheGroundedDateIsInjectableAndThereforeReproducible() {
+        let pinned = Date(timeIntervalSince1970: 1_784_000_000)
+        let a = ToolPrompt.systemBlock([remember], dialect: .qwen, now: pinned)
+        let b = ToolPrompt.systemBlock([remember], dialect: .qwen, now: pinned)
+        XCTAssertEqual(a, b)
+        XCTAssertNotEqual(a, ToolPrompt.systemBlock([remember], dialect: .qwen,
+                                                    now: pinned.addingTimeInterval(3600)),
+                          "a different clock must actually change the block, or pinning proves nothing")
+    }
+
     // MARK: - Results
 
     /// The untrusted-data fence is not dialect-specific: a tool can return attacker-controlled text in any

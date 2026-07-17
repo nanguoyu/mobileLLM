@@ -6,13 +6,19 @@ import Foundation
 /// `ToolDialect` for why that matters (a model handed a stranger's tool convention improvises, and the
 /// improvisation used to be unreadable, so no tool ran and the model claimed one had).
 public enum ToolPrompt {
-    public static func systemBlock(_ schemas: [ToolSchema], dialect: ToolDialect = .qwen) -> String {
+    /// `now` is injectable so the block is a pure function of its inputs. Not decoration: the date line
+    /// changes every minute, so at temperature 0 the SAME prompt produces different output either side of
+    /// a minute boundary. That made `llama-smoke --memory-eval` swing 16–18/20 run to run on identical
+    /// code — enough to credit a prompt change that did nothing, or dismiss one that worked. Freeze it and
+    /// the measurement means something.
+    public static func systemBlock(_ schemas: [ToolSchema], dialect: ToolDialect = .qwen,
+                                   now: Date = Date()) -> String {
         guard !schemas.isEmpty else { return "" }
         // Small models can't turn "in an hour" into an absolute time without knowing NOW — a 2B model
         // asked for a 1-hour reminder emitted `now + 1 hour`, got rejected, and gave up. Ground them.
         let df = DateFormatter()
         df.dateFormat = "EEEE, yyyy-MM-dd HH:mm (ZZZZZ)"
-        return "Current date & time: \(df.string(from: Date())).\n\n" + dialect.declarations(schemas)
+        return "Current date & time: \(df.string(from: now)).\n\n" + dialect.declarations(schemas)
     }
 
     /// Frame a tool's raw output as EXTERNAL, UNTRUSTED data before feeding it back to the model. A tool
@@ -33,8 +39,8 @@ public enum ToolPrompt {
 
     /// Return `messages` with the tools block folded into the system turn (adding one if absent).
     public static func inject(_ schemas: [ToolSchema], into messages: [ChatTurn],
-                              dialect: ToolDialect = .qwen) -> [ChatTurn] {
-        let block = systemBlock(schemas, dialect: dialect)
+                              dialect: ToolDialect = .qwen, now: Date = Date()) -> [ChatTurn] {
+        let block = systemBlock(schemas, dialect: dialect, now: now)
         guard !block.isEmpty else { return messages }
         var out = messages
         if let i = out.firstIndex(where: { $0.role == .system }) {
@@ -66,20 +72,25 @@ public struct ToolLoop: Sendable {
     /// The active model's tool dialect — what we DECLARE and FRAME in. Reading is dialect-agnostic
     /// (`ToolCallSyntax`), so a model that answers in someone else's convention is still understood.
     private let dialect: ToolDialect
+    /// Pin the clock the tool block is grounded with. Live by default; fixed by the evaluation harness so
+    /// a run is reproducible (see `ToolPrompt.systemBlock`).
+    private let now: Date?
 
     public init(engine: any LLMEngine, registry: ToolRegistry, dialect: ToolDialect = .qwen,
-                maxIterations: Int = 4) {
+                maxIterations: Int = 4, now: Date? = nil) {
         self.engine = engine
         self.registry = registry
         self.dialect = dialect
         self.maxIterations = max(1, maxIterations)
+        self.now = now
     }
 
     public func run(messages: [ChatTurn], params: Sampling) -> AsyncThrowingStream<ToolLoopEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    var history = ToolPrompt.inject(registry.schemas, into: messages, dialect: dialect)
+                    var history = ToolPrompt.inject(registry.schemas, into: messages, dialect: dialect,
+                                                    now: now ?? Date())
                     var lastStats = Stats(promptTokens: 0, genTokens: 0, promptTPS: 0, tokensPerSecond: 0,
                                           peakMemoryBytes: 0, stopReason: .eos)
                     for iteration in 0..<maxIterations {

@@ -18,20 +18,40 @@ public struct RememberTool: Tool {
 
     public var schema: ToolSchema {
         ToolSchema(name: "remember",
-                   description: "Save a lasting fact about the user, as soon as they mention one, so it "
-                              + "survives this conversation: their name, a preference or dislike, a "
-                              + "constraint (allergy, deadline, the tools they use), or context that will "
-                              + "still matter next week. Save it in the same turn they say it — don't wait "
-                              + "to be asked. Do NOT save one-off chatter, or things they merely asked about.",
+                   // Every clause here is set by measurement, not taste — `llama-smoke --memory-eval` runs
+                   // 20 labelled turns against real weights and reports recall vs restraint. The version
+                   // that said "their name, a preference or dislike, a constraint (allergy, deadline…)"
+                   // scored recall 2/10 on Gemma 4 E2B: it saved the cat (which resembled the example) and
+                   // "I'm vegetarian", and silently dropped the user's allergy, job, studies, car, hobby,
+                   // daughter, home and language preference. Restraint was already 10/10, so the room was
+                   // all on the recall side.
+                   //
+                   // What moved it: naming the CATEGORIES a person actually has, instead of an abstract
+                   // "lasting fact"; a concrete next-week test the model can apply to a sentence; and a
+                   // negative list of the four shapes that aren't facts (greeting, question, request,
+                   // passing mood) rather than the vague "chatter".
+                   description: "Save a lasting fact the user states about themselves, so it survives this "
+                              + "conversation. Call this the MOMENT they mention one — without being asked, "
+                              + "before you reply. Facts worth saving: their name, where they live, their "
+                              + "family, their pets, their job, their studies, their car, their hobbies, "
+                              + "what they eat, allergies and other constraints, the tools or languages "
+                              + "they use, and anything they like or dislike. The test: if the sentence "
+                              + "tells you something about this person that would still be true next week, "
+                              + "save it. Answering \"I'll remember that\" does NOT remember anything — this "
+                              + "tool is the only thing that does, so call it and then reply. Do NOT save "
+                              + "greetings, questions they ask, tasks they request, or how they happen to "
+                              + "feel right now.",
                    // "In the user's own language" is load-bearing, not politeness: a fact is retrieved by
                    // word overlap with the user's question, so one saved in English is unreachable from a
-                   // question asked in Chinese. The example is bilingual for the same reason — a lone
-                   // English example steers the model into English notes for every user.
+                   // question asked in Chinese. Two examples, in both languages and of DIFFERENT shapes —
+                   // a single one anchors weak models hard: with only "The user's dog is named Momo" here,
+                   // DeepSeek copied "用户的狗叫 Momo" verbatim as the fact for an unrelated turn, and Gemma
+                   // saved pets while ignoring everything else.
                    parameters: [ToolParam(name: "text", kind: .string,
-                                          description: "One self-contained fact, written in the user's own "
-                                                     + "language — the words they'd use to ask about it "
-                                                     + "later. E.g. \"The user's dog is named Momo\" / "
-                                                     + "\"用户的狗叫 Momo\"")])
+                                          description: "One self-contained fact about the user, written in "
+                                                     + "their own language — the words they'd use to ask "
+                                                     + "about it later. E.g. \"用户在南京大学读计算机\" / "
+                                                     + "\"The user is allergic to peanuts\"")])
     }
 
     public func execute(argumentsJSON: String) async -> String {
