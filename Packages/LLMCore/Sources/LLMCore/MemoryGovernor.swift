@@ -101,9 +101,12 @@ public enum LLMMemoryGovernor {
                                      device: DeviceTier, context: Int) -> LLMFit {
         let ceiling = residentCeilingBytes(for: device)
         let overhead = variant.backend.runtimeOverheadBytes
-        // A vision variant also holds its mmproj resident — count it in the weight bytes so the fit badge
-        // stays honest (a vision model's footprint is ~1 GB higher). The mmproj is a GGUF loaded via mtmd,
-        // so the same clean-page mmap discount applies to it. `?? 0` keeps text/MLX numbers byte-identical.
+        // A vision variant is planned WITH its mmproj, even though `LlamaEngine` now brings the encoder up
+        // lazily — a text-only chat never pays the ~940 MB. The badge deliberately stays the pessimistic
+        // one: it answers "can I use this model", and one that read green and then got killed the moment
+        // you attached a photo would be worse than one that says up front it's tight. Under-promise here;
+        // the lazy load is the over-deliver. The mmproj is a GGUF loaded via mtmd, so the same clean-page
+        // mmap discount applies to it. `?? 0` keeps text/MLX numbers byte-identical.
         let weightBytes = variant.onDiskBytes + (variant.visionProjector?.sizeBytes ?? 0)
         let discountedBase = Int64(Double(weightBytes) * mmapResidentFraction) + overhead
         let rawBase = weightBytes + overhead

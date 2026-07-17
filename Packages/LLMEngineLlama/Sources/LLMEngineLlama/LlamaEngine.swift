@@ -66,6 +66,9 @@ public actor LlamaEngine: LLMEngine {
     /// ships a vision projector whose file is present. `nil` for a text-only load. Freed before the model
     /// on unload/reload (it holds a reference to the text model).
     private var mtmdContext: OpaquePointer?
+    /// The resolved mmproj path for the loaded variant, or nil when it ships none / the file is absent.
+    /// Held so the vision encoder can be brought up lazily — see `ensureVisionContext`.
+    private var projectorPath: String?
     private var contextCap: Int = 0          // the n_ctx the live context was built with
     private var contextKVBits: Int = -1      // the Sampling.kvBits the live context's KV cache was built for
     private var loadedID: String?
@@ -134,19 +137,34 @@ public actor LlamaEngine: LLMEngine {
         reasoningStyle = modelSpec.architecture.reasoningStyle
         context = nil; contextCap = 0; contextKVBits = -1
 
-        // Vision: if the variant ships a projector AND its file is present, bring up the multimodal
-        // context (mmproj → vision encoder) so image-bearing turns can be prefilled via mtmd. A declared
-        // projector whose file is missing leaves `mtmdContext` nil → an image later throws visionUnavailable
-        // rather than loading blind. use_gpu on, timings off (per the vision plan).
-        if let projector = variant.visionProjector,
-           let projectorPath = Self.resolveProjector(in: weightsDir, fileName: projector.fileName) {
-            var mp2 = mtmd_context_params_default()
-            mp2.use_gpu = true
-            mp2.print_timings = false
-            mp2.n_threads = nThreads
-            mtmdContext = projectorPath.withCString { mtmd_init_from_file($0, m, mp2) }
+        // Vision: RESOLVE the projector now, LOAD it on first use. Bringing the vision encoder up here
+        // cost every text-only chat the whole mmproj resident — ~940 MB for Gemma 4 E2B, on a phone whose
+        // budget is ~4 GB. That was the difference between a comfortable run and a thrashing one: on a real
+        // iPhone 16 Pro it meant 5 tok/s, `fc-thrashing` in the jetsam log, and eventually the OS killing
+        // the app (largestProcess: mobileLLM, ~1.1 GB) mid-answer — for an encoder that had never seen an
+        // image. A vision model is a text model that CAN see, not one that must pay to see while reading.
+        //
+        // Resolving eagerly keeps the old failure semantics exactly: a declared projector whose file is
+        // missing leaves `projectorPath` nil → an image later throws `visionUnavailable`, not a blind load.
+        projectorPath = variant.visionProjector.flatMap {
+            Self.resolveProjector(in: weightsDir, fileName: $0.fileName)
         }
         progress(1)
+    }
+
+    /// Bring up the vision encoder (mmproj), once, on the first image-bearing turn. ~940 MB and a few
+    /// seconds for Gemma 4 E2B, so the caller shows a note while it happens; kept resident afterwards
+    /// because a conversation with one image usually has more.
+    /// Returns nil when this model has no usable projector — the caller then throws `visionUnavailable`.
+    private func ensureVisionContext() -> OpaquePointer? {
+        if let mtmdContext { return mtmdContext }
+        guard let projectorPath, let m = model else { return nil }
+        var mp2 = mtmd_context_params_default()
+        mp2.use_gpu = true
+        mp2.print_timings = false
+        mp2.n_threads = nThreads
+        mtmdContext = projectorPath.withCString { mtmd_init_from_file($0, m, mp2) }
+        return mtmdContext
     }
 
     public func unload() async {
@@ -155,6 +173,7 @@ public actor LlamaEngine: LLMEngine {
         if let context { llama_free(context) }
         if let model { llama_model_free(model) }
         mtmdContext = nil
+        projectorPath = nil
         context = nil; model = nil; vocab = nil; loadedID = nil; contextCap = 0; contextKVBits = -1
     }
 
@@ -220,7 +239,14 @@ public actor LlamaEngine: LLMEngine {
             // that bar — images on HISTORY turns (a thread continued after switching to a text-only
             // model) are dropped instead, because failing there would brick the whole conversation and
             // the past answers already reflect what the previous model saw.
+            //
+            // This is also where the vision encoder is BROUGHT UP (~940 MB) — only now, because an image
+            // is actually here. A text-only chat never pays for it. `ensureVisionContext` is idempotent,
+            // so only the first image in a session waits; the composer shows the note (ChatStore sets it
+            // whenever a vision turn goes out, which is honest either way — the first image loads the
+            // encoder, later ones still have to run it).
             var messages = messages
+            if messages.contains(where: { !$0.images.isEmpty }) { _ = ensureVisionContext() }
             if mtmdContext == nil {
                 if let last = messages.last, !last.images.isEmpty {
                     throw EngineError.visionUnavailable

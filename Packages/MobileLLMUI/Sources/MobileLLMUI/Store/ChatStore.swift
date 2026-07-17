@@ -407,6 +407,14 @@ public final class ChatStore {
         if settings.toolsEnabled, settings.mcpServers.contains(where: { $0.isEnabled && !$0.url.isEmpty }) {
             state.warmingNote = "Connecting tools…"
         }
+        // A turn carrying an image makes the engine bring the vision encoder up — ~940 MB and a few
+        // seconds for the FIRST image of a session (it's resident afterwards, so later ones only pay to
+        // encode). Either way the pause is real and needs a reason on screen; without one it reads as a
+        // hang. The note clears the moment tokens start.
+        if convo.messages.last(where: { $0.role == .user })?.attachments?.isEmpty == false,
+           activeModel?.variant.supportsVisionInput == true {
+            state.warmingNote = "Reading image…"
+        }
         streaming = state
         streamingMessageID = assistantID
 
