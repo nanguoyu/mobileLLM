@@ -51,7 +51,13 @@ struct ChatDetailView: View {
             .background { KeyboardGuideReader(overlap: $keyboardOverlap) }
             #endif
         .background(Theme.bg)
-        .navigationTitle(chat.activeConversation?.title ?? "New Chat")
+        // NO `.navigationTitle` here on purpose. The header IS the `.principal` toolbar item (the model
+        // name) below. Setting a title as well gives the inline bar TWO title sources: iOS is meant to
+        // suppress the title text when a principal item is present, but a relayout — the keyboard showing
+        // is one — makes the suppressed title surface and render ON TOP of the model name. The report was
+        // exactly that: two lines of text overlapping in the nav bar once the keyboard came up. One header,
+        // one source. (The back button on this screen is labelled by the conversation LIST's title, not
+        // this one's, so dropping it costs nothing there.)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         // The tab bar is why the input row kept sinking: keyboard avoidance lifts the composer by the
