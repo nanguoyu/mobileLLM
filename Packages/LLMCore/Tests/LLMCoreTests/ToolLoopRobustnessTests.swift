@@ -216,9 +216,14 @@ final class MalformedToolCallRecoveryTests: XCTestCase {
         XCTAssertTrue(ranTool, "the retry's valid call must actually run")
         XCTAssertTrue(answer.contains("42"), "the model reaches its answer, got: \(answer)")
 
-        // The correction was handed back before the retry.
+        // The correction was handed back before the retry, quoting what the model actually sent. Asserted
+        // on the behavior, not the wording: the note used to hard-code "wasn't valid JSON", which is a lie
+        // in three of the four tool dialects — Gemma's native call isn't JSON at all — so it now speaks the
+        // active dialect (`ToolDialect.malformedNote`).
         let second = engine.receivedHistories()[1]
-        XCTAssertTrue(second.contains { $0.content.contains("wasn't valid JSON") },
-                      "turn 2 must see what was wrong with turn 1")
+        XCTAssertTrue(second.contains { $0.content.contains("could not be read") },
+                      "turn 2 must be told the last call didn't parse")
+        XCTAssertTrue(second.contains { $0.content.contains("{17+25}") },
+                      "turn 2 must see the body it actually sent")
     }
 }

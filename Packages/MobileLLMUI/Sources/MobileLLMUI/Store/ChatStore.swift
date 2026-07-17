@@ -420,6 +420,11 @@ public final class ChatStore {
         let engine = self.engine
         let toolsOn = settings.toolsEnabled
         let store = self.store
+        // Declare tools in the ACTIVE model's own dialect. Every family was post-trained on its own tool
+        // syntax; handed a stranger's, a model improvises something we then can't read — which is how
+        // tools were silently dead on every non-ChatML model (see `ToolDialect`). Falls back to the Qwen
+        // convention when no model is active, matching the loop's own default.
+        let dialect = activeModel.map { ToolDialect($0.model.architecture.promptTemplate) } ?? .qwen
         // Replay history images only when the ACTIVE model can actually see them (llama.cpp + projector).
         // After switching an image-bearing thread to a text-only model, the engine would refuse the whole
         // conversation otherwise — history degrades to text, exactly like the engine-side guard.
@@ -454,7 +459,7 @@ public final class ChatStore {
                     // tool exposed by a configured MCP server before answering.
                     let registry = await self?.toolRegistry() ?? .standard
                     self?.streaming?.warmingNote = nil   // handshake done — the rest is plain prefill
-                    let loop = ToolLoop(engine: engine, registry: registry)
+                    let loop = ToolLoop(engine: engine, registry: registry, dialect: dialect)
                     for try await event in loop.run(messages: turns, params: params) {
                         guard let self, self.streaming?.messageID == assistantID else { return }
                         self.applyLoopEvent(event)
