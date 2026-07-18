@@ -56,17 +56,19 @@ struct ChatThreadView: View {
             if let convo = conversation, !convo.messages.isEmpty {
                 thread(convo)                                  // history first — never hidden by model state
             } else if isLoadingModel {
-                ModelLoadingState(modelName: loadingModelName) // honest loading, not "no model"
+                centeredOrScrolling { ModelLoadingState(modelName: loadingModelName) }
             } else if !chat.hasModel {
-                NoModelState(onOpenModels: onOpenModels)
+                centeredOrScrolling { NoModelState(onOpenModels: onOpenModels) }
             } else {
-                EmptyChatState(modelName: chat.activeModel?.model.displayName ?? "your model",
-                               onExample: { prompt in
-                                   chat.draft = prompt
-                                   chat.send()
-                               },
-                               onSwitchModel: onSwitchModel,
-                               activeSkill: chat.activeSkill)
+                centeredOrScrolling {
+                    EmptyChatState(modelName: chat.activeModel?.model.displayName ?? "your model",
+                                   onExample: { prompt in
+                                       chat.draft = prompt
+                                       chat.send()
+                                   },
+                                   onSwitchModel: onSwitchModel,
+                                   activeSkill: chat.activeSkill)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -87,6 +89,24 @@ struct ChatThreadView: View {
             Button("Cancel", role: .cancel) { regenTarget = nil }
         } message: { _ in
             Text("Regenerating an earlier reply removes every turn after it.")
+        }
+    }
+
+    /// Center a placeholder (empty / loading / no-model) in the available height, but SCROLL instead of
+    /// overflowing when that height is tight. With the keyboard up, the composer's safe-area inset shrinks
+    /// this area by the keyboard's height; a plain centered VStack that's taller than what's left overflows
+    /// symmetrically, and the top half draws OVER the nav bar — the reported "empty-state header on top of
+    /// the model name". Pinning the content to at least the viewport height keeps it centered when there's
+    /// room and lets it scroll (below the bar, never over it) when there isn't. Dragging also dismisses the
+    /// keyboard, so the prompts a lifted keyboard covers are one swipe away.
+    @ViewBuilder private func centeredOrScrolling<Content: View>(
+        @ViewBuilder _ content: @escaping () -> Content) -> some View {
+        GeometryReader { geo in
+            ScrollView {
+                content().frame(minHeight: geo.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.immediately)
         }
     }
 
