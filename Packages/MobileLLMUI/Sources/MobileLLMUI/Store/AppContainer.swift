@@ -6,7 +6,7 @@ import AppRuntime
 import LLMCore
 
 /// Composition root (DESIGN §2). Owns the four stores, wires the shared engine into both the chat and
-/// the model manager, and keeps `ChatStore.activeModel` in sync with the resident model. The real
+/// the model manager, and keeps `ChatStore.activeModel` in sync with the selected model. The real
 /// MLX-fork engine + `AppRuntime.ModelDownloader` are injected here at app assembly; previews + tests
 /// inject `MockLLMEngine`.
 @MainActor
@@ -32,9 +32,14 @@ public final class AppContainer {
     public var navigationRequest: AppSection?
     /// Raised by the macOS/iPad "Switch Model" menu command; the split shell shows the quick switcher.
     public var switcherRequested = false
-    /// Guards `bootstrap()` so the App scene + RootView both awaiting it decode sessions / load the default
-    /// model exactly once (DESIGN §2 — the two `.task` sites used to race).
+    /// Guards `bootstrap()` so the App scene + RootView both awaiting it decode sessions / restore the
+    /// default selection exactly once (DESIGN §2 — the two `.task` sites used to race).
     private var bootstrapTask: Task<Void, Never>?
+    /// The in-flight conversation-model restore, and the generation that owns it. Selecting another thread
+    /// bumps the generation: a superseded restore must neither win the engine nor rewrite the newly
+    /// selected thread's remembered identity when it completes late.
+    private var conversationRestoreTask: Task<Void, Never>?
+    private var conversationRestoreGeneration: UInt64 = 0
 
     public init(engine: any LLMEngine,
                 downloadBase: URL,
@@ -77,12 +82,23 @@ public final class AppContainer {
         self.chat = ChatStore(engine: engine, store: store, settings: settings,
                               memoryBook: memoryBook, eventStore: eventStore,
                               locationProvider: locationProvider, skillStore: skillStore)
-        // Reload a suspended model right before the next turn (its memory is freed while idle).
-        chat.ensureModelReady = { [weak self] in await self?.reloadIfSuspended() }
+        // Cold launch restores identity only, so the first turn is where the weights are actually loaded.
+        // A false answer stops the turn instead of generating against an empty engine.
+        chat.ensureModelReady = { [weak self] in
+            await self?.reloadIfSuspended() ?? false
+        }
         // Opening a conversation brings back ITS model (when installed) instead of whatever is resident —
         // a thread's identity includes the model it was talked to with.
         chat.restoreModel = { [weak self] modelID, variantID in
             self?.restoreConversationModel(modelID: modelID, variantID: variantID)
+        }
+        chat.cancelModelRestore = { [weak self] in
+            self?.cancelConversationModelRestore()
+        }
+        // Same resolver the restore itself uses, so "does this thread's variant differ?" cannot disagree
+        // with what restoration would actually load.
+        chat.resolvePersistedVariantID = { [weak self] modelID, variantID in
+            self?.resolvedInstalledVariant(modelID: modelID, persistedID: variantID)?.id
         }
     }
 
@@ -90,11 +106,68 @@ public final class AppContainer {
     /// installed variant of the same model (the exact quant may have been deleted); silently keeps the
     /// resident model when nothing of it is on disk — the header + switcher make that visible.
     private func restoreConversationModel(modelID: String, variantID: String) {
-        guard !models.switching, let model = models.model(id: modelID) else { return }
-        let variant = model.variants.first { $0.id == variantID && models.isInstalled($0) }
-                   ?? model.variants.first { models.isInstalled($0) }
-        guard let variant, models.active?.variant.id != variant.id else { return }
-        activate(model, variant: variant, force: false)
+        cancelConversationModelRestore()
+        guard let model = models.model(id: modelID),
+              let variant = resolvedInstalledVariant(modelID: modelID, persistedID: variantID) else { return }
+        // Already the selected artifact: mirror it (a legacy id may have resolved onto it) and stop.
+        guard models.active?.variant.id != variant.id else {
+            syncActive(reseedEmptyConversation: false)
+            return
+        }
+        // Deliberately NOT guarded on `models.switching`: selecting B while A is still loading must still
+        // restore B. ModelManager serializes the two loads; the newest request is the one that wins.
+        let conversationID = chat.activeID
+        conversationRestoreGeneration &+= 1
+        let generation = conversationRestoreGeneration
+        conversationRestoreTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if generation == conversationRestoreGeneration { conversationRestoreTask = nil }
+            }
+            do {
+                try await models.activate(model, variant: variant, context: settings.contextLength)
+                try Task.checkCancellation()
+                // A superseded restore must not rewrite the thread the user has since selected.
+                guard generation == conversationRestoreGeneration,
+                      chat.activeID == conversationID,
+                      chat.activeConversation?.modelID == modelID,
+                      let current = resolvedInstalledVariant(
+                        modelID: modelID,
+                        persistedID: chat.activeConversation?.variantID ?? ""),
+                      current.id == variant.id else { return }
+                syncActive(reseedEmptyConversation: false)
+                settings.defaultModelID = model.id
+            } catch is CancellationError {
+                // Superseded by a newer selection — the newer one owns the engine and the banner.
+            } catch let error as ModelActivationError {
+                guard generation == conversationRestoreGeneration else { return }
+                presentActivationError(error)
+            } catch {
+                guard generation == conversationRestoreGeneration else { return }
+                chat.showToast(Toast(error.localizedDescription, kind: .error, autoDismiss: 4))
+            }
+        }
+    }
+
+    /// Invalidate the in-flight restore (a newer selection arrived, or an erase is starting).
+    private func cancelConversationModelRestore() {
+        conversationRestoreGeneration &+= 1
+        conversationRestoreTask?.cancel()
+        conversationRestoreTask = nil
+    }
+
+    /// The installed variant a persisted id names. An exact artifact id wins; otherwise the id is a legacy
+    /// alias that can match several quants of one repository, so the choice is made deterministically (by
+    /// sorted id) rather than from whatever happens to be resident. An empty id means "any installed
+    /// variant of this model", and a variant that was deleted since falls back the same way.
+    private func resolvedInstalledVariant(modelID: String, persistedID: String) -> LLMVariant? {
+        guard let model = models.model(id: modelID) else { return nil }
+        let installed = model.variants.filter { models.isInstalled($0) }
+        if let exact = installed.first(where: { $0.id == persistedID }) { return exact }
+        let stable = installed.sorted { $0.id < $1.id }
+        guard !persistedID.isEmpty else { return stable.first }
+        if let legacy = stable.first(where: { $0.matchesPersistedID(persistedID) }) { return legacy }
+        return stable.first
     }
 
     /// Free the resident model's weights while idle (app backgrounded, or the user left the chat), but
@@ -105,14 +178,35 @@ public final class AppContainer {
         Task { await models.suspend(); syncActive() }
     }
 
-    private func reloadIfSuspended() async {
-        try? await models.ensureResident(context: settings.contextLength)
-        syncActive()
+    /// Bring the selected model's weights back before a turn. Returns false when they could not become
+    /// resident, so `ChatStore` stops the turn at that boundary instead of generating on an empty engine.
+    private func reloadIfSuspended() async -> Bool {
+        do {
+            try await models.ensureResident(context: settings.contextLength)
+            syncActive()
+            return true
+        } catch is CancellationError {
+            // An erase or a newer switch took the engine; that path owns whatever the user sees next.
+            return false
+        } catch let error as ModelActivationError {
+            let hadSelection = models.active != nil
+            // A selection whose weights were deleted between turns must stop claiming the header, or
+            // every later send fails against a model the user can't see is gone.
+            if hadSelection, case .notInstalled = error { await models.deactivate() }
+            syncActive()
+            presentActivationError(error)
+            return false
+        } catch {
+            chat.showToast(Toast(error.localizedDescription, kind: .error, autoDismiss: 4))
+            return false
+        }
     }
 
-    /// Load persisted chats + install state, then auto-activate the default model if it's on disk.
+    /// Load the persisted chat LIST + install state, then restore only the default model identity without
+    /// allocating its weights. No conversation is selected at launch; selecting history restores that
+    /// thread's model later, and the first generation performs the real resident load.
     /// Idempotent: concurrent callers (the App scene and RootView both `.task`-await it at launch) share one
-    /// run, so sessions never decode twice and the default model never loads back-to-back.
+    /// run, so sessions never decode twice or repeat legacy-manifest audits.
     public func bootstrap() async {
         if let bootstrapTask { return await bootstrapTask.value }
         let task = Task { await performBootstrap() }
@@ -124,27 +218,30 @@ public final class AppContainer {
         // Merge persisted community (Explore) models before resolving the default, so an adopted default
         // and the storage/switcher lists see them (DESIGN §2.4). This also rescans install state.
         await models.loadAdoptedRegistry()
-        await skills.load()   // seed the built-in skills on first launch, else read them back from disk
+        do {
+            try await skills.load()   // seed the built-in skills on first launch, else read them back from disk
+        } catch {
+            chat.showToast(Toast("Skills couldn't be loaded: \(error.localizedDescription)",
+                                 kind: .error, autoDismiss: 4))
+        }
         await memory.refresh()   // the first send composes its memory block from this mirror
         await chat.load()
-        // Boot into the model the ACTIVE conversation was using (when installed) — falling back to the
-        // last-used default. One activation either way; a thread must not silently switch models just
-        // because the app relaunched.
+        // Selection only: allocating several GB before the first frame is what made a cold launch feel
+        // frozen (and, on the phone, what got the process jetsammed for merely being opened).
         let (model, variant) = bootTarget()
         if let variant {
-            await activateAndSync(model, variant, force: false, announce: false)
+            models.restoreSelection(model, variant: variant)
         }
-        // The boot pick can still fail (the OOM pre-flight refusing a big vision model on a cold start,
-        // a half-deleted download…). "No model" with installed weights on disk is a dead end — fall back
-        // to the smallest installed variant of anything, which always loads if anything can.
+        // "No model" with weights on disk is a dead end — fall back to the smallest installed variant of
+        // anything, which is the one most likely to load when the user finally sends.
         if models.active == nil, let fallback = smallestInstalledFallback(excluding: variant?.id) {
-            await activateAndSync(fallback.0, fallback.1, force: false, announce: false)
+            models.restoreSelection(fallback.0, variant: fallback.1)
         }
         syncActive()
     }
 
     /// The smallest installed (model, variant) on disk — the boot fallback that keeps the header from
-    /// reading "No model" when weights exist. Excludes the variant that just failed.
+    /// reading "No model" when weights exist. Excludes the variant that was already tried.
     private func smallestInstalledFallback(excluding failedID: String?) -> (LLMModel, LLMVariant)? {
         models.allModels
             .flatMap { model in model.variants.map { (model, $0) } }
@@ -155,27 +252,22 @@ public final class AppContainer {
             // available, it always loads.
             .min { a, b in
                 if a.1.isSystemProvided != b.1.isSystemProvided { return !a.1.isSystemProvided }
-                return a.1.onDiskBytes < b.1.onDiskBytes
+                return a.1.totalOnDiskBytes < b.1.totalOnDiskBytes
             }
     }
 
-    /// The launch activation target: the active conversation's remembered (model, variant) if that model
-    /// still has an installed variant, else the Settings default via the engine-preference policy.
+    /// The launch selection target: the Settings default (which auto-tracks the last used model) via the
+    /// engine-preference policy. A historical thread's model is restored when that thread is opened, not
+    /// at launch — launch deliberately enters no conversation.
     private func bootTarget() -> (LLMModel, LLMVariant?) {
-        if let convo = chat.activeConversation, !convo.modelID.isEmpty,
-           let remembered = models.model(id: convo.modelID) {
-            let variant = remembered.variants.first { $0.id == convo.variantID && models.isInstalled($0) }
-                       ?? remembered.variants.first { models.isInstalled($0) }
-            if let variant { return (remembered, variant) }
-        }
         let model = models.model(id: settings.defaultModelID) ?? models.recommendedModel
         return (model, bootVariant(for: model))
     }
 
-    /// Which variant to auto-activate on launch. The user's engine preference (Settings → Inference
-    /// engine) is honored — a persisted "llama.cpp" (or "MLX") choice is respected instead of always
-    /// booting the MLX default — falling back to any installed variant so a prior download still boots.
-    /// The engine is never silently overridden by a platform default.
+    /// Which variant to select on launch. The user's engine preference (Settings → Inference engine) is
+    /// honored — a persisted "llama.cpp" (or "MLX") choice is respected instead of always booting the MLX
+    /// default — falling back to any installed variant so a prior download still boots. The engine is
+    /// never silently overridden by a platform default.
     private func bootVariant(for model: LLMModel) -> LLMVariant? {
         let preferred = AppSettings.preferredVariant(for: model, device: models.device,
                                                      preference: settings.enginePreference,
@@ -184,22 +276,33 @@ public final class AppContainer {
         return model.variants.first { models.isInstalled($0) }
     }
 
-    /// Activate a variant (Models → Use / Try anyway). Runs the OOM pre-flight; surfaces a recoverable
-    /// banner on refusal (never a silent crash) and keeps the chat's active model in sync.
-    public func activate(_ model: LLMModel, variant: LLMVariant, force: Bool) {
-        Task { await activateAndSync(model, variant, force: force, announce: true) }
+    /// Activate a variant (Models → Use). Every installed model is actually attempted; fit estimates are
+    /// informational and never produce a safety refusal.
+    public func activate(_ model: LLMModel, variant: LLMVariant) {
+        // An explicit choice supersedes a conversation restore that is still loading.
+        cancelConversationModelRestore()
+        Task { await activateAndSync(model, variant, announce: true, reseedEmptyConversation: true) }
     }
 
-    private func activateAndSync(_ model: LLMModel, _ variant: LLMVariant, force: Bool, announce: Bool) async {
+    /// Compatibility shim for embedders compiled against the former bypass API. `force` has no effect
+    /// because there is no memory gate to bypass.
+    public func activate(_ model: LLMModel, variant: LLMVariant, force: Bool) {
+        activate(model, variant: variant)
+    }
+
+    private func activateAndSync(_ model: LLMModel, _ variant: LLMVariant, announce: Bool,
+                                 reseedEmptyConversation: Bool) async {
         do {
-            try await models.activate(model, variant: variant, context: settings.contextLength, force: force)
-            syncActive()
+            try await models.activate(model, variant: variant, context: settings.contextLength)
+            syncActive(reseedEmptyConversation: reseedEmptyConversation)
             // "Default model" is not a setting anymore — it auto-tracks the last successfully used model,
             // so a fresh launch (or a brand-new thread) lands on what you were actually using.
             settings.defaultModelID = model.id
             if announce { chat.showToast(Toast("\(model.displayName) is ready", kind: .success)) }
+        } catch is CancellationError {
+            // Superseded by a newer switch, or the data-erase gate: neither is the user's problem.
         } catch let error as ModelActivationError {
-            presentActivationError(error, model: model, variant: variant, force: force)
+            presentActivationError(error)
         } catch {
             chat.showToast(Toast(error.localizedDescription, kind: .error, autoDismiss: 4))
         }
@@ -208,26 +311,10 @@ public final class AppContainer {
     /// Turn an activation refusal into an actionable banner — never a dead end (DESIGN §2.5). Each carries
     /// a forward action, so it's always dismissable by acting on it (and the banner host also renders a
     /// close control for sticky banners).
-    private func presentActivationError(_ error: ModelActivationError, model: LLMModel,
-                                        variant: LLMVariant, force: Bool) {
+    private func presentActivationError(_ error: ModelActivationError) {
         switch error {
-        case .insufficientMemory:
-            // Physically conceivable — the raw weights fit RAM, they're just over the LIVE free headroom
-            // right now? Offer "Try anyway" (forced): the estimate is only an estimate and the device is
-            // the authority. Only when the model can't fit RAM at all do we steer to the safe 8B instead.
-            let conceivable = variant.onDiskBytes + variant.backend.runtimeOverheadBytes
-                <= models.device.physicalMemoryBytes
-            if conceivable, !force {
-                chat.showToast(Toast(error.message, kind: .error, actionTitle: "Try anyway", autoDismiss: nil),
-                               action: { [weak self] in self?.activate(model, variant: variant, force: true) })
-            } else if let safe = safe8BVariant {
-                chat.showToast(Toast(error.message, kind: .error, actionTitle: "Switch to 8B", autoDismiss: nil),
-                               action: { [weak self] in self?.activate(LLMCatalog.bonsai8b, variant: safe, force: false) })
-            } else {
-                chat.showToast(Toast(error.message, kind: .error, autoDismiss: nil))
-            }
-        case .notInstalled:
-            // The old "Download" forward did nothing. Jump to Models so the user can actually get it.
+        case .notInstalled, .noSelection:
+            // There is something to do about both: get the weights, or pick a model that has them.
             chat.showToast(Toast(error.message, kind: .error, actionTitle: "Open Models", autoDismiss: nil),
                            action: { [weak self] in self?.navigationRequest = .models })
         case .engineUnavailable:
@@ -236,14 +323,8 @@ public final class AppContainer {
         }
     }
 
-    /// The safe iPhone hero's installed variant (for the "Switch to 8B" fallback), or nil if it isn't down.
-    private var safe8BVariant: LLMVariant? {
-        let safe = LLMCatalog.bonsai8b
-        guard let variant = safe.variant(for: .binary1bit) ?? safe.variants.first,
-              models.isInstalled(variant) else { return nil }
-        return variant
+    /// Mirror the selected model into the chat store; residency is managed independently.
+    public func syncActive(reseedEmptyConversation: Bool = true) {
+        chat.synchronizeActiveModel(models.active, reseedEmptyConversation: reseedEmptyConversation)
     }
-
-    /// Mirror the resident model into the chat store so the composer + thread reflect it.
-    public func syncActive() { chat.activeModel = models.active }
 }
