@@ -2,9 +2,9 @@
 
 import Foundation
 
-/// Detected hardware class → memory budget. The budget here is a conservative static estimate; the
-/// live decision uses `MemoryProbe.availableBytes()`. Quantization is per-variant, so there is no
-/// default-precision field.
+/// Detected hardware class → advisory memory budget. It drives catalog fit labels only; activation
+/// deliberately leaves the real outcome to the selected engine and device. Quantization is
+/// per-variant, so there is no default-precision field.
 public struct DeviceTier: Sendable {
     public let physicalMemoryBytes: Int64
     public let isPhone: Bool

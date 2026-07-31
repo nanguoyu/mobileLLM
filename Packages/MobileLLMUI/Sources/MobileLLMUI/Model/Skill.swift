@@ -90,7 +90,8 @@ public extension Skill {
             2. Pick the most relevant, trustworthy result and call fetch_webpage on its URL to read the page.
             3. If one page isn't enough, search or fetch again.
             Then answer in your own words and cite each claim with the page title and URL you used. If the \
-            tools return nothing useful, say so instead of guessing. (Turn Tools on for this skill to work.)
+            tools return nothing useful, say so instead of guessing. (Enable tool access, Web search, and \
+            Webpage reader for this skill to work.)
             """,
             isBuiltIn: true),
         Skill(

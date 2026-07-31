@@ -5,7 +5,7 @@ import MLX
 import MLXRandom
 
 /// The fork acceptance gate at the kernel level: exercises the PrismML `bits=1` affine Metal kernel.
-/// Quantizes a matrix to 1-bit, runs `quantizedMatmul` (the decode-time op), and compares it against
+/// Quantizes a matrix to 1-bit, runs `quantizedMM` (the decode-time op), and compares it against
 /// dequantize-then-matmul. Upstream MLX only supports bits ∈ {2,3,4,5,6,8}, so this op existing and
 /// being correct *is* the proof the fork is wired in. (Bonsai weights are 1-bit affine, group 128.)
 public enum BitsOneCheck {
@@ -21,8 +21,8 @@ public enum BitsOneCheck {
 
         // bits: 1 → the fork kernel. On stock MLX this call would assert.
         let (wq, scales, biases) = quantized(w, groupSize: groupSize, bits: 1, mode: .affine)
-        let y = quantizedMatmul(x, wq, scales: scales, biases: biases,
-                                transpose: true, groupSize: groupSize, bits: 1, mode: .affine)
+        let y = quantizedMM(x, wq, scales: scales, biases: biases,
+                            transpose: true, groupSize: groupSize, bits: 1, mode: .affine)
         let wDeq = dequantized(wq, scales: scales, biases: biases,
                                groupSize: groupSize, bits: 1, mode: .affine, dtype: .float32)
         let yRef = matmul(x, wDeq.T)

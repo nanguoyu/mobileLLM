@@ -38,6 +38,14 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         }
     }
 
+    private func waitUntilEntered(_ gate: ModelReadinessGate, timeout: TimeInterval = 2) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !(await gate.entered()) {
+            if Date() > deadline { XCTFail("generation never reached the readiness gate"); return }
+            try await Task.sleep(nanoseconds: 2_000_000)
+        }
+    }
+
     /// Drive one full send and hand back the system turn the engine was actually given.
     private func systemTurn(after draft: String, chat: ChatStore, engine: RecordingEngine) async throws -> ChatTurn {
         chat.draft = draft
@@ -58,7 +66,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         settings.systemPrompt = "BASE_PROMPT_SENTINEL: be concise."
-        await book.add("The user's dog is named MEMORY_SENTINEL_MOMO")
+        try await book.add("The user's dog is named MEMORY_SENTINEL_MOMO")
         _ = try XCTUnwrap(chat.newConversation())
 
         let system = try await systemTurn(after: "what should I feed my dog?", chat: chat, engine: engine)
@@ -80,8 +88,8 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         let (chat, book, _, _, dir) = makeChat(engine: engine)
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        await book.add("The user's dog Momo is a corgi")
-        for i in 0..<8 { await book.add("Note \(i): the quarterly SENTINEL_NOISE spreadsheet") }
+        try await book.add("The user's dog Momo is a corgi")
+        for i in 0..<8 { try await book.add("Note \(i): the quarterly SENTINEL_NOISE spreadsheet") }
         _ = try XCTUnwrap(chat.newConversation())
 
         let system = try await systemTurn(after: "corgi grooming advice?", chat: chat, engine: engine)
@@ -103,7 +111,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         XCTAssertFalse(before.content.contains(header), "nothing saved yet — no block")
 
         // Exactly what RememberTool does, behind the UI's back.
-        await store.save("The user's cat is named TOOL_SAVED_SENTINEL", source: .model)
+        try await store.save("The user's cat is named TOOL_SAVED_SENTINEL", source: .model)
 
         let after = try await systemTurn(after: "tell me about my cat", chat: chat, engine: engine)
         XCTAssertTrue(after.content.contains("TOOL_SAVED_SENTINEL"),
@@ -118,7 +126,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         settings.systemPrompt = "BASE_PROMPT_SENTINEL: be concise."
-        await book.add("The user's dog is named MEMORY_SENTINEL_MOMO")
+        try await book.add("The user's dog is named MEMORY_SENTINEL_MOMO")
         settings.disabledBuiltInTools.formUnion([ToolID.recall.rawValue, ToolID.remember.rawValue])
         _ = try XCTUnwrap(chat.newConversation())
 
@@ -141,6 +149,53 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
                        "an empty store adds no header, no blank section — the prompt is untouched")
     }
 
+    // MARK: - Send is the per-turn memory authorization boundary
+
+    func testDisablingMemoryDuringColdLoadDoesNotRevokeCurrentTurnRecall() async throws {
+        let engine = RecordingEngine()
+        let (chat, book, _, settings, dir) = makeChat(engine: engine)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try await book.add("The user's dog is named COLD_LOAD_MOMO")
+        _ = try XCTUnwrap(chat.newConversation())
+        let gate = ModelReadinessGate()
+        chat.ensureModelReady = { await gate.wait() }
+
+        chat.draft = "what is my dog's name?"
+        chat.send()
+        try await waitUntilEntered(gate)
+        settings.memoryEnabled = false
+        await gate.release()
+        try await waitUntilIdle(chat)
+
+        let recorded = await engine.lastTurns()
+        let system = try XCTUnwrap(recorded?.first)
+        XCTAssertTrue(system.content.contains("COLD_LOAD_MOMO"),
+                      "memory permission captured at Send remains valid while weights load")
+    }
+
+    func testEnablingMemoryDuringColdLoadDoesNotGrantCurrentTurnRecall() async throws {
+        let engine = RecordingEngine()
+        let (chat, book, _, settings, dir) = makeChat(engine: engine)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try await book.add("The user's dog is named COLD_LOAD_MOMO")
+        settings.memoryEnabled = false
+        _ = try XCTUnwrap(chat.newConversation())
+        let gate = ModelReadinessGate()
+        chat.ensureModelReady = { await gate.wait() }
+
+        chat.draft = "what is my dog's name?"
+        chat.send()
+        try await waitUntilEntered(gate)
+        settings.memoryEnabled = true
+        await gate.release()
+        try await waitUntilIdle(chat)
+
+        let recorded = await engine.lastTurns()
+        let system = try XCTUnwrap(recorded?.first)
+        XCTAssertFalse(system.content.contains("COLD_LOAD_MOMO"),
+                       "memory enabled after Send applies only to the next turn")
+    }
+
     // MARK: - Composes with a skill
 
     func testMemoryComposesAfterTheBasePromptAndTheActiveSkill() async throws {
@@ -152,7 +207,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         let skill = Skill(name: "Francophile", emoji: "🇫🇷", summary: "",
                           instructions: "SKILL_INSTRUCTION_SENTINEL: always answer in French.")
         chat.skillStore?.skills = [skill]
-        await book.add("The user's dog is named MEMORY_SENTINEL_MOMO")
+        try await book.add("The user's dog is named MEMORY_SENTINEL_MOMO")
         _ = try XCTUnwrap(chat.newConversation())
         chat.setActiveSkill(skill.id)
 
@@ -175,7 +230,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         chat.draft = "what should I feed my dog?"
 
         let before = chat.contextUsage().used
-        await book.add("The user's dog is named Momo and eats twice a day")
+        try await book.add("The user's dog is named Momo and eats twice a day")
         let after = chat.contextUsage().used
         XCTAssertGreaterThan(after, before, "injected memory is charged to the window, not hidden from it")
     }
@@ -202,10 +257,21 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         XCTAssertTrue(block.contains("Momo"), "and the short one still makes it in")
     }
 
-    func testBlockIsNilWhenNothingMatchesOrNothingIsSaved() {
+    func testBlockIsNilWhenNothingIsSaved() {
         XCTAssertNil(ChatStore.memoryBlock([], query: "dog"), "no facts, no block")
-        XCTAssertNil(ChatStore.memoryBlock([MemoryFact(text: "likes tea")], query: "spaceship"),
-                     "no matches, no block — never an empty header")
+    }
+
+    func testCrossLanguageNoMatchFallsBackToRecentCanonicalEnglishMemory() throws {
+        let old = MemoryFact(text: "The user is named Dong.",
+                             createdAt: Date(timeIntervalSince1970: 1))
+        let new = MemoryFact(text: "The user prefers jasmine tea.",
+                             createdAt: Date(timeIntervalSince1970: 2))
+        let block = try XCTUnwrap(ChatStore.memoryBlock([old, new], query: "我叫什么名字？"))
+        XCTAssertTrue(block.contains("The user is named Dong."))
+        XCTAssertTrue(block.contains("The user prefers jasmine tea."))
+        XCTAssertTrue(block.contains("reply in the user's language"))
+        XCTAssertTrue(block.contains("never call remember for them"),
+                      "already-injected notes must not become fresh remember calls")
     }
 
     func testBlockCapsTheNumberOfFacts() throws {

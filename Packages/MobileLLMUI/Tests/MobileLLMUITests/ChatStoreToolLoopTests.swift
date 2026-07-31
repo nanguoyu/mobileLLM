@@ -70,6 +70,56 @@ final class ChatStoreToolLoopTests: XCTestCase {
         }
     }
 
+    /// A two-pass tool engine with deliberate pauses around the second pass. The first pass reasons then
+    /// calls the calculator with no visible prose. The second pass waits so tests can inspect the
+    /// post-tool state, reasons again, then waits once more before the final answer.
+    private final class MultiPassThinkingEngine: LLMEngine, @unchecked Sendable {
+        private let lock = NSLock()
+        private var call = 0
+
+        func load(model: LLMModel, variant: LLMVariant, weightsDir: URL,
+                  progress: @escaping @Sendable (Double) -> Void) async throws {}
+        func unload() async {}
+
+        func generate(messages: [ChatTurn], params: Sampling) -> AsyncThrowingStream<EngineDelta, Error> {
+            lock.lock()
+            let index = call
+            call += 1
+            lock.unlock()
+
+            return AsyncThrowingStream { continuation in
+                let task = Task {
+                    do {
+                        if index == 0 {
+                            continuation.yield(.reasoning("first-pass reasoning"))
+                            continuation.yield(.answer(
+                                #"<tool_call>{"name":"calculator","arguments":{"expression":"17+25"}}</tool_call>"#
+                            ))
+                        } else {
+                            // Leave a stable window after the tool result, then another while the second
+                            // reasoning pass is visibly live before the final answer freezes its duration.
+                            try await Task.sleep(nanoseconds: 120_000_000)
+                            continuation.yield(.reasoning(" second-pass reasoning"))
+                            try await Task.sleep(nanoseconds: 120_000_000)
+                            continuation.yield(.answer("The answer is 42."))
+                            try await Task.sleep(nanoseconds: 120_000_000)
+                        }
+                        continuation.yield(.done(Stats(
+                            promptTokens: 0, genTokens: 1, promptTPS: 0,
+                            tokensPerSecond: 1, peakMemoryBytes: 0, stopReason: .eos
+                        )))
+                        continuation.finish()
+                    } catch is CancellationError {
+                        continuation.finish()
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                }
+                continuation.onTermination = { _ in task.cancel() }
+            }
+        }
+    }
+
     private func makeStore(engine: LLMEngine,
                            configure: (AppSettings) -> Void = { _ in }) -> (ChatStore, ConversationStore, AppSettings, URL) {
         let dir = FileManager.default.temporaryDirectory
@@ -89,6 +139,14 @@ final class ChatStoreToolLoopTests: XCTestCase {
         while chat.isStreaming {
             if Date() > deadline { throw XCTSkip("streaming did not finish in time") }
             try await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
+    private func waitUntilEntered(_ gate: ModelReadinessGate, timeout: TimeInterval = 2) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !(await gate.entered()) {
+            if Date() > deadline { XCTFail("generation never reached the readiness gate"); return }
+            try await Task.sleep(nanoseconds: 2_000_000)
         }
     }
 
@@ -150,8 +208,8 @@ final class ChatStoreToolLoopTests: XCTestCase {
     // MARK: - applyLoopEvent surfaces tool activity into LIVE streaming state
 
     /// While the loop is still running (second turn streaming), the store must expose the tool activity on
-    /// `streaming.toolActivity` with its result and the phase moved to `.answering` — the state the activity
-    /// row renders mid-turn. A slow second turn gives a wide, deterministic observation window.
+    /// `streaming.toolActivity` with its result. A slow second turn gives a wide, deterministic observation
+    /// window; once answer text starts, the phase is naturally `.answering`.
     func testToolActivitySurfacesInLiveStreamingState() async throws {
         // Turn 1 asks for the calculator; turn 2 is a long answer streamed char-by-char so the loop stays
         // live long enough to observe committed tool activity before it finishes.
@@ -177,10 +235,89 @@ final class ChatStoreToolLoopTests: XCTestCase {
         let live = try XCTUnwrap(observed, "the loop's tool activity should surface on live streaming state")
         XCTAssertEqual(live.toolActivity.count, 1)
         XCTAssertEqual(live.toolActivity.first?.name, "calculator")
-        XCTAssertEqual(live.phase, .answering, "a tool call moves the phase to .answering, not .thinking")
+
+        // A tool result is published before the next model pass starts. Sampling at that exact boundary may
+        // correctly see `.warming`; separately require the second pass to expose a real live answer window.
+        let answerDeadline = Date().addingTimeInterval(5)
+        var liveAnswer: StreamingState?
+        while Date() < answerDeadline {
+            if let state = chat.streaming, !state.answer.isEmpty, state.phase == .answering {
+                liveAnswer = state
+                break
+            }
+            if !chat.isStreaming { break }
+            try await Task.sleep(nanoseconds: 3_000_000)
+        }
+        XCTAssertNotNil(liveAnswer, "the ordinary post-tool answer should stream before the turn commits")
 
         try await waitUntilIdle(chat)
         XCTAssertEqual(chat.activeConversation?.messages.last?.toolRuns?.first?.result, "42")
+    }
+
+    /// A tool call ends an intermediate generation pass, not the assistant turn. Pre-tool prose may have
+    /// briefly frozen the disclosure, but the call must restore a live state while preserving the first
+    /// pass's accumulated reasoning time. The next reasoning pass adds its own segment; tool/prefill waits
+    /// are excluded from the eventual duration.
+    func testToolCallRestoresLiveThinkingAndFinalAnswerRefreezesDuration() async throws {
+        let (chat, _, _, dir) = makeStore(engine: MultiPassThinkingEngine())
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        chat.draft = "what is 17+25?"
+        chat.send()
+
+        let toolDeadline = Date().addingTimeInterval(5)
+        var postTool: StreamingState?
+        while Date() < toolDeadline {
+            if let state = chat.streaming, state.toolActivity.first?.result == "42" {
+                postTool = state
+                break
+            }
+            if !chat.isStreaming { break }
+            try await Task.sleep(nanoseconds: 2_000_000)
+        }
+        let afterTool = try XCTUnwrap(postTool, "the tool result should be observable before pass two starts")
+        XCTAssertEqual(afterTool.phase, .thinking,
+                       "a tool call with existing reasoning is still a live thinking turn")
+        let firstPassDuration = try XCTUnwrap(afterTool.thinkingDuration,
+                                              "the first reasoning segment is accumulated at the tool boundary")
+        XCTAssertNil(afterTool.thinkingStartedAt,
+                     "the reasoning clock is paused while the tool/next-pass prefill runs")
+
+        let reasoningDeadline = Date().addingTimeInterval(5)
+        var secondPass: StreamingState?
+        while Date() < reasoningDeadline {
+            if let state = chat.streaming, state.reasoning.contains("second-pass") {
+                secondPass = state
+                break
+            }
+            if !chat.isStreaming { break }
+            try await Task.sleep(nanoseconds: 2_000_000)
+        }
+        let liveReasoning = try XCTUnwrap(secondPass, "the second reasoning pass should stream live")
+        XCTAssertEqual(liveReasoning.phase, .thinking)
+        XCTAssertNotNil(liveReasoning.thinkingStartedAt, "the second pass starts a fresh reasoning segment")
+        XCTAssertEqual(liveReasoning.thinkingDuration ?? -1, firstPassDuration, accuracy: 0.03,
+                       "the 120ms tool/prefill wait does not advance reasoning time")
+
+        let answerDeadline = Date().addingTimeInterval(5)
+        var finalAnswer: StreamingState?
+        while Date() < answerDeadline {
+            if let state = chat.streaming, !state.answer.isEmpty, state.phase == .answering {
+                finalAnswer = state
+                break
+            }
+            if !chat.isStreaming { break }
+            try await Task.sleep(nanoseconds: 2_000_000)
+        }
+        let answering = try XCTUnwrap(finalAnswer, "the final answer should be observable before commit")
+        let liveDuration = try XCTUnwrap(answering.thinkingDuration)
+        XCTAssertGreaterThan(liveDuration, 0.08, "the second pass's deliberate 120ms reasoning is counted")
+        XCTAssertLessThan(liveDuration, 0.22,
+                          "the separate 120ms prefill/tool wait is not counted as model reasoning")
+
+        try await waitUntilIdle(chat)
+        let persisted = try XCTUnwrap(chat.activeConversation?.messages.last?.thinkingSeconds)
+        XCTAssertEqual(persisted, liveDuration, accuracy: 0.03)
     }
 
     // MARK: - toolRegistry() cache invalidation on a config change (drives the rebuild)
@@ -217,6 +354,53 @@ final class ChatStoreToolLoopTests: XCTestCase {
         XCTAssertNil(last.toolRuns, "the rebuilt registry no longer has the calculator, so no tool ran")
         XCTAssertTrue(last.answer.contains("No tool named"),
                       "the loop reports the now-unknown tool — proving the registry was rebuilt, not cached stale")
+    }
+
+    // MARK: - Send is the per-turn authorization boundary
+
+    func testDisablingCalculatorDuringColdLoadDoesNotRevokeTheCurrentTurn() async throws {
+        let engine = ScriptedEngine([Self.calcCall, "The answer is 42."])
+        let (chat, _, settings, dir) = makeStore(engine: engine)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let gate = ModelReadinessGate()
+        chat.ensureModelReady = { await gate.wait() }
+
+        chat.draft = "what is 17+25?"
+        chat.send()
+        try await waitUntilEntered(gate)
+        settings.disabledBuiltInTools.insert(ToolID.calculator.rawValue)
+        await gate.release()
+        try await waitUntilIdle(chat)
+
+        let assistant = try XCTUnwrap(chat.activeConversation?.messages.last)
+        XCTAssertEqual(assistant.toolRuns?.first?.name, ToolID.calculator.rawValue,
+                       "authorization captured at Send remains valid while a cold model loads")
+        XCTAssertEqual(assistant.toolRuns?.first?.result, "42")
+        XCTAssertEqual(engine.callCount(), 2)
+    }
+
+    func testEnablingMCPServerDuringColdLoadDoesNotGrantItToTheCurrentTurn() async throws {
+        let engine = ScriptedEngine(["A plain local answer."])
+        let (chat, _, settings, dir) = makeStore(engine: engine) { settings in
+            settings.mcpServers = [MCPServer(name: "must-not-connect", url: "://", isEnabled: false)]
+        }
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let gate = ModelReadinessGate()
+        chat.ensureModelReady = { await gate.wait() }
+
+        chat.draft = "say hello"
+        chat.send()
+        try await waitUntilEntered(gate)
+        settings.mcpServers[0].isEnabled = true
+        await gate.release()
+        try await waitUntilIdle(chat)
+
+        let assistant = try XCTUnwrap(chat.activeConversation?.messages.last)
+        XCTAssertEqual(assistant.answer, "A plain local answer.",
+                       "a server enabled after Send is deferred to the next turn, not contacted now")
+        XCTAssertNil(assistant.emptyOutcome)
+        XCTAssertEqual(engine.callCount(), 1)
+        XCTAssertNil(chat.banner, "the invalid just-enabled server was never consulted by this turn")
     }
 
     /// Give any just-finished generation task time to run its trailing (no-op) finalize on the main actor

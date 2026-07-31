@@ -35,9 +35,9 @@ public final class AppSettings {
             persist()
         }
     }
-    /// Which built-in tools the user turned OFF (raw `ToolID` values). Stored as the *disabled* set on
-    /// purpose: a tool shipped in a later version is ON without a migration (it's simply absent here), and
-    /// the privacy-sensitive tools (calendar / reminders / location) start disabled until the user opts in.
+    /// Which built-in tools the user deselected (raw `ToolID` values). Stored as the *disabled* set so
+    /// existing choices survive upgrades; the privacy-sensitive tools (calendar / reminders / location)
+    /// start deselected until the user opts in.
     public var disabledBuiltInTools: Set<String> { didSet { persist() } }
     /// Web-search engine priority — the first that returns results wins, the rest are fall-through. At least
     /// one is kept while `web_search` is on (the UI enforces it); an empty list falls back to both.
@@ -58,6 +58,7 @@ public final class AppSettings {
 
     private let defaults: UserDefaults
     private let key = "mobileLLM.settings.v1"
+    private let fallbackDefaultModelID: String
     /// Suppresses `persist()` during the initial load so `didSet` doesn't re-write while decoding.
     private var loading = true
     /// Where MCP bearer tokens live (A2.9). Optional so tests can opt out; nil = tokens simply aren't
@@ -72,6 +73,7 @@ public final class AppSettings {
                 keychain: KeychainBox? = KeychainBox(service: AppSettings.defaultKeychainService)) {
         self.defaults = defaults
         self.keychain = keychain
+        self.fallbackDefaultModelID = fallbackDefaultModelID
         let snap = Self.loadSnapshot(from: defaults, key: key)
         defaultModelID = snap?.defaultModelID ?? fallbackDefaultModelID
         enginePreference = snap?.enginePreference ?? .auto
@@ -189,9 +191,8 @@ public final class AppSettings {
     /// it silently by another route.
     ///
     /// Deliberately NOT gated on `toolsEnabled` — the block calls nothing, so facts still reach a model
-    /// given no tools. That is also exactly why the Memory screen carries its own switch: Manage tools is
-    /// hidden when tools are off, and injection isn't, so a tools-off user could otherwise see facts ride
-    /// every prompt with no reachable way to stop it.
+    /// given no tools. The Memory screen carries the same switch because it is the natural place to review
+    /// and control the facts independently of tool calling.
     ///
     /// The setter moves `remember` with `recall`, matching the Manage-tools row (one feature, one switch):
     /// leaving `remember` on while memory is off would keep writing notes the model can never read.
@@ -259,6 +260,42 @@ public final class AppSettings {
         guard let data = defaults.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(Snapshot.self, from: data)
     }
+
+    /// Restore the exact fresh-install settings and remove every MCP credential owned by this app's
+    /// Keychain service. All in-memory properties are reset even if Keychain refuses deletion; that
+    /// failure is thrown so the full-app erase UI can report the remaining secret truthfully.
+    public func resetForDataErase() throws {
+        var keychainFailure: Error?
+        do {
+            try keychain?.deleteAll()
+        } catch {
+            keychainFailure = error
+        }
+
+        loading = true
+        defaultModelID = fallbackDefaultModelID
+        enginePreference = .auto
+        systemPrompt = SystemPrompt.standard
+        thinkingDefault = true
+        thinkingDisplay = .autoCollapse
+        toolsEnabled = false
+        dictationLocale = nil
+        mcpServers = []
+        disabledBuiltInTools = Self.defaultDisabledBuiltInTools
+        searchEngines = [.duckduckgo, .bing]
+        temperature = 0.7
+        topP = 0.95
+        topK = 20
+        repetitionPenalty = 1.05
+        maxTokens = 1024
+        contextLength = 8192
+        kvBits = 4
+        appearance = .system
+        loading = false
+        defaults.removeObject(forKey: key)
+
+        if let keychainFailure { throw keychainFailure }
+    }
 }
 
 // MARK: - Auto engine policy
@@ -298,7 +335,7 @@ public extension AppSettings {
             let fitRank = fit == .comfortable ? 2 : (fit.isSupported ? 1 : 0)
             let enginePref = v.engine == tieBreakEngine ? 1 : 0
             let quantPref = v.quant == model.defaultVariant ? 1 : 0
-            return (fitRank, enginePref, quantPref, -v.onDiskBytes)
+            return (fitRank, enginePref, quantPref, -v.totalOnDiskBytes)
         }
         return candidates.max { key($0) < key($1) } ?? model.defaultVariantValue
     }

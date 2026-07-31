@@ -16,6 +16,9 @@ import LLMEngineApple
 struct MobileLLMApp: App {
     @State private var container: AppContainer
     @Environment(\.scenePhase) private var scenePhase
+    #if DEBUG && os(iOS)
+    private let deviceE2E = DeviceE2EConfiguration.current()
+    #endif
 
     init() {
         // Multi-GB weights live under Application Support (a no-backup dir so they don't hit iCloud).
@@ -48,8 +51,9 @@ struct MobileLLMApp: App {
             AppContainer(
                 engine: engine,
                 downloadBase: base,
-                downloader: { repoId, globs, progress in
-                    _ = try await downloader.download(repoId: repoId, matching: globs, progress: progress)
+                downloader: { repoId, revision, globs, progress in
+                    _ = try await downloader.download(repoId: repoId, revision: revision,
+                                                      matching: globs, progress: progress)
                 },
                 // The model layer is engine-free, so only this layer can ask the OS about its own model.
                 // This IS the system model's install state: available ⇒ ready to use, nothing downloaded.
@@ -63,8 +67,13 @@ struct MobileLLMApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(container: container)
+                #if DEBUG && os(iOS)
+                .overlay(alignment: .topLeading) {
+                    if deviceE2E != nil { DeviceE2EDiagnosticsOverlay(container: container) }
+                }
+                #endif
                 // `bootstrap()` is awaited by RootView's own `.task` and is idempotent — a second `.task`
-                // here would race it (sessions decoded twice, default model loaded back-to-back), so it's
+                // here would race it (sessions decoded and selection restored twice), so it's
                 // deliberately NOT started from the App scene.
                 .onChange(of: scenePhase) { _, phase in
                     // Free the resident model when the app leaves the foreground: it stops a 5 GB model

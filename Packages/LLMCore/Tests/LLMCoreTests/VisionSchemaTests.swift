@@ -64,8 +64,10 @@ final class VisionSchemaTests: XCTestCase {
         let legacyData = try encoder.encode(gguf(nil))
         let legacyJSON = String(decoding: legacyData, as: UTF8.self)
         XCTAssertFalse(legacyJSON.contains("visionProjector"), "a text variant must not emit the key")
+        XCTAssertFalse(legacyJSON.contains("identityScheme"), "curated/legacy ids keep the old persisted shape")
         let back = try decoder.decode(LLMVariant.self, from: legacyData)
         XCTAssertNil(back.visionProjector)
+        XCTAssertEqual(back.identityScheme, .repositoryAndFormatV1)
         XCTAssertEqual(back, gguf(nil))
     }
 
@@ -80,6 +82,29 @@ final class VisionSchemaTests: XCTestCase {
     func testSupportsVisionInputReflectsProjector() {
         XCTAssertTrue(gguf(VisionProjector(fileName: "m.gguf", sizeBytes: 1)).supportsVisionInput)
         XCTAssertFalse(gguf(nil).supportsVisionInput)
+    }
+
+    func testTotalOnDiskBytesIncludesVisionProjector() {
+        XCTAssertEqual(
+            gguf(VisionProjector(fileName: "mmproj-F16.gguf", sizeBytes: 672)).totalOnDiskBytes,
+            1_672)
+        XCTAssertEqual(gguf(nil).totalOnDiskBytes, 1_000)
+        let system = LLMVariant(
+            quant: .other("System"), backend: .appleSystem, onDiskBytes: 0,
+            source: ModelSource(huggingFaceRepo: "apple/system-language-model"))
+        XCTAssertEqual(system.totalOnDiskBytes, 0)
+    }
+
+    func testModelSourceLegacyDecodeDefaultsRevisionToMain() throws {
+        let legacy = Data(#"{"huggingFaceRepo":"org/model","fileName":"model.gguf"}"#.utf8)
+        let source = try decoder.decode(ModelSource.self, from: legacy)
+        XCTAssertEqual(source.revision, "main")
+        XCTAssertEqual(source.fileName, "model.gguf")
+    }
+
+    func testUnknownFutureFamilyAndLicenseDecodeAsUnverified() throws {
+        XCTAssertEqual(try decoder.decode(LLMFamily.self, from: Data(#""future-family""#.utf8)), .unknown)
+        XCTAssertEqual(try decoder.decode(ModelLicense.self, from: Data(#""future-license""#.utf8)), .unknown)
     }
 
     // MARK: - requiredFileNames (the pure file-selection logic, C1.3)

@@ -71,4 +71,18 @@ final class ContextFitTests: XCTestCase {
         XCTAssertNil(LlamaEngine.fitMessages(msgs, budget: 10, tokenCount: cost))
         XCTAssertEqual(LlamaEngine.fitMessages(msgs, budget: 11, tokenCount: cost), msgs)
     }
+
+    func testAnswerReserveHonorsEntirePositiveMaxTokens() {
+        XCTAssertEqual(LlamaEngine.answerTokenReserve(maxTokens: 1), 8,
+                       "the minimum safety reserve remains eight tokens")
+        XCTAssertEqual(LlamaEngine.answerTokenReserve(maxTokens: 256), 256)
+        XCTAssertEqual(LlamaEngine.answerTokenReserve(maxTokens: 1_024), 1_024,
+                       "large requests must not be silently capped at 256")
+        XCTAssertEqual(LlamaEngine.answerTokenReserve(maxTokens: 8_192), 8_192)
+    }
+
+    func testZeroMaxTokensRetainsUnboundedGenerationPlanningSemantics() {
+        XCTAssertEqual(LlamaEngine.answerTokenReserve(maxTokens: 0), 256,
+                       "zero still means unbounded generation with the legacy finite planning reserve")
+    }
 }

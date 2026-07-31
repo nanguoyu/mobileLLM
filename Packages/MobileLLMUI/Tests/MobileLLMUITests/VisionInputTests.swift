@@ -29,7 +29,7 @@ final class VisionInputTests: XCTestCase {
 
     private func manager(installed: Bool) -> ModelManager {
         ModelManager(engine: MockLLMEngine(), device: phone8, downloadBase: tempBase(),
-                     downloader: { _, _, progress in progress(1) },
+                     downloader: { _, _, _, progress in progress(1) },
                      installProbe: { _, _ in installed },
                      availableMemory: { .max })
     }
@@ -100,6 +100,28 @@ final class VisionInputTests: XCTestCase {
         XCTAssertEqual(chat.draft, "what is in this photo", "the draft is kept too")
     }
 
+    /// Engine family alone is not a vision capability. Bonsai is a llama.cpp GGUF, but its exact variant
+    /// has no projector; accepting this send used to discard the staged photo and let it answer the text as
+    /// though no image had ever been attached.
+    func testImageSendOnTextOnlyLlamaModelIsBlockedWithoutLosingComposer() async throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let chat = ChatStore(engine: MockLLMEngine(script: .init()), store: store, settings: settings(),
+                             activeModel: LoadedModel(model: LLMCatalog.bonsai8b, variant: textVariant))
+        chat.draft = "what is in this photo"
+        XCTAssertTrue(chat.attach(imageData: makeTestImageData()))
+        let stagedID = try XCTUnwrap(chat.pendingImages.first?.id)
+
+        chat.send()
+
+        XCTAssertNil(chat.streaming, "a projector-less llama.cpp variant must be rejected before generation")
+        XCTAssertEqual(chat.banner?.kind, .warning)
+        XCTAssertTrue(chat.banner?.message.contains("can't read images") == true)
+        XCTAssertEqual(chat.activeConversation?.messages.count ?? 0, 0, "no provisional turn is created")
+        XCTAssertEqual(chat.pendingImages.map(\.id), [stagedID], "the exact staged image remains retryable")
+        XCTAssertEqual(chat.draft, "what is in this photo", "the text draft remains retryable too")
+    }
+
     // MARK: - Send path threads images to the engine turn
 
     func testSendThreadsAttachedImageOntoUserTurn() async throws {
@@ -129,6 +151,80 @@ final class VisionInputTests: XCTestCase {
         let onDisk = await store.attachmentData(refs[0].id)
         XCTAssertNotNil(onDisk, "the image bytes are persisted to disk")
         XCTAssertTrue(chat.pendingImages.isEmpty, "staged images clear on send")
+    }
+
+    func testAttachmentWriteFailureRollsBackTurnAndRestoresComposer() async throws {
+        // Make the conversation-store "directory" a regular file. Creating its attachments child must
+        // fail deterministically without relying on disk-full state or platform permissions.
+        let blockedRoot = FileManager.default.temporaryDirectory
+            .appending(component: "vision-blocked-\(UUID().uuidString)")
+        try Data("not a directory".utf8).write(to: blockedRoot)
+        defer { try? FileManager.default.removeItem(at: blockedRoot) }
+
+        let store = ConversationStore(directory: blockedRoot)
+        let engine = RecordingEngine()
+        let chat = ChatStore(engine: engine, store: store, settings: settings(),
+                             activeModel: LoadedModel(model: LLMCatalog.qwen35_4b, variant: visionVariant))
+        let conversation = Conversation(title: "Before send", modelID: "old-model", variantID: "old-variant")
+        chat.conversations = [conversation]
+        chat.activeID = conversation.id
+        chat.draft = "please inspect this"
+        XCTAssertTrue(chat.attach(imageData: makeTestImageData()))
+        let stagedID = try XCTUnwrap(chat.pendingImages.first?.id)
+
+        chat.send()
+        try await waitUntilIdle(chat)
+
+        XCTAssertEqual(chat.activeConversation?.messages, [],
+                       "a record must never retain refs whose image bytes were not persisted")
+        XCTAssertEqual(chat.activeConversation?.title, "Before send")
+        XCTAssertEqual(chat.activeConversation?.modelID, "old-model")
+        XCTAssertEqual(chat.activeConversation?.variantID, "old-variant")
+        XCTAssertEqual(chat.draft, "please inspect this", "the user's text is restored")
+        XCTAssertEqual(chat.pendingImages.map(\.id), [stagedID], "the exact staged image is restored")
+        XCTAssertEqual(chat.banner?.kind, .error)
+        let recordedTurns = await engine.lastTurns()
+        XCTAssertNil(recordedTurns, "generation must not start after attachment persistence fails")
+    }
+
+    func testLaterAttachmentFailureRemovesEarlierPartialWrite() async throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let engine = RecordingEngine()
+        let chat = ChatStore(engine: engine, store: store, settings: settings(),
+                             activeModel: LoadedModel(model: LLMCatalog.qwen35_4b, variant: visionVariant))
+        let conversation = Conversation(
+            title: "Images",
+            modelID: LLMCatalog.qwen35_4b.id,
+            variantID: visionVariant.id
+        )
+        chat.conversations = [conversation]
+        chat.activeID = conversation.id
+        chat.draft = "compare these"
+        XCTAssertTrue(chat.attach(imageData: makeTestImageData(width: 320, height: 240)))
+        XCTAssertTrue(chat.attach(imageData: makeTestImageData(width: 400, height: 300)))
+        let staged = chat.pendingImages
+        XCTAssertEqual(staged.count, 2)
+
+        // The first target remains writable. Make only the second target a directory so the first file is
+        // committed before the second atomic Data.write fails; rollback must purge both targets.
+        let attachments = dir.appending(component: "attachments")
+        try FileManager.default.createDirectory(at: attachments, withIntermediateDirectories: true)
+        let blockedSecond = attachments.appending(component: "\(staged[1].id.uuidString).jpg")
+        try FileManager.default.createDirectory(at: blockedSecond, withIntermediateDirectories: false)
+
+        chat.send()
+        try await waitUntilIdle(chat)
+
+        for image in staged {
+            let path = attachments.appending(component: "\(image.id.uuidString).jpg")
+            XCTAssertFalse(FileManager.default.fileExists(atPath: path.path),
+                           "rollback must remove every file in a partially written multi-image turn")
+        }
+        XCTAssertEqual(chat.pendingImages.map(\.id), staged.map(\.id))
+        XCTAssertEqual(chat.activeConversation?.messages, [])
+        let recordedTurns = await engine.lastTurns()
+        XCTAssertNil(recordedTurns)
     }
 
     func testAttachCapsAtThree() {

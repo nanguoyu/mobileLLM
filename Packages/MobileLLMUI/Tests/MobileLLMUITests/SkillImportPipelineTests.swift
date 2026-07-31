@@ -86,8 +86,9 @@ final class SkillImportPipelineTests: XCTestCase {
         // The import 'Add' step through the real store (matching SkillImportView.add()).
         let fileURL = dir.appending(component: "skills.json")
         let store = SkillStore(fileURL: fileURL)
-        await store.load()   // seed built-ins first (matches the launched app) so reloads never re-seed
-        let created = store.create(name: p.name, emoji: "📦", summary: p.summary, instructions: p.instructions)
+        try await store.load()   // seed built-ins first (matches the launched app) so reloads never re-seed
+        let created = try await store.create(name: p.name, emoji: "📦", summary: p.summary,
+                                             instructions: p.instructions)
 
         // A fresh store at the same file reads the imported skill back.
         let reloaded = try await pollForSkill(fileURL: fileURL, id: created.id)
@@ -146,12 +147,12 @@ final class SkillImportPipelineTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             let fresh = SkillStore(fileURL: fileURL)
-            await fresh.load()
+            try await fresh.load()
             if let s = fresh.skill(id: id) { return s }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
         let fresh = SkillStore(fileURL: fileURL)
-        await fresh.load()
+        try await fresh.load()
         return try XCTUnwrap(fresh.skill(id: id), "the imported skill never landed on disk")
     }
 }

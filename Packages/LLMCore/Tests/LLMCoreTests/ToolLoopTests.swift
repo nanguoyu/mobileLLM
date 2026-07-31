@@ -48,6 +48,73 @@ final class ToolLoopTests: XCTestCase {
         XCTAssertTrue(msgs.first?.content.contains("<tool_call>") ?? false)
     }
 
+    /// Memory has one canonical language regardless of the visible conversation. The old bilingual
+    /// example is absent, so a small model has no Chinese sentence to copy into an English memory.
+    func testRememberPromptDeclaresCanonicalEnglishWithoutChineseExample() {
+        let store = FakeMemoryStore()
+        let registry = ToolRegistry([RememberTool(store: store)])
+        let now = Date(timeIntervalSince1970: 1_735_732_800)
+        let english = ToolPrompt.inject(
+            registry.schemas,
+            into: [ChatTurn(role: .user, content: "Please remember my name. My name is Dong.")],
+            dialect: .gemma,
+            now: now
+        )
+        let chinese = ToolPrompt.inject(
+            registry.schemas,
+            into: [ChatTurn(role: .user, content: "请记住，我叫 Dong。")],
+            dialect: .gemma,
+            now: now
+        )
+        let englishSystem = english.first(where: { $0.role == .system })?.content ?? ""
+        let chineseSystem = chinese.first(where: { $0.role == .system })?.content ?? ""
+        XCTAssertTrue(englishSystem.contains("in English"), englishSystem)
+        XCTAssertTrue(englishSystem.contains(#""The user ""#), englishSystem)
+        XCTAssertEqual(englishSystem, chineseSystem, "the memory protocol does not depend on device or chat locale")
+        XCTAssertFalse(englishSystem.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) },
+                       englishSystem)
+    }
+
+    /// A weak model can still ignore a schema once. The fixed shape gate rejects the observed Chinese call
+    /// without language detection, then saves and surfaces only the corrected canonical-English call.
+    func testRejectsNonCanonicalRememberCallAndSavesCorrectedEnglish() async throws {
+        let store = FakeMemoryStore()
+        let registry = ToolRegistry([RememberTool(store: store)])
+        let engine = ScriptedEngine([
+            #"<|tool_call>call:remember{text:<|"|>用户叫Dong<|"|>}<tool_call|>"#,
+            #"<|tool_call>call:remember{text:<|"|>The user is named Dong.<|"|>}<tool_call|>"#,
+            "I'll remember that your name is Dong.",
+        ])
+        let loop = ToolLoop(engine: engine, registry: registry, dialect: .gemma)
+        let events = try await collect(loop, "Please remember my name. My name is Dong.")
+
+        let facts = await store.list()
+        XCTAssertEqual(facts.map(\.text), ["The user is named Dong."])
+        let calls = events.compactMap { if case .toolCall(let call) = $0 { return call } else { return nil } }
+        XCTAssertEqual(calls.map { $0.arg("text") }, ["The user is named Dong."])
+        XCTAssertFalse(events.description.contains("用户叫Dong"), "the rejected call must never reach UI events")
+
+        let histories = engine.receivedHistories()
+        XCTAssertGreaterThanOrEqual(histories.count, 2)
+        XCTAssertTrue(histories[1].contains { $0.content.contains("Translate the same fact into English") })
+    }
+
+    /// The fixed English frame does not inspect or rewrite a proper name.
+    func testCanonicalEnglishMemoryAllowsHanProperName() async throws {
+        let store = FakeMemoryStore()
+        let registry = ToolRegistry([RememberTool(store: store)])
+        let engine = ScriptedEngine([
+            #"<tool_call>{"name":"remember","arguments":{"text":"The user is named 王东."}}</tool_call>"#,
+            "I'll remember that.",
+        ])
+        _ = try await collect(
+            ToolLoop(engine: engine, registry: registry),
+            "Please remember this: my name is 王东."
+        )
+        let facts = await store.list()
+        XCTAssertEqual(facts.map(\.text), ["The user is named 王东."])
+    }
+
     func testRunsToolThenAnswers() async throws {
         // Pass 1: the model asks for the calculator. Pass 2: it answers using the result.
         let engine = ScriptedEngine([

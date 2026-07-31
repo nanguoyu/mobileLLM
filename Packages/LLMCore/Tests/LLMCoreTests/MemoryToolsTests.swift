@@ -10,7 +10,7 @@ final class MemoryToolsTests: XCTestCase {
 
     func testRememberThenRecallRoundTrips() async {
         let store = FakeMemoryStore()
-        let saved = await RememberTool(store: store).execute(argumentsJSON: #"{"text":"The user's cat is named Momo"}"#)
+        let saved = await RememberTool(store: store).execute(argumentsJSON: #"{"text":"The user has a cat named Momo"}"#)
         XCTAssertTrue(saved.contains("Saved"), saved)
         let recalled = await RecallTool(store: store).execute(argumentsJSON: #"{"query":"cat"}"#)
         XCTAssertTrue(recalled.contains("Momo"), recalled)
@@ -23,6 +23,172 @@ final class MemoryToolsTests: XCTestCase {
         _ = await RememberTool(store: store).execute(argumentsJSON: #"{"text":"The user bikes to work"}"#)
         let facts = await store.list()
         XCTAssertEqual(facts.map(\.source), [.model])
+    }
+
+    func testRememberRejectsNonCanonicalTextWithoutWriting() async {
+        let store = FakeMemoryStore()
+        let output = await RememberTool(store: store).execute(argumentsJSON: #"{"text":"用户叫Dong"}"#)
+        let facts = await store.list()
+        XCTAssertTrue(output.hasPrefix("Error:"), output)
+        XCTAssertTrue(output.contains(#""The user ""#), output)
+        XCTAssertTrue(facts.isEmpty)
+    }
+
+    func testRememberRejectsCJKProseHiddenBehindTheCanonicalPrefix() async {
+        let store = FakeMemoryStore()
+        let tool = RememberTool(store: store)
+
+        for text in [
+            "The user 用户叫 Dong",
+            "The user says 用户叫董王",
+            "The user 使用 Swift 工作",
+            "The user is named 用户叫Dong.",
+            "The user is named 王东住在北京.",
+        ] {
+            let encoded = try! JSONSerialization.data(withJSONObject: ["text": text])
+            let output = await tool.execute(argumentsJSON: String(decoding: encoded, as: UTF8.self))
+            XCTAssertTrue(output.hasPrefix("Error:"), "\(text) should be rejected: \(output)")
+        }
+        let facts = await store.list()
+        XCTAssertTrue(facts.isEmpty)
+    }
+
+    /// Both real device models used this natural possessive form. It is valid English, so rejecting it
+    /// because "user's" was not in a finite predicate allowlist prevented the remember tool from running.
+    func testRememberNormalizesNaturalPossessiveEnglishBeforeStorage() async {
+        let store = FakeMemoryStore()
+        let tool = RememberTool(store: store)
+
+        let straight = await tool.execute(
+            argumentsJSON: #"{"text":"The user's temporary device-test name is QuartzBonsai52039."}"#
+        )
+        let curly = await tool.execute(
+            argumentsJSON: #"{"text":"The user’s preferred editor is Nova."}"#
+        )
+
+        XCTAssertEqual(straight, "Saved to memory.")
+        XCTAssertEqual(curly, "Saved to memory.")
+        let facts = await store.list()
+        XCTAssertEqual(
+            facts.map(\.text),
+            [
+                "The user says their temporary device-test name is QuartzBonsai52039.",
+                "The user says their preferred editor is Nova.",
+            ]
+        )
+    }
+
+    /// Canonicalization must not encode an ever-growing list of verbs. Any safe English predicate remains
+    /// eligible; the tool prompt supplies the language contract and the boundary rejects script leakage.
+    func testRememberAcceptsEnglishPredicateOutsideTheOldVerbAllowlist() async {
+        let store = FakeMemoryStore()
+        let output = await RememberTool(store: store).execute(
+            argumentsJSON: #"{"text":"The user commutes by tram."}"#
+        )
+
+        XCTAssertEqual(output, "Saved to memory.")
+        let facts = await store.list()
+        XCTAssertEqual(facts.map(\.text), ["The user commutes by tram."])
+    }
+
+    func testRememberAllowsCJKProperNameInsideEnglishScaffold() async {
+        let store = FakeMemoryStore()
+        let output = await RememberTool(store: store)
+            .execute(argumentsJSON: #"{"text":"The user is named 王东."}"#)
+
+        XCTAssertEqual(output, "Saved to memory.")
+        let facts = await store.list()
+        XCTAssertEqual(facts.map(\.text), ["The user is named 王东."])
+    }
+
+    func testRememberSuccessDoesNotEchoTheCanonicalFact() async {
+        let store = FakeMemoryStore()
+        let output = await RememberTool(store: store)
+            .execute(argumentsJSON: #"{"text":"The user is named Dong."}"#)
+        XCTAssertEqual(output, "Saved to memory.")
+        XCTAssertFalse(output.contains("Dong"))
+    }
+
+    func testRememberExactDuplicateDoesNotGrowStore() async {
+        let store = FakeMemoryStore()
+        let tool = RememberTool(store: store)
+
+        let firstOutput = await tool.execute(
+            argumentsJSON: #"{"text":"The user likes jasmine tea."}"#
+        )
+        let duplicateOutput = await tool.execute(
+            argumentsJSON: #"{"text":"The user likes jasmine tea."}"#
+        )
+        let storedTexts = await store.list().map(\.text)
+
+        XCTAssertEqual(firstOutput, "Saved to memory.")
+        XCTAssertEqual(duplicateOutput, "Already in memory.")
+        XCTAssertEqual(storedTexts, ["The user likes jasmine tea."])
+    }
+
+    func testRememberNormalizesSurroundingWhitespaceBeforeDeduplication() async {
+        let store = FakeMemoryStore()
+        let tool = RememberTool(store: store)
+
+        let spacedOutput = await tool.execute(
+            argumentsJSON: #"{"text":"  \nThe user lives in Vienna.\t  "}"#
+        )
+        let canonicalOutput = await tool.execute(
+            argumentsJSON: #"{"text":"The user lives in Vienna."}"#
+        )
+        let storedTexts = await store.list().map(\.text)
+
+        XCTAssertEqual(spacedOutput, "Saved to memory.")
+        XCTAssertEqual(canonicalOutput, "Already in memory.")
+        XCTAssertEqual(storedTexts, ["The user lives in Vienna."])
+    }
+
+    func testRememberDeduplicatesCaseWhitespaceAndPunctuation() async {
+        let store = FakeMemoryStore()
+        let tool = RememberTool(store: store)
+        let first = await tool.execute(
+            argumentsJSON: #"{"text":"The user likes jasmine tea."}"#
+        )
+        let equivalent = await tool.execute(
+            argumentsJSON: #"{"text":"The user   LIKES JASMINE TEA!"}"#
+        )
+
+        XCTAssertEqual(first, "Saved to memory.")
+        XCTAssertEqual(equivalent, "Already in memory.")
+        let facts = await store.list()
+        XCTAssertEqual(facts.count, 1)
+    }
+
+    func testConcurrentEquivalentRememberCallsAreOneAtomicTransaction() async {
+        let store = FakeMemoryStore()
+        let tool = RememberTool(store: store)
+
+        let outputs = await withTaskGroup(of: String.self, returning: [String].self) { group in
+            for index in 0..<24 {
+                let text = index.isMultiple(of: 2)
+                    ? "The user likes jasmine tea."
+                    : "The user   LIKES JASMINE TEA!"
+                group.addTask {
+                    let encoded = try! JSONSerialization.data(withJSONObject: ["text": text])
+                    return await tool.execute(argumentsJSON: String(decoding: encoded, as: UTF8.self))
+                }
+            }
+            var values: [String] = []
+            for await value in group { values.append(value) }
+            return values
+        }
+
+        XCTAssertEqual(outputs.filter { $0 == "Saved to memory." }.count, 1)
+        XCTAssertEqual(outputs.filter { $0 == "Already in memory." }.count, 23)
+        let facts = await store.list()
+        XCTAssertEqual(facts.count, 1)
+    }
+
+    func testRememberReportsDurableWriteFailureInsteadOfClaimingSuccess() async {
+        let output = await RememberTool(store: FailingMemoryStore())
+            .execute(argumentsJSON: #"{"text":"The user likes tea."}"#)
+        XCTAssertTrue(output.hasPrefix("Error:"), output)
+        XCTAssertTrue(output.contains("could not be saved"), output)
     }
 
     func testRecallEmptyStoreMessage() async {
@@ -78,11 +244,32 @@ final class MemoryToolsTests: XCTestCase {
     }
 }
 
+private actor FailingMemoryStore: MemoryStoring {
+    private struct WriteFailure: LocalizedError {
+        var errorDescription: String? { "Injected disk failure" }
+    }
+
+    func save(_ text: String, source: MemoryFact.Source) throws -> MemoryFact {
+        throw WriteFailure()
+    }
+    func saveIfAbsent(_ text: String, source: MemoryFact.Source) throws -> MemorySaveResult {
+        throw WriteFailure()
+    }
+    func list() -> [MemoryFact] { [] }
+    func update(id: String, text: String) throws { throw WriteFailure() }
+    func delete(id: String) throws { throw WriteFailure() }
+    func deleteAll() throws { throw WriteFailure() }
+}
+
 /// A `MemoryStoring` whose `search` returns something `list` never contains — so a tool that ranks the raw
 /// list itself cannot pass.
 private actor SentinelSearchStore: MemoryStoring {
     @discardableResult func save(_ text: String, source: MemoryFact.Source) -> MemoryFact {
         MemoryFact(text: text, source: source)
+    }
+    @discardableResult func saveIfAbsent(_ text: String,
+                                         source: MemoryFact.Source) -> MemorySaveResult {
+        .saved(MemoryFact(text: text, source: source))
     }
     func list() -> [MemoryFact] { [MemoryFact(text: "the dog barks")] }
     func update(id: String, text: String) {}

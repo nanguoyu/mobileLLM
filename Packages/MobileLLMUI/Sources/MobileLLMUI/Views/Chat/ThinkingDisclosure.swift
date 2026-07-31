@@ -48,6 +48,13 @@ struct ThinkingDisclosure: View {
                     .overlay(alignment: .leading) {
                         Capsule().fill(Theme.accentSoft).frame(width: 2)
                     }
+                    // Expose the unformatted reasoning as one coherent value. Besides improving
+                    // VoiceOver, this gives physical-device tests a stable raw trace instead of a set of
+                    // renderer-dependent text fragments.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Assistant reasoning")
+                    .accessibilityValue(reasoning)
+                    .accessibilityIdentifier("assistant.reasoning")
                     .transition(reduceMotion
                         ? .opacity
                         : .move(edge: .top).combined(with: .opacity))
@@ -94,7 +101,8 @@ struct ThinkingDisclosure: View {
             timeline.onReasoning()
         case let .answered(seconds):
             if timeline.hasReasoning {
-                timeline.onAnswerStart()          // live thinking → answer: animate the collapse
+                // The store supplies accumulated model-reasoning time, excluding tool/network waits.
+                timeline.onAnswerStart(elapsed: seconds)
             } else {
                 // A completed message opened directly (never observed the streaming thinking phase).
                 timeline.onReasoning()

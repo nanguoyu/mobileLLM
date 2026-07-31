@@ -29,6 +29,29 @@ public struct ImageRef: Identifiable, Codable, Sendable, Equatable {
     public var fileName: String { "\(id.uuidString).jpg" }
 }
 
+/// A durable snapshot of the model that generated one assistant turn. Conversation-level model identity
+/// tracks only the thread's current selection, so it cannot label historical generation stats after a model
+/// switch. IDs preserve machine identity; `displayName` keeps the footer meaningful if a catalog entry is
+/// later renamed or removed.
+public struct GenerationModel: Codable, Sendable, Equatable {
+    public var modelID: String
+    public var variantID: String
+    public var displayName: String
+    public var engine: EngineKind
+
+    public init(modelID: String, variantID: String, displayName: String, engine: EngineKind) {
+        self.modelID = modelID
+        self.variantID = variantID
+        self.displayName = displayName
+        self.engine = engine
+    }
+
+    public init(_ loaded: LoadedModel) {
+        self.init(modelID: loaded.model.id, variantID: loaded.variant.id,
+                  displayName: loaded.model.displayName, engine: loaded.variant.engine)
+    }
+}
+
 public struct Message: Identifiable, Codable, Sendable, Equatable {
     public enum Role: String, Codable, Sendable, Equatable {
         case system, user, assistant
@@ -60,6 +83,10 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
     public var toolRuns: [ToolRun]?
     /// End-of-generation stats for an assistant turn (nil while streaming / for non-assistant turns).
     public var stats: Stats?
+    /// The exact model/variant that generated this assistant turn. Optional so conversations written by
+    /// older app versions decode without migration; an absent value is rendered as an unknown model rather
+    /// than incorrectly borrowing the thread's current selection.
+    public var generatedBy: GenerationModel?
     /// The turn this message was branched/regenerated from (v1.0 branch pager).
     public var parentID: UUID?
     /// Images the user attached to this turn, as file references (bytes live under the store's
@@ -70,7 +97,8 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
     public init(id: UUID = UUID(), role: Role, createdAt: Date = Date(),
                 answer: String, reasoning: String? = nil, thinkingSeconds: Double? = nil,
                 toolRuns: [ToolRun]? = nil, stats: Stats? = nil, parentID: UUID? = nil,
-                emptyOutcome: EmptyOutcome? = nil, attachments: [ImageRef]? = nil) {
+                emptyOutcome: EmptyOutcome? = nil, attachments: [ImageRef]? = nil,
+                generatedBy: GenerationModel? = nil) {
         self.id = id
         self.role = role
         self.createdAt = createdAt
@@ -79,6 +107,7 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
         self.thinkingSeconds = thinkingSeconds
         self.toolRuns = toolRuns
         self.stats = stats
+        self.generatedBy = generatedBy
         self.parentID = parentID
         self.emptyOutcome = emptyOutcome
         self.attachments = attachments

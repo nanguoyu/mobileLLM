@@ -112,27 +112,97 @@ struct AttachmentThumbnail: View {
     }
 }
 
-/// A single tool the assistant invoked — a running spinner while it works, the seal (✓) + result when
-/// it returns. The red seal is the app's mark of a completed, authentic action.
-struct ToolActivityRow: View {
-    let run: ToolRun
-    private var argSummary: String {
-        guard let data = run.arguments.data(using: .utf8),
+/// Pure display policy for a tool run. A memory's canonical English sentence is internal data: chat shows
+/// whether it was saved, while Settings → Memory remains the transparent, editable source of truth.
+struct ToolActivityPresentation: Equatable {
+    enum State: Equatable { case running, succeeded, failed }
+
+    let state: State
+    let title: String
+    let detail: String?
+    let accessibilityLabel: String
+
+    init(run: ToolRun) {
+        if run.name == ToolID.remember.rawValue {
+            if run.result == nil {
+                state = .running
+                title = "Saving to memory…"
+            } else if run.result.map(Self.isFailureResult) == true {
+                state = .failed
+                title = "Couldn't save to memory"
+            } else if run.result == "Already in memory." {
+                state = .succeeded
+                title = "Already in memory"
+            } else {
+                state = .succeeded
+                title = "Saved to memory"
+            }
+            detail = nil
+            accessibilityLabel = title
+            return
+        }
+
+        let prettyName = run.name.replacingOccurrences(of: "_", with: " ").capitalized
+        let summary = Self.argumentSummary(run.arguments)
+        let invocation = prettyName + (summary.isEmpty ? "" : "(\(summary))")
+        if let result = run.result {
+            let failed = Self.isFailureResult(result)
+            state = failed ? .failed : .succeeded
+            title = failed ? "\(invocation) failed" : invocation
+            detail = "→ \(result)"
+            accessibilityLabel = failed ? "\(prettyName) failed. \(result)" : "\(prettyName) returned \(result)"
+        } else {
+            state = .running
+            title = "Using \(prettyName)…"
+            detail = nil
+            accessibilityLabel = "Using \(prettyName)"
+        }
+    }
+
+    /// Tools intentionally report recoverable failures as strings so the model can correct its call. Keep
+    /// that transport contract, but do not paint those results with a green success seal in chat.
+    private static func isFailureResult(_ result: String) -> Bool {
+        let normalized = result.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.hasPrefix("error:")
+            || normalized.hasPrefix("tool error:")
+            || (normalized.hasPrefix("mcp tool ") && normalized.contains(" failed:"))
+            || normalized.hasPrefix("couldn't ")
+            || normalized.hasPrefix("search failed")
+            || normalized.hasPrefix("calendar access is off")
+            || normalized.hasPrefix("reminders access is off")
+            || normalized.hasPrefix("location access is off")
+            || normalized.hasPrefix("location is unavailable")
+    }
+
+    private static func argumentSummary(_ arguments: String) -> String {
+        guard let data = arguments.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], !obj.isEmpty else { return "" }
         return obj.map { "\($0.value)" }.joined(separator: ", ")
     }
+}
+
+/// A single tool the assistant invoked — a running spinner while it works, the seal (✓) + result when
+/// it returns. Memory is intentionally quieter: the row confirms the action without exposing or
+/// duplicating its canonical internal sentence.
+struct ToolActivityRow: View {
+    let run: ToolRun
+
     var body: some View {
+        let presentation = ToolActivityPresentation(run: run)
         HStack(spacing: Theme.Space.sm) {
-            if run.result == nil {
+            if presentation.state == .running {
                 ProgressView().controlSize(.mini).tint(Theme.accent)
             } else {
-                Image(systemName: "checkmark.seal.fill").font(.caption).foregroundStyle(Theme.accent)
+                Image(systemName: presentation.state == .failed
+                      ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
+                    .font(.caption)
+                    .foregroundStyle(presentation.state == .failed ? Theme.danger : Theme.accent)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(run.result == nil ? "Using \(prettyName)…" : prettyName + (argSummary.isEmpty ? "" : "(\(argSummary))"))
+                Text(presentation.title)
                     .font(.caption.weight(.medium)).foregroundStyle(Theme.textSecondary).lineLimit(1)
-                if let r = run.result {
-                    Text("→ \(r)").font(.caption2.monospaced()).foregroundStyle(Theme.textTertiary).lineLimit(2)
+                if let detail = presentation.detail {
+                    Text(detail).font(.caption2.monospaced()).foregroundStyle(Theme.textTertiary).lineLimit(2)
                 }
             }
             Spacer(minLength: 0)
@@ -142,9 +212,9 @@ struct ToolActivityRow: View {
         .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(run.result == nil ? "Using \(prettyName)" : "\(prettyName) returned \(run.result ?? "")")
+        .accessibilityLabel(presentation.accessibilityLabel)
+        .accessibilityIdentifier("assistant.tool.run")
     }
-    private var prettyName: String { run.name.replacingOccurrences(of: "_", with: " ").capitalized }
 }
 
 /// A committed assistant turn that produced no answer — the user tapped Stop, or generation failed.
@@ -182,7 +252,8 @@ struct EmptyReplyRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface2, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
-        .accessibilityElement(children: .combine)
+        // Retry is an action, not descriptive text. Keep it independently focusable for VoiceOver.
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
     }
 }
@@ -237,9 +308,19 @@ struct AssistantView: View {
                 // a separate caret view can't sit at the end of block-rendered markdown, so the glyph is
                 // appended to the text itself.
                 StreamingMarkdown(text: answer)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Assistant answer")
+                    .accessibilityValue(answer)
+                    .accessibilityIdentifier("assistant.answer")
             } else {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     MarkdownMessage(text: answer)
+                        // Markdown rendering may consume underscores or split one answer into several
+                        // accessibility nodes. Keep the exact raw answer available as one value.
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Assistant answer")
+                        .accessibilityValue(answer)
+                        .accessibilityIdentifier("assistant.answer")
                     actionBar
                 }
             }
@@ -270,5 +351,6 @@ struct AssistantView: View {
             .foregroundStyle(Theme.textTertiary)
             .accessibilityLabel("Generation stats")
             .accessibilityValue(Format.statsFooter(stats, modelName: modelName))
+            .accessibilityIdentifier("assistant.stats")
     }
 }

@@ -14,7 +14,13 @@ public enum LLMFamily: String, Sendable, Hashable, CaseIterable, Codable {
     case hunyuan
     case deepseek
     case gemma
+    case llama
+    case mistral
+    case phi
+    case gptOSS = "gpt-oss"
     case apple
+    /// The Hub did not provide enough trustworthy metadata to identify the architecture family.
+    case unknown
     public var displayName: String {
         switch self {
         case .bonsai: "Bonsai"
@@ -23,8 +29,23 @@ public enum LLMFamily: String, Sendable, Hashable, CaseIterable, Codable {
         case .hunyuan: "Hunyuan"
         case .deepseek: "DeepSeek"
         case .gemma: "Gemma"
+        case .llama: "Llama"
+        case .mistral: "Mistral"
+        case .phi: "Phi"
+        case .gptOSS: "gpt-oss"
         case .apple: "Apple"
+        case .unknown: "Unknown"
         }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: value) ?? .unknown
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }
 
@@ -34,10 +55,24 @@ public enum ModelLicense: String, Sendable, Hashable, Codable {
     case mit = "MIT"
     case tencentHunyuan = "Tencent Hunyuan Community"
     case gemma = "Gemma Terms of Use"
+    case llamaCommunity = "Llama Community License"
     /// Not an open-source licence: the system model is part of the OS and is covered by its terms.
     /// There is no repo, no weights file, and nothing for the user to accept here.
     case appleSystem = "Included with Apple Intelligence"
+    /// No recognized license identifier was supplied by the Hub. This must never be presented as an
+    /// open-source license or inferred from the model's name/publisher.
+    case unknown = "Unknown / unverified"
     public var displayName: String { rawValue }
+
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: value) ?? .unknown
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 /// Where a variant's weights come from (a Hugging Face repo at a pinned revision). Local to LLMCore.
@@ -51,6 +86,20 @@ public struct ModelSource: Sendable, Hashable, Codable {
         self.huggingFaceRepo = huggingFaceRepo
         self.revision = revision
         self.fileName = fileName
+    }
+
+    private enum CodingKeys: String, CodingKey { case huggingFaceRepo, revision, fileName }
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        huggingFaceRepo = try container.decode(String.self, forKey: .huggingFaceRepo)
+        revision = try container.decodeIfPresent(String.self, forKey: .revision) ?? "main"
+        fileName = try container.decodeIfPresent(String.self, forKey: .fileName)
+    }
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(huggingFaceRepo, forKey: .huggingFaceRepo)
+        try container.encode(revision, forKey: .revision)
+        try container.encodeIfPresent(fileName, forKey: .fileName)
     }
 }
 
@@ -381,6 +430,16 @@ public struct VisionProjector: Sendable, Hashable, Codable {
 
 /// One installable variant of a model (a specific quant + backend + weights repo).
 public struct LLMVariant: Sendable, Hashable, Codable, Identifiable {
+    /// How this variant's persisted identity is derived.
+    ///
+    /// Curated variants keep the original repository-and-format id so existing conversations and settings
+    /// remain byte-for-byte compatible. Explore variants use the artifact identity: unlike a curated repo,
+    /// one community GGUF repo commonly contains several independently installable quant files.
+    public enum IdentityScheme: String, Sendable, Hashable, Codable {
+        case repositoryAndFormatV1
+        case sourceArtifactV2
+    }
+
     public let quant: QuantSpec
     public let backend: Backend
     public let onDiskBytes: Int64
@@ -390,10 +449,49 @@ public struct LLMVariant: Sendable, Hashable, Codable, Identifiable {
     /// repo). Optional + decode-defaulted so persisted snapshots / adopted registries written before this
     /// field survive a decode unchanged.
     public let visionProjector: VisionProjector?
+    public let identityScheme: IdentityScheme
 
-    /// Unique per variant across models AND engines: the repo plus the backend's format tag, so one
-    /// model can hold both an MLX and a GGUF variant of the same quant without an id collision.
-    public var id: String { "\(source.huggingFaceRepo)#\(backend.formatTag)" }
+    /// The identity used by releases before Explore supported several files in one GGUF repository.
+    /// Kept public as a migration alias for conversations and adopted registries written by those releases.
+    public var legacyID: String { "\(source.huggingFaceRepo)#\(backend.formatTag)" }
+
+    /// Stable install / download / activation identity.
+    ///
+    /// `sourceArtifactV2` deliberately includes every field that can select different bytes or a different
+    /// runtime: repository, immutable revision (or explicit `main` fallback), file, quant and exact backend.
+    /// Components use base64url so remote `#`, `/`, Unicode or delimiter characters cannot alias another id.
+    /// Curated entries retain their legacy ids; only Explore opts into v2.
+    public var id: String {
+        guard identityScheme == .sourceArtifactV2 else { return legacyID }
+        let components = [
+            source.huggingFaceRepo,
+            source.revision,
+            source.fileName.map { "file:\($0)" } ?? "whole-repository",
+            quant.variantIdentityTag,
+            backend.variantIdentityTag
+        ]
+        return "hf-artifact-v2." + components.map(Self.identityComponent).joined(separator: ".")
+    }
+
+    /// Whether a persisted id names this variant. The legacy alias is intentionally accepted for migration.
+    /// A legacy Explore id can match several files in one repo because old releases never persisted the
+    /// quant/file distinction; callers resolving such an ambiguous id must choose a deterministic fallback.
+    public func matchesPersistedID(_ persistedID: String) -> Bool {
+        persistedID == id || persistedID == legacyID
+    }
+
+    /// Upgrade an adopted Explore variant decoded from an older registry without changing its artifacts.
+    public func usingSourceArtifactIdentity() -> LLMVariant {
+        guard identityScheme != .sourceArtifactV2 else { return self }
+        return LLMVariant(
+            quant: quant,
+            backend: backend,
+            onDiskBytes: onDiskBytes,
+            source: source,
+            visionProjector: visionProjector,
+            identityScheme: .sourceArtifactV2
+        )
+    }
 
     /// The inference engine this variant runs on (routing key + UI subtitle).
     public var engine: EngineKind { backend.engine }
@@ -401,6 +499,14 @@ public struct LLMVariant: Sendable, Hashable, Codable, Identifiable {
     /// True when this variant ships a vision projector — i.e. it can accept image input (drives the
     /// composer's attach-image affordance and the engine's mtmd path).
     public var supportsVisionInput: Bool { visionProjector != nil }
+
+    /// Total bytes fetched and retained for this variant. `onDiskBytes` is the primary text model;
+    /// multimodal variants also require their projector, which is a real model artifact rather than
+    /// runtime scratch. The system model naturally remains zero.
+    public var totalOnDiskBytes: Int64 {
+        let (sum, overflow) = onDiskBytes.addingReportingOverflow(visionProjector?.sizeBytes ?? 0)
+        return overflow ? .max : sum
+    }
 
     /// True when the OS provides this variant's weights (the `.apple` engine): there is nothing to
     /// download, delete, size or budget for. The Models card renders it without any download affordance,
@@ -420,17 +526,22 @@ public struct LLMVariant: Sendable, Hashable, Codable, Identifiable {
     }
 
     public init(quant: QuantSpec, backend: Backend, onDiskBytes: Int64, source: ModelSource,
-                visionProjector: VisionProjector? = nil) {
+                visionProjector: VisionProjector? = nil,
+                identityScheme: IdentityScheme = .repositoryAndFormatV1) {
         self.quant = quant
         self.backend = backend
         self.onDiskBytes = onDiskBytes
         self.source = source
         self.visionProjector = visionProjector
+        self.identityScheme = identityScheme
     }
 
     // Hand-written Codable so a snapshot written before `visionProjector` existed decodes with it nil,
-    // and a text-only variant re-encodes without the key (byte-identical to the old form).
-    private enum CodingKeys: String, CodingKey { case quant, backend, onDiskBytes, source, visionProjector }
+    // a text-only variant re-encodes without the key, and a snapshot written before artifact identities
+    // decodes to the original id scheme. The legacy scheme is omitted on encode for byte compatibility.
+    private enum CodingKeys: String, CodingKey {
+        case quant, backend, onDiskBytes, source, visionProjector, identityScheme
+    }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         quant = try c.decode(QuantSpec.self, forKey: .quant)
@@ -438,6 +549,8 @@ public struct LLMVariant: Sendable, Hashable, Codable, Identifiable {
         onDiskBytes = try c.decode(Int64.self, forKey: .onDiskBytes)
         source = try c.decode(ModelSource.self, forKey: .source)
         visionProjector = try c.decodeIfPresent(VisionProjector.self, forKey: .visionProjector)
+        identityScheme = try c.decodeIfPresent(IdentityScheme.self, forKey: .identityScheme)
+            ?? .repositoryAndFormatV1
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -446,6 +559,39 @@ public struct LLMVariant: Sendable, Hashable, Codable, Identifiable {
         try c.encode(onDiskBytes, forKey: .onDiskBytes)
         try c.encode(source, forKey: .source)
         try c.encodeIfPresent(visionProjector, forKey: .visionProjector)
+        if identityScheme != .repositoryAndFormatV1 {
+            try c.encode(identityScheme, forKey: .identityScheme)
+        }
+    }
+
+    private static func identityComponent(_ value: String) -> String {
+        Data(value.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+}
+
+private extension QuantSpec {
+    var variantIdentityTag: String {
+        switch self {
+        case .binary1bit: "binary-1bit"
+        case .ternary2bit: "ternary-2bit"
+        case .gguf4bit: "gguf-q4-k-m"
+        case .other(let label): "other:\(label)"
+        }
+    }
+}
+
+private extension Backend {
+    var variantIdentityTag: String {
+        switch self {
+        case .mlxFork: "mlx-fork"
+        case .mlxStock: "mlx-stock"
+        case .llamaCppGGUF: "llama-cpp-gguf"
+        case .awqUnsupported: "awq-unsupported"
+        case .appleSystem: "apple-system"
+        }
     }
 }
 

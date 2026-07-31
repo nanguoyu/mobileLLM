@@ -18,17 +18,22 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../LLMCore"),
+        .package(path: "../AppRuntime"),
     ],
     targets: [
         .binaryTarget(name: "llama", path: "Vendor/llama.xcframework"),
         .target(name: "LLMEngineLlama", dependencies: [
             .product(name: "LLMCore", package: "LLMCore"),
+            .product(name: "AppRuntime", package: "AppRuntime"),
             "llama",
         ], path: "Sources/LLMEngineLlama"),
         .executableTarget(name: "LlamaSmoke", dependencies: ["LLMEngineLlama"],
             path: "Sources/LlamaSmoke",
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/usr/lib"])]),
-        .testTarget(name: "LLMEngineLlamaTests", dependencies: ["LLMEngineLlama"],
+        .testTarget(name: "LLMEngineLlamaTests", dependencies: [
+            "LLMEngineLlama",
+            .product(name: "AppRuntime", package: "AppRuntime"),
+        ],
             path: "Tests/LLMEngineLlamaTests",
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/usr/lib"])]),
     ]

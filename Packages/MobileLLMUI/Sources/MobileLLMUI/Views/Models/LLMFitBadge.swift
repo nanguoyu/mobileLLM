@@ -23,7 +23,7 @@ struct LLMFitBadge: View {
         case .comfortable: "Runs great"
         case let .tight(maxContext): "Tight · up to \(Format.shortCount(maxContext)) ctx"
         case .experimental: "Experimental · may be interrupted"
-        case .unsupported: "Needs more memory"
+        case .unsupported: "High memory · may fail"
         }
     }
 

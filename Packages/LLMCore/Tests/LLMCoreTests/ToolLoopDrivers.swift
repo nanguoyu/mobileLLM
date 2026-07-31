@@ -16,6 +16,7 @@ final class TurnScriptedEngine: LLMEngine, @unchecked Sendable {
     private let lock = NSLock()
     private var callIndex = 0
     private var histories: [[ChatTurn]] = []
+    private var samplings: [Sampling] = []
 
     /// Full control: each turn is the exact delta sequence to emit (a `.done` is appended automatically).
     init(deltaTurns: [[EngineDelta]]) { self.turns = deltaTurns }
@@ -25,6 +26,8 @@ final class TurnScriptedEngine: LLMEngine, @unchecked Sendable {
 
     /// The message histories received across all `generate` calls, in order (thread-safe snapshot).
     func receivedHistories() -> [[ChatTurn]] { lock.lock(); defer { lock.unlock() }; return histories }
+    /// Sampling values received across calls — the terminal synthesis must disable thinking.
+    func receivedSamplings() -> [Sampling] { lock.lock(); defer { lock.unlock() }; return samplings }
     /// How many times the engine was asked to generate (proves the loop stopped calling the model).
     func generateCallCount() -> Int { lock.lock(); defer { lock.unlock() }; return callIndex }
 
@@ -36,6 +39,7 @@ final class TurnScriptedEngine: LLMEngine, @unchecked Sendable {
         lock.lock()
         let idx = callIndex; callIndex += 1
         histories.append(messages)
+        samplings.append(params)
         lock.unlock()
         let deltas = idx < turns.count ? turns[idx] : [.answer("(no more script)")]
         return AsyncThrowingStream { cont in
@@ -85,9 +89,17 @@ func collectLoop(_ loop: ToolLoop, _ message: String,
     return out
 }
 
-/// The concatenated `.answer` text surfaced by a loop run.
+/// The final answer represented by a loop run, applying any provisional-text rollback boundaries.
 func answerText(_ events: [ToolLoopEvent]) -> String {
-    events.compactMap { if case .answer(let s) = $0 { return s }; return nil }.joined()
+    var answer = ""
+    for event in events {
+        switch event {
+        case .answer(let text): answer += text
+        case .discardAnswer: answer.removeAll()
+        default: break
+        }
+    }
+    return answer
 }
 
 /// The `.toolCall` names in order.

@@ -14,6 +14,7 @@ struct SkillsView: View {
     @State private var pendingDelete: Skill?
     @State private var showImport = false
     @State private var showGallery = false
+    @State private var operationError: String?
 
     var body: some View {
         List {
@@ -100,11 +101,24 @@ struct SkillsView: View {
         .alert("Delete this skill?",
                isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                presenting: pendingDelete) { skill in
-            Button("Delete", role: .destructive) { store.delete(id: skill.id); pendingDelete = nil }
+            Button("Delete", role: .destructive) {
+                pendingDelete = nil
+                Task {
+                    do { try await store.delete(id: skill.id) }
+                    catch { operationError = error.localizedDescription }
+                }
+            }
             Button("Cancel", role: .cancel) { pendingDelete = nil }
         } message: { skill in
             Text("“\(skill.name)” will be removed. Conversations using it fall back to your normal prompt. "
                  + "This can't be undone.")
+        }
+        .alert("Skill wasn't changed",
+               isPresented: Binding(get: { operationError != nil },
+                                    set: { if !$0 { operationError = nil } })) {
+            Button("OK", role: .cancel) { operationError = nil }
+        } message: {
+            Text(operationError ?? "The skill store couldn't be written.")
         }
     }
 
@@ -182,6 +196,8 @@ struct SkillEditorView: View {
     @State private var summary: String
     @State private var instructions: String
     @State private var confirmDelete = false
+    @State private var operationError: String?
+    @State private var isSaving = false
 
     /// A gentle starting skeleton for a brand-new skill — usable as-is, meant to be replaced.
     private static let template = """
@@ -243,7 +259,16 @@ struct SkillEditorView: View {
                         }
                         .buttonStyle(.plain)
                         .alert("Delete this skill?", isPresented: $confirmDelete) {
-                            Button("Delete", role: .destructive) { store.delete(id: skill.id); dismiss() }
+                            Button("Delete", role: .destructive) {
+                                Task {
+                                    do {
+                                        try await store.delete(id: skill.id)
+                                        dismiss()
+                                    } catch {
+                                        operationError = error.localizedDescription
+                                    }
+                                }
+                            }
                             Button("Cancel", role: .cancel) {}
                         } message: {
                             Text("“\(skill.name)” will be removed. This can't be undone.")
@@ -275,11 +300,18 @@ struct SkillEditorView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isReadOnly {
-                        Button("Duplicate") { store.duplicate(viewedSkill); dismiss() }
+                        Button("Duplicate") { duplicate() }.disabled(isSaving)
                     } else {
-                        Button("Save") { save() }.disabled(!canSave)
+                        Button("Save") { save() }.disabled(!canSave || isSaving)
                     }
                 }
+            }
+            .alert("Skill wasn't saved",
+                   isPresented: Binding(get: { operationError != nil },
+                                        set: { if !$0 { operationError = nil } })) {
+                Button("OK", role: .cancel) { operationError = nil }
+            } message: {
+                Text(operationError ?? "The skill store couldn't be written.")
             }
         }
     }
@@ -367,13 +399,35 @@ struct SkillEditorView: View {
 
     private func save() {
         guard canSave else { return }
-        if let skill = editingSkill {
-            store.update(Skill(id: skill.id, name: name, emoji: emoji, summary: summary,
-                               instructions: instructions, isBuiltIn: false))
-        } else {
-            store.create(name: name, emoji: emoji, summary: summary, instructions: instructions)
+        isSaving = true
+        Task {
+            do {
+                if let skill = editingSkill {
+                    try await store.update(Skill(id: skill.id, name: name, emoji: emoji, summary: summary,
+                                                instructions: instructions, isBuiltIn: false))
+                } else {
+                    _ = try await store.create(name: name, emoji: emoji, summary: summary,
+                                               instructions: instructions)
+                }
+                dismiss()
+            } catch {
+                operationError = error.localizedDescription
+                isSaving = false
+            }
         }
-        dismiss()
+    }
+
+    private func duplicate() {
+        isSaving = true
+        Task {
+            do {
+                _ = try await store.duplicate(viewedSkill)
+                dismiss()
+            } catch {
+                operationError = error.localizedDescription
+                isSaving = false
+            }
+        }
     }
 }
 

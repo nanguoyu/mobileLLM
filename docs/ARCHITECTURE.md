@@ -1,6 +1,6 @@
 # mobileLLM — Architecture
 
-What the code *is* today (2026-07-16). For the original design intent and how the build diverged from it,
+What the code *is* today (2026-07-23). For the original design intent and how the build diverged from it,
 see the frozen [DESIGN.md](DESIGN.md); for the dependency wiring of the local-weight engines, see
 [WIRING.md](WIRING.md).
 
@@ -20,13 +20,13 @@ App (mobileLLM.app, Xcode target)
 │                                     .apple: AppleLLMEngine()])
 │   + the resumable ModelDownloader, injected into the AppContainer composition root
 ├─▶ MobileLLMUI ──▶ AppUI, AppRuntime, LLMCore        SwiftUI surface + @Observable stores   (MLX-free)
-├─▶ LLMEngineMLX ─▶ LLMCore + PrismML mlx-swift fork   resident-weights MLX engine            (Metal)
-├─▶ LLMEngineLlama ▶ LLMCore + llama.xcframework       mmap'd-GGUF llama.cpp engine            (Metal)
+├─▶ LLMEngineMLX ─▶ LLMCore + AppRuntime + PrismML fork resident-weights MLX engine            (Metal)
+├─▶ LLMEngineLlama ▶ LLMCore + AppRuntime + llama.xcframework mmap'd-GGUF llama.cpp engine      (Metal)
 └─▶ LLMEngineApple ▶ LLMCore + FoundationModels (weak) Apple Intelligence engine              (MLX-free)
 
 LLMCore ──▶ AppRuntime            catalog + schema, RoutingEngine, governors, tools/MCP,       (MLX-free)
                                   context policy, Explore, ThinkSplitter, LLMEngine protocol
-AppRuntime  (Foundation + CryptoKit)   downloader, memory/thermal governors, DurableStore      (MLX-free)
+AppRuntime  (Foundation + CryptoKit)   downloader, generation/thermal governance, DurableStore (MLX-free)
 AppUI       (SwiftUI, no deps)         ink-wash design tokens + shared controls                (MLX-free)
 ```
 
@@ -77,10 +77,26 @@ real engines inject at app assembly and the router stays testable with mock engi
   leaving the gated code as pure translation. `APPLE_LLM_LIVE=1 swift test` runs one real round-trip on an
   eligible device.
 
+### Local generation lifecycle and thermal control
+
+The two local-weight engines create a fresh `GenerationGovernance` for every stream. Its cooperative
+`GenerationControl` implements pause, resume, and cancellation without blocking an executor thread;
+`ThermalGovernor` checks cached iOS thermal/memory-pressure state only at safe engine boundaries. MLX can
+clear its GPU reuse cache through an injected callback; llama.cpp keeps its mmap ownership unchanged and
+uses the same policy for pacing and cancellation.
+
+`GenerationLifecycle` owns a lease for each decode task. Stream termination cancels the matching lease,
+and `load` / `unload` cancel and await every retiring lease before replacing a model container or freeing a
+native llama context. This is a resource-safety invariant, not just UI state: an old decode task cannot
+continue through C/Metal after its model has been released. llama.cpp checks cooperative pause/cancel state
+at every token and at each prefill chunk; MLX checks at each streamed response boundary. The heavier
+thermal/memory-pressure probe is monotonic-clock limited to at most four times per second on both engines.
+
 **Auto engine policy** (`AppSettings.preferredVariant`, pure + unit-tested): given a model, a device, and
 an `EnginePreference` (globally `.auto` — there is no user-facing engine setting; the model card's engine
 picker chooses per activation), pick a variant by greenest governor fit, then the device-preferred engine
-(**MLX on Mac, llama.cpp on iPhone**), then the model's default quant, then the smaller download. In the
+(**MLX on Mac, llama.cpp on iPhone**), then the model's default quant, then the smaller total download
+(text weights plus a required vision projector). In the
 simulator the policy never picks MLX (it can't run there); a pinned engine scopes to it, falling back only
 if the model lacks it.
 
@@ -89,9 +105,10 @@ if the model lacks it.
 `LLMMemoryGovernor.plan(model:variant:device:context:) -> LLMFit` is resident-only — decode is
 bandwidth-bound at batch-1, so weights must fit in RAM; the only lever is the KV cache. It returns
 `.comfortable` (green, peak ≤ 0.70·ceiling), `.tight(maxContext:)` (amber, runs but budget-deep), or
-`.unsupported` (gray, the weights don't fit — no context helps).
+`.unsupported` (gray, the planner estimates that weights exceed its budget — activation remains allowed).
 
-- `peak = onDiskBytes + runtimeOverhead + KV(context)`; the MLX planner counts weights as resident
+- `peak = totalOnDiskBytes + runtimeOverhead + KV(context)`; `totalOnDiskBytes` includes an `mmproj`
+  companion when present, and the MLX planner counts weights as resident
   anonymous/dirty bytes.
 - The **llama.cpp planner** discounts mmap'd weight pages (only a fraction counts against the jetsam
   ceiling) so a big GGUF honestly fits a memory-tight phone — but it reads green only when the *raw* weights
@@ -109,21 +126,30 @@ extend it); `fits` / `largestFitting` re-score each rung through the governor. H
 
 Tool calling is an **agent loop above the engine** — no engine changes. `ToolLoop` runs
 generate → detect a `<tool_call>{…}</tool_call>` in the stream → run the tool locally → feed a
-`<tool_response>` back → generate again, up to `maxIterations`. `ToolPrompt` folds the advertised tool
-schemas into the system turn (Qwen/ChatML convention); `ToolCallProcessor` extracts calls from plain text.
+`<tool_response>` back → generate again, with a three-execution mobile budget. Exact duplicate calls are
+suppressed. A successful `remember` goes directly to one tool-free, non-thinking synthesis pass, while
+other tools can still form the shipped three-step location/search/read and briefing chains. The final pass
+receives no tool schemas, so a weak model cannot turn memory bookkeeping into an unrelated web search.
+`ToolPrompt` folds the advertised tool schemas into ordinary system turns; `ToolCallProcessor` extracts
+calls from plain text and hides any hallucinated call markup in the final pass.
 
 - **Built-in tools** (`Tool` protocol): `web_search` — real, keyless SERP search (DuckDuckGo's html
   endpoint first, Bing fall-through; heuristic parsers over scraped result pages, tracker unwrapping,
   ≤6 results — inherently brittle, so failures degrade to a readable string and the fixtures need
   occasional refresh); `fetch_webpage` — readable-text extraction (boilerplate stripped, 6000-char cap,
-  content-type/size guards, and a string-level SSRF host guard that blocks loopback/private/link-local
-  hosts but does not resolve DNS); `remember`/`recall` — persistent facts in a durable `MemoryStore`
+  content-type guards, and a shared bounded HTTP client). That client accepts only HTTP(S), resolves every
+  hostname and rejects the request if any answer is non-public, disables automatic redirects and
+  re-validates every hop, and cancels the URLSession data task at a 2 MiB streaming ceiling. `web_search`
+  uses the same bounded transport. URLSession cannot pin the validated IP to CFNetwork's later TLS
+  connection, so the residual DNS-rebinding race is documented in SECURITY.md rather than hidden;
+  `remember`/`recall` — persistent facts in a durable `MemoryStore`
   beside the conversation records (see **Memory** below); `wikipedia` (summary lookup, zh for CJK / en otherwise);
   `CalculatorTool` (pure-Swift recursive-descent evaluator — malformed input returns an error string,
   never traps) and `DateTimeTool`. Calendar, reminder and location tools ride EventKit/CoreLocation
   behind injectable seams (`EventStoring` / `LocationProviding`) — **off by default**, enabled in
-  Settings → Manage tools, TCC permission requested lazily on first invocation, denial answered with an
-  instructive string. `ToolRegistry.assemble(config:)` is the config-driven builder: a tool materializes
+  the chat's Tools submenu or Settings → Choose tools; TCC permission is requested when a privacy tool is
+  selected (and defensively on first invocation), with denial answered by an instructive string.
+  `ToolRegistry.assemble(config:)` is the config-driven builder: a tool materializes
   only when its toggle is on AND its dependency seam is injected, so tests and previews never touch the
   network, EventKit or GPS. Tool results are framed as untrusted external data before being fed back to
   the model.
@@ -132,8 +158,8 @@ schemas into the system turn (Qwen/ChatML convention); `ToolCallProcessor` extra
   to `initialize`, `tools/list`, and `tools/call` a user-configured remote server (sandboxed iOS can't reach
   stdio). `MCPTool` bridges each remote tool into the local `Tool` protocol; `ToolRegistry.build(mcpServers:)`
   assembles the standard tools plus every **enabled** server's tools minus the ones the user muted, skipping
-  servers that fail to connect. Tools are **off by default** (they add a round-trip and small models call them
-  unevenly).
+  servers that fail to connect. Master tool access is **off by default** (calls add another full model pass,
+  network tools also wait for their endpoint, and small models call tools unevenly).
 
 ## Memory
 
@@ -147,13 +173,18 @@ with the outgoing turn (plus one turn of carry-over) and folds a capped block (�
 the system turn after the skill block; the context meter charges for it. That's the reliability win — a 2B
 model rarely thinks to call a tool, which is what made memory effectively write-only. The mirror
 (`MemoryBook`) is refreshed *inside* the generation task, so a fact the model saved last turn is in this
-turn's prompt. `MemoryRanking` is the one ranker the store, the `recall` tool, and the injector all share.
+turn's prompt. Model-saved facts use one canonical English `The user …` representation across models and
+conversation languages; the visible reply still follows the user's language. `MemoryRanking` is the one
+lexical ranker the store, the `recall` tool, and the injector share. When automatic injection gets no
+lexical hit (for example, a Chinese question against an English note), it falls back to the newest few
+facts; explicit `recall` remains a strict search and asks the model to translate its query to English.
 
 Injection is gated on the memory switch (it *is* an automatic recall) but deliberately **not** on the master
 tools switch — the block calls nothing, so typed facts still reach a model running with no tools. That is
-why the switch lives on the Memory screen (Settings → Behavior → Memory) and not only in Manage tools, whose
-row is hidden when tools are off. Everything the store holds is listed there, with provenance and date:
-editable, deletable, addable by hand.
+why the switch also lives on the Memory screen (Settings → Behavior → Memory), beside the facts it controls.
+Everything the store holds is listed there, with provenance and date:
+editable, deletable, addable by hand. Chat tool activity shows only save status; the canonical English
+payload remains visible here as the single editable source of truth.
 
 There is no background extraction pass: a second generation to mine each turn for facts would double
 on-device cost, so v1 is the `remember` tool plus a schema description sharp enough to trigger it.
@@ -183,6 +214,9 @@ normal decode loop continues; with no image the text path is byte-identical. In 
 photo button appears only when the active model can actually see (PhotosPicker + paste, ≤3 images,
 downscaled to 1568 px JPEG); attachment bytes persist as files under `attachments/` — never inlined into
 conversation JSON — and are purged with their turns (hard-delete, delete-all, regenerate/edit truncation).
+Accepting a send is conditional on those files reaching disk: a write failure removes any partial files,
+rolls back the provisional user/assistant pair, restores the exact draft/images, and never starts inference
+with a dangling image reference. Download/storage totals include the projector as well as the text model.
 Dictation is a separate composer affordance: `DictationService` (SFSpeechRecognizer + AVAudioEngine,
 on-device recognition where supported) streams partial transcripts into the draft.
 
@@ -203,12 +237,34 @@ The model library has two tiers.
   by peeling the quant descriptor off each repo name (pure + unit-tested). A discovered `RemoteModel` becomes
   an `LLMModel` with a **generic** architecture — it loads from the checkpoint's own chat template, no hand
   adapter — which is exactly why Explore models are flagged **Unverified** and their fit uses an estimated
-  size. Once picked, a community model flows through the same download / fit / activate pipeline as a curated one.
+  size. Family and license come only from recognized Hub tags or parsed config metadata; an absent,
+  unfamiliar, or conflicting value remains explicit `Unknown / unverified`, never a fabricated Qwen /
+  Apache-2.0 label. Hub listing commit SHAs propagate into each variant's `ModelSource.revision`. Once
+  picked, a community model flows through the same download / fit / activate pipeline as a curated one.
 
 `ThinkSplitter` is the shared reasoning splitter: it routes text outside `<think>…</think>` to `.answer` and
 inside to `.reasoning`, withholds a possible partial-tag tail across chunk boundaries, and **must be
 `finish()`-ed** at stream end to flush that tail (or the last few characters are lost). `startInThink: true`
 handles the implicit-open convention (DeepSeek-R1 distills stream reasoning first, emitting only the closing tag).
+
+## Model downloads and integrity
+
+`ModelDownloader` streams selected files into resumable `.part` files. The variant's declared revision is
+used consistently for both the Hub tree and resolve URLs; each URL path segment is encoded independently,
+so a revision containing `/`, spaces, `?`, or `#` cannot change URL structure. Repository identifiers and
+remote file paths pass root-confinement checks before any directory or file is created. A revision change
+invalidates files and partial data attributed to the previous revision, so a same-sized config or stale
+Range prefix cannot cross the revision boundary.
+
+For Hugging Face LFS files, SHA-256 is computed incrementally while bytes are written. A resumed 206 request
+first hashes its existing prefix and continues the same digest over new bytes; if a server ignores Range
+and returns 200, both the file and digest restart from zero. Size and Hub LFS digest must match before the
+`.part` file is promoted. The version-2 manifest records the revision, sizes, and digests. Normal launch
+probes trust that download-time attestation plus current sizes to avoid rereading multiple gigabytes;
+`verifyDownloadedIntegrity` is the explicit full-file re-audit path. Legacy v1 manifests are a one-time
+migration exception: a utility executor hashes them off the MainActor, atomically promotes a valid
+snapshot to v2, and never rehashes it on later launches. File-scoped GGUF/mmproj downloads merge their
+manifest entries, and install probes require an attested entry for every requested component.
 
 ## Persistence, governance, lifecycle
 
@@ -217,16 +273,19 @@ manifest, atomic writes, corrupt-manifest → backup-not-wipe recovery. `AppSett
 Codable snapshot to `UserDefaults` (system prompt, thinking mode, tools + MCP servers, dictation language,
 sampling, context length, appearance), with hand-written decoding so older snapshots migrate rather than
 throw. There is deliberately **no user-facing default-model or engine-preference setting**: each
-conversation records the (model, variant) that actually answered it — restamped on every send, restored
-when the thread is opened and at launch — and `defaultModelID` survives only as an auto-tracked
-"last successfully used" fallback. Engine choice lives on the model card; the Auto policy picks the
+conversation records the (model, variant) that actually answered it — restamped on every send and restored
+only when the user explicitly opens that thread. Launch hydrates the list without selecting a conversation;
+`defaultModelID` survives only as an auto-tracked "last successfully used" identity for a new chat. Engine
+choice lives on the model card; the Auto policy picks the
 greenest-fitting variant per device (and never picks MLX in the simulator, where it can't run — activation
 refuses it with a typed error rather than hanging Metal init). Multi-GB weights live under a no-backup Application Support dir so they don't hit iCloud.
 
-`MemoryProbe` reads `phys_footprint` (the number iOS jetsams on); an OOM pre-flight refuses recoverably
-before a load that wouldn't fit; `ThermalGovernor` throttles on a wall-clock boundary and pauses on
-`.critical`; `DeviceTier` classifies the hardware. When the app backgrounds (`scenePhase → .background`) it
-frees the resident model, so a multi-GB model isn't holding RAM while unused.
+`LLMMemoryGovernor` and `DeviceTier` provide advisory fit badges; they never disable an installed model or
+refuse a load. Selecting or sending with a model always makes a real attempt, leaving the device as the
+authority. Cold launch restores only a model identity and never calls an engine load, so opening the app
+cannot allocate several gigabytes. The generation lifecycle above applies cancellation/thermal policy
+inside both local engines. When the app backgrounds
+(`scenePhase → .background`) it frees the resident model, so a multi-GB model isn't holding RAM while unused.
 
 ## Keyboard (the hard-won part)
 

@@ -4,7 +4,8 @@
 > weights and therefore have non-trivial pins: the MLX stack below lives in the **`LLMEngineMLX`** package
 > (not `LLMCore`, which stays MLX-free), and the llama.cpp engine is in **`LLMEngineLlama`** (bottom of this
 > file). The third, **`LLMEngineApple`**, needs no wiring at all — `FoundationModels` is an OS framework,
-> weak-linked and autolinked, with no package dependency beyond `LLMCore`. `Packages/*/Package.swift` are
+> weak-linked and autolinked, with no package dependency beyond `LLMCore`. Both local-weight engines also
+> depend on the MLX-free `AppRuntime` generation-governance layer. `Packages/*/Package.swift` are
 > the source of truth for the exact pins; the ones quoted here are kept in sync with them. See
 > [ARCHITECTURE.md](ARCHITECTURE.md) for how the three engines route.
 
@@ -31,7 +32,8 @@ LLMEngineMLX ─depends on→  nanguoyu/mlx-swift-lm @ ab01613
 ## LLMEngineMLX/Package.swift (the MLX engine — already wired)
 
 The MLX deps live in `LLMEngineMLX` (never `LLMCore`), so `LLMCore` and the rest stay MLX-free. The engine
-pulls the fork plus the two Hugging Face packages its load macros expand against:
+also consumes `AppRuntime.GenerationGovernance`; it pulls the fork plus the two Hugging Face packages its
+load macros expand against:
 
 ```swift
 .package(url: "https://github.com/PrismML-Eng/mlx-swift",  revision: "e40e0a5…"),  // bits=1 kernel
@@ -39,7 +41,7 @@ pulls the fork plus the two Hugging Face packages its load macros expand against
 .package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.3"),  // Tokenizers
 .package(url: "https://github.com/huggingface/swift-huggingface", from: "0.9.0"),   // HuggingFace
 .package(url: "https://github.com/swiftlang/swift-syntax.git", "602.0.0" ..< "603.0.0"),  // match 6.2 toolchain
-// target deps: MLX, MLXRandom (mlx-swift); MLXLLM, MLXLMCommon, MLXHuggingFace (mlx-swift-lm);
+// target deps: AppRuntime; MLX, MLXRandom (mlx-swift); MLXLLM, MLXLMCommon, MLXHuggingFace (mlx-swift-lm);
 //              Tokenizers (swift-transformers); HuggingFace (swift-huggingface).
 ```
 
@@ -48,7 +50,8 @@ pulls the fork plus the two Hugging Face packages its load macros expand against
   at runtime two ways: (1) `@rpath/libc++.1.dylib` not found → add `-rpath /usr/lib` (done on LLMSmoke);
   (2) "Failed to load the default metallib" → only xcodebuild bundles `mlx-swift_Cmlx.bundle/…/default.metallib`.
   So: `xcodebuild -scheme llm-smoke -destination 'platform=macOS,arch=arm64' -derivedDataPath <DD> -skipMacroValidation build`, then run `<DD>/Build/Products/Debug/llm-smoke`.
-- The MLX-free packages (AppUI / AppRuntime / LLMCore / MobileLLMUI) keep their fast `swift test` loop.
+- The MLX-free packages (AppUI / AppRuntime / LLMCore / MobileLLMUI / LLMEngineApple) keep their fast
+  `swift test` loop.
 - **Simulator has no 1-bit Metal path** → validate on real devices only.
 - **HF model loader (in `LLMEngineMLX`):** `MLXHuggingFace`'s `#huggingFaceLoadModelContainer`
   macro expands to code referencing `HuggingFace.HubClient` + `Tokenizers.AutoTokenizer`, so the consumer
@@ -61,7 +64,7 @@ pulls the fork plus the two Hugging Face packages its load macros expand against
 - Pin **swift-syntax to the 602 line** (Swift 6.2) — the default 603 (6.3 ABI) breaks mlx-swift-lm's macros.
 
 ## ✅ Kernel gate PASSED (2026-07-15, macOS)
-`quantizedMatmul(bits:1, group 128, affine)` runs on real Metal and **matches** dequantize·matmul
+`quantizedMM(bits:1, group 128, affine)` runs on real Metal and **matches** dequantize·matmul
 (`maxDiff = 3.05e-05`, finite, non-degenerate). Upstream MLX asserts on bits=1, so this *is* the proof
 the fork is correctly wired. Next gate: full Bonsai-8B decode (needs the HF loader deps above).
 
@@ -74,9 +77,10 @@ on-disk affine-quant format is unchanged, so **no re-download**.
 
 ## llama.cpp engine (the second, user-selectable backend)
 
-**Package `LLMEngineLlama`** (sibling to `LLMEngineMLX`) vendors a prebuilt **`llama.xcframework`** as an
-SPM `.binaryTarget` and exposes a `LlamaEngine` actor conforming to `LLMCore.LLMEngine`. No fork, no build
-macros → it needs **neither `-skipMacroValidation` nor a special toolchain** (unlike the MLX package).
+**Package `LLMEngineLlama`** (sibling to `LLMEngineMLX`) depends on `LLMCore` + `AppRuntime`, vendors a
+prebuilt **`llama.xcframework`** as an SPM `.binaryTarget`, and exposes a `LlamaEngine` actor conforming to
+`LLMCore.LLMEngine`. No fork, no build macros → it needs **neither `-skipMacroValidation` nor a special
+toolchain** (unlike the MLX package).
 
 ### Building the XCFramework
 `scripts/build-llama-xcframework.sh` clones mainline **ggml-org/llama.cpp @ `956973c`**, runs the official
@@ -96,10 +100,14 @@ iOS** (residency sets would *wire* the GPU buffers and erase it). `use_mmap = tr
 ### Engine internals (`LlamaEngine.swift`)
 - **Model at `load`, context lazily in `run`** sized to `Sampling.contextTokenCap` (n_ctx is fixed at
   context creation on llama.cpp); KV is cleared each generation (we re-prefill the full history).
-- **ChatML built by hand** (`buildChatML`) threading the *full* turn history. Thinking-off pre-fills an
-  empty `<think>\n\n</think>` after the assistant tag — the same trick Qwen3's template uses — so nothing
-  lands in `.reasoning` when the user picks Hidden.
+- **Template-correct full history:** curated ChatML, DeepSeek, Hunyuan, and Gemma checkpoints use their
+  verified builders; community GGUFs use the template embedded in GGUF metadata, with ChatML only as a
+  missing-template fallback. Raw-system builders coalesce every system turn in order instead of silently
+  dropping later instructions. Thinking-off emits each family's verified suppression suffix.
 - **Prefill is chunked to `n_batch = 512`** to keep the Metal compute buffer small on phones.
+- **Generation governance is live, not decorative:** pause/cancel is checked every token and prefill
+  chunk; thermal/memory-pressure work is rate-limited to 4 Hz. Reload/unload cancels and awaits all old
+  decode leases before any native context or model pointer is freed.
 - **`PieceDecoder`** reassembles UTF-8 across token pieces (a CJK/emoji char can split mid-sequence) →
   feeds `ThinkSplitter` → `.reasoning`/`.answer`. **Flush both at stream end** (mirrors the MLX path).
 - Sampler chain: penalties → top-k → top-p → temp → dist (greedy at temp ≤ 0).

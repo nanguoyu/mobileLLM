@@ -42,13 +42,38 @@ struct KeyboardGuideReader: UIViewRepresentable {
             super.init(frame: .zero)
             isUserInteractionEnabled = false
             isHidden = true
+            // The same UIWindow survives a Home → foreground round-trip, so `didMoveToWindow` is not
+            // called again. UIKit can recreate/rebind its keyboard layout guide during that transition;
+            // reinstall our constraints when the scene becomes active so the next keyboard presentation
+            // continues to drive the composer instead of covering it.
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(sceneDidBecomeActive),
+                name: UIApplication.didBecomeActiveNotification,
+                object: nil
+            )
         }
 
         @available(*, unavailable)
         required init?(coder: NSCoder) { fatalError() }
 
+        deinit { NotificationCenter.default.removeObserver(self) }
+
         override func didMoveToWindow() {
             super.didMoveToWindow()
+            installTracker()
+        }
+
+        @objc private func sceneDidBecomeActive() {
+            // Notification delivery is on the main thread for UIApplication lifecycle events. Rebinding is
+            // idempotent and still measures from `keyboardLayoutGuide`; the notification supplies only the
+            // lifecycle edge, never keyboard geometry.
+            installTracker()
+            window?.setNeedsLayout()
+            window?.layoutIfNeeded()
+        }
+
+        private func installTracker() {
             tracker?.removeFromSuperview()
             tracker = nil
             guard let window else { return }

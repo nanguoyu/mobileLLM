@@ -142,6 +142,15 @@ actor SmokeMemoryStore: MemoryStoring {
     func save(_ text: String, source: MemoryFact.Source) async -> MemoryFact {
         let f = MemoryFact(text: text, source: source); facts.append(f); return f
     }
+    func saveIfAbsent(_ text: String, source: MemoryFact.Source) async -> MemorySaveResult {
+        let key = MemoryDeduplication.key(text)
+        if let existing = facts.first(where: { MemoryDeduplication.key($0.text) == key }) {
+            return .duplicate(existing)
+        }
+        let fact = MemoryFact(text: text, source: source)
+        facts.append(fact)
+        return .saved(fact)
+    }
     func list() async -> [MemoryFact] { facts }
     func update(id: String, text: String) async {}
     func delete(id: String) async {}
@@ -186,7 +195,12 @@ do {
             for try await ev in loop.run(messages: [ChatTurn(role: .user, content: c.prompt)], params: params) {
                 if case .answer(let s) = ev { reply += s }
             }
-            let facts = await store.list().map(\.text)
+            // Show the search alias alongside the stored note. Notes are canonical English while the user
+            // asks in their own language, so whether the alias got filled decides whether this fact is
+            // ever FOUND again — a gate that printed only the English text would call a retrieval-dead
+            // note a pass.
+            let stored = await store.list()
+            let facts = stored.map { f in f.sourceText.map { "\(f.text)  ⟨\($0)⟩" } ?? f.text }
             let didSave = !facts.isEmpty
             let ok = didSave == c.shouldSave
             ok ? (passed += 1) : (failed += 1)
@@ -245,6 +259,7 @@ do {
             case .toolCall(let c): line("  → CALL \(c.name) \(c.argumentsJSON)"); ran.append(c.name)
             case .toolResult(_, let r): line("  ← RESULT \(r.prefix(100))")
             case .answer(let s): answer += s
+            case .discardAnswer: answer.removeAll()
             case .reasoning, .done: break
             }
         }

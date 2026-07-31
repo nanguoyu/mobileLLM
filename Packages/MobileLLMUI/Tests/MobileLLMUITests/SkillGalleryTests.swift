@@ -283,7 +283,7 @@ final class SkillGalleryTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appending(component: "gallery-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = SkillStore(fileURL: dir.appending(component: "skills.json"))
-        await store.load()   // seed built-ins first (matches the launched app)
+        try await store.load()   // seed built-ins first (matches the launched app)
 
         let items = try SkillGallery.items(fromFeed: sampleFeed())
         let daily = try XCTUnwrap(items.first { $0.number == 5 })
@@ -291,7 +291,8 @@ final class SkillGalleryTests: XCTestCase {
 
         XCTAssertFalse(daily.isInstalled(in: store), "available before it's created")
         // Create it under a case/space variant to prove detection is name-based and forgiving.
-        store.create(name: "  daily briefing  ", emoji: "☀️", summary: "x", instructions: "y")
+        _ = try await store.create(name: "  daily briefing  ", emoji: "☀️",
+                                   summary: "x", instructions: "y")
         XCTAssertTrue(daily.isInstalled(in: store), "same name (case/space-insensitive) reads as installed")
 
         XCTAssertFalse(toolkit.isInstalled(in: store), "a non-installable post is never 'installed'")

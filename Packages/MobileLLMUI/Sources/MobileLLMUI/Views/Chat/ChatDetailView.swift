@@ -10,6 +10,7 @@ struct ChatDetailView: View {
     let container: AppContainer
     var onOpenModels: () -> Void
     @State private var showSwitcher = false
+    @State private var showTools = false
     /// Net keyboard lift from UIKit's keyboardLayoutGuide (see KeyboardHeight.swift): 0 when hidden,
     /// keyboard height minus the home-indicator inset when up. Automatic avoidance is disabled below.
     @State private var keyboardOverlap: CGFloat = 0
@@ -40,10 +41,14 @@ struct ChatDetailView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Composer(chat: container.chat,
+                         settings: container.settings,
                          thinkingCapable: chat.activeModel?.model.architecture.thinkingCapable ?? true,
                          canAttachImages: container.models.activeSupportsImageInput,
                          isLoadingModel: container.models.switching,
-                         onOpenModels: onOpenModels)
+                         onOpenModels: onOpenModels,
+                         toolEventStore: container.toolEventStore,
+                         toolLocationProvider: container.toolLocationProvider,
+                         onOpenToolSettings: { showTools = true })
                     .padding(.bottom, keyboardOverlap)
             }
             #if os(iOS)
@@ -77,8 +82,18 @@ struct ChatDetailView: View {
         .sheet(isPresented: $showSwitcher) {
             ModelSwitcherSheet(container: container, onOpenModels: onOpenModels)
         }
-        // Entering a conversation restores ITS model even when nothing routed through select() — the
-        // launch auto-push, and a boot activation that failed and needs a retry, both land here.
+        .sheet(isPresented: $showTools) {
+            NavigationStack {
+                ToolsView(settings: container.settings,
+                          eventStore: container.toolEventStore,
+                          locationProvider: container.toolLocationProvider)
+            }
+            #if os(macOS)
+            .frame(minWidth: 520, minHeight: 560)
+            #endif
+        }
+        // Entering a conversation restores ITS model even when a platform-specific navigation path did
+        // not route through select(). Cold launch itself leaves history unselected.
         .onAppear { chat.restoreConversationModelIfNeeded() }
         // Leaving the conversation frees the model's memory (reloaded lazily on the next turn), so a
         // 5 GB model doesn't sit resident while you're not chatting. No-op mid-generation.

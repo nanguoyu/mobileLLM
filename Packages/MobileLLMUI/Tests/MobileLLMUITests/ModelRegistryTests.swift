@@ -28,7 +28,7 @@ final class ModelRegistryTests: XCTestCase {
 
     private func manager(base: URL, installedRepos: Set<String>) -> ModelManager {
         let m = ModelManager(engine: MockLLMEngine(), device: device, downloadBase: base,
-                             downloader: { _, _, p in p(1) },
+                             downloader: { _, _, _, p in p(1) },
                              installProbe: { v, _ in installedRepos.contains(v.source.huggingFaceRepo) },
                              availableMemory: { .max })
         m.refreshInstalled()
@@ -53,7 +53,7 @@ final class ModelRegistryTests: XCTestCase {
         // Catalog is not installed in this manager, so the only installed bytes are the adopted model's.
         m.adopt(model)
         XCTAssertTrue(m.installed.contains(model.variants[0].id))
-        XCTAssertEqual(m.installedBytes, model.variants[0].onDiskBytes)
+        XCTAssertEqual(m.installedBytes, model.variants[0].totalOnDiskBytes)
     }
 
     func testRegistryRoundTripAcrossManagers() async {
@@ -75,7 +75,7 @@ final class ModelRegistryTests: XCTestCase {
         }
         XCTAssertTrue(found, "an installed adopted model must survive relaunch")
         XCTAssertTrue(b.installed.contains(model.variants[0].id))
-        XCTAssertEqual(b.installedBytes, model.variants[0].onDiskBytes)
+        XCTAssertEqual(b.installedBytes, model.variants[0].totalOnDiskBytes)
     }
 
     func testBrowsedButNotInstalledIsNotPersisted() async {
@@ -92,5 +92,47 @@ final class ModelRegistryTests: XCTestCase {
         await b.loadAdoptedRegistry()
         XCTAssertFalse(b.allModels.contains { $0.id == model.id },
                        "a browsed-but-not-downloaded model isn't kept across launches")
+    }
+
+    func testLegacyFabricatedMetadataMigratesAndFreshHubMetadataReplacesIt() async throws {
+        let base = tempBase()
+        let current = adopted(repo: "someone/Legacy-Model")
+        let legacy = LLMModel(
+            id: current.id,
+            displayName: current.displayName,
+            family: .qwen,
+            publisher: current.publisher,
+            summary: "Community model — loaded from its own template. Not hand-verified.",
+            license: .apache2,
+            architecture: current.architecture,
+            variants: current.variants,
+            defaultVariant: current.defaultVariant
+        )
+        let registry = DurableStore<LLMModel>(
+            fileURL: base.appending(component: "adopted-models.json")
+        )
+        try await registry.save([legacy])
+
+        let models = manager(base: base, installedRepos: [legacy.variants[0].source.huggingFaceRepo])
+        await models.loadAdoptedRegistry()
+        XCTAssertEqual(models.model(id: legacy.id)?.family, .unknown)
+        XCTAssertEqual(models.model(id: legacy.id)?.license, .unknown,
+                       "legacy Explore guesses must not survive an upgrade")
+
+        let refreshed = LLMModel(
+            id: legacy.id,
+            displayName: legacy.displayName,
+            family: .gemma,
+            publisher: legacy.publisher,
+            summary: "Community model — Hub metadata when available; not hand-verified.",
+            license: .gemma,
+            architecture: legacy.architecture,
+            variants: legacy.variants,
+            defaultVariant: legacy.defaultVariant
+        )
+        models.adopt(refreshed)
+        XCTAssertEqual(models.model(id: legacy.id)?.family, .gemma)
+        XCTAssertEqual(models.model(id: legacy.id)?.license, .gemma,
+                       "a fresh Hub result replaces the conservative migrated placeholder")
     }
 }

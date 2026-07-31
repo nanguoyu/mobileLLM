@@ -6,20 +6,32 @@ import Foundation
 /// redirects, guards the content type, caps the download, and strips boilerplate (script/style/nav/header/
 /// footer/aside/svg/comments) before extracting the article body — so the model gets prose, not markup.
 ///
-/// SSRF HYGIENE: only `http`/`https` are allowed, and obvious private/loopback hosts (localhost, `.local`,
-/// 127/10/192.168/172.16-31/169.254) are refused so a model-chosen URL can't be pointed at the device's own
-/// network. This is a string-level guard, not a full SSRF defense (it does not resolve DNS, so a public
-/// name that resolves to a private IP is not caught) — noted honestly. The parsing is pure + unit-tested;
-/// only `execute` touches the network.
+/// SSRF HYGIENE: only `http`/`https` are allowed. Literal and DNS-resolved loopback, link-local, private,
+/// shared, documentation, multicast, and reserved addresses are refused. Redirects are followed manually
+/// and every target is resolved and checked before it is contacted. The response is streamed through a
+/// hard byte ceiling instead of being downloaded in full and truncated afterwards.
 public struct WebScraperTool: Tool {
-    private let session: URLSession
+    private let httpClient: WebHTTPClient
     private let maxBytes: Int
     private let maxOutputChars: Int
 
     public init(session: URLSession = .shared, maxBytes: Int = 2 * 1024 * 1024, maxOutputChars: Int = 6000) {
-        self.session = session
-        self.maxBytes = maxBytes
-        self.maxOutputChars = maxOutputChars
+        self.httpClient = WebHTTPClient(session: session)
+        self.maxBytes = max(1, maxBytes)
+        self.maxOutputChars = max(1, maxOutputChars)
+    }
+
+    init(session: URLSession, maxBytes: Int = 2 * 1024 * 1024, maxOutputChars: Int = 6000,
+         dnsResolver: @escaping WebDNSResolver) {
+        self.httpClient = WebHTTPClient(session: session, resolver: dnsResolver)
+        self.maxBytes = max(1, maxBytes)
+        self.maxOutputChars = max(1, maxOutputChars)
+    }
+
+    init(httpClient: WebHTTPClient, maxBytes: Int = 2 * 1024 * 1024, maxOutputChars: Int = 6000) {
+        self.httpClient = httpClient
+        self.maxBytes = max(1, maxBytes)
+        self.maxOutputChars = max(1, maxOutputChars)
     }
 
     public var schema: ToolSchema {
@@ -45,18 +57,18 @@ public struct WebScraperTool: Tool {
             var req = URLRequest(url: url, timeoutInterval: 10)
             req.setValue(WebSearchTool.userAgent, forHTTPHeaderField: "User-Agent")
             req.setValue("text/html,application/xhtml+xml,text/plain", forHTTPHeaderField: "Accept")
-            let (data, resp) = try await session.data(for: req)
-            guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-                return "Error: couldn't fetch the page (HTTP \((resp as? HTTPURLResponse)?.statusCode ?? -1))."
+            let result = try await httpClient.get(req, maxBytes: maxBytes)
+            let http = result.response
+            guard http.statusCode == 200 else {
+                return "Error: couldn't fetch the page (HTTP \(http.statusCode))."
             }
             let mime = (http.mimeType ?? "").lowercased()
             guard mime.isEmpty || mime.hasPrefix("text/html") || mime.hasPrefix("text/plain")
                     || mime.hasPrefix("application/xhtml") else {
                 return "Error: that URL isn't a readable web page (content type: \(mime))."
             }
-            let capped = data.prefix(maxBytes)
-            guard let body = String(data: capped, encoding: .utf8)
-                          ?? String(data: capped, encoding: .isoLatin1) else {
+            guard let body = String(data: result.body, encoding: .utf8)
+                          ?? String(data: result.body, encoding: .isoLatin1) else {
                 return "Error: couldn't decode the page text."
             }
             let text = mime.hasPrefix("text/plain")
@@ -67,6 +79,18 @@ public struct WebScraperTool: Tool {
             let title = Self.title(ofHTML: body)
             let rendered = Self.truncate(cleaned, to: maxOutputChars)
             return title.map { "\($0)\n\n\(rendered)" } ?? rendered
+        } catch WebNetworkError.blockedHost {
+            return "Error: that host isn't allowed (local/private addresses are blocked)."
+        } catch WebNetworkError.unsafeRedirect {
+            return "Error: the page redirected to a local, private, or otherwise unsafe address."
+        } catch WebNetworkError.tooManyRedirects {
+            return "Error: the page redirected too many times."
+        } catch WebNetworkError.invalidRedirect {
+            return "Error: the page returned an invalid redirect."
+        } catch WebNetworkError.dnsResolutionFailed {
+            return "Error: couldn't resolve \(host)."
+        } catch WebNetworkError.invalidURL {
+            return "Error: URLs with embedded credentials aren't allowed."
         } catch {
             return "Error: couldn't reach \(host)."
         }
@@ -74,23 +98,10 @@ public struct WebScraperTool: Tool {
 
     // MARK: - Host guard (pure)
 
-    /// Refuse localhost / link-local / RFC-1918 private hosts (string-level SSRF hygiene). A non-IP host
-    /// that isn't an obvious local name is allowed.
+    /// Pure fast path for literal/local-name checks. Domain names are additionally resolved and checked
+    /// by `WebHTTPClient` immediately before each request.
     static func isBlockedHost(_ rawHost: String) -> Bool {
-        let host = rawHost.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        if host.isEmpty { return true }
-        if host == "localhost" || host.hasSuffix(".localhost") || host.hasSuffix(".local") { return true }
-        if host == "::1" || host == "0.0.0.0" || host.hasPrefix("fe80:") { return true }  // IPv6 loopback / any / link-local
-        // IPv4 dotted-quad private / loopback / link-local ranges.
-        let octets = host.split(separator: ".", omittingEmptySubsequences: false).map { Int($0) }
-        if octets.count == 4, !octets.contains(nil) {
-            let o = octets.map { $0! }
-            if o[0] == 127 || o[0] == 10 { return true }               // loopback / private
-            if o[0] == 192 && o[1] == 168 { return true }              // private
-            if o[0] == 172 && (16...31).contains(o[1]) { return true } // private
-            if o[0] == 169 && o[1] == 254 { return true }              // link-local
-        }
-        return false
+        WebURLPolicy.isBlockedHost(rawHost)
     }
 
     // MARK: - Readable-text extraction (pure)

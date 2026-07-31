@@ -8,11 +8,14 @@ import MLXHuggingFace
 import HuggingFace
 import Tokenizers
 import LLMCore
+import AppRuntime
 
 /// The real on-device engine: loads an MLX model (1-bit via the PrismML fork) and streams tokens,
 /// routing the Bonsai `<think>` block to `.reasoning` and the rest to `.answer` via `ThinkSplitter`.
 /// Conforms to `LLMCore.LLMEngine`, so the UI layer drives it exactly like `MockLLMEngine`.
 public actor MLXLLMEngine: LLMEngine {
+    public typealias GovernanceFactory = @Sendable () -> GenerationGovernance
+
     public enum EngineError: Error, Sendable, Equatable, LocalizedError {
         case notLoaded
         case noUserMessage
@@ -36,8 +39,16 @@ public actor MLXLLMEngine: LLMEngine {
 
     private var container: ModelContainer?
     private var loadedID: String?
+    nonisolated private let generationLifecycle = GenerationLifecycle()
+    nonisolated private let governanceFactory: GovernanceFactory
 
-    public init() {}
+    /// `governanceFactory` is injected per run so tests can record checkpoints without loading weights.
+    /// Production clears MLX's reuse cache only from the generation task's safe boundary.
+    public init(governanceFactory: @escaping GovernanceFactory = {
+        GenerationGovernance(clearCache: { Memory.clearCache() })
+    }) {
+        self.governanceFactory = governanceFactory
+    }
     public var isLoaded: Bool { container != nil }
 
     // MARK: - Loading
@@ -45,6 +56,9 @@ public actor MLXLLMEngine: LLMEngine {
     /// Load by Hugging Face id, downloading via the hub if absent (first-run / smoke path).
     public func loadFromHub(_ id: String,
                             progress: @Sendable @escaping (Double) -> Void = { _ in }) async throws {
+        let drain = await generationLifecycle.beginDrain()
+        defer { generationLifecycle.endDrain(drain) }
+        releaseContainer()
         do {
             let c = try await loadModelContainer(
                 from: #hubDownloader(), using: #huggingFaceTokenizerLoader(), id: id
@@ -60,6 +74,9 @@ public actor MLXLLMEngine: LLMEngine {
     /// Load from a local directory of already-downloaded weights (the app path — AppRuntime downloads).
     public func load(directory: URL,
                      progress: @Sendable @escaping (Double) -> Void = { _ in }) async throws {
+        let drain = await generationLifecycle.beginDrain()
+        defer { generationLifecycle.endDrain(drain) }
+        releaseContainer()
         do {
             let c = try await loadModelContainer(from: directory, using: #huggingFaceTokenizerLoader())
             adopt(c, id: directory.lastPathComponent)
@@ -90,13 +107,20 @@ public actor MLXLLMEngine: LLMEngine {
     }
 
     public func unload() async {
+        // Keep the drain held after the stream task exits and through the actual container/cache release.
+        let drain = await generationLifecycle.beginDrain()
+        defer { generationLifecycle.endDrain(drain) }
+        releaseContainer()
+    }
+
+    private func releaseContainer() {
         container = nil; loadedID = nil
-        MLX.GPU.clearCache()
+        Memory.clearCache()
     }
 
     private func adopt(_ c: ModelContainer, id: String) {
         container = c; loadedID = id
-        MLX.GPU.set(cacheLimit: 32 * 1024 * 1024)   // weights are resident → keep the reuse pool small
+        Memory.cacheLimit = 32 * 1024 * 1024   // weights are resident → keep the reuse pool small
     }
 
     // MARK: - Generation
@@ -104,16 +128,29 @@ public actor MLXLLMEngine: LLMEngine {
     public nonisolated func generate(messages: [ChatTurn],
                                      params: Sampling) -> AsyncThrowingStream<EngineDelta, Error> {
         AsyncThrowingStream { continuation in
-            let work = Task { await self.run(messages: messages, params: params, into: continuation) }
-            continuation.onTermination = { _ in work.cancel() }
+            let governance = governanceFactory()
+            let lease = generationLifecycle.begin(using: governance)
+            let work = Task {
+                await self.run(messages: messages, params: params, governance: governance,
+                               lease: lease, into: continuation)
+            }
+            generationLifecycle.attachTaskCancellation({ work.cancel() }, to: lease)
+            continuation.onTermination = { [generationLifecycle] _ in
+                generationLifecycle.cancel(lease)
+            }
         }
     }
 
     private func run(messages: [ChatTurn], params: Sampling,
+                     governance: GenerationGovernance, lease: GenerationLifecycle.Lease,
                      into cont: AsyncThrowingStream<EngineDelta, Error>.Continuation) async {
+        defer { generationLifecycle.end(lease) }
         do {
+            // Also catches a lease cancelled before its actor task had a chance to start.
+            try await governance.cooperativeCheckpoint()
             guard let container else { throw EngineError.notLoaded }
             let chat = try Self.prepareChat(messages)
+            try await governance.checkpoint()
 
             // Every sampling knob the app exposes must reach the model — history is not the only thing
             // that used to be dropped. `kvBits == 0` means "unquantized" here but `nil` upstream; a
@@ -138,12 +175,15 @@ public actor MLXLLMEngine: LLMEngine {
             var splitter = ThinkSplitter()
             var tokens = 0
             let start = Date()
-            MLX.GPU.resetPeakMemory()
+            Memory.peakMemory = 0
             for try await chunk in session.streamResponse(to: chat.prompt) {
-                try Task.checkCancellation()
+                // ChatSession owns the inner token loop, so each streamed chunk is the narrowest safe
+                // boundary where pause/cancel, thermal pacing, and cache relief can run.
+                try await governance.checkpoint()
                 tokens += 1
                 for d in splitter.feed(chunk) { cont.yield(Self.map(d)) }
             }
+            try await governance.cooperativeCheckpoint()
             for d in splitter.finish() { cont.yield(Self.map(d)) }
 
             let secs = max(Date().timeIntervalSince(start), 0.0001)
@@ -158,9 +198,15 @@ public actor MLXLLMEngine: LLMEngine {
         }
     }
 
+    /// Session-only controls. Stream termination remains the normal UI cancel path; these methods make
+    /// pause/resume explicit for future UI wiring and deterministic engine integration tests.
+    public nonisolated func pauseGeneration() { generationLifecycle.pauseActive() }
+    public nonisolated func resumeGeneration() { generationLifecycle.resumeActive() }
+    public nonisolated func cancelGeneration() { generationLifecycle.cancelActive() }
+
     private func stats(tokens: Int, tps: Double, stop: StopReason) -> Stats {
         Stats(promptTokens: 0, genTokens: tokens, promptTPS: 0, tokensPerSecond: tps,
-              peakMemoryBytes: Int64(MLX.GPU.peakMemory), stopReason: stop)
+              peakMemoryBytes: Int64(Memory.peakMemory), stopReason: stop)
     }
 
     private static func map(_ d: ThinkSplitter.Delta) -> EngineDelta {

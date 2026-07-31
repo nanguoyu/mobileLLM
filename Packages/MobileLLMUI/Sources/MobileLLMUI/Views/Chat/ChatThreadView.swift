@@ -166,7 +166,8 @@ struct ChatThreadView: View {
                        attachmentLoader: { await chat.attachmentData($0) })
         } else if message.id == chat.streamingMessageID {
             StreamingRow(chat: chat, displayMode: displayMode,
-                         modelName: chat.activeModel?.model.displayName ?? "Model")
+                         modelName: chat.streaming?.generatedBy?.displayName
+                            ?? chat.activeModel?.model.displayName ?? "Model")
         } else {
             AssistantView(
                 reasoning: message.reasoning ?? "",
@@ -175,7 +176,7 @@ struct ChatThreadView: View {
                 displayMode: displayMode,
                 isStreaming: false,
                 stats: message.stats,
-                modelName: chat.activeModel?.model.displayName ?? "Model",
+                modelName: message.generatedBy?.displayName ?? "Model",
                 toolRuns: message.toolRuns ?? [],
                 emptyOutcome: message.emptyOutcome,
                 onCopy: { Clipboard.copy(message.answer); chat.showToast(Toast("Copied")) },
@@ -306,16 +307,27 @@ private struct StreamingRow: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    AssistantView(
-                        reasoning: displayedReasoning(s),
-                        answer: s.answer,
-                        disclosurePhase: s.phase == .thinking ? .thinking
-                            : .answered(seconds: s.thinkingDuration),
-                        displayMode: displayMode,
-                        isStreaming: true,
-                        stats: nil,
-                        modelName: modelName,
-                        toolRuns: s.toolActivity)
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                        AssistantView(
+                            reasoning: displayedReasoning(s),
+                            answer: s.answer,
+                            disclosurePhase: s.phase == .thinking ? .thinking
+                                : .answered(seconds: s.thinkingDuration),
+                            displayMode: displayMode,
+                            isStreaming: true,
+                            stats: nil,
+                            modelName: modelName,
+                            toolRuns: s.toolActivity)
+                        if let note = s.warmingNote {
+                            HStack(spacing: Theme.Space.xs) {
+                                ProgressView().controlSize(.small)
+                                Text(note)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(Theme.textTertiary)
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
                 }
             }
         }

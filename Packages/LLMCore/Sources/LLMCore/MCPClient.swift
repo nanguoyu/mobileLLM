@@ -47,19 +47,74 @@ public struct MCPToolSpec: Sendable, Hashable {
 /// captures + echoes a session id when the server is stateful, and sends the negotiated protocol-version
 /// header on every post after the handshake.
 public actor MCPClient {
-    public enum MCPError: Error, Sendable { case badURL, http(Int), rpc(String) }
+    public enum MCPError: Error, Sendable, Equatable, LocalizedError {
+        case badURL
+        case http(Int)
+        case rpc(String)
+        case timedOut(TimeInterval)
+        case repeatedCursor(String)
+        case pageLimit(Int)
+        case responseTooLarge
+        case invalidResponse(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .badURL:
+                "The MCP server URL is invalid."
+            case .http(let status):
+                "The MCP server returned HTTP \(status)."
+            case .rpc(let message):
+                message
+            case .timedOut(let seconds):
+                "The MCP server did not respond within \(seconds.formatted(.number.precision(.fractionLength(0...1)))) seconds."
+            case .repeatedCursor(let cursor):
+                "The MCP server repeated tools/list cursor “\(cursor)”."
+            case .pageLimit(let limit):
+                "The MCP server exceeded the \(limit)-page tools/list limit."
+            case .responseTooLarge:
+                "The MCP server response was too large."
+            case .invalidResponse(let reason):
+                "The MCP server returned an invalid JSON-RPC response: \(reason)"
+            }
+        }
+    }
 
     private let server: MCPServer
     private let session: URLSession
+    /// Held because `URLSession` keeps only an unowned-ish reference for the lifetime of the session;
+    /// see `init` for why this client refuses redirects at all.
+    private let redirectBlocker: MCPRedirectBlocker
+    private let requestTimeout: TimeInterval
+    private let maxToolListPages: Int
     private var negotiatedVersion = "2025-11-25"
     private var sessionId: String?
     private var nextId = 0
     private var ready = false
 
-    public init(server: MCPServer, session: URLSession = .shared) {
+    /// `requestTimeout` is an overall deadline, not only URLSession's idle timeout: a server that keeps an
+    /// SSE connection alive with unrelated events still has to answer this request. `maxToolListPages`
+    /// bounds a malicious or broken cursor chain.
+    public init(server: MCPServer, session: URLSession = .shared,
+                requestTimeout: TimeInterval = 30, maxToolListPages: Int = 50) {
         self.server = server
-        self.session = session
+        // Derived from the caller's CONFIGURATION rather than used directly, so this one client can refuse
+        // redirects. It is the only HTTP caller in the package that carries a credential — the server's
+        // bearer token rides every request — and URLSession's default behavior replays the whole request,
+        // Authorization header included, at whatever host a 3xx `Location` names. The web tools were given
+        // manual redirect control (`WebHTTPClient`) while this, the credentialed path, kept the default;
+        // that was backwards. A configured MCP endpoint has no legitimate reason to redirect, so the 3xx is
+        // surfaced as an HTTP error instead of being followed. Building from `configuration` keeps the
+        // injected-session test seam working: URLProtocol stubs live on the configuration.
+        self.redirectBlocker = MCPRedirectBlocker()
+        self.session = URLSession(configuration: session.configuration,
+                                  delegate: self.redirectBlocker, delegateQueue: nil)
+        self.requestTimeout = min(max(requestTimeout, 0.01), 300)
+        self.maxToolListPages = min(max(maxToolListPages, 1), 1_000)
     }
+
+    /// URLSession retains its delegate until invalidated; without this the session and delegate outlive
+    /// every client we build per registry assembly.
+    deinit { session.finishTasksAndInvalidate() }
 
     /// Handshake + list the server's tools (paginating `nextCursor`). Idempotent-ish: re-handshakes only
     /// if not already connected.
@@ -76,10 +131,17 @@ public actor MCPClient {
         }
         var tools: [MCPToolSpec] = []
         var cursor: String?
-        repeat {
+        var seenCursors = Set<String>()
+        var pageCount = 0
+        while true {
+            try Task.checkCancellation()
+            guard pageCount < maxToolListPages else {
+                throw MCPError.pageLimit(maxToolListPages)
+            }
             var params: [String: Any] = [:]
             if let cursor { params["cursor"] = cursor }
             let res = try await request(method: "tools/list", params: params)
+            pageCount += 1
             for t in (res?["tools"] as? [[String: Any]] ?? []) {
                 guard let name = t["name"] as? String else { continue }
                 let desc = t["description"] as? String ?? ""
@@ -88,9 +150,12 @@ public actor MCPClient {
                     .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
                 tools.append(MCPToolSpec(name: name, description: desc, inputSchemaJSON: json))
             }
-            cursor = res?["nextCursor"] as? String
-        } while cursor != nil
-        return tools
+            guard let nextCursor = res?["nextCursor"] as? String else { return tools }
+            guard seenCursors.insert(nextCursor).inserted else {
+                throw MCPError.repeatedCursor(nextCursor)
+            }
+            cursor = nextCursor
+        }
     }
 
     /// Call a tool; returns its text content (or an "error" string for a tool-level failure the model reads).
@@ -133,18 +198,182 @@ public actor MCPClient {
         if !isInit { req.setValue(negotiatedVersion, forHTTPHeaderField: "MCP-Protocol-Version") }
         if let sessionId { req.setValue(sessionId, forHTTPHeaderField: "Mcp-Session-Id") }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        req.timeoutInterval = requestTimeout
 
-        let (data, resp) = try await session.data(for: req)
-        guard let http = resp as? HTTPURLResponse else { throw MCPError.http(0) }
-        if isInit, let sid = http.value(forHTTPHeaderField: "Mcp-Session-Id") { sessionId = sid }
-        guard (200...299).contains(http.statusCode) else { throw MCPError.http(http.statusCode) }
+        let response = try await perform(req, expectId: expectId)
+        if isInit, let sid = response.sessionId { sessionId = sid }
+        guard (200...299).contains(response.statusCode) else { throw MCPError.http(response.statusCode) }
         guard let expectId else { return nil }   // notification → nothing to read
-
-        let ctype = (http.value(forHTTPHeaderField: "Content-Type") ?? "").lowercased()
-        if ctype.hasPrefix("text/event-stream") {
-            return Self.parseSSE(data, id: expectId)
+        guard let payload = response.payload else {
+            throw MCPError.invalidResponse("missing response for request id \(expectId).")
         }
-        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return try Self.validateResponse(payload, expectedID: expectId)
+    }
+
+    // MARK: - Bounded HTTP streaming
+
+    /// A request with an id must receive one complete JSON-RPC response for that same id. Treat malformed
+    /// HTTP 200 bodies as protocol failures instead of an empty result: otherwise initialize/list can
+    /// appear to succeed and silently install a partial tool registry.
+    private static func validateResponse(_ payload: Data, expectedID: Int) throws -> [String: Any] {
+        let value: Any
+        do {
+            value = try JSONSerialization.jsonObject(with: payload)
+        } catch {
+            throw MCPError.invalidResponse("the body is not valid JSON.")
+        }
+        guard let object = value as? [String: Any] else {
+            throw MCPError.invalidResponse("the top-level value is not an object.")
+        }
+        guard object["jsonrpc"] as? String == "2.0" else {
+            throw MCPError.invalidResponse("jsonrpc must equal \"2.0\".")
+        }
+        guard let responseID = object["id"] as? Int, responseID == expectedID else {
+            throw MCPError.invalidResponse("response id does not match request id \(expectedID).")
+        }
+
+        let hasResult = object.keys.contains("result")
+        let hasError = object.keys.contains("error")
+        guard hasResult != hasError else {
+            throw MCPError.invalidResponse("exactly one of result or error is required.")
+        }
+        if hasError {
+            guard let error = object["error"] as? [String: Any],
+                  error["code"] as? Int != nil,
+                  error["message"] as? String != nil else {
+                throw MCPError.invalidResponse("error must contain an integer code and string message.")
+            }
+        }
+        return object
+    }
+
+    private struct WireResponse: Sendable {
+        let statusCode: Int
+        let sessionId: String?
+        /// For JSON this is the response body. For SSE it is only the first complete JSON-RPC event whose
+        /// id matches the request; the stream is abandoned immediately after that event.
+        let payload: Data?
+    }
+
+    private static let maxResponseBytes = 8 * 1_024 * 1_024
+
+    /// Race the transport against an overall deadline. URLRequest's timeout is also set above for normal
+    /// URLSession behavior, while this deadline covers active-but-never-answering SSE streams. Cancelling
+    /// the caller cancels both children and URLSession's AsyncBytes task.
+    private func perform(_ request: URLRequest, expectId: Int?) async throws -> WireResponse {
+        let session = self.session
+        let timeout = requestTimeout
+        let timeoutNanos = UInt64(timeout * 1_000_000_000)
+        do {
+            return try await withThrowingTaskGroup(of: WireResponse.self) { group in
+                group.addTask {
+                    try await Self.readResponse(session: session, request: request, expectId: expectId)
+                }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: timeoutNanos)
+                    try Task.checkCancellation()
+                    throw MCPError.timedOut(timeout)
+                }
+                defer { group.cancelAll() }
+                guard let first = try await group.next() else { throw CancellationError() }
+                return first
+            }
+        } catch let error as URLError where error.code == .cancelled && Task.isCancelled {
+            // URLSession reports NSURLErrorCancelled for a cancelled AsyncBytes task. Preserve user
+            // cancellation as CancellationError so callers do not present it as an MCP/tool failure.
+            throw CancellationError()
+        }
+    }
+
+    private static func readResponse(session: URLSession, request: URLRequest,
+                                     expectId: Int?) async throws -> WireResponse {
+        let (bytes, response) = try await session.bytes(for: request)
+        try Task.checkCancellation()
+        guard let http = response as? HTTPURLResponse else {
+            return WireResponse(statusCode: 0, sessionId: nil, payload: nil)
+        }
+        let status = http.statusCode
+        let sessionId = http.value(forHTTPHeaderField: "Mcp-Session-Id")
+        guard (200...299).contains(status) else {
+            // The status is the useful failure. Do not wait for a server to finish an error stream.
+            return WireResponse(statusCode: status, sessionId: sessionId, payload: nil)
+        }
+
+        let contentType = (http.value(forHTTPHeaderField: "Content-Type") ?? "").lowercased()
+        if let expectId, contentType.hasPrefix("text/event-stream") {
+            let payload = try await firstMatchingSSEPayload(bytes, id: expectId)
+            return WireResponse(statusCode: status, sessionId: sessionId, payload: payload)
+        }
+
+        var data = Data()
+        data.reserveCapacity(min(http.expectedContentLength > 0 ? Int(http.expectedContentLength) : 0,
+                                 maxResponseBytes))
+        for try await byte in bytes {
+            try Task.checkCancellation()
+            guard data.count < maxResponseBytes else { throw MCPError.responseTooLarge }
+            data.append(byte)
+        }
+        return WireResponse(statusCode: status, sessionId: sessionId,
+                            payload: data.isEmpty ? nil : data)
+    }
+
+    /// Read complete SSE events one line at a time and stop at the first id-matching JSON-RPC response.
+    /// Unlike `data(for:)`, this does not wait for a standards-compliant long-lived SSE connection to close.
+    private static func firstMatchingSSEPayload(_ bytes: URLSession.AsyncBytes,
+                                                id: Int) async throws -> Data? {
+        var dataLines: [String] = []
+        var lineBytes = Data()
+        var pendingCR = false
+        var receivedBytes = 0
+
+        func flush() -> Data? {
+            defer { dataLines.removeAll(keepingCapacity: true) }
+            let payload = dataLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !payload.isEmpty,
+                  let data = payload.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  (object["id"] as? Int) == id else { return nil }
+            return data
+        }
+
+        func processLine() -> Data? {
+            defer { lineBytes.removeAll(keepingCapacity: true) }
+            let line = String(decoding: lineBytes, as: UTF8.self)
+            if line.isEmpty {
+                return flush()
+            } else if line.hasPrefix("data:") {
+                var value = String(line.dropFirst(5))
+                if value.hasPrefix(" ") { value.removeFirst() }
+                dataLines.append(value)
+            }
+            // event:/id:/retry:/comment lines are deliberately ignored.
+            return nil
+        }
+
+        // Parse line endings ourselves instead of relying on AsyncBytes.lines. Besides accepting all SSE
+        // terminators (LF, CRLF, and bare CR), this preserves empty lines — the event boundary that lets us
+        // return before a long-lived connection closes.
+        for try await byte in bytes {
+            try Task.checkCancellation()
+            receivedBytes += 1
+            guard receivedBytes <= maxResponseBytes else { throw MCPError.responseTooLarge }
+
+            if pendingCR {
+                pendingCR = false
+                if let match = processLine() { return match }
+                if byte == 0x0A { continue } // CRLF is one terminator.
+            }
+
+            switch byte {
+            case 0x0D: pendingCR = true
+            case 0x0A:
+                if let match = processLine() { return match }
+            default: lineBytes.append(byte)
+            }
+        }
+        if pendingCR, let match = processLine() { return match }
+        if !lineBytes.isEmpty, let match = processLine() { return match }
+        return flush()
     }
 
     /// Parse an SSE body and return the first `data:` event whose JSON-RPC `id` matches (servers may
@@ -175,5 +404,22 @@ public actor MCPClient {
             // ignore event:/id:/retry:/comment lines
         }
         return flush()
+    }
+}
+
+/// Refuses every HTTP redirect for `MCPClient`.
+///
+/// The MCP request carries the configured server's bearer token. URLSession's default behavior follows a
+/// 3xx by replaying the request — `Authorization` header and all — at the host named in `Location`, so a
+/// compromised or hostile MCP endpoint could hand the user's credential to a third party with a one-line
+/// response. Returning `nil` here stops the redirect; the 3xx status reaches `readResponse`, fails its
+/// `200...299` guard, and surfaces as `MCPError.http`. A configured endpoint that genuinely moved should
+/// be re-entered in Settings, not followed silently while holding a token.
+final class MCPRedirectBlocker: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }

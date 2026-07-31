@@ -14,21 +14,22 @@ import LLMCore
 /// editor sheet, and a confirm before anything is destroyed.
 struct MemoryView: View {
     let book: MemoryBook
-    /// The switch lives here too, not only in Manage tools. Injection isn't gated on the master tools
-    /// switch (see `AppSettings.memoryEnabled`) but the Manage-tools row is hidden when tools are off — so
-    /// the one surface that always reaches memory has to be the one that can turn it off.
+    /// The switch lives here too, not only in Choose tools. Injection isn't gated on the master tools
+    /// switch (see `AppSettings.memoryEnabled`), so the surface that reviews memory also controls it.
     let settings: AppSettings
     @Environment(\.dismiss) private var dismiss
     @State private var editing: MemoryEditorTarget?
     @State private var pendingDelete: MemoryFact?
     @State private var confirmForgetAll = false
+    @State private var operationError: String?
 
     var body: some View {
         List {
             Section {
                 Text("Memory is what the model knows about you between chats. It saves a short note when "
                      + "you tell it something worth keeping, and the notes that matter to your question "
-                     + "are added to its prompt before it answers. Everything here stays on this device.")
+                     + "are added to its prompt before it answers. Model-saved notes use English so every "
+                     + "model reads one consistent format. Everything here stays on this device.")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .listRowBackground(Color.clear)
@@ -117,7 +118,10 @@ struct MemoryView: View {
             Button("Delete", role: .destructive) {
                 let id = fact.id
                 pendingDelete = nil
-                Task { await book.delete(id: id) }
+                Task {
+                    do { try await book.delete(id: id) }
+                    catch { operationError = error.localizedDescription }
+                }
             }
             Button("Cancel", role: .cancel) { pendingDelete = nil }
         } message: { fact in
@@ -127,10 +131,22 @@ struct MemoryView: View {
             Text("“\(text)” will be forgotten. This can't be undone.")
         }
         .alert("Forget everything?", isPresented: $confirmForgetAll) {
-            Button("Forget everything", role: .destructive) { Task { await book.deleteAll() } }
+            Button("Forget everything", role: .destructive) {
+                Task {
+                    do { try await book.deleteAll() }
+                    catch { operationError = error.localizedDescription }
+                }
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("All \(book.count) memories will be deleted from this device. This can't be undone.")
+        }
+        .alert("Memory wasn't changed",
+               isPresented: Binding(get: { operationError != nil },
+                                    set: { if !$0 { operationError = nil } })) {
+            Button("OK", role: .cancel) { operationError = nil }
+        } message: {
+            Text(operationError ?? "The memory store couldn't be written.")
         }
     }
 
@@ -207,6 +223,8 @@ struct MemoryEditorView: View {
     let target: MemoryEditorTarget
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
+    @State private var operationError: String?
+    @State private var isSaving = false
 
     init(book: MemoryBook, target: MemoryEditorTarget) {
         self.book = book
@@ -226,9 +244,9 @@ struct MemoryEditorView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    Text("Write it as a fact about you, in the third person — the model reads these as "
-                         + "notes it took. Keep it to one short sentence: it's charged to the context "
-                         + "window whenever it's relevant.")
+                    Text("Write one short English sentence about you, beginning with “The user ” — the "
+                         + "model reads it as a note it took. It is charged to the context window whenever "
+                         + "it's relevant.")
                         .font(.caption).foregroundStyle(Theme.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                     TextEditor(text: $text)
@@ -259,8 +277,15 @@ struct MemoryEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }.disabled(!canSave)
+                    Button("Save") { save() }.disabled(!canSave || isSaving)
                 }
+            }
+            .alert("Memory wasn't saved",
+                   isPresented: Binding(get: { operationError != nil },
+                                        set: { if !$0 { operationError = nil } })) {
+                Button("OK", role: .cancel) { operationError = nil }
+            } message: {
+                Text(operationError ?? "The memory store couldn't be written.")
             }
         }
     }
@@ -269,12 +294,20 @@ struct MemoryEditorView: View {
         guard canSave else { return }
         let text = self.text
         let book = self.book
-        if let fact = editingFact {
-            Task { await book.update(id: fact.id, text: text) }
-        } else {
-            Task { await book.add(text) }
+        isSaving = true
+        Task {
+            do {
+                if let fact = editingFact {
+                    try await book.update(id: fact.id, text: text)
+                } else {
+                    try await book.add(text)
+                }
+                dismiss()
+            } catch {
+                operationError = error.localizedDescription
+                isSaving = false
+            }
         }
-        dismiss()
     }
 }
 

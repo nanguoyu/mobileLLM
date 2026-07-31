@@ -49,3 +49,26 @@ actor RecordingEngine: LLMEngine {
         }
     }
 }
+
+/// Holds ChatStore at its lazy-model readiness boundary so a test can mutate live settings after Send and
+/// prove the in-flight turn still uses the authorization snapshot captured synchronously by `send()`.
+actor ModelReadinessGate {
+    private var isOpen = false
+    private var didEnter = false
+    private var waiter: CheckedContinuation<Bool, Never>?
+
+    func wait() async -> Bool {
+        didEnter = true
+        if isOpen { return true }
+        return await withCheckedContinuation { waiter = $0 }
+    }
+
+    func entered() -> Bool { didEnter }
+
+    func release() {
+        guard !isOpen else { return }
+        isOpen = true
+        waiter?.resume(returning: true)
+        waiter = nil
+    }
+}

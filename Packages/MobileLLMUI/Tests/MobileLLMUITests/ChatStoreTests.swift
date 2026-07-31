@@ -203,8 +203,8 @@ final class ChatStoreTests: XCTestCase {
 
     // MARK: - Conversation ↔ model identity
 
-    /// A fresh (still-empty) thread must survive a relaunch — with its model seed — so reopening the app
-    /// lands back on the chat the user just opened, not on the previous conversation.
+    /// A fresh (still-empty) thread must survive a relaunch — with its model seed — so it remains in
+    /// history even though launch itself deliberately leaves every conversation unselected.
     func testNewEmptyConversationSurvivesRelaunch() async throws {
         let (chat, dir) = makeStore(script: .init(reasoning: "", answer: "ok",
                                                   chunkSize: 8, chunkDelayNanos: 0))
@@ -226,7 +226,7 @@ final class ChatStoreTests: XCTestCase {
     }
 
     /// Every send restamps the record with the model that's ACTUALLY answering, so a mid-thread model
-    /// switch is what a relaunch restores — not the first model the thread ever used.
+    /// switch is what explicitly reopening the thread restores — not the first model it ever used.
     func testSendRestampsTheConversationModelEveryTurn() async throws {
         let (chat, dir) = makeStore(script: .init(reasoning: "", answer: "ok",
                                                   chunkSize: 8, chunkDelayNanos: 0))
@@ -235,6 +235,14 @@ final class ChatStoreTests: XCTestCase {
         chat.send()
         try await waitUntilIdle(chat)
         XCTAssertEqual(chat.activeConversation?.modelID, LLMCatalog.bonsai8b.id)
+        let firstAssistantID = try XCTUnwrap(
+            chat.activeConversation?.messages.last(where: { $0.role == .assistant })?.id
+        )
+        let firstAttribution = try XCTUnwrap(
+            chat.activeConversation?.messages.first(where: { $0.id == firstAssistantID })?.generatedBy
+        )
+        XCTAssertEqual(firstAttribution.modelID, LLMCatalog.bonsai8b.id)
+        XCTAssertEqual(firstAttribution.variantID, LLMCatalog.bonsai8b.defaultVariantValue.id)
 
         // Switch the resident model, continue the thread — the record must follow.
         let other = LLMCatalog.bonsai4b
@@ -244,6 +252,15 @@ final class ChatStoreTests: XCTestCase {
         try await waitUntilIdle(chat)
         XCTAssertEqual(chat.activeConversation?.modelID, other.id)
         XCTAssertEqual(chat.activeConversation?.variantID, other.defaultVariantValue.id)
+        let secondAttribution = try XCTUnwrap(chat.activeConversation?.messages.last?.generatedBy)
+        XCTAssertEqual(secondAttribution.modelID, other.id,
+                       "the new assistant turn records the model that actually generated it")
+        XCTAssertEqual(secondAttribution.variantID, other.defaultVariantValue.id)
+        XCTAssertEqual(
+            chat.activeConversation?.messages.first(where: { $0.id == firstAssistantID })?.generatedBy,
+            firstAttribution,
+            "switching the active model never relabels an earlier assistant turn"
+        )
     }
 
     /// Opening a conversation whose remembered model differs from the resident one asks the shell to
@@ -269,6 +286,30 @@ final class ChatStoreTests: XCTestCase {
         chat.activeModel = LoadedModel(model: other, variant: other.defaultVariantValue)
         chat.select(convoID)
         XCTAssertEqual(restored, [LLMCatalog.bonsai8b.id])
+    }
+
+    func testSelectRequestsTheConversationsOwnVariantWithinTheSameModel() throws {
+        let (chat, dir) = makeStore(script: .init(reasoning: "", answer: "ok",
+                                                  chunkSize: 8, chunkDelayNanos: 0))
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let model = LLMCatalog.bonsai8b
+        let resident = try XCTUnwrap(model.variants.first)
+        let remembered = try XCTUnwrap(model.variants.dropFirst().first)
+        let convo = Conversation(modelID: model.id, variantID: remembered.id)
+        chat.conversations = [convo]
+        chat.activeModel = LoadedModel(model: model, variant: resident)
+
+        var restoredModelID: String?
+        var restoredVariantID: String?
+        chat.restoreModel = { modelID, variantID in
+            restoredModelID = modelID
+            restoredVariantID = variantID
+        }
+
+        chat.select(convo.id)
+
+        XCTAssertEqual(restoredModelID, model.id)
+        XCTAssertEqual(restoredVariantID, remembered.id)
     }
 
     func testStopBeforeFirstTokenCommitsStoppedEmptyState() async throws {
@@ -302,6 +343,25 @@ final class ChatStoreTests: XCTestCase {
         XCTAssertEqual(assistant.emptyOutcome, .failed)
         XCTAssertNil(assistant.stats, "a failed turn must NOT fake stats")
         XCTAssertEqual(chat.banner?.kind, .error, "the failure also surfaces an error banner")
+    }
+
+    func testModelReadinessFailureDoesNotCallGenerate() async throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "chat-readiness-\(UUID().uuidString)")!)
+        let engine = RecordingEngine()
+        let chat = ChatStore(engine: engine, store: store, settings: settings, activeModel: mockModel)
+        chat.ensureModelReady = { false }
+
+        chat.draft = "go"
+        chat.send()
+        try await waitUntilIdle(chat)
+
+        let generatedTurns = await engine.lastTurns()
+        XCTAssertNil(generatedTurns, "a failed resident-load gate must never enter engine.generate")
+        let assistant = try XCTUnwrap(chat.activeConversation?.messages.last)
+        XCTAssertEqual(assistant.role, .assistant)
+        XCTAssertEqual(assistant.emptyOutcome, .failed, "the blocked turn is committed as retryable failure")
     }
 
     // MARK: - Regenerate safety (B1.e: confirm before dropping later turns)

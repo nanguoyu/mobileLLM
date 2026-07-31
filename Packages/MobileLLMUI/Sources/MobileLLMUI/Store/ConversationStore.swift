@@ -3,6 +3,19 @@
 import Foundation
 import AppRuntime
 
+public struct ConversationDataDeletionError: LocalizedError, Sendable {
+    public let failures: [String]
+    public var errorDescription: String? {
+        "Some conversation data could not be removed:\n" + failures.joined(separator: "\n")
+    }
+}
+
+public struct ConversationEraseInProgressError: LocalizedError, Sendable {
+    public var errorDescription: String? {
+        "Conversation data is being erased. Try again after the erase finishes."
+    }
+}
+
 /// Durable chat persistence (DESIGN §2.4): one `conversation-<uuid>.json` record per thread plus a
 /// lightweight `index.json` for fast list rendering. Both are `DurableStore`s so every write is
 /// atomic and a corrupt manifest is backed up (never wiped) rather than losing a long chat. Being an
@@ -17,6 +30,13 @@ public actor ConversationStore {
     public nonisolated let directory: URL
     /// The index is one file holding every thread's light projection.
     private let index: DurableStore<ConversationIndexEntry>
+    /// Actor isolation alone does not make a read-modify-write transaction atomic: every await into a
+    /// `DurableStore` is a reentrancy point. This FIFO gate keeps record + index mutations linearized.
+    private var mutationInProgress = false
+    private var mutationWaiters: [CheckedContinuation<Void, Never>] = []
+    /// Raised before `deleteAll` waits for the mutation lane. Mutations that start after an erase request
+    /// are rejected instead of queueing behind it and recreating data after the empty index is committed.
+    private var eraseInProgress = false
 
     /// Store under an explicit directory (tests pass a temp dir; the app passes Application Support).
     public init(directory: URL) {
@@ -53,7 +73,10 @@ public actor ConversationStore {
     /// Persist one attachment's encoded (downscaled JPEG) bytes to disk, keyed by its `ImageRef.id`.
     /// Written before generation so history replay + follow-ups can reload it; kept out of the record
     /// JSON so a record load never drags multi-MB pixels through the decoder.
-    public func writeAttachment(_ data: Data, id: UUID) throws {
+    public func writeAttachment(_ data: Data, id: UUID) async throws {
+        try ensureMutationAllowed()
+        await beginMutation()
+        defer { endMutation() }
         try FileManager.default.createDirectory(at: attachmentsDirectory, withIntermediateDirectories: true)
         try data.write(to: attachmentURL(for: id), options: .atomic)
     }
@@ -66,7 +89,14 @@ public actor ConversationStore {
     /// Remove the files backing a set of attachment refs. Best-effort — a missing file is already the
     /// desired state. Public because truncation flows (regenerate / edit-and-resend) drop image-bearing
     /// turns from LIVE threads and must purge their pixels too, not just hard-delete.
-    public func removeAttachments(_ refs: [ImageRef]) {
+    public func removeAttachments(_ refs: [ImageRef]) async {
+        guard !eraseInProgress else { return }
+        await beginMutation()
+        defer { endMutation() }
+        removeAttachmentsLocked(refs)
+    }
+
+    private func removeAttachmentsLocked(_ refs: [ImageRef]) {
         for ref in refs { try? FileManager.default.removeItem(at: attachmentURL(for: ref.id)) }
     }
 
@@ -104,6 +134,26 @@ public actor ConversationStore {
 
     // MARK: - CRUD
 
+    private func ensureMutationAllowed() throws {
+        if eraseInProgress { throw ConversationEraseInProgressError() }
+    }
+
+    private func beginMutation() async {
+        if !mutationInProgress {
+            mutationInProgress = true
+            return
+        }
+        await withCheckedContinuation { mutationWaiters.append($0) }
+    }
+
+    private func endMutation() {
+        if mutationWaiters.isEmpty {
+            mutationInProgress = false
+        } else {
+            mutationWaiters.removeFirst().resume()
+        }
+    }
+
     /// Load one full conversation (nil if missing or tombstoned-and-gone).
     public func load(_ id: UUID) async -> Conversation? {
         await recordStore(for: id).load().first
@@ -121,12 +171,18 @@ public actor ConversationStore {
 
     /// Atomically persist a conversation and refresh its index entry (single-writer autosave path).
     public func save(_ conversation: Conversation) async throws {
+        try ensureMutationAllowed()
+        await beginMutation()
+        defer { endMutation() }
         try await recordStore(for: conversation.id).save([conversation])
         try await upsertIndex(conversation.indexEntry)
     }
 
     /// Soft-delete: tombstone the index entry, keeping the file so the delete can be undone.
     public func softDelete(_ id: UUID) async throws {
+        try ensureMutationAllowed()
+        await beginMutation()
+        defer { endMutation() }
         var entries = await index.load()
         guard let i = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[i].deletedAt = Date()
@@ -135,6 +191,9 @@ public actor ConversationStore {
 
     /// Undo a soft-delete: clear the tombstone. The full record was never removed.
     public func restore(_ id: UUID) async throws {
+        try ensureMutationAllowed()
+        await beginMutation()
+        defer { endMutation() }
         var entries = await index.load()
         guard let i = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[i].deletedAt = nil
@@ -145,9 +204,16 @@ public actor ConversationStore {
     /// — used by "Delete all" and the tombstone sweep). Purging the attachment files with the thread is
     /// the privacy promise: a hard-deleted chat leaves no pixels behind.
     public func hardDelete(_ id: UUID) async throws {
+        try ensureMutationAllowed()
+        await beginMutation()
+        defer { endMutation() }
+        try await hardDeleteLocked(id)
+    }
+
+    private func hardDeleteLocked(_ id: UUID) async throws {
         // Load the record first to find the attachment files to purge (before its JSON is removed).
         if let conversation = await load(id) {
-            removeAttachments(conversation.messages.flatMap { $0.attachments ?? [] })
+            removeAttachmentsLocked(conversation.messages.flatMap { $0.attachments ?? [] })
         }
         var entries = await index.load()
         entries.removeAll { $0.id == id }
@@ -160,10 +226,13 @@ public actor ConversationStore {
     /// ids. `now` is injectable for tests. Live (non-tombstoned) threads are never touched.
     @discardableResult
     public func sweepExpiredTombstones(olderThan age: TimeInterval, now: Date = Date()) async -> [UUID] {
+        guard !eraseInProgress else { return [] }
+        await beginMutation()
+        defer { endMutation() }
         var swept: [UUID] = []
         for entry in await index.load() {
             if let deletedAt = entry.deletedAt, now.timeIntervalSince(deletedAt) >= age {
-                try? await hardDelete(entry.id)
+                try? await hardDeleteLocked(entry.id)
                 swept.append(entry.id)
             }
         }
@@ -172,11 +241,48 @@ public actor ConversationStore {
 
     /// Remove every conversation + index + attachment image (Settings → Delete all data).
     public func deleteAll() async throws {
-        for entry in await index.load() {
-            try? FileManager.default.removeItem(at: fileURL(for: entry.id))
+        guard !eraseInProgress else { throw ConversationEraseInProgressError() }
+        eraseInProgress = true
+        await beginMutation()
+        defer {
+            eraseInProgress = false
+            endMutation()
         }
-        try? FileManager.default.removeItem(at: attachmentsDirectory)   // purge all attachment pixels
+        let fm = FileManager.default
+        var failures: [String] = []
+
+        // Enumerate only names owned by ConversationStore. `memory.json` and `skills.json` deliberately
+        // share this directory and must be left for their own stores to erase transactionally.
+        do {
+            let children = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            for url in children where Self.isOwnedConversationArtifact(url) {
+                do {
+                    try fm.removeItem(at: url)
+                } catch {
+                    failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            // First launch: there is no directory yet, which is already an empty state.
+        } catch {
+            failures.append("Conversation directory: \(error.localizedDescription)")
+        }
+
+        guard failures.isEmpty else { throw ConversationDataDeletionError(failures: failures) }
         try await writeIndex([])
+    }
+
+    private nonisolated static func isOwnedConversationArtifact(_ url: URL) -> Bool {
+        let name = url.lastPathComponent
+        if name == "attachments" || name == "index.json.corrupt" || name == "index.json.tmp" {
+            return true
+        }
+        for suffix in [".json", ".json.corrupt", ".json.tmp"] where name.hasSuffix(suffix) {
+            let stem = String(name.dropLast(suffix.count))
+            guard stem.hasPrefix("conversation-") else { continue }
+            return UUID(uuidString: String(stem.dropFirst("conversation-".count))) != nil
+        }
+        return false
     }
 
     // MARK: - Search

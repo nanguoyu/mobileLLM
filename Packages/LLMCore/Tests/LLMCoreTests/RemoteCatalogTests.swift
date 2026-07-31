@@ -33,6 +33,106 @@ final class RemoteCatalogTests: XCTestCase {
         // Sorted low-precision first → 4-bit before 8-bit.
         XCTAssertEqual(small.variants.map(\.quantLabel), ["4-bit", "8-bit"])
         XCTAssertEqual(small.engine, .mlx)
+        XCTAssertEqual(small.family, .unknown, "a repo name alone is not verified family metadata")
+        XCTAssertEqual(small.license, .unknown, "a publisher must never imply a license")
+    }
+
+    func testHubMetadataSuppliesRevisionFamilyAndLicense() throws {
+        let json = """
+        [
+          {"id":"mlx-community/Qwen3-8B-4bit","downloads":900,"sha":"abc123",
+           "tags":["text-generation","qwen3","license:apache-2.0"]},
+          {"id":"mlx-community/Qwen3-8B-8bit","downloads":800,"sha":"def456",
+           "tags":["qwen3","license:apache-2.0"]}
+        ]
+        """
+        let repos = try RemoteCatalog.parseHubRepositories(Data(json.utf8))
+        XCTAssertEqual(repos.map(\.revision), ["abc123", "def456"])
+        let grouped = RemoteCatalog.group(repos, publisher: "mlx-community", engine: .mlx)
+        let model = try XCTUnwrap(grouped.first)
+        XCTAssertEqual(model.family, .qwen)
+        XCTAssertEqual(model.license, .apache2)
+        XCTAssertEqual(model.variants.map(\.revision), ["abc123", "def456"])
+
+        let catalogModel = model.asLLMModel(paramsBillions: 8)
+        XCTAssertEqual(catalogModel.family, .qwen)
+        XCTAssertEqual(catalogModel.license, .apache2)
+        XCTAssertEqual(catalogModel.variants.map(\.source.revision), ["abc123", "def456"])
+    }
+
+    func testUnknownHubMetadataStaysExplicitlyUnverified() throws {
+        let data = Data(#"[{"id":"community/Novel-7B-4bit","downloads":1,"tags":["safetensors"]}]"#.utf8)
+        let repos = try RemoteCatalog.parseHubRepositories(data)
+        let model = try XCTUnwrap(RemoteCatalog.group(repos, publisher: "community", engine: .mlx).first)
+        XCTAssertEqual(model.family, .unknown)
+        XCTAssertEqual(model.license, .unknown)
+        XCTAssertEqual(model.revision, "main", "an absent Hub SHA uses the explicit mutable fallback")
+
+        let converted = model.asLLMModel(paramsBillions: 7)
+        XCTAssertEqual(converted.family, .unknown)
+        XCTAssertEqual(converted.license, .unknown)
+        XCTAssertEqual(converted.summary,
+                       "Community model — Hub metadata when available; not hand-verified.")
+        XCTAssertNotEqual(converted.family, .qwen)
+        XCTAssertNotEqual(converted.license, .apache2)
+    }
+
+    func testConflictingVariantMetadataDowngradesGroupToUnknown() throws {
+        let data = Data("""
+        [
+          {"id":"community/Shared-7B-4bit","tags":["qwen3","license:apache-2.0"]},
+          {"id":"community/Shared-7B-8bit","tags":["gemma","license:mit"]}
+        ]
+        """.utf8)
+        let repos = try RemoteCatalog.parseHubRepositories(data)
+        let model = try XCTUnwrap(
+            RemoteCatalog.group(repos, publisher: "community", engine: .mlx).first)
+        XCTAssertEqual(model.family, .unknown)
+        XCTAssertEqual(model.license, .unknown,
+                       "a grouped card must not arbitrarily choose one conflicting variant's metadata")
+    }
+
+    func testMetadataMappingsOnlyRecognizeSupportedIdentifiers() {
+        XCTAssertEqual(RemoteCatalog.family(tags: ["base_model:google/gemma-3-4b"]), .gemma)
+        XCTAssertEqual(RemoteCatalog.family(tags: ["model_type:mistral"]), .mistral)
+        XCTAssertEqual(RemoteCatalog.family(tags: ["text-generation"]), .unknown)
+        XCTAssertEqual(RemoteCatalog.family(tags: ["notqwen", "graphite"]), .unknown,
+                       "family matching is token-aware, not an arbitrary substring search")
+        XCTAssertEqual(RemoteCatalog.family(tags: ["qwen3", "gemma"]), .unknown,
+                       "conflicting recognized families on one repo must not pick the first")
+        XCTAssertEqual(RemoteCatalog.license(tags: ["license:mit"]), .mit)
+        XCTAssertEqual(RemoteCatalog.license(tags: ["license:llama3.1"]), .llamaCommunity)
+        XCTAssertEqual(RemoteCatalog.license(tags: ["license:proprietary-custom"]), .unknown)
+        XCTAssertEqual(RemoteCatalog.license(tags: ["license:mit", "license:apache-2.0"]), .unknown,
+                       "conflicting recognized licenses on one repo must remain unverified")
+    }
+
+    func testHubURLTreatsRevisionAsOneEncodedPathSegment() throws {
+        let url = try XCTUnwrap(RemoteCatalog.hubURL(
+            repoId: "org/model", endpoint: "resolve", revision: "release/ios 2",
+            filePath: "nested/config file.json"))
+        XCTAssertEqual(
+            URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath,
+            "/org/model/resolve/release%2Fios%202/nested/config%20file.json")
+    }
+
+    func testHubURLRejectsUnsafeRepositoryRevisionAndFileComponents() {
+        for repo in ["", ".", "..", "../model", "org/../model", "/absolute",
+                     "org/model/extra", #"org\model"#, "org/\0model"] {
+            XCTAssertNil(RemoteCatalog.hubURL(
+                repoId: repo, endpoint: "resolve", revision: "main", filePath: "config.json"))
+        }
+        for revision in ["", ".", "..", #"release\candidate"#, "release\0candidate"] {
+            XCTAssertNil(RemoteCatalog.hubURL(
+                repoId: "org/model", endpoint: "resolve", revision: revision,
+                filePath: "config.json"))
+        }
+        for filePath in [".", "..", "../config.json", "nested/./config.json",
+                         #"nested\config.json"#, "nested/\0config.json"] {
+            XCTAssertNil(RemoteCatalog.hubURL(
+                repoId: "org/model", endpoint: "resolve", revision: "main",
+                filePath: filePath))
+        }
     }
 
     func testFiltersNonChatArtifacts() {
@@ -115,6 +215,62 @@ final class RemoteCatalogTests: XCTestCase {
                        "an arbitrary community GGUF must render with its own embedded template")
         XCTAssertEqual(model.variants.first?.backend, .llamaCppGGUF)
         XCTAssertEqual(model.variants.first?.source.fileName, "x-Q4_K_M.gguf")
+        XCTAssertEqual(model.family, .unknown)
+        XCTAssertEqual(model.license, .unknown)
+    }
+
+    func testGGUFExploreQuantsInOneRepoHaveStableDistinctArtifactIDs() throws {
+        let remote = RemoteModel(
+            id: "org/x-GGUF", name: "X 7B", publisher: "org", engine: .llamaCpp,
+            downloads: 1, revision: "commit-abc",
+            variants: [
+                RemoteVariant(
+                    quantLabel: "Q4_K_M", repo: "org/x-GGUF", revision: "commit-abc",
+                    fileName: "x-Q4_K_M.gguf", sizeBytes: 4_000),
+                RemoteVariant(
+                    quantLabel: "Q8_0", repo: "org/x-GGUF", revision: "commit-abc",
+                    fileName: "x-Q8_0.gguf", sizeBytes: 8_000)
+            ]
+        )
+        let first = remote.asLLMModel(paramsBillions: 7)
+        let rebuilt = remote.asLLMModel(paramsBillions: 7)
+        XCTAssertEqual(first.variants.map(\.identityScheme), [.sourceArtifactV2, .sourceArtifactV2])
+        XCTAssertEqual(first.variants.map(\.id), rebuilt.variants.map(\.id), "identity must be deterministic")
+        XCTAssertEqual(Set(first.variants.map(\.id)).count, 2,
+                       "two files in one repo are independently installable variants")
+
+        let q4 = try XCTUnwrap(first.variants.first)
+        XCTAssertNotEqual(q4.id, q4.legacyID)
+        XCTAssertTrue(q4.matchesPersistedID(q4.id))
+        XCTAssertTrue(q4.matchesPersistedID(q4.legacyID),
+                      "old conversations keep resolving through the repository-format alias")
+    }
+
+    func testArtifactIdentityIncludesEveryByteAndRuntimeSelector() {
+        func variant(
+            quant: QuantSpec = .other("Q4_K_M"),
+            backend: Backend = .llamaCppGGUF,
+            repo: String = "org/model-GGUF",
+            revision: String = "commit-a",
+            fileName: String? = "model-Q4_K_M.gguf"
+        ) -> LLMVariant {
+            LLMVariant(
+                quant: quant,
+                backend: backend,
+                onDiskBytes: 1,
+                source: ModelSource(
+                    huggingFaceRepo: repo, revision: revision, fileName: fileName),
+                identityScheme: .sourceArtifactV2
+            )
+        }
+
+        let base = variant()
+        XCTAssertNotEqual(base.id, variant(repo: "other/model-GGUF").id)
+        XCTAssertNotEqual(base.id, variant(revision: "commit-b").id)
+        XCTAssertNotEqual(base.id, variant(fileName: "model-Q5_K_M.gguf").id)
+        XCTAssertNotEqual(base.id, variant(fileName: nil).id)
+        XCTAssertNotEqual(base.id, variant(quant: .other("Q5_K_M")).id)
+        XCTAssertNotEqual(base.id, variant(backend: .mlxStock).id)
     }
 
     func testEstimateBytesScalesWithParamsAndQuant() {
@@ -237,6 +393,8 @@ final class RemoteCatalogTests: XCTestCase {
         let model = remote.asLLMModel(paramsBillions: 1, architecture: real)
         XCTAssertEqual(model.architecture.nativeContext, 4096, "the clamp must see the real 4K ceiling, not 32K")
         XCTAssertEqual(model.architecture.modelType, "qwen3")
+        XCTAssertEqual(model.family, .qwen, "parsed config model_type is authoritative family metadata")
+        XCTAssertEqual(model.license, .unknown, "config shape does not imply a license")
         XCTAssertEqual(model.variants.first?.backend, .mlxStock)
         XCTAssertEqual(model.variants.first?.source.huggingFaceRepo, "mlx-community/Tiny-4bit")
         // The generic default path still yields the fabricated 32K (documents the contrast the fix fixes).

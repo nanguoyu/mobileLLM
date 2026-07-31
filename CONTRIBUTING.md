@@ -50,8 +50,9 @@ for the MLX-fork + llama.cpp dependency pins.
 
 ## Running the tests
 
-The five MLX-free packages are the fast inner loop and the same suites CI runs. Point the build output
-outside the source tree so nothing stray lands in the repo:
+The five MLX-free packages are the fast inner loop and CI's first matrix. CI then performs the unsigned app
+build and the three-engine `EngineTests` gate. Point local SwiftPM build output outside the source tree so
+nothing stray lands in the repo:
 
 ```sh
 swift test --package-path Packages/AppUI          --scratch-path /tmp/mllm-appui
@@ -70,8 +71,20 @@ The two local-weight engine packages (`LLMEngineMLX`, `LLMEngineLlama`) build an
 (`llm-smoke`, `llama-smoke`) run against real weights on a device.
 
 ```sh
+# Unsigned app builds matching CI's two platform gates:
+xcodebuild -project mobileLLM.xcodeproj -scheme mobileLLM \
+  -destination 'platform=macOS,arch=arm64' -skipMacroValidation \
+  MTL_COMPILER_FLAGS='$(inherited) -Wno-c++17-extensions -Wno-c++20-extensions' \
+  CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project mobileLLM.xcodeproj -scheme mobileLLM \
+  -destination 'generic/platform=iOS' -skipMacroValidation \
+  MTL_COMPILER_FLAGS='$(inherited) -Wno-c++17-extensions -Wno-c++20-extensions' \
+  CODE_SIGNING_ALLOWED=NO build
+
 # Engine unit tests (macOS destination; SwiftPM can't build the MLX package's macros):
-xcodebuild -skipMacroValidation -scheme EngineTests -destination platform=macOS test
+xcodebuild -skipMacroValidation -scheme EngineTests \
+  -destination 'platform=macOS,arch=arm64' \
+  MTL_COMPILER_FLAGS='$(inherited) -Wno-c++17-extensions -Wno-c++20-extensions' test
 
 # Keyboard/composer geometry (XCUITest, iOS simulator). Prerequisites: seed a small GGUF into the sim
 # app container (see the header of UITests/KeyboardUITests.swift) and disable the hardware keyboard
@@ -97,6 +110,9 @@ variants there by design; anything MLX is validated on real hardware.
   Don't add MLX (or the fork) as a dependency of the other five.
 - **Adding a model?** Prefer a catalog entry in `LLMCatalog` with the right `modelType` / `swiftModelClass`
   and verified figures from a Hugging Face primary source — the schema is built to grow that way.
+- **Changing downloads or web access?** Pin every Hub request to the variant revision, preserve LFS
+  integrity checks across fresh and resumed writes, validate every redirect target and resolved address,
+  and enforce response limits while streaming. Add hostile-path tests, not only happy-path fixtures.
 - Keep PRs focused, describe the *why*, and confirm the MLX-free suites pass before requesting review.
 
 By contributing you agree your contributions are licensed under the [MIT License](LICENSE). Please also

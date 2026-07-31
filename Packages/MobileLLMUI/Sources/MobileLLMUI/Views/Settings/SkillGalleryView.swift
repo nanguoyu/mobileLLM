@@ -17,6 +17,7 @@ struct SkillGalleryView: View {
     @State private var items: [SkillGallery.GalleryItem] = []
     @State private var phase: Phase = .loading
     @State private var selected: SkillGallery.GalleryItem?
+    @State private var installError: String?
 
     private enum Phase: Equatable { case loading, ready, failed(String) }
 
@@ -46,6 +47,13 @@ struct SkillGalleryView: View {
             #if os(macOS)
                 .frame(minWidth: 480, minHeight: 520)
             #endif
+        }
+        .alert("Skill wasn't installed",
+               isPresented: Binding(get: { installError != nil },
+                                    set: { if !$0 { installError = nil } })) {
+            Button("OK", role: .cancel) { installError = nil }
+        } message: {
+            Text(installError ?? "The skill store couldn't be written.")
         }
     }
 
@@ -269,10 +277,16 @@ struct SkillGalleryView: View {
 
     private func install(_ item: SkillGallery.GalleryItem) {
         guard let p = item.parsed else { return }
-        store.create(name: p.name, emoji: item.emoji,
-                     summary: p.summary.isEmpty ? "Imported skill" : p.summary,
-                     instructions: p.instructions)
-        selected = nil
+        Task {
+            do {
+                _ = try await store.create(name: p.name, emoji: item.emoji,
+                                           summary: p.summary.isEmpty ? "Imported skill" : p.summary,
+                                           instructions: p.instructions)
+                selected = nil
+            } catch {
+                installError = error.localizedDescription
+            }
+        }
     }
 }
 

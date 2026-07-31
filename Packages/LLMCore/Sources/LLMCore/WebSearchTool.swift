@@ -30,14 +30,26 @@ public struct SearchResult: Sendable, Equatable, Hashable, Codable {
 /// network.
 public struct WebSearchTool: Tool {
     private let engines: [SearchEngine]
-    private let session: URLSession
+    private let httpClient: WebHTTPClient
     private let maxResults: Int
+    private let maxBytes: Int
 
     public init(engines: [SearchEngine] = [.duckduckgo, .bing],
-                session: URLSession = .shared, maxResults: Int = 6) {
+                session: URLSession = .shared, maxResults: Int = 6,
+                maxBytes: Int = 2 * 1024 * 1024) {
         self.engines = engines.isEmpty ? [.duckduckgo, .bing] : engines
-        self.session = session
+        self.httpClient = WebHTTPClient(session: session)
         self.maxResults = max(1, maxResults)
+        self.maxBytes = max(1, maxBytes)
+    }
+
+    init(engines: [SearchEngine] = [.duckduckgo, .bing],
+         session: URLSession, maxResults: Int = 6, maxBytes: Int = 2 * 1024 * 1024,
+         dnsResolver: @escaping WebDNSResolver) {
+        self.engines = engines.isEmpty ? [.duckduckgo, .bing] : engines
+        self.httpClient = WebHTTPClient(session: session, resolver: dnsResolver)
+        self.maxResults = max(1, maxResults)
+        self.maxBytes = max(1, maxBytes)
     }
 
     public var schema: ToolSchema {
@@ -73,12 +85,10 @@ public struct WebSearchTool: Tool {
         req.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         req.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
         req.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
-        let (data, resp) = try await session.data(for: req)
-        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw ToolNetError.badResponse }
-        // Cap what we parse — a SERP page is normally well under 1 MB, so 2 MB is generous headroom.
-        let capped = data.prefix(2 * 1024 * 1024)
-        guard let html = String(data: capped, encoding: .utf8)
-                      ?? String(data: capped, encoding: .isoLatin1) else { throw ToolNetError.badResponse }
+        let result = try await httpClient.get(req, maxBytes: maxBytes)
+        guard result.response.statusCode == 200 else { throw ToolNetError.badResponse }
+        guard let html = String(data: result.body, encoding: .utf8)
+                      ?? String(data: result.body, encoding: .isoLatin1) else { throw ToolNetError.badResponse }
         return html
     }
 

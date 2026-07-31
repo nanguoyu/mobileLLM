@@ -80,9 +80,9 @@ final class MCPTests: XCTestCase {
     }
 
     /// A disabled server must not even be contacted — the registry is what gates it.
-    func testDisabledServerIsNotConsulted() async {
+    func testDisabledServerIsNotConsulted() async throws {
         let unreachable = MCPServer(name: "off", url: "https://127.0.0.1:1/mcp", isEnabled: false)
-        let registry = await ToolRegistry.build(mcpServers: [unreachable])
+        let registry = try await ToolRegistry.build(mcpServers: [unreachable])
         // Only the three standard local tools; no hang, no attempt.
         XCTAssertEqual(registry.schemas.map(\.name).sorted(),
                        ["calculator", "current_datetime", "web_search"])

@@ -5,6 +5,35 @@ import Observation
 import AppRuntime
 import LLMCore
 
+/// Everything `send()` mutates before an attachment reaches disk. Keeping this snapshot small and
+/// explicit lets the asynchronous write path restore the composer + conversation without rolling back
+/// unrelated edits such as pinning or other conversation metadata.
+private struct AttachmentSendRollback: Sendable {
+    let conversationID: UUID
+    let userID: UUID
+    var assistantID: UUID?
+    let text: String
+    let stagedImages: [PendingImage]
+    let originalTitle: String
+    let originalModelID: String
+    let originalVariantID: String
+    let originalUpdatedAt: Date
+    var provisionalTitle: String? = nil
+    var provisionalModelID: String? = nil
+    var provisionalVariantID: String? = nil
+    var provisionalUpdatedAt: Date? = nil
+
+    func accepting(assistantID: UUID, conversation: Conversation) -> Self {
+        var copy = self
+        copy.assistantID = assistantID
+        copy.provisionalTitle = conversation.title
+        copy.provisionalModelID = conversation.modelID
+        copy.provisionalVariantID = conversation.variantID
+        copy.provisionalUpdatedAt = conversation.updatedAt
+        return copy
+    }
+}
+
 /// The @MainActor UI state owner (DESIGN §2.3). Holds the conversation mirror + the live streaming
 /// state, talks to the `LLMEngine` actor over an `AsyncThrowingStream`, and autosaves through
 /// `ConversationStore`. Only the small streaming strings mutate per token, so the message list never
@@ -12,6 +41,11 @@ import LLMCore
 @MainActor
 @Observable
 public final class ChatStore {
+
+    /// A reasoning-only EOS or token limit earns one answer completion attempt, not another full generation
+    /// budget. Some weak reasoning models ignore `thinking=false`; this cap keeps the fallback genuinely
+    /// bounded even when those discarded reasoning tokens continue until the engine's token limit.
+    private static let answerRecoveryMaxTokens = 384
 
     // MARK: - Published state
 
@@ -31,6 +65,7 @@ public final class ChatStore {
     /// switched to before saying anything.
     public var activeModel: LoadedModel? {
         didSet {
+            guard !suppressEmptyConversationReseed else { return }
             guard let m = activeModel, let i = conversations.firstIndex(where: { $0.id == activeID }),
                   conversations[i].messages.isEmpty,
                   conversations[i].modelID != m.model.id || conversations[i].variantID != m.variant.id
@@ -82,6 +117,10 @@ public final class ChatStore {
     /// the base system prompt. Public so the composer's Skill menu + management sheet reach the same store.
     public let skillStore: SkillStore?
     private var genTask: Task<Void, Never>?
+    /// AppContainer uses this narrow synchronization hook when a model operation completes. Restoring a
+    /// historical thread must update the engine identity without rewriting an empty, newly selected
+    /// thread with a stale model from an earlier restore request.
+    private var suppressEmptyConversationReseed = false
     /// The forward action attached to the current banner (Undo / Switch model), kept out of `Toast`
     /// so the value type stays `Equatable`.
     private var bannerAction: (@MainActor () -> Void)?
@@ -92,6 +131,18 @@ public final class ChatStore {
     /// The id of the save-failure banner currently on screen, so a burst of failures shows ONE banner
     /// (not one per turn) yet a later failure — after the banner is gone — surfaces a fresh one.
     private var persistFailureBannerID: UUID?
+    /// Autosaves are ordered explicitly. Main-actor isolation does not order their work after each Task
+    /// suspends in `ConversationStore`, so an untracked fire-and-forget save could otherwise land after a
+    /// successful Delete All and recreate the conversation.
+    private var persistenceTail: Task<Void, Never>?
+    private var persistenceSequence: UInt64 = 0
+    private var persistenceEpoch: UInt64 = 0
+    /// Raised before an erase drains generation + autosaves. New mutations may still update transient UI,
+    /// but no new conversation snapshot is allowed to enter the durable store until the erase finishes.
+    private var conversationEraseInProgress = false
+    /// Settings can be open in more than one macOS window. Each erase request owns a reservation so an
+    /// earlier failing request cannot reopen persistence while another window is still deleting files.
+    private var conversationEraseReservations = 0
     /// How long a soft-deleted conversation stays undoable in-session before its file is purged from disk
     /// (the privacy promise — a deleted chat mustn't linger). Matches the Undo banner's auto-dismiss.
     static let undoWindow: TimeInterval = 5
@@ -99,7 +150,9 @@ public final class ChatStore {
     static let tombstoneRetention: TimeInterval = 24 * 60 * 60
     /// Set by the app shell: reloads the active model if it was suspended to free memory while idle.
     /// Awaited right before generation, so a suspended big model comes back on the next send.
-    public var ensureModelReady: (@Sendable () async -> Void)?
+    /// Returns false when a lazy/suspended model could not become resident. Generation must stop at that
+    /// boundary instead of calling an engine that has no loaded weights.
+    public var ensureModelReady: (@Sendable () async -> Bool)?
 
     public init(engine: any LLMEngine, store: ConversationStore, settings: AppSettings,
                 activeModel: LoadedModel? = nil,
@@ -118,14 +171,29 @@ public final class ChatStore {
         self.thinkingEnabled = settings.thinkingDefault
     }
 
+    /// Synchronize the engine selection into chat state. Explicit Models → Use operations may reseed an
+    /// empty placeholder thread; historical-conversation restoration never may, because a superseded
+    /// restore completing late must not overwrite the newly selected thread's remembered variant.
+    public func synchronizeActiveModel(_ model: LoadedModel?, reseedEmptyConversation: Bool) {
+        suppressEmptyConversationReseed = !reseedEmptyConversation
+        activeModel = model
+        suppressEmptyConversationReseed = false
+    }
+
     // MARK: - Loading
 
-    /// Hydrate the mirror from disk (call once at launch). Sweeps stale tombstones first so a deleted
-    /// chat doesn't survive on disk past its retention window (DESIGN §2.4 — the privacy promise).
+    /// Hydrate the conversation LIST from disk (call once at launch). Launch deliberately has no active
+    /// thread: the user must select history, create a chat, or send from the blank detail before a
+    /// conversation is entered. Sweeps stale tombstones first so a deleted chat doesn't survive on disk
+    /// past its retention window (DESIGN §2.4 — the privacy promise).
     public func load() async {
+        guard !conversationEraseInProgress else { return }
+        let epoch = persistenceEpoch
         await store.sweepExpiredTombstones(olderThan: Self.tombstoneRetention)
-        conversations = await store.loadAllLive().sorted(by: Self.recency)
-        if activeID == nil { activeID = conversations.first?.id }
+        let loaded = await store.loadAllLive().sorted(by: Self.recency)
+        guard persistenceEpoch == epoch, !conversationEraseInProgress else { return }
+        conversations = loaded
+        activeID = nil
     }
 
     private static func recency(_ a: Conversation, _ b: Conversation) -> Bool {
@@ -141,14 +209,16 @@ public final class ChatStore {
     public var isStreaming: Bool { streaming != nil }
     public var hasModel: Bool { activeModel != nil }
     public var canSend: Bool {
-        hasModel && streaming == nil
+        !conversationEraseInProgress && hasModel && streaming == nil
             && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingImages.isEmpty)
     }
 
     // MARK: - Composer attachments
 
     /// Room for another staged image (the photo affordance disables at the cap).
-    public var canAttachMoreImages: Bool { pendingImages.count < Self.maxAttachments }
+    public var canAttachMoreImages: Bool {
+        !conversationEraseInProgress && streaming == nil && pendingImages.count < Self.maxAttachments
+    }
 
     /// Stage a picked/pasted image for the next send. Downscales + re-encodes to JPEG BEFORE storing so a
     /// 48 MP photo never rides the prompt or sits in memory at full size. No-op past the cap or when the
@@ -182,6 +252,8 @@ public final class ChatStore {
     /// is stamped on the first send).
     @discardableResult
     public func newConversation() -> Conversation? {
+        guard !conversationEraseInProgress else { return nil }
+        cancelModelRestore?()
         if let existing = conversations.first(where: { $0.messages.isEmpty }),
            let i = conversations.firstIndex(where: { $0.id == existing.id }) {
             // Reusing a leftover empty thread must also refresh its model seed — it may have been
@@ -198,9 +270,9 @@ public final class ChatStore {
                                  variantID: activeModel?.variant.id ?? "")
         conversations.insert(convo, at: 0)
         activeID = convo.id
-        // Persisted immediately (not on first send): a relaunch should land back on the fresh thread the
-        // user just opened — and on its model — not on the previous conversation. At most one empty
-        // thread ever exists (the reuse branch above), so this never litters the list.
+        // Persisted immediately (not on first send) so an empty draft remains available in the list after
+        // a relaunch. Launch still leaves every conversation unselected. At most one empty thread ever
+        // exists (the reuse branch above), so this never litters the list.
         persist(convo)
         return convo
     }
@@ -209,25 +281,98 @@ public final class ChatStore {
     /// opens a conversation whose remembered model differs from the resident one — a thread keeps ITS
     /// model across relaunches instead of silently falling back to the Settings default.
     public var restoreModel: (@MainActor (_ modelID: String, _ variantID: String) -> Void)?
+    /// Canonicalizes an exact or legacy persisted variant id using the same installed-model resolver that
+    /// will perform restoration. Without this, one legacy Explore id appears to match every quant sibling.
+    public var resolvePersistedVariantID: (@MainActor (_ modelID: String, _ variantID: String) -> String?)?
+    /// Selecting another thread (including one that already matches the current model) invalidates any
+    /// older asynchronous restore. AppContainer wires this to its latest-selection-wins restore task.
+    public var cancelModelRestore: (@MainActor () -> Void)?
 
     public func select(_ id: UUID) {
+        guard !conversationEraseInProgress else { return }
+        cancelModelRestore?()
         activeID = id
         restoreConversationModelIfNeeded()
     }
 
-    /// Ask the shell to bring back the active conversation's own model when it differs from the resident
-    /// one. Never mid-stream; empty ids (a modelless placeholder thread) are left alone.
+    /// Ask the shell to bring back the active conversation's own model and variant when they differ from
+    /// the resident selection. Never mid-stream; empty model ids (a modelless placeholder thread) are left
+    /// alone, and an empty legacy variant id means "any installed variant of this model".
     public func restoreConversationModelIfNeeded() {
-        guard streaming == nil, let convo = activeConversation,
-              !convo.modelID.isEmpty, convo.modelID != activeModel?.model.id else { return }
+        guard streaming == nil, let convo = activeConversation, !convo.modelID.isEmpty else { return }
+        let modelDiffers = convo.modelID != activeModel?.model.id
+        let variantDiffers: Bool
+        if !convo.variantID.isEmpty,
+           let canonicalID = resolvePersistedVariantID?(convo.modelID, convo.variantID) {
+            variantDiffers = activeModel?.variant.id != canonicalID
+        } else {
+            variantDiffers = !convo.variantID.isEmpty
+                && !(activeModel?.variant.matchesPersistedID(convo.variantID) ?? false)
+        }
+        guard modelDiffers || variantDiffers else { return }
         restoreModel?(convo.modelID, convo.variantID)
     }
 
-    /// Clear the in-memory mirror after a full data wipe (Settings → Delete all data).
+    /// Stop generation, invalidate queued saves, and wait for every save that already reached the store.
+    /// Call this before deleting conversation files; while it is active, `persist` rejects new snapshots.
+    public func quiesceForConversationErase() async {
+        conversationEraseReservations += 1
+        if conversationEraseReservations == 1 {
+            conversationEraseInProgress = true
+            persistenceEpoch &+= 1
+            cancelModelRestore?()
+        }
+
+        let generation = genTask
+        if streaming != nil { stop() }
+        generation?.cancel()
+        await generation?.value
+
+        // `commitStream` may have queued its final snapshot while the generation task was unwinding. The
+        // erase epoch makes that persist a no-op, but waiting for the current tail also drains any save
+        // that had already crossed the epoch check and entered ConversationStore.
+        let tail = persistenceTail
+        await tail?.value
+        persistenceTail = nil
+    }
+
+    /// Finish the coordinated erase. A failed disk erase keeps the visible conversation mirror so the UI
+    /// does not claim those chats vanished; a successful one returns every conversation-scoped value to a
+    /// fresh state. Full-app erase additionally clears registry/token-derived caches and session toggles.
+    public func finishConversationErase(succeeded: Bool, resetSessionState: Bool) {
+        genTask?.cancel()
+        genTask = nil
+        streaming = nil
+        streamingMessageID = nil
+        if succeeded {
+            conversations = []
+            activeID = nil
+        }
+        if succeeded || resetSessionState {
+            draft = ""
+            pendingImages.removeAll()
+            pendingSaveFailures.removeAll()
+            persistFailureBannerID = nil
+            cachedRegistry = nil
+            cachedRegistrySignature = nil
+            bannerDismissTask?.cancel()
+            bannerDismissTask = nil
+            banner = nil
+            bannerAction = nil
+        }
+        if resetSessionState {
+            thinkingEnabled = settings.thinkingDefault
+        }
+        persistenceTail = nil
+        conversationEraseReservations = max(0, conversationEraseReservations - 1)
+        conversationEraseInProgress = conversationEraseReservations > 0
+    }
+
+    /// Compatibility entry point for tests/embedders that have already erased the store. Production
+    /// deletion paths first await `quiesceForConversationErase()` and then call the explicit finisher.
     public func reloadAfterWipe() {
-        stop()
-        conversations = []
-        activeID = nil
+        conversationEraseReservations = max(1, conversationEraseReservations)
+        finishConversationErase(succeeded: true, resetSessionState: true)
     }
 
     public func rename(_ id: UUID, to title: String) {
@@ -256,12 +401,15 @@ public final class ChatStore {
         // Optimistic: offer Undo instantly. The disk write + failure-rollback happen behind it.
         showToast(Toast("Conversation deleted", actionTitle: "Undo", autoDismiss: Self.undoWindow),
                   action: { [weak self] in self?.restore(removed) })
+        let epoch = persistenceEpoch
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 try await self.store.softDelete(id)
+                guard self.persistenceEpoch == epoch, !self.conversationEraseInProgress else { return }
                 self.scheduleTombstoneSweep(id)
             } catch {
+                guard self.persistenceEpoch == epoch, !self.conversationEraseInProgress else { return }
                 // Roll the mirror back — disk still has it live, so the list must too (guarded so a race
                 // with a just-tapped Undo can't double-insert it).
                 if !self.conversations.contains(where: { $0.id == id }) {
@@ -275,14 +423,17 @@ public final class ChatStore {
     }
 
     private func restore(_ convo: Conversation) {
+        let epoch = persistenceEpoch
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 try await self.store.restore(convo.id)   // only re-add on success, else mirror/disk diverge
+                guard self.persistenceEpoch == epoch, !self.conversationEraseInProgress else { return }
                 self.conversations.append(convo)
                 self.conversations.sort(by: Self.recency)
                 self.activeID = convo.id
             } catch {
+                guard self.persistenceEpoch == epoch, !self.conversationEraseInProgress else { return }
                 self.showToast(Toast("Couldn't restore the conversation.", kind: .error, autoDismiss: 4))
             }
         }
@@ -291,9 +442,11 @@ public final class ChatStore {
     /// Purge a soft-deleted conversation's file once its in-session Undo window has passed — unless it was
     /// undone (restored back into the mirror). Keeps the tombstone honest without stranding data on disk.
     private func scheduleTombstoneSweep(_ id: UUID) {
+        let epoch = persistenceEpoch
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64((Self.undoWindow + 0.5) * 1_000_000_000))
-            guard let self, !self.conversations.contains(where: { $0.id == id }) else { return }
+            guard let self, self.persistenceEpoch == epoch, !self.conversationEraseInProgress,
+                  !self.conversations.contains(where: { $0.id == id }) else { return }
             try? await self.store.hardDelete(id)
         }
     }
@@ -304,14 +457,17 @@ public final class ChatStore {
     /// turn, then stream a reply. An image-only turn (no text) is allowed for vision models.
     public func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let images = pendingImages.map(\.data)
+        let stagedImages = pendingImages
+        let images = stagedImages.map(\.data)
         guard !text.isEmpty || !images.isEmpty, activeModel != nil, streaming == nil else { return }
 
-        // The MLX engine has no mtmd image path. Rather than silently drop the images and answer text-only,
-        // block the send with an actionable toast so the user can switch this model to its GGUF variant
-        // (C2.3). Draft + staged images are kept so the retry after switching loses nothing.
-        if !images.isEmpty, activeModel?.variant.engine == .mlx {
-            showToast(Toast("This engine can't read images yet — switch this model to its GGUF (llama.cpp) variant.",
+        // Image capability belongs to the exact variant, not merely to the engine family: a text-only GGUF
+        // (for example Bonsai 8B) runs on llama.cpp but has no vision projector. Reject before clearing the
+        // composer or creating provisional messages, otherwise that path silently sends an all-text prompt
+        // and loses the user's staged image. Draft + images remain intact for a retry after switching.
+        if !images.isEmpty,
+           activeModel?.variant.engine != .llamaCpp || activeModel?.variant.supportsVisionInput != true {
+            showToast(Toast("This model can't read images — switch to an image-capable model and try again.",
                             kind: .warning, autoDismiss: 5))
             return
         }
@@ -322,8 +478,22 @@ public final class ChatStore {
               let idx = conversations.firstIndex(where: { $0.id == convo.id }) else { return }
 
         // Reference the attached images by id; the bytes are written to disk (never inlined in the record).
-        let refs = images.map { _ in ImageRef() }
-        let user = Message(role: .user, answer: text, attachments: refs.isEmpty ? nil : refs)
+        // Reuse the staged image ids for the durable refs. Besides making the relationship explicit, this
+        // lets a failed disk write restore the exact composer payload without manufacturing a second set
+        // of identities.
+        let refs = stagedImages.map { ImageRef(id: $0.id) }
+        let rollback = AttachmentSendRollback(
+            conversationID: conversations[idx].id,
+            userID: UUID(),
+            text: text,
+            stagedImages: stagedImages,
+            originalTitle: conversations[idx].title,
+            originalModelID: conversations[idx].modelID,
+            originalVariantID: conversations[idx].variantID,
+            originalUpdatedAt: conversations[idx].updatedAt
+        )
+        let user = Message(id: rollback.userID, role: .user, answer: text,
+                           attachments: refs.isEmpty ? nil : refs)
         conversations[idx].messages.append(user)
         // Auto-title from the first user line (model-summarized titling is TODO(v1.0)).
         if conversations[idx].messages.filter({ $0.role == .user }).count == 1 {
@@ -340,7 +510,12 @@ public final class ChatStore {
         conversations[idx].updatedAt = Date()
 
         let attachments = zip(refs, images).map { (id: $0.0.id, data: $0.1) }
-        startGeneration(assistantID: assistant.id, in: conversations[idx].id, writeAttachments: attachments)
+        startGeneration(assistantID: assistant.id, in: conversations[idx].id,
+                        writeAttachments: attachments,
+                        attachmentRollback: rollback.accepting(
+                            assistantID: assistant.id,
+                            conversation: conversations[idx]
+                        ))
     }
 
     /// Regenerate an assistant turn: drop it (and anything after) and stream a fresh reply to the
@@ -398,13 +573,24 @@ public final class ChatStore {
     }
 
     private func startGeneration(assistantID: UUID, in conversationID: UUID,
-                                 writeAttachments: [(id: UUID, data: Data)] = []) {
+                                 writeAttachments: [(id: UUID, data: Data)] = [],
+                                 attachmentRollback: AttachmentSendRollback? = nil) {
         guard let convo = conversations.first(where: { $0.id == conversationID }) else { return }
         var state = StreamingState(messageID: assistantID)
         state.phase = .warming
         // Only a real network handshake earns the note — local tools connect to nothing, and a lingering
         // "Connecting tools…" over plain prefill reads as a hang. Cleared as soon as the registry is up.
-        if settings.toolsEnabled, settings.mcpServers.contains(where: { $0.isEnabled && !$0.url.isEmpty }) {
+        // A send is an authorization boundary. Capture every per-tool choice synchronously, before the task
+        // can suspend for attachment I/O or a cold model load; settings changed while warming apply only to
+        // the next turn and can neither grant nor revoke capabilities retroactively.
+        let toolsOn = settings.toolsEnabled
+        let turnToolConfig = settings.builtInToolConfig
+        let turnMCPServers = settings.mcpServers.filter {
+            $0.isEnabled && !$0.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let turnMemoryEnabled = turnToolConfig.enabled.contains(.recall)
+
+        if toolsOn, !turnMCPServers.isEmpty {
             state.warmingNote = "Connecting tools…"
         }
         // A turn carrying an image makes the engine bring the vision encoder up — ~940 MB and a few
@@ -419,32 +605,56 @@ public final class ChatStore {
         streamingMessageID = assistantID
 
         let history = convo.messages.filter { $0.id != assistantID }
-        // "Hidden" thinking ⇒ don't GENERATE reasoning. This model's think-boundary isn't a literal
-        // <think> tag we can reliably strip from the shown text, so the only sure way to hide it is off.
-        let params = settings.sampling(thinking: thinkingEnabled && settings.thinkingDisplay != .hidden,
-                                       model: activeModel?.model)
         // What this turn asks about — the query the memory block is searched with, below.
         let memoryQuery = Self.memoryQuery(history: history)
         let engine = self.engine
-        let toolsOn = settings.toolsEnabled
+        let turnSettings = self.settings
         let store = self.store
-        // Declare tools in the ACTIVE model's own dialect. Every family was post-trained on its own tool
-        // syntax; handed a stranger's, a model improvises something we then can't read — which is how
-        // tools were silently dead on every non-ChatML model (see `ToolDialect`). Falls back to the Qwen
-        // convention when no model is active, matching the loop's own default.
-        let dialect = activeModel.map { ToolDialect($0.model.architecture.promptTemplate) } ?? .qwen
-        // Replay history images only when the ACTIVE model can actually see them (llama.cpp + projector).
-        // After switching an image-bearing thread to a text-only model, the engine would refuse the whole
-        // conversation otherwise — history degrades to text, exactly like the engine-side guard.
-        let imageCapable = activeModel.map { $0.variant.engine == .llamaCpp && $0.variant.supportsVisionInput } ?? false
 
         genTask = Task { @MainActor [weak self] in
             do {
                 // Persist this turn's attachment bytes to disk FIRST, so the reload-from-disk below (and
                 // any later follow-up / history replay) sees them. Files, not inline JSON (the privacy +
                 // record-size promise).
-                for a in writeAttachments { try? await store.writeAttachment(a.data, id: a.id) }
-                await self?.ensureModelReady?()   // reload if the model was suspended to free memory
+                do {
+                    for attachment in writeAttachments {
+                        try await store.writeAttachment(attachment.data, id: attachment.id)
+                    }
+                } catch {
+                    // A multi-image turn may have written one file before a later write failed. Remove
+                    // every ref best-effort, roll the in-memory turn back, and restore the composer payload:
+                    // no conversation record is ever allowed to point at pixels that did not reach disk.
+                    await store.removeAttachments(writeAttachments.map { ImageRef(id: $0.id) })
+                    if let attachmentRollback {
+                        self?.recoverFailedAttachmentSend(attachmentRollback, error: error)
+                    }
+                    return
+                }
+                // Cold launch restores only model identity; the first turn loads its weights here. A
+                // real engine/load failure is surfaced by AppContainer and must not fall through into
+                // `generate` on an empty engine.
+                guard await self?.ensureModelReady?() ?? true else {
+                    self?.finalizeIfNeeded(assistantID: assistantID, stopReason: .cancelled, failed: true)
+                    return
+                }
+                try Task.checkCancellation()
+                guard let readyModel = self?.activeModel else {
+                    self?.finalizeIfNeeded(assistantID: assistantID, stopReason: .cancelled, failed: true)
+                    return
+                }
+                guard self?.streaming?.messageID == assistantID else { return }
+                self?.streaming?.generatedBy = GenerationModel(readyModel)
+                // Read model-dependent state only AFTER readiness: a concurrent explicit switch may have
+                // completed while this turn waited for the one engine-mutation lane.
+                let params = turnSettings.sampling(
+                    thinking: (self?.thinkingEnabled ?? false) && turnSettings.thinkingDisplay != .hidden,
+                    model: readyModel.model
+                )
+                let dialect = ToolDialect(readyModel.model.architecture.promptTemplate)
+                // After switching an image-bearing thread to a text-only model, history degrades to text
+                // rather than being rejected by the newly resident engine.
+                let imageCapable = readyModel.variant.engine == .llamaCpp
+                    && readyModel.variant.supportsVisionInput
                 // Re-attach image bytes from disk for every image-bearing turn in THIS thread — the new
                 // turn AND earlier ones — so a follow-up question still sees the image context. Loaded only
                 // while generating (this local map is released when the task ends) and bounded by the
@@ -458,29 +668,78 @@ public final class ChatStore {
                 // model all see exactly what was composed. Composed HERE, not captured at send time, so it
                 // sees the memory refreshed just above; if the store is gone there's no one to stream to,
                 // so stop rather than generate against an empty prompt.
-                guard let systemPrompt = self?.composedSystemPrompt(query: memoryQuery) else { return }
+                guard let systemPrompt = self?.composedSystemPrompt(
+                    query: memoryQuery,
+                    memoryEnabled: turnMemoryEnabled
+                ) else { return }
                 let turns = Self.chatTurns(messages: history, systemPrompt: systemPrompt,
                                            cap: params.contextTokenCap,
                                            images: { imagesByMessage[$0.id] ?? [] })
                 if toolsOn {
                     // Agent loop: the model may call the local calculator/clock, a Wikipedia lookup, or any
                     // tool exposed by a configured MCP server before answering.
-                    let registry = await self?.toolRegistry() ?? .standard
+                    guard let registry = try await self?.toolRegistry(
+                        config: turnToolConfig,
+                        servers: turnMCPServers
+                    ) else { return }
                     self?.streaming?.warmingNote = nil   // handshake done — the rest is plain prefill
                     let loop = ToolLoop(engine: engine, registry: registry, dialect: dialect)
-                    for try await event in loop.run(messages: turns, params: params) {
+                    initialToolLoop: for try await event in loop.run(messages: turns, params: params) {
                         guard let self, self.streaming?.messageID == assistantID else { return }
                         self.applyLoopEvent(event)
+                        if case .done = event { break initialToolLoop }
                     }
                 } else {
-                    for try await delta in engine.generate(messages: turns, params: params) {
+                    initialGeneration: for try await delta in engine.generate(messages: turns, params: params) {
                         guard let self, self.streaming?.messageID == assistantID else { return }
                         self.apply(delta)
+                        if case .done = delta { break initialGeneration }
+                    }
+                }
+
+                // Some reasoning models occasionally stop after emitting only their hidden reasoning —
+                // either at a healthy EOS or because the reasoning consumed the token budget. Give those
+                // exact outcomes ONE short, answer-only completion pass: no thinking, no ToolLoop/registry,
+                // and no recursion. Cancellation, engine errors, stop sequences, and genuinely empty
+                // generations all remain terminal as-is.
+                try Task.checkCancellation()
+                if let first = self?.streaming,
+                   first.messageID == assistantID,
+                   let firstStopReason = first.stats?.stopReason,
+                   firstStopReason == .eos || firstStopReason == .maxTokens,
+                   !first.reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   first.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    self?.beginAnswerRecovery()
+                    var recoveryParams = params
+                    recoveryParams.thinking = false
+                    recoveryParams.maxTokens = min(max(1, recoveryParams.maxTokens),
+                                                   Self.answerRecoveryMaxTokens)
+                    let recoveryTurns = Self.answerRecoveryTurns(turns)
+                    answerRecovery: for try await delta in engine.generate(
+                        messages: recoveryTurns,
+                        params: recoveryParams
+                    ) {
+                        try Task.checkCancellation()
+                        guard let self, self.streaming?.messageID == assistantID else { return }
+                        switch delta {
+                        case .reasoning:
+                            // `thinking=false` is the hard request. If a model disobeys it, do not append a
+                            // second hidden chain or restart its clock; the original reasoning stays intact.
+                            break
+                        case .answer, .done:
+                            self.apply(delta)
+                        }
+                        if case .done = delta { break answerRecovery }
                     }
                 }
                 // A cancelled consumer ends the stream by returning nil (not by throwing), so detect
                 // Stop here too — the partial is committed, never discarded (DESIGN §2.3).
-                self?.finalizeIfNeeded(assistantID: assistantID, stopReason: Task.isCancelled ? .cancelled : .eos)
+                let finalStats = self?.streaming?.stats
+                self?.finalizeIfNeeded(
+                    assistantID: assistantID,
+                    stopReason: Task.isCancelled ? .cancelled : (finalStats?.stopReason ?? .eos),
+                    stats: finalStats
+                )
             } catch is CancellationError {
                 self?.finalizeIfNeeded(assistantID: assistantID, stopReason: .cancelled)
             } catch {
@@ -488,6 +747,55 @@ public final class ChatStore {
                 self?.present(error)
             }
         }
+    }
+
+    /// Attachment persistence is part of accepting a send, not an ignorable side effect. If it fails,
+    /// remove the provisional user/assistant pair, restore the exact staged images, and put the text back
+    /// in the composer. A user may already have started typing the next draft while the write was in
+    /// flight, so preserve that text after the restored draft instead of overwriting it.
+    private func recoverFailedAttachmentSend(_ rollback: AttachmentSendRollback, error _: Error) {
+        var provisionalIDs: Set<UUID> = [rollback.userID]
+        if let assistantID = rollback.assistantID { provisionalIDs.insert(assistantID) }
+        if let ci = conversations.firstIndex(where: { $0.id == rollback.conversationID }) {
+            conversations[ci].messages.removeAll { provisionalIDs.contains($0.id) }
+            // Restore only fields that still carry this send's provisional values. A rename, pin, or other
+            // main-actor edit made while the disk write was suspended must win over this rollback.
+            if let provisionalTitle = rollback.provisionalTitle,
+               conversations[ci].title == provisionalTitle {
+                conversations[ci].title = rollback.originalTitle
+            }
+            if let provisionalModelID = rollback.provisionalModelID,
+               conversations[ci].modelID == provisionalModelID {
+                conversations[ci].modelID = rollback.originalModelID
+            }
+            if let provisionalVariantID = rollback.provisionalVariantID,
+               conversations[ci].variantID == provisionalVariantID {
+                conversations[ci].variantID = rollback.originalVariantID
+            }
+            if let provisionalUpdatedAt = rollback.provisionalUpdatedAt,
+               conversations[ci].updatedAt == provisionalUpdatedAt {
+                conversations[ci].updatedAt = rollback.originalUpdatedAt
+            }
+        }
+
+        if !rollback.text.isEmpty {
+            draft = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? rollback.text
+                : rollback.text + "\n\n" + draft
+        }
+        let restoredIDs = Set(rollback.stagedImages.map(\.id))
+        pendingImages = rollback.stagedImages + pendingImages.filter { !restoredIDs.contains($0.id) }
+
+        if let assistantID = rollback.assistantID, streaming?.messageID == assistantID {
+            streaming = nil
+            streamingMessageID = nil
+        }
+        genTask = nil
+        showToast(Toast(
+            "Couldn't save the attached image. Your draft was restored; check available storage and try again.",
+            kind: .error,
+            autoDismiss: 6
+        ))
     }
 
     private var cachedRegistry: ToolRegistry?
@@ -498,11 +806,8 @@ public final class ChatStore {
     /// on top. Cached by a signature that covers BOTH the built-in config and the servers, so flipping any
     /// tool — a built-in toggle, a search engine, a muted MCP tool — takes effect on the next send, not the
     /// next launch.
-    private func toolRegistry() async -> ToolRegistry {
-        let config = settings.builtInToolConfig
-        let servers = settings.mcpServers.filter {
-            $0.isEnabled && !$0.url.trimmingCharacters(in: .whitespaces).isEmpty
-        }
+    private func toolRegistry(config: BuiltInToolConfig, servers: [MCPServer]) async throws -> ToolRegistry {
+        try Task.checkCancellation()
         let signature = Self.registrySignature(config: config, servers: servers)
         if let cachedRegistry, cachedRegistrySignature == signature { return cachedRegistry }
 
@@ -516,9 +821,10 @@ public final class ChatStore {
         } else {
             // `includeStandard: false` yields ONLY the MCP tools, so the assembled built-ins aren't
             // duplicated; the two lists are then concatenated (built-ins advertise first).
-            let mcp = await ToolRegistry.build(mcpServers: servers, includeStandard: false)
+            let mcp = try await ToolRegistry.build(mcpServers: servers, includeStandard: false)
             registry = ToolRegistry(builtIns.tools + mcp.tools)
         }
+        try Task.checkCancellation()
         cachedRegistry = registry
         cachedRegistrySignature = signature
         return registry
@@ -542,8 +848,27 @@ public final class ChatStore {
         switch event {
         case .reasoning(let s): apply(.reasoning(s))
         case .answer(let s): apply(.answer(s))
+        case .discardAnswer:
+            // Tool-loop text is provisional until that model pass proves it needs no tool. If a call or
+            // enforced correction appears later, remove the intermediate prose while keeping reasoning and
+            // completed tool rows. This is also the pass boundary when a model emitted reasoning followed
+            // directly by call markup, so pause idempotently even when no answer token did it first.
+            pauseReasoningClock()
+            streaming?.answer = ""
+            if streaming?.phase != .stopping {
+                let hasReasoning = streaming?.reasoning.isEmpty == false
+                streaming?.phase = hasReasoning ? .thinking : .warming
+            }
         case .toolCall(let call):
-            if streaming?.phase != .stopping { streaming?.phase = .answering }
+            pauseReasoningClock()
+            if streaming?.phase != .stopping {
+                // Pre-tool prose is only an intermediate agent-loop step, not the final answer. Restore
+                // a live disclosure when there is reasoning to show (otherwise return to warming while
+                // the tool runs). The duration remains the accumulated MODEL reasoning only; the tool and
+                // its network wait are outside the active clock segment.
+                let hasReasoning = streaming?.reasoning.isEmpty == false
+                streaming?.phase = hasReasoning ? .thinking : .warming
+            }
             streaming?.toolActivity.append(ToolRun(name: call.name, arguments: call.argumentsJSON))
         case .toolResult(_, let result):
             if let n = streaming?.toolActivity.count, n > 0 { streaming?.toolActivity[n - 1].result = result }
@@ -555,34 +880,65 @@ public final class ChatStore {
         guard streaming != nil else { return }
         switch delta {
         case .reasoning(let s):
+            streaming?.warmingNote = nil
             if streaming?.phase != .stopping { streaming?.phase = .thinking }
+            // A later tool-loop pass starts a fresh segment. Time spent executing the tool and prefilling
+            // this pass occurred before this delta and therefore never enters the accumulated duration.
             if streaming?.thinkingStartedAt == nil { streaming?.thinkingStartedAt = Date() }
             streaming?.reasoning += s
         case .answer(let s):
-            // First answer token freezes the thinking duration + collapses the disclosure.
-            if streaming?.thinkingDuration == nil, let started = streaming?.thinkingStartedAt {
-                streaming?.thinkingDuration = Date().timeIntervalSince(started)
-            }
+            // The first answer token closes only the current reasoning segment. Further answer generation
+            // is not reasoning time; a later pass may start and add another segment.
+            pauseReasoningClock()
+            streaming?.warmingNote = nil
             if streaming?.phase != .stopping { streaming?.phase = .answering }
             streaming?.answer += s
         case .done(let stats):
+            pauseReasoningClock()
             streaming?.stats = stats
-            commit(stopReason: stats.stopReason, stats: stats)
         }
+    }
+
+    /// Transition the same live row into its one permitted answer-only completion pass. The original
+    /// reasoning and its frozen duration remain untouched; clearing first-pass stats prevents a clean
+    /// second stream that omits `.done` from accidentally inheriting the first pass's terminal marker.
+    private func beginAnswerRecovery() {
+        pauseReasoningClock()
+        guard streaming != nil else { return }
+        streaming?.answer = ""
+        streaming?.stats = nil
+        streaming?.phase = .warming
+        streaming?.warmingNote = "Finishing answer…"
+    }
+
+    /// Close the active reasoning segment and add it to the turn's accumulated reasoning-only duration.
+    /// Calling this repeatedly at answer/tool/done boundaries is idempotent because the segment start is
+    /// cleared after the first close.
+    private func pauseReasoningClock(at now: Date = Date()) {
+        guard let started = streaming?.thinkingStartedAt else { return }
+        let elapsed = max(0, now.timeIntervalSince(started))
+        // Read before opening the observed property's `_modify` accessor. Combining the read and write in
+        // one optional-chain assignment overlaps Swift's dynamic exclusivity accesses and crashes when a
+        // stream is cancelled while this boundary is being applied.
+        let accumulated = streaming?.thinkingDuration ?? 0
+        streaming?.thinkingDuration = accumulated + elapsed
+        streaming?.thinkingStartedAt = nil
     }
 
     /// Commit the streamed reasoning/answer into the assistant message + autosave. Called on `.done`,
     /// on clean stream end, and on Stop/cancel (which always commits the partial — never discards).
-    private func finalizeIfNeeded(assistantID: UUID, stopReason: StopReason, failed: Bool = false) {
+    private func finalizeIfNeeded(assistantID: UUID, stopReason: StopReason,
+                                  stats: Stats? = nil, failed: Bool = false) {
         // Only finalize OUR stream: a just-cancelled generation task can reach here AFTER a new send has
         // started a fresh stream, and an unguarded commit would stamp this task's stop reason onto the new
         // turn (a real race the coverage work surfaced). The messageID gate makes finalize idempotent
         // per-turn — the winning `.done`/stop already niled `streaming`, so a late loser no-ops.
         guard streaming?.messageID == assistantID else { return }
-        commit(stopReason: stopReason, stats: nil, failed: failed)
+        commit(stopReason: stopReason, stats: stats, failed: failed)
     }
 
     private func commit(stopReason: StopReason, stats: Stats?, failed: Bool = false) {
+        pauseReasoningClock()
         guard let state = streaming,
               let ci = conversations.firstIndex(where: { $0.messages.contains { $0.id == state.messageID } }),
               let mi = conversations[ci].messages.firstIndex(where: { $0.id == state.messageID }) else {
@@ -590,13 +946,18 @@ public final class ChatStore {
             streamingMessageID = nil
             return
         }
-        conversations[ci].messages[mi].answer = state.answer
+        let visibleAnswer = state.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? ""
+            : state.answer
+        conversations[ci].messages[mi].answer = visibleAnswer
         conversations[ci].messages[mi].reasoning = state.reasoning.isEmpty ? nil : state.reasoning
-        // Persist the real thinking wall-clock so the collapsed tile shows an honest "Thought for Xs".
+        // Persist model reasoning time only. Tool/MCP/network waits and non-reasoning generation are paused
+        // at their boundaries, so "Thought for Xs" does not really mean "the whole tool turn took Xs".
         conversations[ci].messages[mi].thinkingSeconds =
-            state.reasoning.isEmpty ? nil : (state.thinkingDuration ?? state.thinkingStartedAt.map { Date().timeIntervalSince($0) })
+            state.reasoning.isEmpty ? nil : state.thinkingDuration
         conversations[ci].messages[mi].toolRuns = state.toolActivity.isEmpty ? nil : state.toolActivity
-        if state.answer.isEmpty {
+        conversations[ci].messages[mi].generatedBy = state.generatedBy
+        if visibleAnswer.isEmpty {
             // Nothing was generated — do NOT fake a "0 tok · stop:…" stats line (the ghost reply). Mark
             // the outcome so the row renders a compact Stopped / Failed — Retry instead.
             // Distinguish "you stopped it" from "it ran to EOS with nothing to say" — the second is the
@@ -625,6 +986,7 @@ public final class ChatStore {
     /// intentional stop during a long warm-up still works.
     public func stop() {
         guard streaming != nil else { return }
+        pauseReasoningClock()
         streaming?.phase = .stopping
         genTask?.cancel()
     }
@@ -662,8 +1024,9 @@ public final class ChatStore {
     /// facts worth remembering for `query` (blank — the default — means the freshest few). Both the
     /// generation path (`startGeneration`) and the context meter (`contextUsage`) route through this, so
     /// every part is charged to the window exactly once and shown honestly.
-    func composedSystemPrompt(query: String = "") -> String {
-        Self.systemPrompt(base: settings.systemPrompt, skill: activeSkill, memoryBlock: memoryBlock(for: query))
+    func composedSystemPrompt(query: String = "", memoryEnabled: Bool? = nil) -> String {
+        Self.systemPrompt(base: settings.systemPrompt, skill: activeSkill,
+                          memoryBlock: memoryBlock(for: query, enabled: memoryEnabled))
     }
 
     /// Pure composition (unit-tested): `base` + `"\n\n## Active skill: <name>\n<instructions>"` when a skill
@@ -684,8 +1047,9 @@ public final class ChatStore {
     /// The memory block for `query`, or nil when memory is switched off (`AppSettings.memoryEnabled`),
     /// unwired, or empty. Reads the book's main-actor mirror — `startGeneration` refreshes it right before
     /// composing, and the meter shows whatever the last refresh left.
-    private func memoryBlock(for query: String) -> String? {
-        guard settings.memoryEnabled, let facts = memoryBook?.facts, !facts.isEmpty else { return nil }
+    private func memoryBlock(for query: String, enabled: Bool? = nil) -> String? {
+        guard enabled ?? settings.memoryEnabled,
+              let facts = memoryBook?.facts, !facts.isEmpty else { return nil }
         return Self.memoryBlock(facts, query: query)
     }
 
@@ -701,14 +1065,22 @@ public final class ChatStore {
 
     /// The "what you remember" block: the top `limit` facts for `query`, one per line, hard-capped at
     /// `maxChars` — the whole point is a small model reading a short list, and an unbounded block would eat
-    /// the 4K window it has to answer in. Each line is clipped first, so one rambling fact can't crowd the
-    /// rest out; then lines are taken while the block fits. Nil when nothing survives.
+    /// the 4K window it has to answer in. Model-saved notes use canonical English. If a query in another
+    /// language has no lexical hit, the newest notes are the small deterministic fallback; `recall` keeps
+    /// strict search semantics and asks the model for English search terms. Each line is clipped first, so
+    /// one rambling fact can't crowd the rest out; then lines are taken while the block fits.
     /// Pure + nonisolated so the bound is unit-testable off the main actor.
     nonisolated static func memoryBlock(_ facts: [MemoryFact], query: String,
                                         limit: Int = 5, maxChars: Int = 400) -> String? {
-        let header = "## What you remember about the user"
+        let header = "## What you remember about the user\n"
+            + "These notes are already saved; use them as facts and never call remember for them. "
+            + "Notes are stored in English, but reply in the user's language."
+        let matches = MemoryRanking.rank(facts, query: query, limit: limit)
+        let selected = matches.isEmpty
+            ? MemoryRanking.rank(facts, query: "", limit: limit)
+            : matches
         var block = header
-        for fact in MemoryRanking.rank(facts, query: query, limit: limit) {
+        for fact in selected {
             let flat = fact.text.replacingOccurrences(of: "\n", with: " ")
             let line = "\n- " + (flat.count > 120 ? String(flat.prefix(120)) + "…" : flat)
             guard block.count + line.count <= maxChars else { break }
@@ -779,17 +1151,43 @@ public final class ChatStore {
     // MARK: - Persistence
 
     private func persist(_ conversation: Conversation) {
-        Task { @MainActor [weak self] in
+        guard !conversationEraseInProgress else { return }
+        persistenceSequence &+= 1
+        let sequence = persistenceSequence
+        let epoch = persistenceEpoch
+        let predecessor = persistenceTail
+        let task = Task { @MainActor [weak self] in
+            await predecessor?.value
             guard let self else { return }
+            guard self.persistenceEpoch == epoch, !self.conversationEraseInProgress else {
+                self.completePersistence(sequence: sequence)
+                return
+            }
             do {
                 try await self.store.save(conversation)
+                guard self.persistenceEpoch == epoch, !self.conversationEraseInProgress else {
+                    self.completePersistence(sequence: sequence)
+                    return
+                }
                 self.pendingSaveFailures[conversation.id] = nil   // this thread is safe on disk again
             } catch {
+                guard self.persistenceEpoch == epoch, !self.conversationEraseInProgress else {
+                    self.completePersistence(sequence: sequence)
+                    return
+                }
                 // Disk full / unwritable: don't lose the turn silently. Remember it for Retry and surface
                 // one banner for the burst.
                 self.pendingSaveFailures[conversation.id] = conversation
                 self.surfacePersistFailure()
             }
+            self.completePersistence(sequence: sequence)
+        }
+        persistenceTail = task
+    }
+
+    private func completePersistence(sequence: UInt64) {
+        if persistenceSequence == sequence {
+            persistenceTail = nil
         }
     }
 
@@ -848,6 +1246,30 @@ public final class ChatStore {
         if let note { turns.append(ChatTurn(role: .system, content: note)) }
         turns.append(contentsOf: kept.reversed())
         return turns
+    }
+
+    /// Add the narrow instruction used by the single reasoning-only recovery pass. It deliberately
+    /// contains no tool declarations and does not replay the first pass's private reasoning as conversation
+    /// content: the same user request is enough to ask for the missing visible answer, while keeping hidden
+    /// reasoning out of a synthetic prompt and out of the eventual answer.
+    static func answerRecoveryTurns(_ messages: [ChatTurn]) -> [ChatTurn] {
+        let instruction = """
+        The previous attempt produced internal reasoning but ended before producing a user-visible answer. \
+        Complete the same turn now. Output only the final answer: do not think aloud, repeat hidden \
+        reasoning, call tools, or emit tool-call markup. Reply in the language of the latest user request.
+        """
+        var recovered = messages
+        if let index = recovered.firstIndex(where: { $0.role == .system }) {
+            let separator = recovered[index].content.isEmpty ? "" : "\n\n"
+            recovered[index] = ChatTurn(
+                role: .system,
+                content: recovered[index].content + separator + instruction,
+                images: recovered[index].images
+            )
+        } else {
+            recovered.insert(ChatTurn(role: .system, content: instruction), at: 0)
+        }
+        return recovered
     }
 
     /// Load the encoded image bytes for every attachment across `messages` (current thread only), keyed by

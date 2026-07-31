@@ -78,6 +78,22 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertEqual(p, "<｜User｜>a<｜Assistant｜>b<｜end▁of▁sentence｜><｜User｜>c<｜Assistant｜>")
     }
 
+    func testDeepSeekCoalescesEverySystemTurnInOrder() {
+        let p = LlamaEngine.buildPrompt(
+            messages: [ChatTurn(role: .system, content: "Base policy"),
+                       ChatTurn(role: .user, content: "old question"),
+                       ChatTurn(role: .system, content: "Compaction note"),
+                       ChatTurn(role: .assistant, content: "old answer"),
+                       ChatTurn(role: .system, content: "Newest constraint"),
+                       ChatTurn(role: .user, content: "continue")],
+            template: .deepSeek, reasoning: .thinkTags, thinking: true)
+
+        XCTAssertTrue(p.hasPrefix("Base policy\n\nCompaction note\n\nNewest constraint"),
+                      "all system turns must survive in encounter order")
+        XCTAssertEqual(p.components(separatedBy: "Compaction note").count - 1, 1)
+        XCTAssertTrue(p.contains("<｜User｜>continue<｜Assistant｜>"))
+    }
+
     // MARK: Hunyuan
 
     func testHunyuanUsesTencentSpecialTokens() {
@@ -86,6 +102,17 @@ final class PromptBuilderTests: XCTestCase {
             template: .hunyuan, reasoning: .thinkTags, thinking: true)
         // Tencent special tokens preserved; leading BOS dropped (owned by add_special, never doubled).
         XCTAssertEqual(p, "<｜hy_User｜>你好<｜hy_Assistant｜>")
+    }
+
+    func testHunyuanCoalescesEverySystemTurnWithoutConcatenatingText() {
+        let p = LlamaEngine.buildPrompt(
+            messages: [ChatTurn(role: .system, content: "系统规则"),
+                       ChatTurn(role: .system, content: ""),
+                       ChatTurn(role: .system, content: "压缩摘要"),
+                       ChatTurn(role: .user, content: "继续")],
+            template: .hunyuan, reasoning: .thinkTags, thinking: true)
+
+        XCTAssertEqual(p, "系统规则\n\n压缩摘要<｜hy_User｜>继续<｜hy_Assistant｜>")
     }
 
     // MARK: Gemma 4 (asymmetric turn markers, non-thinking)

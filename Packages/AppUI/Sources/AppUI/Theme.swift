@@ -282,6 +282,11 @@ public struct Segmented<T: Hashable>: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // Keep each segment independently named. A label applied to the containing HStack is
+                // inherited by every child on iOS, collapsing otherwise distinct options into several
+                // identically named buttons (for example two "Inference engine" controls).
+                .accessibilityLabel(label(opt))
+                .accessibilityValue(isSelected ? "Selected" : "Not selected")
                 .accessibilityAddTraits(isSelected ? [.isSelected] : [])
             }
         }

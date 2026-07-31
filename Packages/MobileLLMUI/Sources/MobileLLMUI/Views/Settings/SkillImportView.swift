@@ -154,9 +154,15 @@ struct SkillImportView: View {
 
     private func add() {
         guard let p = preview else { return }
-        _ = store.create(name: p.name, emoji: "📦",
-                         summary: p.summary.isEmpty ? "Imported skill" : p.summary,
-                         instructions: p.instructions)
-        dismiss()
+        Task {
+            do {
+                _ = try await store.create(name: p.name, emoji: "📦",
+                                           summary: p.summary.isEmpty ? "Imported skill" : p.summary,
+                                           instructions: p.instructions)
+                dismiss()
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
     }
 }

@@ -23,8 +23,8 @@ final class ToolLoopMCPTests: XCTestCase {
     /// The happy bridge: `good_echo` runs via `MCPTool.execute` → `MCPClient.call` → "CALLED", framed as
     /// untrusted into the follow-up turn, and the second model turn's answer surfaces.
     func testMCPToolExecutesThroughLoopAndFramesResult() async throws {
-        let registry = await ToolRegistry.build(mcpServers: [server("/good")], includeStandard: false,
-                                                session: mockSession())
+        let registry = try await ToolRegistry.build(mcpServers: [server("/good")], includeStandard: false,
+                                                    session: mockSession())
         XCTAssertTrue(registry.tool(named: "good_echo") != nil, "the MCP tool bridged into the registry")
 
         let engine = TurnScriptedEngine([
@@ -46,8 +46,8 @@ final class ToolLoopMCPTests: XCTestCase {
     /// A tool-level failure (`isError: true`) maps to "Tool error: …" and is fed back through the loop
     /// without crashing — the loop keeps going to a final answer.
     func testMCPToolErrorIsFedBackThroughLoop() async throws {
-        let registry = await ToolRegistry.build(mcpServers: [server("/good")], includeStandard: false,
-                                                session: mockSession())
+        let registry = try await ToolRegistry.build(mcpServers: [server("/good")], includeStandard: false,
+                                                    session: mockSession())
         let engine = TurnScriptedEngine([
             #"<tool_call>{"name":"err_tool","arguments":{}}</tool_call>"#,
             "Acknowledged the error.",
@@ -63,8 +63,8 @@ final class ToolLoopMCPTests: XCTestCase {
     /// The `MCPTool.execute` catch path: when `MCPClient.call` THROWS (a JSON-RPC error), execute returns a
     /// "…failed: …" string instead of crashing, and the loop feeds it back and continues.
     func testMCPToolThrowingCallIsCaughtInLoop() async throws {
-        let registry = await ToolRegistry.build(mcpServers: [server("/good")], includeStandard: false,
-                                                session: mockSession())
+        let registry = try await ToolRegistry.build(mcpServers: [server("/good")], includeStandard: false,
+                                                    session: mockSession())
         let engine = TurnScriptedEngine([
             #"<tool_call>{"name":"rpc_error_tool","arguments":{}}</tool_call>"#,
             "Recovered.",
@@ -109,8 +109,8 @@ final class ToolLoopMCPTests: XCTestCase {
     /// (registered first) wins `tool(named:)`, the unique MCP tool is present, and the schema list carries
     /// BOTH colliding entries (they are NOT de-duplicated — pinning the current contract).
     func testCombinedRegistryResolvesCollisionToBuiltInAndKeepsUnique() async throws {
-        let registry = await ToolRegistry.build(mcpServers: [server("/collide")], includeStandard: true,
-                                                session: mockSession())
+        let registry = try await ToolRegistry.build(mcpServers: [server("/collide")], includeStandard: true,
+                                                    session: mockSession())
         let names = registry.schemas.map(\.name)
         XCTAssertTrue(names.contains("calculator"), "standard local tools are present")
         XCTAssertTrue(names.contains("unique_mcp"), "the unique MCP tool is present")

@@ -44,11 +44,13 @@ final class KeychainBoxTests: XCTestCase {
     /// Reading an account that was never written returns nil (errSecItemNotFound is not an error).
     func testReadMissingIsNil() throws {
         let box = KeychainBox(service: "com.mobilellm.tests.\(UUID().uuidString)")
+        let missing: Data?
         do {
-            XCTAssertNil(try box.read(account: "never-written"))
+            missing = try box.read(account: "never-written")
         } catch let KeychainBox.KeychainError.unexpectedStatus(status) where Self.isDenied(status) {
             throw XCTSkip("Keychain access denied in this environment (OSStatus \(status)); skipping.")
         }
+        XCTAssertNil(missing)
     }
 
     /// Distinct services don't collide on the same account name.
@@ -65,5 +67,25 @@ final class KeychainBoxTests: XCTestCase {
 
         XCTAssertEqual(try a.readString(account: account), "from-a")
         XCTAssertNil(try b.read(account: account), "a different service must not see it")
+    }
+
+    func testDeleteAllRemovesEveryAccountOnlyInItsService() throws {
+        let service = KeychainBox(service: "com.mobilellm.tests.erase.\(UUID().uuidString)")
+        let other = KeychainBox(service: "com.mobilellm.tests.keep.\(UUID().uuidString)")
+        do {
+            try service.save("one", account: "a")
+            try service.save("two", account: "b")
+            try other.save("keep", account: "a")
+        } catch let KeychainBox.KeychainError.unexpectedStatus(status) where Self.isDenied(status) {
+            throw XCTSkip("Keychain access denied in this environment (OSStatus \(status)); skipping.")
+        }
+        addTeardownBlock { try? service.deleteAll(); try? other.deleteAll() }
+
+        try service.deleteAll()
+        XCTAssertNil(try service.read(account: "a"))
+        XCTAssertNil(try service.read(account: "b"))
+        XCTAssertEqual(try other.readString(account: "a"), "keep",
+                       "service-scoped erasure must not touch another app/service")
+        XCTAssertNoThrow(try service.deleteAll())
     }
 }

@@ -14,6 +14,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../LLMCore"),
+        .package(path: "../AppRuntime"),
         .package(url: "https://github.com/PrismML-Eng/mlx-swift",
                  revision: "e40e0a57a6f7ad08dc3fd87ad598a7aa6407d230"),
         .package(url: "https://github.com/nanguoyu/mlx-swift-lm",
@@ -28,6 +29,7 @@ let package = Package(
     targets: [
         .target(name: "LLMEngineMLX", dependencies: [
             .product(name: "LLMCore", package: "LLMCore"),
+            .product(name: "AppRuntime", package: "AppRuntime"),
             .product(name: "MLX", package: "mlx-swift"),
             .product(name: "MLXRandom", package: "mlx-swift"),
             .product(name: "MLXLLM", package: "mlx-swift-lm"),
@@ -42,6 +44,9 @@ let package = Package(
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/usr/lib"])]),
         // Pure, weight-free unit tests over the ChatTurn→Chat.Message mapping. Building this links MLX
         // (LLMEngineMLX pulls it in) but the tests never allocate an MLXArray or load a model.
-        .testTarget(name: "LLMEngineMLXTests", dependencies: ["LLMEngineMLX"]),
+        .testTarget(name: "LLMEngineMLXTests", dependencies: [
+            "LLMEngineMLX",
+            .product(name: "AppRuntime", package: "AppRuntime"),
+        ]),
     ]
 )

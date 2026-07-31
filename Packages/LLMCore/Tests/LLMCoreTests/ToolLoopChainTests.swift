@@ -25,8 +25,9 @@ final class ToolLoopChainTests: XCTestCase {
     func testMultiToolChainSearchThenFetch() async throws {
         let session = webSession()
         let registry = ToolRegistry([
-            WebSearchTool(engines: [.duckduckgo], session: session),
-            WebScraperTool(session: session),
+            WebSearchTool(engines: [.duckduckgo], session: session,
+                          dnsResolver: { _ in ["93.184.216.34"] }),
+            WebScraperTool(session: session, dnsResolver: { _ in ["93.184.216.34"] }),
         ])
         let engine = TurnScriptedEngine([
             #"Let me look that up. <tool_call>{"name":"web_search","arguments":{"query":"swift language"}}</tool_call>"#,
@@ -65,7 +66,10 @@ final class ToolLoopChainTests: XCTestCase {
     /// The loop extracts the model's emitted `arguments`, re-serializes them, and hands them to
     /// `web_search.execute` — proving the JSON round-trip a hand-crafted direct call never exercises.
     func testWebSearchArgumentJSONReachesExecute() async throws {
-        let registry = ToolRegistry([WebSearchTool(engines: [.duckduckgo], session: webSession())])
+        let registry = ToolRegistry([
+            WebSearchTool(engines: [.duckduckgo], session: webSession(),
+                          dnsResolver: { _ in ["93.184.216.34"] }),
+        ])
         let engine = TurnScriptedEngine([
             #"<tool_call>{"name":"web_search","arguments":{"query":"swift language"}}</tool_call>"#,
             "Per the results, Swift is Apple's language.",
@@ -80,7 +84,9 @@ final class ToolLoopChainTests: XCTestCase {
 
     /// Same for fetch_webpage: the `url` argument round-trips to `WebScraperTool.execute`.
     func testFetchWebpageArgumentJSONReachesExecute() async throws {
-        let registry = ToolRegistry([WebScraperTool(session: webSession())])
+        let registry = ToolRegistry([
+            WebScraperTool(session: webSession(), dnsResolver: { _ in ["93.184.216.34"] }),
+        ])
         let engine = TurnScriptedEngine([
             #"<tool_call>{"name":"fetch_webpage","arguments":{"url":"https://reference.example/swift-article"}}</tool_call>"#,
             "Done reading.",
@@ -115,7 +121,9 @@ final class ToolLoopChainTests: XCTestCase {
     /// The real injection vector: a fetched web page whose BODY contains an injection string must be fenced
     /// when it flows through the loop from `WebScraperTool`.
     func testScrapedPageBodyIsFramedAsUntrusted() async throws {
-        let registry = ToolRegistry([WebScraperTool(session: webSession())])
+        let registry = ToolRegistry([
+            WebScraperTool(session: webSession(), dnsResolver: { _ in ["93.184.216.34"] }),
+        ])
         let engine = TurnScriptedEngine([
             #"<tool_call>{"name":"fetch_webpage","arguments":{"url":"https://inject.example/evil"}}</tool_call>"#,
             "Ignoring the page's instructions.",

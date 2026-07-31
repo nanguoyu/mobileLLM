@@ -55,17 +55,16 @@ final class ChatStoreLifecycleTests: XCTestCase {
         XCTAssertTrue(chat.isStreaming, "a stream is in flight before the wipe")
         XCTAssertEqual(chat.conversations.count, 2, "two conversations exist before the wipe")
 
-        chat.reloadAfterWipe()
-        // The mirror is cleared synchronously.
+        await chat.quiesceForConversationErase()
+        chat.finishConversationErase(succeeded: true, resetSessionState: true)
         XCTAssertTrue(chat.conversations.isEmpty, "reloadAfterWipe clears the conversation mirror")
         XCTAssertNil(chat.activeID, "and drops the active id")
 
-        // The cancelled in-flight task must commit into nothing and leave streaming nil — no crash.
-        try await waitUntilIdle(chat)
+        // Quiescing awaits the cancelled generation, so no late commit can recreate the wiped thread.
         XCTAssertNil(chat.streaming, "the wiped stream ends cleanly (commit guard no-ops on the empty mirror)")
     }
 
-    func testReloadAfterWipeWhenIdleClearsMirror() throws {
+    func testReloadAfterWipeWhenIdleClearsMirrorAndComposerState() async throws {
         let (chat, dir) = makeStore(engine: MockLLMEngine(script: .init()))
         defer { try? FileManager.default.removeItem(at: dir) }
         chat.conversations = [
@@ -73,10 +72,41 @@ final class ChatStoreLifecycleTests: XCTestCase {
             Conversation(modelID: model.id, variantID: model.defaultVariantValue.id),
         ]
         chat.activeID = chat.conversations.first?.id
+        chat.draft = "private unsent draft"
+        XCTAssertTrue(chat.attach(imageData: makeTestImageData(width: 16, height: 16)))
+        chat.thinkingEnabled = false
 
-        chat.reloadAfterWipe()
+        await chat.quiesceForConversationErase()
+        chat.finishConversationErase(succeeded: true, resetSessionState: true)
         XCTAssertTrue(chat.conversations.isEmpty)
         XCTAssertNil(chat.activeID)
         XCTAssertNil(chat.streaming)
+        XCTAssertTrue(chat.draft.isEmpty)
+        XCTAssertTrue(chat.pendingImages.isEmpty)
+        XCTAssertEqual(chat.thinkingEnabled, true, "full erase restores the settings default")
+    }
+
+    func testCoordinatedDeleteDrainsQueuedAutosaveWithoutResurrection() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(component: "chat-wipe-barrier-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = ConversationStore(directory: dir)
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "wipe-barrier-\(UUID().uuidString)")!)
+        let chat = ChatStore(engine: MockLLMEngine(), store: store, settings: settings,
+                             activeModel: LoadedModel(model: model, variant: model.defaultVariantValue))
+        let conversation = Conversation(title: "before", modelID: model.id,
+                                        variantID: model.defaultVariantValue.id)
+        chat.conversations = [conversation]
+        chat.activeID = conversation.id
+
+        chat.rename(conversation.id, to: "private queued save")
+        await Task.yield()
+        await chat.quiesceForConversationErase()
+        try await store.deleteAll()
+        chat.finishConversationErase(succeeded: true, resetSessionState: false)
+
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let remaining = await store.loadAllLive()
+        XCTAssertTrue(remaining.isEmpty)
     }
 }

@@ -6,7 +6,7 @@ import AppRuntime
 @testable import LLMCore
 
 /// Launch-time engine choice (DESIGN §6): the user's persisted `Inference engine` preference must be
-/// honored when the app auto-activates the default model on bootstrap — never silently overridden by
+/// honored when the app restores the default model selection on bootstrap — never silently overridden by
 /// the MLX-first default or a platform tie-break. This is the durable half of "the user freely chooses".
 @MainActor
 final class AppContainerBootstrapTests: XCTestCase {
@@ -23,7 +23,7 @@ final class AppContainerBootstrapTests: XCTestCase {
         return AppContainer(
             engine: MockLLMEngine(),
             downloadBase: FileManager.default.temporaryDirectory.appending(component: "boot-\(UUID().uuidString)"),
-            downloader: { _, _, p in p(1) },
+            downloader: { _, _, _, p in p(1) },
             device: device,
             settings: settings,
             conversationStore: ConversationStore(directory: FileManager.default.temporaryDirectory
@@ -37,6 +37,7 @@ final class AppContainerBootstrapTests: XCTestCase {
         await c.bootstrap()
         XCTAssertEqual(c.models.active?.variant.engine, .llamaCpp,
                        "a persisted llama.cpp preference must be honored on launch, even on Mac where the default is MLX")
+        XCTAssertFalse(c.models.engineResident, "bootstrap restores selection without loading weights")
     }
 
     func testBootstrapHonorsMLXPreference() async {
@@ -44,21 +45,25 @@ final class AppContainerBootstrapTests: XCTestCase {
         await c.bootstrap()
         XCTAssertEqual(c.models.active?.variant.engine, .mlx,
                        "a persisted MLX preference must be honored on launch, even on a phone where Auto leans llama.cpp")
+        XCTAssertFalse(c.models.engineResident, "bootstrap restores selection without loading weights")
     }
 
     func testAutoTieBreaksByDevice() async {
         let onPhone = container(preference: .auto, device: phone)
         await onPhone.bootstrap()
         XCTAssertEqual(onPhone.models.active?.variant.engine, .llamaCpp, "Auto on a phone leans llama.cpp (mmap)")
+        XCTAssertFalse(onPhone.models.engineResident)
 
         let onMac = container(preference: .auto, device: mac)
         await onMac.bootstrap()
         XCTAssertEqual(onMac.models.active?.variant.engine, .mlx, "Auto on a Mac leans MLX (resident, fastest)")
+        XCTAssertFalse(onMac.models.engineResident)
     }
 
-    func testNothingInstalledActivatesNothing() async {
+    func testNothingInstalledSelectsNothing() async {
         let c = container(preference: .llamaCpp, device: mac, installed: false)
         await c.bootstrap()
-        XCTAssertNil(c.models.active, "no install → no auto-activation (no crash, no wrong-engine boot)")
+        XCTAssertNil(c.models.active, "no install → no restored selection (no crash, no wrong-engine boot)")
+        XCTAssertFalse(c.models.engineResident)
     }
 }

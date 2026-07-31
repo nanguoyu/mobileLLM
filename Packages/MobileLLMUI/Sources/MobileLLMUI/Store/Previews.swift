@@ -47,6 +47,16 @@ actor PreviewMemoryStore: MemoryStoring {
         facts.append(fact)
         return fact
     }
+    @discardableResult func saveIfAbsent(_ text: String,
+                                         source: MemoryFact.Source) -> MemorySaveResult {
+        let key = MemoryDeduplication.key(text)
+        if let existing = facts.first(where: { MemoryDeduplication.key($0.text) == key }) {
+            return .duplicate(existing)
+        }
+        let fact = MemoryFact(text: text, source: source)
+        facts.append(fact)
+        return .saved(fact)
+    }
     func list() -> [MemoryFact] { facts }
     func update(id: String, text: String) {
         guard let i = facts.firstIndex(where: { $0.id == id }) else { return }
@@ -73,7 +83,7 @@ extension AppContainer {
         let container = AppContainer(
             engine: MockLLMEngine(script: .init(chunkSize: 2, chunkDelayNanos: 12_000_000)),
             downloadBase: FileManager.default.temporaryDirectory.appending(component: "mobilellm-preview"),
-            downloader: { _, _, progress in
+            downloader: { _, _, _, progress in
                 for i in 1...20 { progress(Double(i) / 20); try? await Task.sleep(nanoseconds: 40_000_000) }
             },
             device: device,

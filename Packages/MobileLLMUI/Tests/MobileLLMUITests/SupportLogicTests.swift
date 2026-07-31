@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import XCTest
+import LLMCore
 @testable import MobileLLMUI
 
 /// Pure UI-support logic that had slipped through without tests: the markdown block splitter (incl.
@@ -50,6 +51,34 @@ final class SupportLogicTests: XCTestCase {
 
     func testBytesFormatsNonEmpty() {
         XCTAssertFalse(Format.bytes(2_740_937_888).isEmpty)   // platform-formatted, just not blank
+    }
+
+    // MARK: Format.statsFooter
+
+    func testStatsFooterPreservesPositiveFractionalThroughput() {
+        XCTAssertEqual(
+            Format.statsFooter(stats(tokensPerSecond: 0.4), modelName: "Bonsai 8B"),
+            "Bonsai 8B · 4 tok · 0.4 tok/s · stop: eos"
+        )
+    }
+
+    func testStatsFooterUsesPositiveBoundForExtremelyLowThroughput() {
+        XCTAssertEqual(
+            Format.statsFooter(stats(tokensPerSecond: 0.004), modelName: "Bonsai 8B"),
+            "Bonsai 8B · 4 tok · <0.1 tok/s · stop: eos"
+        )
+    }
+
+    func testStatsFooterKeepsWholeNumberDisplayForNormalThroughput() {
+        XCTAssertEqual(
+            Format.statsFooter(stats(tokensPerSecond: 12.4), modelName: "Gemma 4 E2B"),
+            "Gemma 4 E2B · 4 tok · 12 tok/s · stop: eos"
+        )
+    }
+
+    private func stats(tokensPerSecond: Double) -> Stats {
+        Stats(promptTokens: 8, genTokens: 4, promptTPS: 3,
+              tokensPerSecond: tokensPerSecond, peakMemoryBytes: 0, stopReason: .eos)
     }
 
     // MARK: StreamingState.hasAnyContent

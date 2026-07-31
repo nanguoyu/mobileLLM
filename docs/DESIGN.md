@@ -16,6 +16,9 @@
 > - **Features this doc doesn't cover, now shipped:** tool calling + an **MCP** client (remote Streamable-HTTP
 >   servers), a **model-aware context ladder** (rungs capped by the model, re-scored per rung), the
 >   **thinking-disclosure** interaction, and a stock, editable **system prompt**.
+> - **“Nothing leaves the device” below describes the inference path, not every optional feature.** Model
+>   discovery/downloads contact Hugging Face, and web/Wikipedia/MCP tools contact their documented remote
+>   endpoints only when enabled or invoked. The app has no account, analytics, or telemetry.
 >
 > Everything below is preserved verbatim as the record of the initial design intent.
 
@@ -90,13 +93,12 @@ Mac ≈ RAM − 4 GB.
 
 > **Honesty note (critique A1) + user decision:** on paper the 27B weights (5.13 GB) sit right at the
 > 8 GB 16 Pro's ceiling before a single KV byte, so it is *expected not to fit* and short-context can't
-> help (it's the weights, not the KV). **The user wants to test this empirically on their own 16 Pro**,
-> so we do NOT hard-disable it: on the 8 GB phone 27B-1bit renders as an honest **amber "Experimental —
-> may be interrupted"** with a **"Try anyway"** that bypasses the soft OOM pre-flight and actually
-> attempts the resident load (with the `increased-memory-limit` entitlement + KV-4bit + a low context
-> cap for the best shot). If iOS jetsams it, that's the real answer — surfaced as a recoverable event,
-> never a silent crash. On Mac + 12 GB iPhone it's a normal green flagship. **8B-1bit stays the safe
-> iPhone default.**
+> help (it's the weights, not the KV). **The user wants the device, not an estimate, to decide.** Fit
+> badges therefore remain honest, advisory labels, but every installed variant has the same **Use**
+> action and always attempts the real load (with the `increased-memory-limit` entitlement + KV-4bit +
+> a low context cap for the best shot). iOS may terminate a process that exceeds its limit; the next
+> launch remains safe because launch never loads weights automatically. On Mac + 12 GB iPhone it is a
+> normal green flagship. **8B-1bit stays the recommended iPhone default, not an enforced fallback.**
 
 **Defaults:** Mac → 27B-1bit · 12 GB iPhone → 27B-1bit · **8 GB iPhone → 8B-1bit** (27B-1bit selectable
 as Experimental).
@@ -154,7 +156,7 @@ instrument peak memory.
 ```swift
 public actor LLMEngine {
     func load(_ id, variant, weightsDir, progress) async throws   // LLMModelFactory.loadContainer
-    func unload() async                                            // container=nil; MLX.GPU.clearCache()
+    func unload() async                                            // container=nil; MLX.Memory.clearCache()
     func generate(messages:[ChatTurn], params:Sampling) -> AsyncThrowingStream<Delta, Error>
     enum Delta { case reasoning(String); case answer(String); case done(Stats) }
     struct Stats { promptTokens, genTokens; promptTPS, tokensPerSecond; peakMemoryBytes; stopReason }
@@ -167,11 +169,11 @@ public actor LLMEngine {
   builds `Qwen35Model` (27B) or `Qwen3Model` (8B/4B/1.7B) and rebuilds `Linear→QuantizedLinear` from
   `{bits:1, group_size:128}` — **this is where the fork kernel is mandatory** (upstream asserts
   `bits∈{2,…}` → a first-decode assert is the canary that the wrong mlx-swift resolved). iOS:
-  `MLX.GPU.set(cacheLimit: 32<<20)` (weights are resident; give the reuse pool little).
+  `MLX.Memory.cacheLimit = 32<<20` (weights are resident; give the reuse pool little).
 - **generate** runs in `container.perform { … }`: build `UserInput(chat:)`, set
   `additionalContext=["enable_thinking": params.thinking]`, apply the repo `chat_template.jinja` via
   swift-jinja, `resetPeakMemory()`, iterate `MLXLMCommon.generate`. Each chunk → `ThinkSplitter.feed`
-  → `.reasoning`/`.answer`; `.info` → `.done(Stats)` reading `MLX.GPU.peakMemory`. Per-token:
+  → `.reasoning`/`.answer`; `.info` → `.done(Stats)` reading `MLX.Memory.peakMemory`. Per-token:
   `Task.checkCancellation()` + `thermal.throttleIfNeeded()`.
 - **KV 4-bit**: `kvBits=4` quantizes each cache to `QuantizedKVCache` after `quantizedKVStart` tokens;
   it correctly **skips `MambaCache`** (never quantize recurrent state). Enforce `contextTokenCap` by
@@ -212,16 +214,16 @@ is a serious failure — keep that defensive posture.
 
 `LLMMemoryGovernor.plan(model, variant, device, context) -> LLMFit` — resident-only, no streaming rung.
 `peak = onDiskBytes + ~0.5 GB + KV(ctx)`; `peak ≤ 0.70·ceiling` → green; `≤ ceiling` → amber+maxContext;
-`weights alone > ceiling` → gray/unsupported. **OOM pre-flight** in `ModelManager.activate` compares
-live `MemoryProbe.availableBytes()` against the peak and throws a **recoverable**
-`insufficientMemory(needed, available)` before load (never let jetsam fire). Ship
-`increased-memory-limit` (helps 12 GB, never claimed for 8 GB). **Thermal**: the `ThermalGovernor`
+`weights alone > ceiling` → gray/unsupported. These are advisory planning labels only: neither an
+`unsupported` estimate nor live free-memory pressure blocks activation. Every installed model is attempted
+and the engine/device supplies the real result. Ship `increased-memory-limit` (helps 12 GB, never claimed
+for 8 GB). **Thermal**: the `ThermalGovernor`
 calls `throttleIfNeeded()` on a wall-clock boundary (~every 250 ms of decode, not only per-N-tokens);
 `.critical` → bounded pause then recoverable `pausedForHeat` (the one hard anti-shutdown guarantee).
 
 One `LLMError` enum surfaced via `.toastBanner` + inline, always with a forward action:
-`insufficientMemory` ("Switch to 8B") · `pausedForHeat` (auto-resumes) · `weightsCorrupt` (re-download,
-resumes) · `forkKernelMissing` (CI canary) · `cancelled` (commit partial, not an error).
+`pausedForHeat` (auto-resumes) · `weightsCorrupt` (re-download, resumes) · `forkKernelMissing` (CI canary)
+· `cancelled` (commit partial, not an error).
 
 ---
 
@@ -306,7 +308,7 @@ model-summarized later as a *preemptible idle* job — critique F4); full-text s
 First-run also carries a one-line content note (critique H1: on-device ≠ no liability).
 
 **States, a11y, i18n.** Every state has warm, action-oriented copy (empty / no-model / warming /
-streaming / stopped / error / OOM-refusal / thermal-pause / context-full / offline / model-deleted).
+streaming / stopped / load-error / thermal-pause / context-full / offline / model-deleted).
 VoiceOver labels on all controls (fit-badge text *is* its label); Dynamic Type to XXXL (code scrolls,
 never clips); all copy in a `.xcstrings` catalog from day one; motion via `Motion` (Reduce-Motion → 
 crossfades, steady caret).
@@ -330,7 +332,7 @@ package yet.**
 | Resumable streaming downloader | No (Foundation + CryptoKit + Hub) | **inline**; parameterize the component-set check (LLM repos ship a flat file list); give it an LLM-specific on-disk manifest name |
 | `MemoryProbe` (`phys_footprint`) | No | **inline** verbatim (jetsam-accurate) |
 | `DeviceTier` | No | **inline** (LLM-relevant fields only) |
-| `ThermalGovernor` | Barely (3× `MLX.GPU.clearCache()`) | **inline with `clearCache` injected** as `@Sendable ()->Void` → MLX-free |
+| `ThermalGovernor` | Barely (`MLX.Memory.clearCache()`) | **inline with `clearCache` injected** as `@Sendable ()->Void` → MLX-free |
 | `DurableStore` recovery skeleton | No | **adapt** → `ConversationStore` / `ModelRegistryStore` |
 | `ModelsView` / `SettingsView` view builders | No | **adapt** (retarget to `LLMModel`, `FitBadge` → `LLMFitBadge`) |
 
@@ -345,13 +347,14 @@ effectively MLX-free already: that is the big head start.
 1. **Fork pin + `bits=1` smoke-decode gate FIRST** (Bonsai-8B → non-garbage). This is the schedule risk;
    settle it before any UI.
 2. Stand up the MLX-free foundation files inline; bring up `LLMCore` + `LLMEngine`.
-3. **8B-1bit + 27B-1bit, iPhone + Mac.** 8B-1bit is the safe green path everywhere; **27B-1bit ships in
-   the MVP too** (user decision — they want to personally test whether it runs on the 8 GB 16 Pro). 27B
-   is green on Mac/12 GB and an honest amber "Experimental · Try anyway" on the 8 GB phone.
+3. **8B-1bit + 27B-1bit, iPhone + Mac.** 8B-1bit is the recommended green path everywhere;
+   **27B-1bit ships in the MVP too** (user decision — they want to personally test whether it runs on the
+   8 GB 16 Pro). 27B is green on Mac/12 GB and carries an honest advisory warning on the 8 GB phone, but
+   the same **Use** action still attempts it.
 4. One conversation surface: send → stream → thinking disclosure (with `finish()`) → honest
    boundary-Stop → persist (`DurableStore` + corrupt-recovery).
 5. Model manager: foreground download (honest copy), fit badge (green/gray), delete.
-6. OOM pre-flight + `.critical` thermal pause + the backgrounding policy (§2.3).
+6. Advisory fit planning + `.critical` thermal pause + the backgrounding policy (§2.3).
 
 **v1.0**
 - **27B-1bit on Mac + 12 GB iPhone** (after 8B validates); ternary-2bit stock variants.
@@ -374,7 +377,7 @@ Simulator has no Metal path for the 1-bit kernels → inference is validated on 
 | Risk | Impact | De-risk |
 |---|---|---|
 | **Fork ↔ mlx-swift-lm version/API rebase** | High (schedule) | Compile-gate + `bits=1` smoke-decode **before UI**; vendor submodules with recurse; may need to edit version constraint / rebase kernels — budgeted. |
-| **8 GB iPhone × 27B** | Crash | 8B-1bit is the iPhone hero; 27B gray/disabled on 8 GB; OOM pre-flight refuses recoverably. |
+| **8 GB iPhone × 27B** | Crash | 8B-1bit is recommended; 27B carries an advisory warning but remains attemptable, and launch never reloads it automatically. |
 | **Backgrounding a 5 GB resident model** | Jetsam kill | Explicit background policy: commit partial, lower cache, unload the largest models. |
 | **Metal builds via Xcode only** | CI/dev friction | `xcodebuild` everywhere; copied MLX-free code keeps a fast `swift test` loop. |
 | **Supply chain (unmerged #3161)** | Maintenance | Pin exact SHAs; **exit path:** when #3161 merges + ships in a tagged mlx-swift, repoint the fork back to upstream and delete it — the on-disk affine-quant format survives the merge (gate on a byte-identical logits check first), no re-download. |

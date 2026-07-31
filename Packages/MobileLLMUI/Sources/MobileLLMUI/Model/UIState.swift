@@ -46,8 +46,13 @@ public struct StreamingState: Equatable {
     public var reasoning: String = ""
     public var answer: String = ""
     public var stats: Stats?
+    /// Captured once the engine's actual ready model is known; committed with the assistant message so a
+    /// later model switch cannot relabel this turn's historical stats.
+    public var generatedBy: GenerationModel?
 
-    /// When the reasoning began + how long it lasted (frozen when the first answer token arrives).
+    /// Start of the currently active reasoning segment, plus accumulated reasoning time across passes.
+    /// Tool execution, MCP/network waits, answer tokens, and the next pass's prefill are deliberately not
+    /// counted. `thinkingDuration` stays available between segments and is finalized at commit/Stop.
     public var thinkingStartedAt: Date?
     public var thinkingDuration: TimeInterval?
     /// Tools invoked so far this turn (the last one is "running" until its result lands).

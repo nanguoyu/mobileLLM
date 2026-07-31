@@ -11,7 +11,7 @@ import LLMCore
 struct ExploreView: View {
     @Bindable var models: ModelManager
     @Bindable var settings: AppSettings
-    var onUse: (LLMModel, LLMVariant, _ force: Bool) -> Void
+    var onUse: (LLMModel, LLMVariant) -> Void
 
     @State private var query = ""
     @State private var source: RemoteCatalog.Source = .mlx
@@ -34,7 +34,6 @@ struct ExploreView: View {
                 searchField
                 Segmented(selection: $source, options: RemoteCatalog.Source.allCases) { $0.label }
                     .frame(maxWidth: 240)
-                    .accessibilityLabel("Checkpoint format")
                 sourceLine
                 if let notice {
                     Text(notice).font(.caption).foregroundStyle(Theme.fitAmber)
@@ -175,7 +174,7 @@ struct ExploreView: View {
                               enginePreference: settings.enginePreference, isRecommended: false,
                               engineSel: Binding(get: { selEngine[model.id] }, set: { selEngine[model.id] = $0 }),
                               quantSel: Binding(get: { selQuant[model.id] }, set: { selQuant[model.id] = $0 }),
-                              onUse: { m, v, force in onUse(m, v, force); detail = nil },
+                              onUse: { m, v in onUse(m, v); detail = nil },
                               onDelete: { v in models.delete(v) })
                 }
                 .padding(Theme.Space.lg)
@@ -210,7 +209,9 @@ struct ExploreView: View {
                     return
                 }
                 resolved = RemoteModel(id: remote.id, name: remote.name, publisher: remote.publisher,
-                                       engine: remote.engine, downloads: remote.downloads, variants: quants)
+                                       engine: remote.engine, downloads: remote.downloads,
+                                       family: remote.family, license: remote.license,
+                                       revision: remote.revision, variants: quants)
             }
             // Its own config.json / GGUF metadata → honest context + KV shape. On any failure this returns
             // the generic fallback marked `isResolved: false`, so we badge the context as unverified.

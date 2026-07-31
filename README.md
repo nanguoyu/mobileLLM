@@ -7,7 +7,8 @@
 **A private, open-source chat app that runs open-weight language models fully on your device** —
 macOS + iOS, native Swift + SwiftUI. Three inference engines — Apple [MLX](https://github.com/ml-explore/mlx-swift),
 [llama.cpp](https://github.com/ggml-org/llama.cpp), and Apple Intelligence's own on-device model — sit
-behind one protocol. No account, no cloud; nothing you type ever leaves the device.
+behind one protocol. No account and no telemetry: inference and chat storage stay on your device. Network
+access happens only for model discovery/downloads or tools you explicitly enable (web, Wikipedia, MCP).
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
@@ -25,7 +26,9 @@ behind one protocol. No account, no cloud; nothing you type ever leaves the devi
 
 ## Features
 
-- 🔒 **100% on-device.** Chats, prompts, and models stay on your device — no account, no server, no telemetry.
+- 🔒 **On-device by default.** Inference, chats, memories, skills, attachments, and downloaded weights stay
+  on your device — no account and no telemetry. Model downloads and explicitly enabled network tools are
+  the documented exceptions; see **Privacy and network boundary** below.
 - 💬 **Streamed chat with thinking disclosure.** Tokens stream one by one; for reasoning models the `<think>`
   trace shows in a disclosure that auto-collapses to "Thought for Ns" when the answer starts (or always-expand / hidden).
 - ⚡ **Three engines, one protocol.** **MLX** (resident weights), **llama.cpp** (memory-mapped GGUF), and
@@ -38,15 +41,18 @@ behind one protocol. No account, no cloud; nothing you type ever leaves the devi
   downloading) instead of pretending. Requires iOS 26 / macOS 26; the app still builds and runs on iOS 17 /
   macOS 14, where the framework is weak-linked and simply absent.
 - 📊 **Honest memory fit + a model-aware context ladder.** Every model shows a per-device fit badge
-  (*Runs great* / *Tight* / *Needs more memory*) from your actual RAM, and the context-length options are
+  (*Runs great* / *Tight* / *High memory · may fail*) from your hardware profile, and the context-length options are
   capped by what the model was trained for and re-scored per rung — a setting that buys memory, not capability.
+  Local engines cooperatively check cancellation, memory pressure, and iOS thermal state at decode boundaries.
 - 🛠️ **Tool calling + MCP.** An on-device agent loop with a real toolbox: keyless **web search**
   (DuckDuckGo first, Bing fall-through — scraped result pages, no API key), a **webpage reader**
   (readable-text extraction with SSRF guards), Wikipedia, calculator, clock — plus permission-gated
-  **calendar, reminders and location** tools (off
-  until you enable them; the system prompt appears on first use). Every tool has its own toggle in
-  Settings → Manage tools, and any remote **MCP** server you configure layers on top (Streamable HTTP,
-  per-server enable + per-tool mute). Tools are off by default.
+  **calendar, reminders and location** tools (off until you select them; the system permission prompt
+  appears when selected). The chat's Tools submenu shows a master authorization plus a checkmark for every built-in
+  capability; the full Tool Settings screen adds descriptions, search-engine priority, and remote **MCP**
+  controls (Streamable HTTP, per-server enable + per-tool mute). Tool access is off by default, and only
+  selected tools are advertised to the model. Invoking a network tool sends that tool's arguments to its
+  remote endpoint and adds another model pass.
 - 🧠 **Memory you can read and correct.** Tell it something worth keeping and it notes it down; the notes
   relevant to your question are folded into the prompt before it answers, so memory works without the model
   having to remember to look. Everything it saved is listed in Settings → Behavior → Memory — who wrote each
@@ -67,14 +73,17 @@ behind one protocol. No account, no cloud; nothing you type ever leaves the devi
   `run_js` JS runtime are flagged honestly — that runtime isn't on iOS yet). Browse and share more in
   **[Discussions → Skills](https://github.com/nanguoyu/mobileLLM/discussions/categories/skills)**.
 - 🧵 **Conversations remember their model.** Every send stamps the thread with the model that answered;
-  reopening a thread (or relaunching the app) brings that model back. There is no "default model"
-  setting to manage — a new chat starts on whatever you used last, and the empty-state title
-  ("Chat with … ⌄") is itself the model picker.
+  explicitly reopening a thread restores that selection. Relaunch always stops at the conversation list
+  with no history selected and never allocates model weights merely to show the UI; the first send performs
+  the real load. There is no "default model" setting to manage — a new chat starts on whatever you used
+  last, and the empty-state title ("Chat with … ⌄") is itself the model picker.
 - 🧭 **Explore — live Hugging Face browse.** Search `mlx-community` (MLX) and the GGUF orgs (bartowski,
   unsloth, ggml-org, lmstudio-community) by download count, pick a precision, and install. Community models
-  load from their own chat template, so they're clearly flagged **Unverified**.
+  load from their own chat template, so they're clearly flagged **Unverified**. Family and license are
+  mapped only from Hub metadata the app recognizes; missing metadata stays **Unknown**, never guessed.
 - 🧩 **Many model families.** 12 curated models across 5 families ship in the Featured catalog; adding one
-  is a catalog entry, not a rewrite. Downloads are **resumable** with live bytes/speed/ETA.
+  is a catalog entry, not a rewrite. Downloads are **revision-aware**, resumable, verify Hub LFS SHA-256, and
+  report live bytes/speed/ETA across every required file, including a vision projector.
 - 🎨 **Native SwiftUI, ink-wash design.** Tabs & sheets on iOS, sidebar & menu bar on macOS; a warm
   rice-paper / cinnabar-seal (水墨) palette, Dynamic Type, dark mode, reduce-motion.
 
@@ -104,6 +113,24 @@ full-attention layers grow a KV cache, so memory stays near-constant as context 
 MatFormer "effective" size. **MLX 1-bit** needs the PrismML fork kernel; **ternary 2-bit** is upstream MLX;
 **GGUF** runs on llama.cpp. **ᵛ** vision-capable: the app downloads the model's official `mmproj`
 projector alongside the weights (adds 0.16–1 GB) and the composer accepts image attachments.</sub>
+
+## Privacy and network boundary
+
+The model runs locally. Conversation text, reasoning, memory, skills, image attachments, settings, and
+downloaded weights are stored locally and are not uploaded by the chat engine. The app has no account,
+analytics, or telemetry service.
+
+The following user-initiated features do use the network:
+
+- **Models:** Explore metadata and model-weight downloads contact Hugging Face.
+- **Built-in network tools:** web search, webpage reading, and Wikipedia send the model-selected query or
+  URL to those public services. Each can be deselected independently; none is available while the master
+  tool authorization is off.
+- **MCP:** enabling a server sends JSON-RPC requests and tool arguments to the exact remote endpoint the
+  user configured. MCP tokens are stored in the device Keychain.
+
+Tool output is treated as untrusted data before it is returned to the model. See
+**[SECURITY.md](SECURITY.md)** for the downloader integrity guarantees and network threat boundary.
 
 ## Architecture
 

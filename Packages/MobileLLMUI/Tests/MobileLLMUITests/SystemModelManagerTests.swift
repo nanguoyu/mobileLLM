@@ -37,7 +37,7 @@ final class SystemModelManagerTests: XCTestCase {
                          diskInstalled: Bool = false,
                          spy: DownloadSpy? = nil) -> ModelManager {
         ModelManager(engine: MockLLMEngine(), device: device, downloadBase: tempBase(),
-                     downloader: { repo, _, progress in await spy?.record(repo); progress(1) },
+                     downloader: { repo, _, _, progress in await spy?.record(repo); progress(1) },
                      installProbe: { _, _ in diskInstalled },
                      systemModelProbe: { status },
                      availableMemory: { .max })
@@ -80,7 +80,7 @@ final class SystemModelManagerTests: XCTestCase {
     func testStatusIsRefreshedOnEachScan() {
         let flag = MutableStatus(.available)
         let models = ModelManager(engine: MockLLMEngine(), device: phone8, downloadBase: tempBase(),
-                                  downloader: { _, _, progress in progress(1) },
+                                  downloader: { _, _, _, progress in progress(1) },
                                   installProbe: { _, _ in false },
                                   systemModelProbe: { flag.value },
                                   availableMemory: { .max })
@@ -97,7 +97,7 @@ final class SystemModelManagerTests: XCTestCase {
     /// reports the system model as unavailable rather than ready.
     func testDefaultProbeDoesNotPretendTheModelIsReady() {
         let models = ModelManager(engine: MockLLMEngine(), device: phone8, downloadBase: tempBase(),
-                                  downloader: { _, _, progress in progress(1) },
+                                  downloader: { _, _, _, progress in progress(1) },
                                   installProbe: { _, _ in false },
                                   availableMemory: { .max })
         models.refreshInstalled()
@@ -107,8 +107,8 @@ final class SystemModelManagerTests: XCTestCase {
 
     // MARK: - It costs nothing
 
-    /// Free on every device: the OS holds the weights out of process, so the fit is comfortable and the
-    /// pre-flight has nothing to weigh — even where a resident model of any size would be refused.
+    /// Free on every device: the OS holds the weights out of process, so the advisory fit is comfortable
+    /// and our resident estimate is zero.
     func testSystemModelIsFreeAndAlwaysComfortable() {
         for device in [phone8, mac16] {
             let models = manager(device, status: .available)
@@ -119,11 +119,10 @@ final class SystemModelManagerTests: XCTestCase {
                        "the OS runs it out of process: there is nothing of ours to weigh")
     }
 
-    /// Even with almost no free memory the pre-flight must not refuse it — the estimate is 0, so
-    /// `activate` can't trip the insufficient-memory guard.
+    /// The legacy memory-probe injection is ignored for every model, including the system model.
     func testActivateIsNotRefusedWhenMemoryIsTight() async throws {
         let models = ModelManager(engine: MockLLMEngine(), device: phone8, downloadBase: tempBase(),
-                                  downloader: { _, _, progress in progress(1) },
+                                  downloader: { _, _, _, progress in progress(1) },
                                   installProbe: { _, _ in false },
                                   systemModelProbe: { .available },
                                   availableMemory: { 1 })   // 1 byte free

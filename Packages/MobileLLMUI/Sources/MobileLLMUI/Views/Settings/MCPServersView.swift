@@ -59,6 +59,11 @@ final class MCPProbe {
             case .http(404): return "No MCP endpoint at that path (HTTP 404)."
             case .http(let code): return "Server returned HTTP \(code)."
             case .rpc(let msg): return msg
+            case .timedOut: return "Timed out waiting for the MCP server."
+            case .repeatedCursor: return "Server repeated a tools-page cursor."
+            case .pageLimit(let limit): return "Server returned more than \(limit) tool pages."
+            case .responseTooLarge: return "Server response was too large."
+            case .invalidResponse(let reason): return "Invalid server response: \(reason)"
             }
         }
         if let url = error as? URLError {
@@ -90,7 +95,8 @@ struct MCPServersView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.md) {
                 Text("Model Context Protocol servers extend the model with tools you host or subscribe to. "
-                     + "They're contacted only while a chat is generating with Tools on.")
+                     + "They're contacted only while a chat is generating with tool access on and that "
+                     + "server selected.")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
 
                 if settings.mcpServers.isEmpty {

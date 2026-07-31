@@ -9,7 +9,9 @@ import LLMCore
 struct SettingsView: View {
     let container: AppContainer
     @Bindable var settings: AppSettings
-    @State private var confirmDeleteAll = false
+    @State private var confirmDeleteChats = false
+    @State private var confirmEraseAll = false
+    @State private var eraseError: String?
     @State private var storageBytes: Int64 = 0
     @State private var showTools = false
     @State private var showSystemPrompt = false
@@ -37,11 +39,28 @@ struct SettingsView: View {
         .scrollDismissesKeyboard(.interactively)   // drag to dismiss the system-prompt keyboard
         .background(Theme.bg)
         .task { storageBytes = await container.conversationStore.storageBytes() }
-        .alert("Delete all data?", isPresented: $confirmDeleteAll) {
-            Button("Delete everything", role: .destructive) { deleteAll() }
+        .alert("Delete all chats?", isPresented: $confirmDeleteChats) {
+            Button("Delete all chats", role: .destructive) { deleteAllChats() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Removes every conversation on this device. Downloaded models are kept. This can't be undone.")
+            Text("Removes every conversation and image attachment on this device. Models, memory, skills, "
+                 + "settings, and MCP credentials are kept. This can't be undone.")
+        }
+        .alert("Erase all app data?", isPresented: $confirmEraseAll) {
+            Button("Erase everything", role: .destructive) { eraseAllAppData() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Returns mobileLLM to a fresh install. It permanently removes chats and attachments, "
+                 + "memory, custom skills, settings, MCP credentials, community-model records, and every "
+                 + "downloaded model. Calendar events or reminders already created outside the app are "
+                 + "not changed. This can't be undone.")
+        }
+        .alert("Some data wasn't erased",
+               isPresented: Binding(get: { eraseError != nil },
+                                    set: { if !$0 { eraseError = nil } })) {
+            Button("OK", role: .cancel) { eraseError = nil }
+        } message: {
+            Text(eraseError ?? "Try the erase again.")
         }
         // A sheet, not a push: the macOS detail column isn't inside a NavigationStack.
         .sheet(isPresented: $showTools) {
@@ -85,9 +104,9 @@ struct SettingsView: View {
     // MARK: Model
 
     // There is deliberately NO "default model" or "engine preference" here anymore: conversations
-    // remember their own model, a new chat uses whatever is loaded, launch restores the last-used one,
-    // and Auto picks the engine per device — two settings whose only job was to be forgotten about.
-    // `settings.defaultModelID` lives on as the auto-tracked "last used" fallback, never user-facing.
+    // remember their own model, an explicitly opened thread restores its choice, and a new chat uses the
+    // last-used identity. Launch restores that identity without loading weights and leaves history
+    // unselected. `settings.defaultModelID` is the auto-tracked fallback, never user-facing.
 
     // MARK: Behavior
 
@@ -125,15 +144,15 @@ struct SettingsView: View {
             Divider().background(Theme.hairline)
             Toggle(isOn: $settings.toolsEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Tools").font(.subheadline).foregroundStyle(Theme.textPrimary)
-                    Text("Let the model call tools while it answers — web search, a webpage reader, "
-                         + "Wikipedia, a calculator, memory, and more. Adds a round-trip; some models call "
-                         + "tools more reliably than others.")
+                    Text("Allow selected tools").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                    Text("Only tools selected below are exposed to the model. The model decides whether "
+                         + "to call one; every call adds another model pass, and network tools such as web "
+                         + "search, Wikipedia, and remote MCP also wait for the network.")
                         .font(.caption).foregroundStyle(Theme.textTertiary)
                 }
             }
             .tint(Theme.accent)
-            if settings.toolsEnabled { manageToolsRow }
+            manageToolsRow
         }
     }
 
@@ -161,7 +180,7 @@ struct SettingsView: View {
 
     /// Its own row in Behavior, beside System prompt and Skills — memory is a thing the app knows about
     /// you, not a tool setting, and it was unreviewable while its only surface was a switch two screens
-    /// deep in Manage tools. The switch stays there; what's remembered lives here.
+    /// deep in Choose tools. The switch stays there; what's remembered lives here.
     private var memoryRow: some View {
         Button { showMemory = true } label: {
             HStack(spacing: Theme.Space.sm) {
@@ -183,7 +202,7 @@ struct SettingsView: View {
         .task { await container.memory.refresh() }
     }
 
-    // MARK: Manage tools
+    // MARK: Choose tools
 
     @ViewBuilder private var manageToolsRow: some View {
         Divider().background(Theme.hairline)
@@ -192,7 +211,7 @@ struct SettingsView: View {
                 Image(systemName: "wrench.and.screwdriver")
                     .font(.subheadline).foregroundStyle(Theme.accent).frame(width: 22)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Manage tools").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                    Text("Choose tools").font(.subheadline).foregroundStyle(Theme.textPrimary)
                     Text(ToolsView.summary(for: settings)).font(.caption).foregroundStyle(Theme.textTertiary)
                 }
                 Spacer()
@@ -314,7 +333,6 @@ struct SettingsView: View {
     private var appearanceSection: some View {
         section("Appearance", icon: "circle.lefthalf.filled") {
             Segmented(selection: $settings.appearance, options: AppearanceMode.allCases) { $0.label }
-                .accessibilityLabel("Theme")
             Text("Match your system, or pin to Light or Dark.")
                 .font(.caption).foregroundStyle(Theme.textTertiary)
         }
@@ -332,8 +350,12 @@ struct SettingsView: View {
                 Label("Export all chats (JSON)", systemImage: "square.and.arrow.up")
             }
             .buttonStyle(StudioButtonStyle(.secondary))
-            Button(role: .destructive) { confirmDeleteAll = true } label: {
-                Label("Delete all data", systemImage: "trash")
+            Button(role: .destructive) { confirmDeleteChats = true } label: {
+                Label("Delete all chats", systemImage: "trash")
+            }
+            .buttonStyle(StudioButtonStyle(.secondary))
+            Button(role: .destructive) { confirmEraseAll = true } label: {
+                Label("Erase all app data", systemImage: "externaldrive.badge.xmark")
             }
             .buttonStyle(StudioButtonStyle(.secondary))
         }
@@ -354,8 +376,8 @@ struct SettingsView: View {
              + "that endpoint — a search engine, a page you link, or Wikipedia"
              + (hasMCP ? ", or an MCP server you've enabled." : " (and any MCP server you add).")
              + " The calendar, reminders, and location tools read or write that system data only when the "
-             + "model calls them, each asks the system for permission the first time, and only if you enable "
-             + "it in Manage tools."
+             + "model calls them, each asks the system for permission when selected, and only if you select "
+             + "it in Choose tools."
     }
 
     // MARK: About
@@ -380,12 +402,29 @@ struct SettingsView: View {
 
     // MARK: Actions
 
-    private func deleteAll() {
+    private func deleteAllChats() {
         Task {
-            try? await container.conversationStore.deleteAll()
-            container.chat.reloadAfterWipe()
-            storageBytes = await container.conversationStore.storageBytes()
-            container.chat.showToast(Toast("All conversations deleted", kind: .success))
+            do {
+                try await container.deleteAllChats()
+                storageBytes = await container.conversationStore.storageBytes()
+                container.chat.showToast(Toast("All chats and attachments deleted", kind: .success))
+            } catch {
+                container.chat.showToast(Toast("Chats couldn't be deleted: \(error.localizedDescription)",
+                                               kind: .error, autoDismiss: nil))
+            }
+        }
+    }
+
+    private func eraseAllAppData() {
+        Task {
+            do {
+                try await container.eraseAllAppData()
+                storageBytes = 0
+                container.chat.showToast(Toast("All mobileLLM data erased", kind: .success))
+            } catch {
+                eraseError = error.localizedDescription
+                storageBytes = await container.conversationStore.storageBytes()
+            }
         }
     }
 

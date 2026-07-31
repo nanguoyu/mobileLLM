@@ -70,7 +70,7 @@ final class ChatStoreStreamingStateTests: XCTestCase {
         XCTAssertTrue(sawThinkingClockRunning, "thinkingStartedAt is set while reasoning streams")
         XCTAssertTrue(sawFrozenDurationWhileAnswering, "the thinking duration freezes once the answer starts")
 
-        // Committed message records the honest thinking wall-clock.
+        // Committed message records the model's reasoning interval.
         let assistant = try XCTUnwrap(chat.activeConversation?.messages.last)
         XCTAssertNotNil(assistant.thinkingSeconds, "the committed turn persists a thinking duration")
         XCTAssertFalse(assistant.answer.isEmpty)

@@ -4,7 +4,7 @@
 # Run the engine unit tests (they can't build under plain `swift test` — the MLX package's HF macros
 # need xcodebuild -skipMacroValidation):
 #   xcodegen generate
-#   xcodebuild -skipMacroValidation -scheme EngineTests -destination platform=macOS test
+#   xcodebuild -skipMacroValidation -scheme EngineTests -destination 'platform=macOS,arch=arm64' test
 name: mobileLLM
 options:
   bundleIdPrefix: com.example
@@ -50,19 +50,19 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: mobileLLM
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.productivity"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        # iPhone stays portrait + landscape (no upside-down); iPad supports all four so Split View / Slide
-        # Over multitasking works (a multitasking-capable app must not lock orientation on iPad).
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        # Support all four orientations so the universal iOS target remains compatible with iPad
+        # Split View / Slide Over and passes App Store orientation validation without requiring full screen.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         "INFOPLIST_KEY_UISupportedInterfaceOrientations~ipad": "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         # Usage strings for the chat workstream's dictation feature (Speech + microphone).
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "mobileLLM uses the microphone so you can dictate messages."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "mobileLLM uses speech recognition to turn your dictation into text."
         INFOPLIST_KEY_NSCameraUsageDescription: "mobileLLM uses the camera so you can photograph something and ask the model about it."
-        # Tool-suite usage strings (Tools → Manage tools). Access is requested only when you enable the tool
-        # and the model actually calls it — never at launch. Plain one-liners naming what the model can do.
-        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "mobileLLM lets the model add and read your calendar events, only when you ask it to and only if you enable the calendar tool."
-        INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "mobileLLM lets the model create reminders, only when you ask it to and only if you enable the reminders tool."
-        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "mobileLLM lets the model use your approximate location, only when you ask something that needs it and only if you enable the location tool."
+        # Tool-suite usage strings (chat Tools menu / Settings → Choose tools). Access is requested when you select
+        # the tool — never at launch or merely from the master switch. Plain one-liners naming what it can do.
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "mobileLLM lets the model add and read calendar events while answering you, and only if you select the calendar tool."
+        INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "mobileLLM lets the model create reminders while answering you, and only if you select the reminders tool."
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "mobileLLM lets the model use your approximate location while answering you, and only if you select the location tool."
     dependencies:
       - package: MobileLLMUI
       - package: LLMEngineMLX
@@ -87,7 +87,28 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        # Placeholder prefix, matching `options.bundleIdPrefix` and Signing.xcconfig.example. A real
+        # bundle id must never land in a tracked file (this repo's own PR checklist forbids it) — the
+        # local Signing.xcconfig, which is gitignored, is where a developer's real prefix belongs.
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.mobileLLMUITests
         SWIFT_VERSION: "6.0"
+    dependencies:
+      - target: mobileLLM
+
+  # Signed, serial, physical-iPhone production-path coverage. Kept in its own source tree so the old
+  # simulator keyboard suite and its seeded fixture can never join a clean-install device run.
+  mobileLLMDeviceE2ETests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - DeviceUITests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.mobileLLMDeviceE2ETests
+        SWIFT_VERSION: "6.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTED_PLATFORMS: iphoneos
     dependencies:
       - target: mobileLLM
 
@@ -101,7 +122,7 @@ schemes:
   # Engine unit tests that the plain `swift test` loop can't build (the MLX package's HF load macros).
   # `test.targets` references the local package test targets with xcodegen's `package:` form; `build`
   # needs a real project target, so it builds the app (which links both engine packages).
-  # Prove: xcodebuild -skipMacroValidation -scheme EngineTests -destination platform=macOS test
+  # Prove: xcodebuild -skipMacroValidation -scheme EngineTests -destination 'platform=macOS,arch=arm64' test
   EngineTests:
     build:
       targets:
@@ -122,3 +143,15 @@ schemes:
     test:
       targets:
         - mobileLLMUITests
+  # Full clean-install/download/inference matrix. Run only on the connected phone, with one worker and
+  # no randomized ordering because the provisioning phase intentionally creates the model artifacts.
+  DeviceE2E:
+    build:
+      targets:
+        mobileLLM: [test]
+    test:
+      config: Debug
+      targets:
+        - name: mobileLLMDeviceE2ETests
+          parallelizable: false
+          randomExecutionOrder: false

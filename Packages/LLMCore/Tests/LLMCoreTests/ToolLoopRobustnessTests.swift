@@ -67,7 +67,15 @@ final class ToolLoopRobustnessTests: XCTestCase {
         func finish() { finished = true }
         func isFinished() -> Bool { finished }
         func answers() -> String {
-            events.compactMap { if case .answer(let s) = $0 { return s }; return nil }.joined()
+            var answer = ""
+            for event in events {
+                switch event {
+                case .answer(let text): answer += text
+                case .discardAnswer: answer.removeAll()
+                default: break
+                }
+            }
+            return answer
         }
         func toolCallNames() -> [String] {
             events.compactMap { if case .toolCall(let c) = $0 { return c.name }; return nil }
@@ -130,22 +138,27 @@ final class ToolLoopRobustnessTests: XCTestCase {
 
     // MARK: - Malformed tool_call JSON
 
-    /// A syntactically broken `<tool_call>` body must not crash and must not leak its markup as visible
-    /// text. CURRENT contract: the parse fails → no tool runs, nothing is fed back, and the loop ends with a
-    /// clean `.done` (the model simply "answered" whatever plain text preceded the broken block).
+    /// A syntactically broken `<tool_call>` body must not crash or leak either its markup or unverified
+    /// pre-tool prose. One correction is allowed; prose on that correction is a deterministic visible
+    /// failure rather than an answer that can claim the tool ran.
     func testMalformedToolCallJSONIsDroppedNotExecutedNorLeaked() async throws {
         let engine = CountingScriptedEngine([
             // Truncated JSON body — missing the closing braces the model never emitted.
             #"Working on it. <tool_call>{"name": "calculator", "arguments": {"expression": "1+1""#
                 + "</tool_call>",
+            "MEMORY_SAVED_OK",
         ])
         let loop = ToolLoop(engine: engine, registry: .builtIn, maxIterations: 4)
         let events = try await collect(loop, "compute 1+1")
 
         XCTAssertFalse(events.contains { if case .toolCall = $0 { return true }; return false },
                        "a malformed tool call must not execute any tool")
-        let answers = events.compactMap { if case .answer(let s) = $0 { return s }; return nil }.joined()
-        XCTAssertTrue(answers.contains("Working on it."), "plain text before the broken block still streams")
+        XCTAssertTrue(events.contains(.discardAnswer),
+                      "even a prose-free/malformed call boundary must stop live reasoning time")
+        let answers = answerText(events)
+        XCTAssertEqual(answers, ToolPrompt.malformedCallFailure)
+        XCTAssertFalse(answers.contains("Working on it."), "pre-tool prose is discarded until validation")
+        XCTAssertFalse(answers.contains("MEMORY_SAVED_OK"), "correction prose is not accepted as success")
         XCTAssertFalse(answers.contains("tool_call"), "the <tool_call> markup must never leak as answer text")
         XCTAssertFalse(answers.contains("calculator"), "the broken JSON body must never leak as answer text")
         XCTAssertTrue(events.last.map { if case .done = $0 { return true }; return false } ?? false,
@@ -209,6 +222,7 @@ final class MalformedToolCallRecoveryTests: XCTestCase {
                                         params: Sampling()) {
             switch event {
             case .answer(let s): answer += s
+            case .discardAnswer: answer.removeAll()
             case .toolCall(let c): XCTAssertEqual(c.name, "calculator"); ranTool = true
             default: break
             }

@@ -27,8 +27,8 @@ final class ToolRegistryContractTests: XCTestCase {
     /// `ToolRegistry.build(mcpServers:)` hard-codes only [calculator, current_datetime, web_search] for its
     /// "standard" set — deliberately MISSING wikipedia + fetch_webpage that `ToolRegistry.standard` (and
     /// `.assemble`) include. Pin the exact contract so the divergence is caught if it drifts.
-    func testBuildStandardTrioDivergesFromStandardFive() async {
-        let built = await ToolRegistry.build(mcpServers: [])
+    func testBuildStandardTrioDivergesFromStandardFive() async throws {
+        let built = try await ToolRegistry.build(mcpServers: [])
         let builtNames = Set(built.schemas.map(\.name))
         XCTAssertEqual(builtNames, ["calculator", "current_datetime", "web_search"],
                        "build()'s includeStandard trio is exactly these three")

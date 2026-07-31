@@ -73,7 +73,12 @@ final class WebSearchToolTests: XCTestCase {
     private func tool(engines: [SearchEngine] = [.duckduckgo, .bing], maxResults: Int = 6) -> WebSearchTool {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SerpMockProtocol.self]
-        return WebSearchTool(engines: engines, session: URLSession(configuration: config), maxResults: maxResults)
+        return WebSearchTool(
+            engines: engines,
+            session: URLSession(configuration: config),
+            maxResults: maxResults,
+            dnsResolver: { _ in ["93.184.216.34"] }
+        )
     }
 
     private func run(_ tool: WebSearchTool, _ query: String) async -> String {

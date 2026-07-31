@@ -16,6 +16,148 @@ public struct RememberTool: Tool {
     private let store: any MemoryStoring
     public init(store: any MemoryStoring) { self.store = store }
 
+    /// Deterministic, offline canonicalization. Storage always starts with `The user `, while the natural
+    /// possessive form smaller models commonly emit (`The user's name is …`) is accepted at the boundary
+    /// and rewritten before it reaches the store. We deliberately do not try to recognize English with a
+    /// finite verb list: that rejected perfectly ordinary facts such as "commutes" or "uses a wheelchair".
+    /// Instead, the schema establishes the English contract and this last character boundary rejects the
+    /// known mixed-script failure behind the magic prefix. CJK remains possible only as a short terminal
+    /// proper name after an explicit English naming phrase, so `The user 用户叫Dong` is rejected but
+    /// `The user is named 王东` is retained. Latin-script language cannot be proven by a character check;
+    /// that part is deliberately governed by the English schema/prompt rather than a heavyweight language
+    /// recognizer. No device locale, network service, or second LLM pass participates in this decision.
+    static let canonicalPrefix = "The user "
+
+    static func canonicalMemory(from text: String) -> String? {
+        let note = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !note.contains(where: \.isNewline) else { return nil }
+
+        let canonical: String
+        if note.hasPrefix(canonicalPrefix) {
+            canonical = note
+        } else if note.hasPrefix("The user's ") {
+            let fact = String(note.dropFirst("The user's ".count))
+            guard !fact.isEmpty else { return nil }
+            canonical = "The user says their \(fact)"
+        } else if note.hasPrefix("The user’s ") {
+            let fact = String(note.dropFirst("The user’s ".count))
+            guard !fact.isEmpty else { return nil }
+            canonical = "The user says their \(fact)"
+        } else {
+            return nil
+        }
+
+        let body = String(canonical.dropFirst(canonicalPrefix.count))
+        guard let first = body.unicodeScalars.first, Self.isLatinOrASCII(first),
+              body.unicodeScalars.contains(where: Self.isASCIILetter) else { return nil }
+
+        let scalars = Array(body.unicodeScalars)
+        var index = 0
+        while index < scalars.count {
+            let scalar = scalars[index]
+            if Self.isCJK(scalar) {
+                let prefix = String(decoding: scalars[..<index].map(\.value), as: UTF32.self)
+                guard Self.cjkMayBeProperName(after: prefix) else { return nil }
+
+                let nameStart = index
+                while index < scalars.count, Self.isCJK(scalars[index]) { index += 1 }
+                let nameLength = index - nameStart
+                // This exception is intentionally narrow: a terminal 1–4-scalar CJK personal name. A
+                // longer run could just as easily be prose (`王东住在北京`), which must be translated.
+                guard (1...4).contains(nameLength),
+                      scalars[index...].allSatisfy(Self.isAllowedAfterCJKName) else { return nil }
+                return canonical
+            } else if scalar.properties.isAlphabetic && !Self.isLatinOrASCII(scalar) {
+                // Other scripts cannot be distinguished from prose deterministically. Proper names can
+                // still be preserved in Latin transliteration; CJK names have the explicit exception above.
+                return nil
+            }
+            index += 1
+        }
+        return canonical
+    }
+
+    /// Normalize a parsed remember call as well as direct `execute` callers. Keeping this at the tool
+    /// boundary means the UI event, duplicate fingerprint, execution argument, and durable note all agree
+    /// on the one canonical representation.
+    /// `originalUserText` is the turn the fact came from, attached by `ToolLoop` as a search alias.
+    ///
+    /// It is supplied by the APP, not the model. Asking the model for it was tried and measured: Gemma 4
+    /// E2B ignored a second `original` parameter entirely — optional or required — while its save rate
+    /// stayed at 9/10, so a 2B model simply will not emit two fields. The app already holds the user's
+    /// sentence, and those are exactly the words a later question in that language will overlap with, so
+    /// the deterministic source is also the better one. Never shown, never sent to a model: it exists only
+    /// so `MemoryRanking` can find an English note from a question asked in another language.
+    static func canonicalizedCall(_ call: ToolCall, originalUserText: String? = nil) -> ToolCall? {
+        guard call.name == ToolID.remember.rawValue,
+              let text = call.arg("text"),
+              let canonical = canonicalMemory(from: text) else { return nil }
+        var arguments: [String: String] = ["text": canonical]
+        if let original = originalUserText?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !original.isEmpty {
+            arguments["original"] = original
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: arguments,
+                                                     options: [.sortedKeys]) else { return nil }
+        return ToolCall(name: call.name, argumentsJSON: String(decoding: data, as: UTF8.self))
+    }
+
+    static let canonicalRetryInstruction =
+        "The memory was not saved. Translate the same fact into English and call remember once more. "
+        + "Translate the whole fact, not only the prefix. The text MUST begin exactly with \"The user \", "
+        + "followed by an English sentence. Preserve proper "
+        + "names and identifiers; a CJK name is allowed after an English phrase such as \"is named\". "
+        + "Output only the corrected tool call."
+
+    static let requiredCallInstruction =
+        "Nothing was saved because you did not complete the remember tool call. Call remember exactly once "
+        + "for the lasting fact in the latest user message. Its text must be one concise English statement "
+        + "beginning exactly with \"The user \". Output only the remember tool call, with no acknowledgement."
+
+    static let rejectedMemoryResult =
+        "Error: The memory was not saved because the model did not produce a valid English memory note."
+
+    static let rejectedMemoryReply =
+        "I couldn't save that memory. Nothing was saved."
+
+    private static func isLatinOrASCII(_ scalar: UnicodeScalar) -> Bool {
+        scalar.isASCII || (0x00C0...0x024F).contains(scalar.value)
+    }
+
+    private static func isASCIILetter(_ scalar: UnicodeScalar) -> Bool {
+        (0x41...0x5A).contains(scalar.value) || (0x61...0x7A).contains(scalar.value)
+    }
+
+    private static func isCJK(_ scalar: UnicodeScalar) -> Bool {
+        switch scalar.value {
+        case 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF,
+             0x20000...0x2FA1F, 0x3040...0x30FF, 0xAC00...0xD7AF:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isAllowedAfterCJKName(_ scalar: UnicodeScalar) -> Bool {
+        if CharacterSet.whitespacesAndNewlines.contains(scalar) { return true }
+        switch scalar.value {
+        case 0x0021, 0x0022, 0x0027, 0x0029, 0x002E, 0x003F, 0x005D,
+             0x3002, 0x300D, 0x300F, 0x3011, 0xFF01, 0xFF09, 0xFF1F,
+             0x2019, 0x201D:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func cjkMayBeProperName(after prefix: String) -> Bool {
+        let normalized = prefix.lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        return ["named", "called", "name is", "goes by", "known as"].contains {
+            normalized.hasSuffix($0)
+        }
+    }
+
     public var schema: ToolSchema {
         ToolSchema(name: "remember",
                    // Every clause here is set by measurement, not taste — `llama-smoke --memory-eval` runs
@@ -40,27 +182,50 @@ public struct RememberTool: Tool {
                               + "save it. Answering \"I'll remember that\" does NOT remember anything — this "
                               + "tool is the only thing that does, so call it and then reply. Do NOT save "
                               + "greetings, questions they ask, tasks they request, or how they happen to "
-                              + "feel right now.",
-                   // "In the user's own language" is load-bearing, not politeness: a fact is retrieved by
-                   // word overlap with the user's question, so one saved in English is unreachable from a
-                   // question asked in Chinese. Two examples, in both languages and of DIFFERENT shapes —
-                   // a single one anchors weak models hard: with only "The user's dog is named Momo" here,
-                   // DeepSeek copied "用户的狗叫 Momo" verbatim as the fact for an unrelated turn, and Gemma
-                   // saved pets while ignoring everything else.
+                              + "feel right now. HARD RULE: Save only a new fact explicitly stated in the "
+                              + "latest user message. Never copy or infer a fact from saved memory, system "
+                              + "instructions, conversation history, or tool output, and never save a fact "
+                              + "that is already in memory.",
+                   // One canonical language lets every model and every conversation consume the same
+                   // durable notes. Do not add bilingual examples here: weak models copy concrete examples
+                   // as content (the old Chinese-first example caused an English turn to save 用户叫Dong).
                    parameters: [ToolParam(name: "text", kind: .string,
-                                          description: "One self-contained fact about the user, written in "
-                                                     + "their own language — the words they'd use to ask "
-                                                     + "about it later. E.g. \"用户在南京大学读计算机\" / "
-                                                     + "\"The user is allergic to peanuts\"")])
+                                          description: "One concise, self-contained third-person statement "
+                                                     + "in English, regardless of the conversation language. "
+                                                     + "Translate the user's fact into English, preserve "
+                                                     + "proper names and identifiers, and begin the text "
+                                                     + "exactly with \"The user \". Only the stored note is "
+                                                     + "English; reply to the user in their language.")])
+        // NOTE: the stored note also carries a search alias (the user's own sentence), but the model is
+        // never asked for it — `ToolLoop` attaches it. Adding a second parameter here was tried and
+        // measured: Gemma 4 E2B ignored it whether optional or required. See `canonicalizedCall`.
     }
 
     public func execute(argumentsJSON: String) async -> String {
-        guard let text = ToolCall(name: "remember", argumentsJSON: argumentsJSON).arg("text"),
+        let call = ToolCall(name: "remember", argumentsJSON: argumentsJSON)
+        guard let text = call.arg("text"),
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return "Error: missing 'text' to remember."
         }
-        let fact = await store.save(text, source: .model)
-        return "Saved: \(fact.text)"
+        guard let canonicalText = Self.canonicalMemory(from: text) else {
+            return "Error: \(Self.canonicalRetryInstruction)"
+        }
+        // The model is the only party that holds BOTH phrasings at this point — it just translated the
+        // user's sentence — so it is asked for the original as an optional second field. Absent, behavior
+        // is exactly as before; present, it becomes the search alias that lets a question asked in the
+        // user's own language find this note (see `MemoryFact.sourceText`).
+        let original = call.arg("original")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            switch try await store.saveIfAbsent(canonicalText, source: .model,
+                                                sourceText: (original?.isEmpty ?? true) ? nil : original) {
+            case .saved:
+                return "Saved to memory."
+            case .duplicate:
+                return "Already in memory."
+            }
+        } catch {
+            return "Error: Memory could not be saved to this device: \(error.localizedDescription)"
+        }
     }
 }
 
@@ -81,7 +246,8 @@ public struct RecallTool: Tool {
                               + "you — use this to look for what isn't, before saying you don't know "
                               + "something personal they may have shared.",
                    parameters: [ToolParam(name: "query", kind: .string,
-                                          description: "What to look for, e.g. \"dog\" or \"birthday\"")])
+                                          description: "English search words for what to find. Translate the "
+                                                     + "user's request into English before calling.")])
     }
 
     public func execute(argumentsJSON: String) async -> String {

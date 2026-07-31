@@ -54,6 +54,25 @@ final class ConversationStoreTests: XCTestCase {
         XCTAssertEqual(index.first?.messageCount, convo.messages.count)
     }
 
+    func testConcurrentSavesDoNotOverwriteEachOthersIndexEntries() async throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let conversations = (0..<24).map {
+            makeConversation(title: "Concurrent \($0)", body: "body \($0)")
+        }
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for conversation in conversations {
+                group.addTask { try await store.save(conversation) }
+            }
+            try await group.waitForAll()
+        }
+
+        let index = await store.liveIndex()
+        XCTAssertEqual(Set(index.map(\.id)), Set(conversations.map(\.id)),
+                       "record + index read-modify-write operations must be one serialized transaction")
+    }
+
     func testSoftDeleteAndRestore() async throws {
         let (store, dir) = tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }

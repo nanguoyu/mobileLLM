@@ -6,13 +6,13 @@ import LLMCore
 
 /// Model manager (DESIGN §4): catalog cards with the device-recommended default pinned first, a fit
 /// badge, an MLX ↔ llama.cpp engine picker + a quant selector that reflow together and live-update fit
-/// + size, the reused download meter with pause/resume, delete, an Active tag, and the honest
-/// experimental "Try anyway" for the 27B on an 8 GB phone.
+/// + size, the reused download meter with pause/resume, delete, and an Active tag. Fit is advisory:
+/// every installed model keeps the same enabled Use action.
 struct ModelsView: View {
     @Bindable var models: ModelManager
     @Bindable var settings: AppSettings
-    /// Activate a variant (the container runs the OOM pre-flight + syncs the chat's active model).
-    var onUse: (LLMModel, LLMVariant, _ force: Bool) -> Void
+    /// Activate a variant (the container attempts the real engine load + syncs the chat's active model).
+    var onUse: (LLMModel, LLMVariant) -> Void
 
     /// Per-model selection overrides (nil = follow the engine preference / default quant).
     @State private var selectedEngine: [String: EngineKind] = [:]
@@ -47,7 +47,6 @@ struct ModelsView: View {
                 .frame(maxWidth: 360)
                 .padding(.horizontal, Theme.Space.lg)
                 .padding(.top, Theme.Space.md).padding(.bottom, Theme.Space.sm)
-                .accessibilityLabel("Model library")
             if tier == .featured {
                 featuredScroll
             } else {
@@ -85,7 +84,7 @@ struct ModelsView: View {
         }
     }
 
-    /// The resident model, pinned above everything (only when no search/filter narrows the list — a
+    /// The selected model, pinned above everything (only when no search/filter narrows the list — a
     /// filtered view should show exactly what was asked for). Reuses ModelCard so engine/quant/fit stay
     /// live; the family section below still lists it in catalog order.
     @ViewBuilder private var activeSection: some View {
@@ -139,7 +138,7 @@ struct ModelsView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Button { models.download(variant) } label: {
                 Label(downloading ? "Downloading \(model.displayName)…"
-                                  : "Get \(model.displayName) · \(Format.bytes(variant.onDiskBytes))",
+                                  : "Get \(model.displayName) · \(Format.bytes(variant.totalOnDiskBytes))",
                       systemImage: "arrow.down.circle.fill")
             }
             .buttonStyle(StudioButtonStyle(.primary))
@@ -295,7 +294,7 @@ struct ModelCard: View {
     let isRecommended: Bool
     @Binding var engineSel: EngineKind?
     @Binding var quantSel: QuantSpec?
-    var onUse: (LLMModel, LLMVariant, Bool) -> Void
+    var onUse: (LLMModel, LLMVariant) -> Void
     var onDelete: (LLMVariant) -> Void
 
     /// The engine the card defaults to when the user hasn't picked one: the Auto-policy's choice for
@@ -324,7 +323,7 @@ struct ModelCard: View {
     /// The OS's model is usable only when the system says so — memory was never the question, and the fit
     /// verdict for it is always `.comfortable` (it costs us nothing). So when it ISN'T available the fit
     /// affordances are suppressed rather than rendered: a green "Runs great" beside "Apple Intelligence is
-    /// turned off" contradicts itself, and a gray "Needs more memory" would blame the wrong thing entirely.
+    /// turned off" contradicts itself, and a gray memory-risk label would blame the wrong thing entirely.
     /// The row states the real reason instead.
     private var systemModelBlocked: Bool {
         variant.isSystemProvided && !models.systemModelStatus.isAvailable
@@ -333,17 +332,29 @@ struct ModelCard: View {
     private var isActive: Bool { models.active?.variant.id == variant.id }
     private var isInstalled: Bool { models.isInstalled(variant) }
     private var download: VariantDownload? { models.downloadState(variant) }
+    private var hasElevatedMemoryRisk: Bool {
+        presentation == .experimental || presentation == .unsupported
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
             header
             Text("\(model.publisher) · \(model.summary)")
                 .font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(3)
+            HStack(spacing: Theme.Space.xs) {
+                Text(model.family.displayName)
+                Text("·").foregroundStyle(Theme.textTertiary)
+                Text(model.license.displayName)
+            }
+            .font(.caption2)
+            .foregroundStyle(model.license == .unknown ? Theme.fitAmber : Theme.textTertiary)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Family \(model.family.displayName), license \(model.license.displayName)")
             if !model.architecture.extraModalities.isEmpty { modalityRow }
             engineAndQuant
-            if presentation == .experimental && !isActive {
-                Text("This model is larger than the safe budget on this device — it may be interrupted "
-                     + "by the system. You can still try it.")
+            if hasElevatedMemoryRisk && !isActive {
+                Text("This model is above the usual memory budget on this device. Use will still attempt "
+                     + "to load it, but the system may interrupt the app.")
                     .font(.caption2).foregroundStyle(Theme.fitAmber).lineLimit(3)
             }
             actionArea
@@ -400,7 +411,6 @@ struct ModelCard: View {
                 matrixRow(label: "Engine") {
                     Segmented(selection: engineBinding, options: model.engines) { $0.label }
                         .frame(maxWidth: 240)
-                        .accessibilityLabel("Inference engine")
                 }
             }
             // Precision as chips — each carries its own fit dot, so the whole matrix reads at a glance.
@@ -418,7 +428,7 @@ struct ModelCard: View {
                 // An OS-provided model has no download: "Zero KB" would be a technically-true absurdity,
                 // so say what's actually true instead.
                 Text(variant.isSystemProvided ? "Built into the system"
-                                              : Format.bytes(variant.onDiskBytes))
+                                              : Format.bytes(variant.totalOnDiskBytes))
                     .font(.caption.monospacedDigit()).foregroundStyle(Theme.textPrimary)
                 Spacer()
             }
@@ -478,7 +488,7 @@ struct ModelCard: View {
         case .comfortable: return "runs great"
         case .tight: return "tight"
         case .experimental: return "experimental"
-        case .unsupported: return "won't fit"
+        case .unsupported: return "high memory"
         }
     }
 
@@ -517,7 +527,7 @@ struct ModelCard: View {
                 .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
         } else {
             HStack(spacing: Theme.Space.sm) {
-                Button { onUse(model, variant, false) } label: {
+                Button { onUse(model, variant) } label: {
                     if isActivating {
                         HStack(spacing: Theme.Space.xs) {
                             ProgressView().controlSize(.small).tint(Theme.onAccent)
@@ -542,19 +552,31 @@ struct ModelCard: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: Theme.Space.sm) {
                 ProgressView(value: download.fraction).tint(Theme.accent)
-                Button { models.pauseDownload(variant) } label: {
-                    Image(systemName: "pause.circle.fill").foregroundStyle(Theme.textSecondary)
+                if download.isPausing {
+                    Text("Pausing…")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                } else {
+                    Button { models.pauseDownload(variant) } label: {
+                        Image(systemName: "pause.circle.fill").foregroundStyle(Theme.textSecondary)
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("Pause download")
                 }
-                .buttonStyle(.plain).accessibilityLabel("Pause download")
             }
-            Text(download.meter.compactDetail ?? "Downloading… \(Int(download.fraction * 100))%")
+            Text(download.isPausing
+                 ? "Finishing the current file write safely…"
+                 : (download.meter.compactDetail ?? "Downloading… \(Int(download.fraction * 100))%"))
                 .font(.caption2.monospacedDigit()).foregroundStyle(Theme.textTertiary)
                 .lineLimit(1).minimumScaleFactor(0.6)
             Text("Keep mobileLLM open while downloading — it resumes automatically if interrupted.")
                 .font(.caption2).foregroundStyle(Theme.textTertiary)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Downloading \(model.displayName)")
+        // Keep the pause control as its own accessibility element. Combining the entire row hid the
+        // only way VoiceOver (and a physical-device test) could pause a multi-gigabyte download.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(download.isPausing
+                            ? "Pausing \(model.displayName)"
+                            : "Downloading \(model.displayName)")
         .accessibilityValue(download.meter.detail ?? "\(Int(download.fraction * 100)) percent")
     }
 
@@ -578,7 +600,7 @@ struct ModelCard: View {
         }
     }
 
-    /// This variant is the one currently loading (the user tapped Use / Try anyway).
+    /// This variant is the one currently loading (the user tapped Use).
     private var isActivating: Bool { models.activatingVariantID == variant.id }
     /// An activation is in flight somewhere — every Use button disables so a second tap can't re-enter it.
     private var activationBusy: Bool { models.activatingVariantID != nil }
@@ -592,11 +614,9 @@ struct ModelCard: View {
             if isActive {
                 Label("Active", systemImage: "checkmark.circle.fill")
                     .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
-            } else if presentation == .unsupported {
-                Text("Needs more memory").font(.caption).foregroundStyle(Theme.textTertiary)
             } else {
                 Button {
-                    onUse(model, variant, presentation == .experimental)
+                    onUse(model, variant)
                 } label: {
                     if isActivating {
                         HStack(spacing: Theme.Space.xs) {
@@ -604,15 +624,13 @@ struct ModelCard: View {
                             Text(loadingLabel)
                         }
                     } else {
-                        Label(presentation == .experimental ? "Try anyway" : "Use",
-                              systemImage: presentation == .experimental ? "exclamationmark.triangle" : "bolt.fill")
+                        Label("Use", systemImage: "bolt.fill")
                     }
                 }
                 .buttonStyle(StudioButtonStyle(.primary))
                 // Disable every Use while a load is running (per-variant spinner shows which one).
                 .disabled(activationBusy)
-                .accessibilityLabel(isActivating ? "Loading \(model.displayName)"
-                                    : (presentation == .experimental ? "Try \(model.displayName) anyway" : "Use \(model.displayName)"))
+                .accessibilityLabel(isActivating ? "Loading \(model.displayName)" : "Use \(model.displayName)")
             }
             Spacer()
             Button(role: .destructive) { onDelete(variant) } label: {
@@ -625,7 +643,7 @@ struct ModelCard: View {
     private var downloadRow: some View {
         HStack {
             Button { models.download(variant) } label: {
-                Label("Download · \(Format.bytes(variant.onDiskBytes))", systemImage: "arrow.down.circle")
+                Label("Download · \(Format.bytes(variant.totalOnDiskBytes))", systemImage: "arrow.down.circle")
             }
             .buttonStyle(StudioButtonStyle(.secondary))
             Spacer()
@@ -636,6 +654,6 @@ struct ModelCard: View {
 #if DEBUG
 #Preview("Models") {
     let container = AppContainer.preview()
-    return ModelsView(models: container.models, settings: container.settings) { _, _, _ in }
+    return ModelsView(models: container.models, settings: container.settings) { _, _ in }
 }
 #endif

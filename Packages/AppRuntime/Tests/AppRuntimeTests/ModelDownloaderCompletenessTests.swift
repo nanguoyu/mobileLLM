@@ -40,7 +40,7 @@ final class ModelDownloaderCompletenessTests: XCTestCase {
     /// Write a minimal valid download manifest listing `(relativePath, expectedSize)` pairs.
     private func writeManifest(_ root: URL, files: [(String, Int64)]) throws {
         let entries = files.map { #"{"path":"\#($0.0)","size":\#($0.1)}"# }.joined(separator: ",")
-        let json = #"{"version":1,"files":[\#(entries)]}"#
+        let json = #"{"version":2,"revision":"main","files":[\#(entries)]}"#
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try Data(json.utf8).write(to: root.appending(component: manifestName))
     }

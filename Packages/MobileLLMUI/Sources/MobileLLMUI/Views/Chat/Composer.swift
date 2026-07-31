@@ -3,6 +3,7 @@
 import SwiftUI
 import PhotosUI
 import AppUI
+import LLMCore
 
 /// The chat composer (DESIGN §4): multiline auto-grow field, one morphing Send↔Stop button (no
 /// reflow), an inline 🧠 thinking toggle, a mic for dictation, an optional photo attach (vision models),
@@ -10,6 +11,8 @@ import AppUI
 /// to the model picker — so a model-less thread is browsable but sending is clearly gated.
 struct Composer: View {
     @Bindable var chat: ChatStore
+    /// The tool picker writes the same persisted selection used by Settings and the live registry.
+    @Bindable var settings: AppSettings
     var thinkingCapable: Bool
     /// The active model can accept image input (a vision GGUF with its projector installed) — shows the
     /// photo attach affordance. Text-only / MLX models never see it.
@@ -18,6 +21,12 @@ struct Composer: View {
     var isLoadingModel: Bool = false
     /// Route to the Models screen (the no-model CTA).
     var onOpenModels: () -> Void = {}
+    /// Privacy-gated tool seams. Selecting one here asks for its system permission immediately, at the
+    /// user's decision point, just like the full Tool Settings screen.
+    var toolEventStore: (any EventStoring)? = nil
+    var toolLocationProvider: (any LocationProviding)? = nil
+    /// Opens the full screen for descriptions, search-engine priority, MCP per-tool mute, and permissions.
+    var onOpenToolSettings: () -> Void = {}
 
     @FocusState private var focused: Bool
     @State private var dictation = DictationService()
@@ -306,8 +315,8 @@ struct Composer: View {
     // MARK: Thinking toggle
 
     /// One [+] gathers every secondary control (thinking, tools, image sources) — four separate 44pt
-    /// buttons squeezed the text field to a sliver on iPhone. The icon tints accent while thinking or
-    /// tools is on, so state stays visible at a glance; menu rows carry the explicit checkmarks.
+    /// buttons squeezed the text field to a sliver on iPhone. Tools get their own submenu so the user can
+    /// see and change the exact capabilities exposed to the model without leaving the conversation.
     private var plusMenu: some View {
         Menu {
             if thinkingCapable {
@@ -316,15 +325,7 @@ struct Composer: View {
                     Label("Thinking", systemImage: "brain")
                 }
             }
-            Toggle(isOn: Binding(get: { chat.toolsEnabled },
-                                 set: { newValue in
-                                     chat.toolsEnabled = newValue
-                                     chat.showToast(Toast(newValue
-                                         ? "Tools on — search, webpage reader, memory, calculator + your MCP servers."
-                                         : "Tools off.", autoDismiss: 3))
-                                 })) {
-                Label("Tools", systemImage: "wrench.and.screwdriver")
-            }
+            toolMenu
             if chat.skillStore != nil { skillMenu }
             if canAttachImages {
                 Divider()
@@ -362,6 +363,102 @@ struct Composer: View {
         .menuIndicator(.hidden)
         .accessibilityLabel("Chat options")
         .accessibilityHint("Thinking, tools and image attachments")
+    }
+
+    // MARK: Tool selection
+
+    /// Compact, conversation-local access to the persisted tool selection. The master switch authorizes
+    /// the selected set; each checkmark controls one user-facing capability. The model never receives a
+    /// schema for an unchecked tool, so it cannot decide to call that tool on the next send.
+    private var toolMenu: some View {
+        Menu {
+            Toggle(isOn: Binding(get: { chat.toolsEnabled },
+                                 set: { newValue in
+                                     chat.toolsEnabled = newValue
+                                     chat.showToast(Toast(newValue
+                                         ? "Selected tools are now available to the model."
+                                         : "Tools off.", autoDismiss: 3))
+                                 })) {
+                Label("Allow selected tools", systemImage: "hammer")
+            }
+
+            Section("Network") {
+                ForEach(Self.networkToolRows) { toolToggle($0) }
+            }
+            Section("On device") {
+                ForEach(Self.onDeviceToolRows) { toolToggle($0) }
+            }
+            Section("Personal data") {
+                ForEach(Self.personalToolRows) { toolToggle($0) }
+            }
+
+            if !settings.mcpServers.isEmpty {
+                Section("MCP servers") {
+                    ForEach(settings.mcpServers) { server in
+                        Toggle(isOn: mcpServerBinding(server.id)) {
+                            Label(server.name, systemImage: "server.rack")
+                        }
+                    }
+                }
+            }
+
+            Divider()
+            Button {
+                focused = false
+                onOpenToolSettings()
+            } label: {
+                Label("Tool Settings…", systemImage: "gearshape")
+            }
+        } label: {
+            Label("Tools", systemImage: "wrench.and.screwdriver")
+        }
+    }
+
+    private static let networkToolRows =
+        BuiltInToolRow.all.filter { ["web_search", "fetch_webpage", "wikipedia"].contains($0.id) }
+    private static let onDeviceToolRows =
+        BuiltInToolRow.all.filter { ["calculator", "clock", "memory"].contains($0.id) }
+    private static let personalToolRows =
+        BuiltInToolRow.all.filter { ["calendar", "reminders", "location"].contains($0.id) }
+
+    private func toolToggle(_ row: BuiltInToolRow) -> some View {
+        Toggle(isOn: Binding(
+            get: { row.isOn(in: settings) },
+            set: { enabled in
+                var disabled = settings.disabledBuiltInTools
+                for id in row.toolIDs {
+                    if enabled { disabled.remove(id.rawValue) } else { disabled.insert(id.rawValue) }
+                }
+                settings.disabledBuiltInTools = disabled
+                if enabled, row.privacy {
+                    Task { @MainActor in
+                        if await row.requestPermission(eventStore: toolEventStore,
+                                                       locationProvider: toolLocationProvider) == .denied {
+                            chat.showToast(Toast(
+                                "\(row.title) is selected, but access is off in system Settings.",
+                                kind: .warning, autoDismiss: 5
+                            ))
+                        }
+                    }
+                }
+            }
+        )) {
+            Label(row.title, systemImage: row.icon)
+        }
+    }
+
+    /// Server-level switches stay compact here; the full screen exposes every discovered MCP tool so it
+    /// can be muted individually.
+    private func mcpServerBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { settings.mcpServers.first(where: { $0.id == id })?.isEnabled ?? false },
+            set: { enabled in
+                var servers = settings.mcpServers
+                guard let index = servers.firstIndex(where: { $0.id == id }) else { return }
+                servers[index].isEnabled = enabled
+                settings.mcpServers = servers
+            }
+        )
     }
 
     // MARK: Skill

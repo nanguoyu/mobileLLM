@@ -55,12 +55,12 @@ final class ThermalGovernorTests: XCTestCase {
         let clears = Counter()
         // read #1 (switch) = .critical → enter pause; read #2 (while) = .nominal → exit.
         let seq = SeqBox([.critical, .nominal])
-        var cooled = false
+        let cooled = Counter()
         let g = ThermalGovernor(thermalSource: { seq.next() },
                                 sleep: { _ in },
                                 clearCache: { clears.inc() })
-        try await g.throttleIfNeeded(onCooling: { cooled = true })
-        XCTAssertTrue(cooled, "critical pause must surface a cooling callback")
+        try await g.throttleIfNeeded(onCooling: { cooled.inc() })
+        XCTAssertEqual(cooled.value, 1, "critical pause must surface one cooling callback")
         XCTAssertGreaterThanOrEqual(clears.value, 1)
     }
 

@@ -29,7 +29,7 @@ final class LiteralStripperTests: XCTestCase {
     }
 
     func testNoopWhenNoTags() {
-        var s = LiteralStripper(tags: [])
+        let s = LiteralStripper(tags: [])
         XCTAssertTrue(s.isNoop)
     }
 

@@ -73,7 +73,7 @@ struct ModelSwitcherSheet: View {
         let presentation = container.models.fitPresentation(model, variant, context: container.settings.contextLength)
         return Button {
             activating = variant.id
-            container.activate(model, variant: variant, force: presentation == .experimental)
+            container.activate(model, variant: variant)
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {

@@ -69,4 +69,21 @@ public struct KeychainBox: Sendable {
             throw KeychainError.unexpectedStatus(status)
         }
     }
+
+    /// Delete every generic-password item owned by this service. The full-app erase path uses the service
+    /// boundary rather than only the currently configured account ids, so a token orphaned by an edited
+    /// MCP URL cannot survive a user-requested wipe.
+    public func deleteAll() throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            // The macOS file-based keychain incorrectly defaults delete queries to one match; spell out
+            // "all" so CLI tests and the Mac app erase every token just like iOS's data-protection keychain.
+            kSecMatchLimit as String: kSecMatchLimitAll,
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
 }

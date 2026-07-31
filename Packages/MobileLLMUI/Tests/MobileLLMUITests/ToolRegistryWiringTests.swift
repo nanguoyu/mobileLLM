@@ -82,6 +82,10 @@ private actor FakeMemoryStoreUI: MemoryStoring {
     @discardableResult func save(_ text: String, source: MemoryFact.Source) -> MemoryFact {
         MemoryFact(text: text, source: source)
     }
+    @discardableResult func saveIfAbsent(_ text: String,
+                                         source: MemoryFact.Source) -> MemorySaveResult {
+        .saved(MemoryFact(text: text, source: source))
+    }
     func list() -> [MemoryFact] { [] }
     func update(id: String, text: String) {}
     func delete(id: String) {}

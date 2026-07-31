@@ -18,7 +18,13 @@ public struct MCPTool: Tool {
 
     public func execute(argumentsJSON: String) async -> String {
         do { return try await client.call(name: spec.name, argumentsJSON: argumentsJSON) }
-        catch { return "MCP tool \"\(spec.name)\" failed: \(error)" }
+        catch is CancellationError {
+            // `Tool.execute` predates throwing tools, so cancellation cannot be rethrown through the
+            // protocol. Return quietly; ToolLoop checks cancellation immediately after execute and never
+            // publishes this as a failed tool result.
+            return ""
+        }
+        catch { return "MCP tool \"\(spec.name)\" failed: \(error.localizedDescription)" }
     }
 
     /// Flatten a JSON-Schema `{type:object, properties:{…}, required:[…]}` into our simple param list.
@@ -43,17 +49,30 @@ public struct MCPTool: Tool {
 public extension ToolRegistry {
     /// Build the live tool set: the standard local tools plus every tool from each **enabled** MCP server
     /// (connect + list once, sharing a client per server), minus the tools the user muted. Servers that
-    /// fail to connect are skipped so one bad URL never breaks tools entirely.
+    /// fail to connect are skipped so one bad URL never breaks tools entirely. Cancellation is different:
+    /// it aborts the whole assembly so callers can never cache a registry built from only an early subset.
     static func build(mcpServers: [MCPServer], includeStandard: Bool = true,
-                      session: URLSession = .shared) async -> ToolRegistry {
+                      session: URLSession = .shared) async throws -> ToolRegistry {
+        try Task.checkCancellation()
         var tools: [Tool] = includeStandard ? [CalculatorTool(), DateTimeTool(), WebSearchTool()] : []
         for server in mcpServers where server.isEnabled && !server.url.isEmpty {
+            try Task.checkCancellation()
             let client = MCPClient(server: server, session: session)
-            if let specs = try? await client.connect() {
+            do {
+                let specs = try await client.connect()
+                try Task.checkCancellation()
                 tools.append(contentsOf: specs.filter { !server.disabledTools.contains($0.name) }
                                               .map { MCPTool(client: client, spec: $0) })
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // A server is an optional provider. Isolate its ordinary protocol/network failure and
+                // continue assembling the other servers; only cancellation aborts the whole operation.
+                try Task.checkCancellation()
+                continue
             }
         }
+        try Task.checkCancellation()
         return ToolRegistry(tools)
     }
 }

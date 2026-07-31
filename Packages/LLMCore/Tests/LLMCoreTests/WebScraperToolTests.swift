@@ -12,7 +12,10 @@ final class WebScraperToolTests: XCTestCase {
 
     func testBlocksPrivateAndLoopbackHosts() {
         for host in ["localhost", "foo.localhost", "printer.local", "127.0.0.1", "10.0.0.5",
-                     "192.168.1.1", "172.16.0.1", "172.31.255.255", "169.254.1.1", "::1", "0.0.0.0"] {
+                     "192.168.1.1", "172.16.0.1", "172.31.255.255", "169.254.1.1",
+                     "100.64.0.1", "192.0.2.1", "198.18.0.1", "203.0.113.1", "224.0.0.1",
+                     "::1", "0.0.0.0", "fc00::1", "fe80::1", "2001:db8::1", "ff02::1",
+                     "::ffff:127.0.0.1"] {
             XCTAssertTrue(WebScraperTool.isBlockedHost(host), "\(host) must be blocked")
         }
     }
@@ -75,7 +78,11 @@ final class WebScraperToolTests: XCTestCase {
     private func tool(maxOutputChars: Int = 6000) -> WebScraperTool {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [ScraperMockProtocol.self]
-        return WebScraperTool(session: URLSession(configuration: config), maxOutputChars: maxOutputChars)
+        return WebScraperTool(
+            session: URLSession(configuration: config),
+            maxOutputChars: maxOutputChars,
+            dnsResolver: { _ in ["93.184.216.34"] }
+        )
     }
 
     private func run(_ url: String, maxOutputChars: Int = 6000) async -> String {
@@ -102,6 +109,22 @@ final class WebScraperToolTests: XCTestCase {
     func testExecuteRejectsBlockedHost() async {
         let out = await run("http://localhost/secret")
         XCTAssertTrue(out.contains("isn't allowed"), out)
+    }
+
+    func testExecuteRejectsHostnameThatDNSMapsToPrivateAddress() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ScraperMockProtocol.self]
+        let tool = WebScraperTool(
+            session: URLSession(configuration: config),
+            dnsResolver: { _ in ["169.254.169.254"] }
+        )
+        let out = await tool.execute(argumentsJSON: #"{"url":"https://example.com/article"}"#)
+        XCTAssertTrue(out.contains("isn't allowed"), out)
+    }
+
+    func testExecuteRejectsEmbeddedCredentialsReadably() async {
+        let out = await run("https://user:password@example.com/article")
+        XCTAssertTrue(out.contains("credentials"), out)
     }
 
     func testExecuteHandlesHTTPError() async {

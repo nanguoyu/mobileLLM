@@ -3,6 +3,7 @@
 import Foundation
 import llama
 import LLMCore
+import AppRuntime
 
 /// The llama.cpp on-device engine: loads a GGUF model (mmap'd) and streams tokens through Metal,
 /// routing the Bonsai `<think>` block to `.reasoning` and the rest to `.answer` via `ThinkSplitter`.
@@ -13,6 +14,8 @@ import LLMCore
 /// reclaimable under pressure — the difference that lets a 3.8 GB model breathe on an 8 GB phone. To keep
 /// that discount we DISABLE Metal residency sets on iOS (they would wire the GPU buffers and erase it).
 public actor LlamaEngine: LLMEngine {
+    public typealias GovernanceFactory = @Sendable () -> GenerationGovernance
+
     public enum EngineError: Error, Sendable, Equatable, LocalizedError {
         case backendUnavailable
         case weightsNotFound
@@ -76,12 +79,21 @@ public actor LlamaEngine: LLMEngine {
     private var eosText = "<|im_end|>"
     private var promptTemplate: PromptTemplate = .chatML
     private var reasoningStyle: ReasoningStyle = .thinkTags
+    nonisolated private let generationLifecycle = GenerationLifecycle()
+    nonisolated private let governanceFactory: GovernanceFactory
 
     private let nThreads: Int32 = {
         Int32(max(1, min(8, ProcessInfo.processInfo.activeProcessorCount - 2)))
     }()
 
-    public init() {}
+    /// llama.cpp's weights are mmap-backed, so there is no accelerator reuse cache to purge. The
+    /// production governor still observes memory pressure and performs thermal pacing; tests inject a
+    /// recorder through this factory without loading a GGUF.
+    public init(governanceFactory: @escaping GovernanceFactory = {
+        GenerationGovernance()
+    }) {
+        self.governanceFactory = governanceFactory
+    }
     public var isLoaded: Bool { model != nil }
 
     /// The loaded GGUF's declared training context length (`llama_model_n_ctx_train`) — the model's true
@@ -110,10 +122,12 @@ public actor LlamaEngine: LLMEngine {
     public func load(model modelSpec: LLMCore.LLMModel, variant: LLMCore.LLMVariant, weightsDir: URL,
                      progress: @Sendable @escaping (Double) -> Void) async throws {
         guard Self.backendReady else { throw EngineError.backendUnavailable }
+        let drain = await generationLifecycle.beginDrain()
+        defer { generationLifecycle.endDrain(drain) }
         // Reloading over a resident model must free the predecessor first: llama_model_load_from_file
         // returns a fresh allocation, so overwriting the pointers would leak the old multi-GB model
         // (and `context = nil` below would leak its context — only llama_free releases it).
-        if model != nil || context != nil || mtmdContext != nil { await unload() }
+        releaseModelResources()
         let path = try Self.resolveGGUF(in: weightsDir, preferred: variant.source.fileName)
 
         var mp = llama_model_default_params()
@@ -168,6 +182,13 @@ public actor LlamaEngine: LLMEngine {
     }
 
     public func unload() async {
+        // Keep the drain held after old tasks exit and through every native free below.
+        let drain = await generationLifecycle.beginDrain()
+        defer { generationLifecycle.endDrain(drain) }
+        releaseModelResources()
+    }
+
+    private func releaseModelResources() {
         // Free the vision context BEFORE the model — it holds a reference to the text model.
         if let mtmdContext { mtmd_free(mtmdContext) }
         if let context { llama_free(context) }
@@ -224,16 +245,30 @@ public actor LlamaEngine: LLMEngine {
     public nonisolated func generate(messages: [ChatTurn],
                                      params: Sampling) -> AsyncThrowingStream<EngineDelta, Error> {
         AsyncThrowingStream { continuation in
-            let work = Task { await self.run(messages: messages, params: params, into: continuation) }
-            continuation.onTermination = { _ in work.cancel() }
+            let governance = governanceFactory()
+            let lease = generationLifecycle.begin(using: governance)
+            let work = Task {
+                await self.run(messages: messages, params: params, governance: governance,
+                               lease: lease, into: continuation)
+            }
+            generationLifecycle.attachTaskCancellation({ work.cancel() }, to: lease)
+            continuation.onTermination = { [generationLifecycle] _ in
+                generationLifecycle.cancel(lease)
+            }
         }
     }
 
     private func run(messages: [ChatTurn], params: Sampling,
+                     governance: GenerationGovernance, lease: GenerationLifecycle.Lease,
                      into cont: AsyncThrowingStream<EngineDelta, Error>.Continuation) async {
+        defer { generationLifecycle.end(lease) }
         do {
+            // Handles cancellation that won the race before this actor task started.
+            try await governance.cooperativeCheckpoint()
             guard model != nil, let vocab else { throw EngineError.notLoaded }
             guard messages.contains(where: { $0.role == .user }) else { throw EngineError.noUserMessage }
+            // Before allocating a vision encoder/context, honor heat and memory pressure.
+            try await governance.checkpoint()
             // An image the user is sending NOW with no vision projector loaded fails fast (rather than
             // being silently dropped): the model literally can't see it. Only the FINAL turn is held to
             // that bar — images on HISTORY turns (a thread continued after switching to a text-only
@@ -277,7 +312,7 @@ public actor LlamaEngine: LLMEngine {
             // head mid-conversation. Reserve room for the answer; if even {system prefix + final user turn}
             // overflows, fail with a clear error rather than emit garbage from a half-formed prompt. Each
             // attached image also reserves ~600 tokens — its vision-encoder embeddings consume real context.
-            let reserve = max(8, params.maxTokens > 0 ? min(params.maxTokens, 256) : 256)
+            let reserve = Self.answerTokenReserve(maxTokens: params.maxTokens)
             let budget = contextCap - reserve
             guard budget > 0, let kept = Self.fitMessages(messages, budget: budget, tokenCount: {
                 Self.tokenize(vocab: vocab, text: renderPrompt($0), addSpecial: true).count + Self.imageTokenCount($0)
@@ -298,12 +333,14 @@ public actor LlamaEngine: LLMEngine {
             let hasImages = kept.contains { !$0.images.isEmpty }
             if hasImages {
                 promptTokenCount = try await mtmdPrefill(kept: kept, context: context,
-                                                         renderPrompt: renderPrompt, nBatch: nBatch)
+                                                         renderPrompt: renderPrompt, nBatch: nBatch,
+                                                         governance: governance)
             } else {
                 let promptTokens = Self.tokenize(vocab: vocab, text: renderPrompt(kept), addSpecial: true)
                 var i = 0
                 while i < promptTokens.count {
-                    try Task.checkCancellation()
+                    try await governance.checkpoint()
+                    guard self.context == context else { throw CancellationError() }
                     let end = min(i + nBatch, promptTokens.count)
                     var chunk = Array(promptTokens[i..<end])
                     let ok = chunk.withUnsafeMutableBufferPointer { buf -> Bool in
@@ -342,11 +379,18 @@ public actor LlamaEngine: LLMEngine {
             let maxTokens = params.maxTokens
 
             while true {
-                try Task.checkCancellation()
+                // Pause/cancel is checked every token. GenerationGovernance wall-clock-gates the heavier
+                // thermal/memory probe to at most once per ~250 ms, independently of token throughput.
+                try await governance.checkpoint()
+                guard self.context == context else { throw CancellationError() }
+                if genTokens & 0b111 == 0 {
+                    await Task.yield()
+                    guard self.context == context else { throw CancellationError() }
+                }
+                if maxTokens > 0 && genTokens >= maxTokens { stop = .maxTokens; break }
                 let tokenID = llama_sampler_sample(sampler, context, -1)
 
                 if llama_vocab_is_eog(vocab, tokenID) { stop = .eos; break }
-                if maxTokens > 0 && genTokens >= maxTokens { stop = .maxTokens; break }
 
                 let piece = Self.tokenToPiece(vocab: vocab, token: tokenID)
                 let text = decoder.feed(piece)
@@ -356,10 +400,6 @@ public actor LlamaEngine: LLMEngine {
                 genTokens += 1
                 if genTokens & 0b111 == 0 {
                     peak = max(peak, Self.footprintBytes())
-                    // Every 8 tokens, let downloads/saves make progress (the decode loop is otherwise a
-                    // suspension-free run of C calls that would peg a cooperative-pool thread for minutes).
-                    await Task.yield()
-                    guard self.context == context else { throw CancellationError() }   // reentrant teardown
                 }
 
                 var one = [tokenID]
@@ -393,6 +433,11 @@ public actor LlamaEngine: LLMEngine {
             cont.finish(throwing: error)
         }
     }
+
+    /// Session-only controls. The stream's termination callback still handles the ordinary Stop action.
+    public nonisolated func pauseGeneration() { generationLifecycle.pauseActive() }
+    public nonisolated func resumeGeneration() { generationLifecycle.resumeActive() }
+    public nonisolated func cancelGeneration() { generationLifecycle.cancelActive() }
 
     // MARK: - Vision (mtmd)
 
@@ -429,7 +474,8 @@ public actor LlamaEngine: LLMEngine {
     /// for the stats line. Cancellation-checked and yields between chunks (chunk-level granularity is
     /// acceptable), bailing via the reentrancy guard if a concurrent reload swaps the context out.
     private func mtmdPrefill(kept: [ChatTurn], context: OpaquePointer,
-                             renderPrompt: ([ChatTurn]) -> String, nBatch: Int) async throws -> Int {
+                             renderPrompt: ([ChatTurn]) -> String, nBatch: Int,
+                             governance: GenerationGovernance) async throws -> Int {
         guard let mtmdCtx = mtmdContext else { throw EngineError.visionUnavailable }
         let marker = String(cString: mtmd_default_marker())
         let promptText = renderPrompt(Self.injectMediaMarkers(kept, marker: marker))
@@ -439,7 +485,8 @@ public actor LlamaEngine: LLMEngine {
         defer { for b in bitmaps { if let b { mtmd_bitmap_free(b) } } }
         for turn in kept {
             for image in turn.images {
-                try Task.checkCancellation()
+                try await governance.checkpoint()
+                guard self.context == context else { throw CancellationError() }
                 let wrapper: mtmd_helper_bitmap_wrapper = image.withUnsafeBytes { raw in
                     mtmd_helper_bitmap_init_from_buf(mtmdCtx, raw.bindMemory(to: UInt8.self).baseAddress,
                                                      image.count, false)
@@ -467,7 +514,8 @@ public actor LlamaEngine: LLMEngine {
         let nChunks = mtmd_input_chunks_size(chunks)
         var nPast: llama_pos = 0
         for idx in 0..<nChunks {
-            try Task.checkCancellation()
+            try await governance.checkpoint()
+            guard self.context == context else { throw CancellationError() }
             guard let chunk = mtmd_input_chunks_get(chunks, idx) else { throw EngineError.decodeFailed }
             let isLast = idx == nChunks - 1
             var newNPast: llama_pos = 0
@@ -528,6 +576,13 @@ public actor LlamaEngine: LLMEngine {
         // Nothing droppable is left: only the system prefix and the final turn remain.
         let minimal = messages.enumerated().filter { !removed.contains($0.offset) }.map { $0.element }
         return tokenCount(minimal) <= budget ? minimal : nil
+    }
+
+    /// Output space reserved by context fitting. A positive request is a hard promise and must be
+    /// reserved in full; `0` retains the existing "unbounded generation" meaning and uses a finite
+    /// 256-token planning reserve so a prompt can still be admitted.
+    static func answerTokenReserve(maxTokens: Int) -> Int {
+        max(8, maxTokens > 0 ? maxTokens : 256)
     }
 
     /// Render the prompt with the template EMBEDDED IN THE GGUF via llama.cpp — the path for arbitrary
@@ -593,8 +648,7 @@ public actor LlamaEngine: LLMEngine {
     /// NOT written here — `tokenize(addSpecial: true)` owns the BOS (see `buildPrompt`'s BOS policy).
     static func deepSeekPrompt(_ messages: [ChatTurn], reasoning: ReasoningStyle, thinking: Bool) -> String {
         let eos = "<｜end▁of▁sentence｜>"
-        var s = ""
-        if let sys = messages.first(where: { $0.role == .system })?.content, !sys.isEmpty { s += sys }
+        var s = coalescedSystemPrompt(messages)
         for m in messages {
             switch m.role {
             case .system: break
@@ -611,8 +665,7 @@ public actor LlamaEngine: LLMEngine {
     /// `buildPrompt`'s BOS policy).
     static func hunyuanPrompt(_ messages: [ChatTurn], reasoning: ReasoningStyle, thinking: Bool) -> String {
         let eos = "<｜hy_place▁holder▁no▁2｜>"
-        var s = ""
-        if let sys = messages.first(where: { $0.role == .system })?.content, !sys.isEmpty { s += sys }
+        var s = coalescedSystemPrompt(messages)
         for m in messages {
             switch m.role {
             case .system: break
@@ -621,6 +674,15 @@ public actor LlamaEngine: LLMEngine {
             }
         }
         return s + thinkSuffix(reasoning, thinking: thinking)
+    }
+
+    /// Raw-system templates have one system slot. Preserve every system turn in encounter order and
+    /// separate them explicitly so an auto-compaction breadcrumb cannot run into the base instruction.
+    static func coalescedSystemPrompt(_ messages: [ChatTurn]) -> String {
+        messages.lazy
+            .filter { $0.role == .system && !$0.content.isEmpty }
+            .map(\.content)
+            .joined(separator: "\n\n")
     }
 
     /// Google Gemma 4: asymmetric turn markers — `<|turn>role\n…<turn|>\n` per turn, then the model

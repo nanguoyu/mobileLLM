@@ -16,8 +16,9 @@ extension AppearanceMode {
 
 /// The app shell (DESIGN §4): a compact iPhone uses a TabView (Chat / Models / Settings); an iPad
 /// (regular width) and macOS use a NavigationSplitView (sidebar list + thread), so the iPad isn't just a
-/// stretched phone. Accent tint, appearance override, and the shared banner host. Bootstraps persisted
-/// chats + install state, then auto-activates the default model.
+/// stretched phone. Accent tint, appearance override, and the shared banner host. Bootstraps the
+/// conversation list + install state without selecting history, then restores only the default model
+/// identity without loading its weights.
 public struct RootView: View {
     @Bindable var container: AppContainer
     @State private var section: AppSection = .chat
@@ -77,8 +78,8 @@ public struct RootView: View {
             .tabItem { Label("Chat", systemImage: AppSection.chat.icon) }
 
             NavigationStack {
-                ModelsView(models: container.models, settings: container.settings) { model, variant, force in
-                    container.activate(model, variant: variant, force: force)
+                ModelsView(models: container.models, settings: container.settings) { model, variant in
+                    container.activate(model, variant: variant)
                 }
                 .navigationTitle("Models")
             }
@@ -166,8 +167,8 @@ public struct RootView: View {
         case .chat:
             ChatDetailView(container: container, onOpenModels: { section = .models })
         case .models:
-            ModelsView(models: container.models, settings: container.settings) { model, variant, force in
-                container.activate(model, variant: variant, force: force)
+            ModelsView(models: container.models, settings: container.settings) { model, variant in
+                container.activate(model, variant: variant)
             }
             .navigationTitle("Models")
         case .settings:

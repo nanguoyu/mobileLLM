@@ -71,7 +71,8 @@ final class ModelDownloaderTests: XCTestCase {
     func testSafeDestinationRejectsTraversalAndAbsolute() {
         let root = base.appending(component: "models/org/repo")
         for p in ["../evil", "../../etc/passwd", "a/../../b", "/etc/passwd", "",
-                  "..\\..\\evil", "foo/../../bar", "weights/../../../../System"] {
+                  ".", "a/./b", "..\\..\\evil", "foo/../../bar",
+                  "weights/../../../../System"] {
             XCTAssertNil(ModelDownloader.safeDestination(root: root, relativePath: p),
                          "‘\(p)’ must be refused (zip-slip)")
         }
@@ -82,5 +83,33 @@ final class ModelDownloaderTests: XCTestCase {
         let dl = ModelDownloader(downloadBase: base)
         XCTAssertFalse(dl.isDownloaded(repoId: "org/repo", fileName: "../../secret.gguf"))
         XCTAssertFalse(dl.isDownloaded(repoId: "org/repo", fileName: "/etc/passwd"))
+    }
+
+    /// Repository ids also originate in remote catalog metadata. They must never become filesystem
+    /// structure outside `downloadBase/models`, even before a tree response is fetched.
+    func testRepositoryIDIsConfinedBeforeNetworkOrFilesystemAccess() async {
+        let dl = ModelDownloader(downloadBase: base)
+        let sentinel = base.appending(component: "models/.invalid-repository").standardizedFileURL
+        let invalid = [
+            "", ".", "..", "../escape", "org/../escape", "org/./model",
+            "/absolute", "org/model/extra", #"org\model"#, "org/\0model",
+        ]
+
+        for repo in invalid {
+            XCTAssertEqual(dl.localURL(repoId: repo).standardizedFileURL, sentinel)
+            XCTAssertFalse(dl.isDownloaded(repoId: repo))
+            XCTAssertFalse(dl.isDownloaded(repoId: repo, fileName: "model.gguf"))
+        }
+
+        let escaped = base.appending(component: "escape")
+        do {
+            _ = try await dl.download(repoId: "../escape", progress: { _ in })
+            XCTFail("an unsafe repository id must fail before starting a request")
+        } catch ModelDownloadError.invalidURL(let value) {
+            XCTAssertEqual(value, "../escape")
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: escaped.path))
     }
 }

@@ -12,12 +12,23 @@ public struct RemoteModel: Sendable, Identifiable, Hashable {
     public let publisher: String     // HF org, e.g. "mlx-community"
     public let engine: EngineKind    // .mlx (mlx-community) or .llamaCpp (GGUF orgs)
     public let downloads: Int         // popularity (max across the group's repos)
+    /// Hub/config-derived architecture family. Never inferred merely from publisher or display name.
+    public let family: LLMFamily
+    /// Hub card tag mapped only when its identifier is recognized; otherwise explicitly unverified.
+    public let license: ModelLicense
+    /// Commit/branch used to enumerate this repo. MLX groups may contain per-variant revisions, stored
+    /// on `RemoteVariant`; this value is primarily used by one-repo GGUF models.
+    public let revision: String
     public let variants: [RemoteVariant]
 
     public init(id: String, name: String, publisher: String, engine: EngineKind,
-                downloads: Int, variants: [RemoteVariant]) {
+                downloads: Int, family: LLMFamily = .unknown,
+                license: ModelLicense = .unknown, revision: String = "main",
+                variants: [RemoteVariant]) {
         self.id = id; self.name = name; self.publisher = publisher
-        self.engine = engine; self.downloads = downloads; self.variants = variants
+        self.engine = engine; self.downloads = downloads
+        self.family = family; self.license = license; self.revision = revision
+        self.variants = variants
     }
 }
 
@@ -26,11 +37,15 @@ public struct RemoteModel: Sendable, Identifiable, Hashable {
 public struct RemoteVariant: Sendable, Hashable {
     public let quantLabel: String    // "4-bit", "8-bit", "Q4_K_M"
     public let repo: String          // HF repo id to download
+    /// Immutable Hub commit when the listing supplied one, otherwise the explicit `main` fallback.
+    public let revision: String
     public let fileName: String?     // GGUF single file, or nil for a flat MLX repo
     public let sizeBytes: Int64?     // known on-disk size, or nil until fetched
 
-    public init(quantLabel: String, repo: String, fileName: String? = nil, sizeBytes: Int64? = nil) {
-        self.quantLabel = quantLabel; self.repo = repo; self.fileName = fileName; self.sizeBytes = sizeBytes
+    public init(quantLabel: String, repo: String, revision: String = "main",
+                fileName: String? = nil, sizeBytes: Int64? = nil) {
+        self.quantLabel = quantLabel; self.repo = repo; self.revision = revision
+        self.fileName = fileName; self.sizeBytes = sizeBytes
     }
 }
 
@@ -68,11 +83,15 @@ extension RemoteModel {
         let vs = variants.map { v in
             LLMVariant(quant: .other(v.quantLabel), backend: backend,
                        onDiskBytes: v.sizeBytes ?? RemoteModel.estimateBytes(paramsBillions: paramsBillions, quant: v.quantLabel),
-                       source: ModelSource(huggingFaceRepo: v.repo, fileName: v.fileName))
+                       source: ModelSource(huggingFaceRepo: v.repo, revision: v.revision,
+                                           fileName: v.fileName),
+                       identityScheme: .sourceArtifactV2)
         }
-        return LLMModel(id: id, displayName: name, family: .qwen, publisher: publisher,
-                        summary: "Community model — loaded from its own template. Not hand-verified.",
-                        license: .apache2, architecture: architecture, variants: vs,
+        let configFamily = RemoteCatalog.family(modelType: architecture.modelType)
+        let resolvedFamily = configFamily == .unknown ? family : configFamily
+        return LLMModel(id: id, displayName: name, family: resolvedFamily, publisher: publisher,
+                        summary: "Community model — Hub metadata when available; not hand-verified.",
+                        license: license, architecture: architecture, variants: vs,
                         defaultVariant: vs.first?.quant ?? .gguf4bit)
     }
 
@@ -149,7 +168,7 @@ public enum RemoteCatalog {
         switch source {
         case .mlx:
             var url = "https://huggingface.co/api/models?author=\(mlxOrg)&pipeline_tag=text-generation"
-                    + "&sort=downloads&direction=-1&limit=\(min(limit * 3, 300))&full=false"
+                    + "&sort=downloads&direction=-1&limit=\(min(limit * 3, 300))&full=true"
             if let enc { url += "&search=\(enc)" }
             return group(try await fetch(url, session: session), publisher: mlxOrg, engine: .mlx)
                 .prefix(limit).map { $0 }
@@ -158,14 +177,17 @@ public enum RemoteCatalog {
             var models: [RemoteModel] = []
             for org in ggufOrgs {
                 var url = "https://huggingface.co/api/models?author=\(org)&search=\(enc.map { "\($0)%20GGUF" } ?? "GGUF")"
-                        + "&sort=downloads&direction=-1&limit=\(max(8, limit / 2))&full=false"
+                        + "&sort=downloads&direction=-1&limit=\(max(8, limit / 2))&full=true"
                 if enc == nil { url += "&pipeline_tag=text-generation" }
                 guard let raw = try? await fetch(url, session: session) else { continue }
-                for (repo, dl) in raw {
-                    let leaf = repo.split(separator: "/").last.map(String.init) ?? repo
+                for item in raw {
+                    let leaf = item.repo.split(separator: "/").last.map(String.init) ?? item.repo
                     guard leaf.lowercased().contains("gguf"), isChatModel(leaf) else { continue }
-                    models.append(RemoteModel(id: repo, name: ggufModelName(leaf), publisher: org,
-                                              engine: .llamaCpp, downloads: dl, variants: []))
+                    models.append(RemoteModel(
+                        id: item.repo, name: ggufModelName(leaf), publisher: org,
+                        engine: .llamaCpp, downloads: item.downloads,
+                        family: family(tags: item.tags), license: license(tags: item.tags),
+                        revision: item.revision, variants: []))
                 }
             }
             return models.sorted { $0.downloads > $1.downloads }.prefix(limit).map { $0 }
@@ -176,23 +198,25 @@ public enum RemoteCatalog {
     /// since listing files for every repo up front would be hundreds of requests.
     public static func quants(for model: RemoteModel, session: URLSession = .shared) async throws -> [RemoteVariant] {
         guard model.engine == .llamaCpp else { return model.variants }
-        guard let url = URL(string: "https://huggingface.co/api/models/\(model.id)/tree/main?recursive=true") else {
+        guard let url = hubURL(repoId: model.id, endpoint: "tree", revision: model.revision,
+                               queryItems: [URLQueryItem(name: "recursive", value: "true")]) else {
             throw CatalogError.badResponse
         }
         var req = URLRequest(url: url); req.setValue("mobileLLM", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await session.data(for: req)
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw CatalogError.badResponse }
-        return parseGGUFTree(data, repo: model.id)
+        return parseGGUFTree(data, repo: model.id, revision: model.revision)
     }
 
     /// Pure: turn an HF file tree into GGUF quant variants (skipping mmproj + sharded parts).
-    static func parseGGUFTree(_ data: Data, repo: String) -> [RemoteVariant] {
+    static func parseGGUFTree(_ data: Data, repo: String, revision: String = "main") -> [RemoteVariant] {
         guard let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
         var out: [RemoteVariant] = []
         for item in items {
             guard let path = item["path"] as? String, let quant = ggufQuantLabel(path) else { continue }
             let size = (item["size"] as? Int64) ?? (item["lfs"] as? [String: Any])?["size"] as? Int64
-            out.append(RemoteVariant(quantLabel: quant, repo: repo, fileName: path, sizeBytes: size))
+            out.append(RemoteVariant(quantLabel: quant, repo: repo, revision: revision,
+                                     fileName: path, sizeBytes: size))
         }
         return out.sorted { quantRank($0.quantLabel) < quantRank($1.quantLabel) }
     }
@@ -220,15 +244,34 @@ public enum RemoteCatalog {
 
     // MARK: - Fetch
 
-    private struct HubItem: Decodable { let id: String; let downloads: Int? }
+    private struct HubItem: Decodable {
+        let id: String
+        let downloads: Int?
+        let sha: String?
+        let tags: [String]?
+    }
 
-    private static func fetch(_ url: String, session: URLSession) async throws -> [(repo: String, dl: Int)] {
+    struct HubRepository: Sendable, Equatable {
+        let repo: String
+        let downloads: Int
+        let revision: String
+        let tags: [String]
+    }
+
+    private static func fetch(_ url: String, session: URLSession) async throws -> [HubRepository] {
         guard let u = URL(string: url) else { throw CatalogError.badResponse }
         var req = URLRequest(url: u); req.setValue("mobileLLM", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await session.data(for: req)
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw CatalogError.badResponse }
-        let items = try JSONDecoder().decode([HubItem].self, from: data)
-        return items.map { (repo: $0.id, dl: $0.downloads ?? 0) }
+        return try parseHubRepositories(data)
+    }
+
+    static func parseHubRepositories(_ data: Data) throws -> [HubRepository] {
+        try JSONDecoder().decode([HubItem].self, from: data).map { item in
+            let revision = item.sha.flatMap { $0.isEmpty ? nil : $0 } ?? "main"
+            return HubRepository(repo: item.id, downloads: item.downloads ?? 0,
+                                 revision: revision, tags: item.tags ?? [])
+        }
     }
 
     private static func fetchData(_ url: URL, session: URLSession) async throws -> Data {
@@ -236,6 +279,48 @@ public enum RemoteCatalog {
         let (data, resp) = try await session.data(for: req)
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw CatalogError.badResponse }
         return data
+    }
+
+    /// Construct revision-aware Hub URLs without letting a slash/question mark inside a branch name
+    /// become URL structure. Repository and nested file separators remain real path separators.
+    static func hubURL(repoId: String, endpoint: String, revision: String,
+                       filePath: String? = nil,
+                       queryItems: [URLQueryItem] = []) -> URL? {
+        let repoSegments = repoId.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard (1...2).contains(repoSegments.count),
+              repoSegments.allSatisfy({
+                  !$0.isEmpty && $0 != "." && $0 != ".."
+                      && !$0.contains("\\") && !$0.contains("\0")
+              }),
+              !revision.isEmpty, revision != ".", revision != "..",
+              !revision.contains("\\") && !revision.contains("\0") else { return nil }
+        var segments = (endpoint == "tree" || endpoint == "metadata") ? ["api", "models"] : []
+        segments.append(contentsOf: repoSegments)
+        if endpoint == "metadata" {
+            segments.append("revision")
+        } else {
+            segments.append(endpoint)
+        }
+        segments.append(revision)
+        if let filePath {
+            let fileSegments = filePath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+            guard !fileSegments.isEmpty,
+                  fileSegments.allSatisfy({
+                      !$0.isEmpty && $0 != "." && $0 != ".."
+                          && !$0.contains("\\") && !$0.contains("\0")
+                  }) else { return nil }
+            segments.append(contentsOf: fileSegments)
+        }
+        let unreserved = CharacterSet(charactersIn:
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        let encoded = segments.map { $0.addingPercentEncoding(withAllowedCharacters: unreserved) ?? "" }
+        guard !encoded.contains(where: \.isEmpty) else { return nil }
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "huggingface.co"
+        components.percentEncodedPath = "/" + encoded.joined(separator: "/")
+        if !queryItems.isEmpty { components.queryItems = queryItems }
+        return components.url
     }
 
     // MARK: - Real architecture (A2.5) — fetch a discovered model's true context/KV shape
@@ -264,15 +349,18 @@ public enum RemoteCatalog {
         let fallback = genericArchitecture(engine: model.engine)
         switch model.engine {
         case .mlx:
-            guard let repo = model.variants.first?.repo,
-                  let url = URL(string: "https://huggingface.co/\(repo)/resolve/main/config.json"),
+            guard let variant = model.variants.first,
+                  let url = hubURL(repoId: variant.repo, endpoint: "resolve",
+                                   revision: variant.revision, filePath: "config.json"),
                   let data = try? await fetchData(url, session: session),
                   let arch = parseMLXConfig(data, fallback: fallback) else {
                 return ResolvedArchitecture(architecture: fallback, isResolved: false)
             }
             return ResolvedArchitecture(architecture: arch, isResolved: true)
         case .llamaCpp:
-            guard let url = URL(string: "https://huggingface.co/api/models/\(model.id)?expand%5B%5D=gguf"),
+            guard let url = hubURL(
+                repoId: model.id, endpoint: "metadata", revision: model.revision,
+                queryItems: [URLQueryItem(name: "expand[]", value: "gguf")]),
                   let data = try? await fetchData(url, session: session),
                   let arch = parseGGUFMetadata(data, fallback: fallback) else {
                 return ResolvedArchitecture(architecture: fallback, isResolved: false)
@@ -331,31 +419,132 @@ public enum RemoteCatalog {
 
     // MARK: - Grouping (pure — unit-tested)
 
+    /// Map only model-family identifiers supplied by Hub metadata or a parsed model config. Display names
+    /// and publishers are intentionally excluded: neither is authoritative architecture metadata.
+    static func family(tags: [String]) -> LLMFamily {
+        var candidates: Set<LLMFamily> = []
+        for tag in tags {
+            let tokens = tag.lowercased().split {
+                !$0.isLetter && !$0.isNumber
+            }.map(String.init)
+            for (index, token) in tokens.enumerated() {
+                if token == "qwen" || token.range(
+                    of: #"^qwen\d"#, options: .regularExpression) != nil {
+                    candidates.insert(.qwen)
+                } else if token == "gemma" || token.range(
+                    of: #"^gemma\d"#, options: .regularExpression) != nil {
+                    candidates.insert(.gemma)
+                } else if token == "minicpm" || token.range(
+                    of: #"^minicpm\d"#, options: .regularExpression) != nil {
+                    candidates.insert(.minicpm)
+                } else if token == "hunyuan" || token.range(
+                    of: #"^hunyuan\d"#, options: .regularExpression) != nil {
+                    candidates.insert(.hunyuan)
+                } else if token == "mistral" || token == "mixtral" {
+                    candidates.insert(.mistral)
+                } else if token == "llama" || token.range(
+                    of: #"^llama\d"#, options: .regularExpression) != nil {
+                    candidates.insert(.llama)
+                } else if token == "phi" || token.range(
+                    of: #"^phi\d"#, options: .regularExpression) != nil {
+                    candidates.insert(.phi)
+                } else if token == "deepseek" || token.range(
+                    of: #"^deepseek\d"#, options: .regularExpression) != nil {
+                    candidates.insert(.deepseek)
+                } else if token == "bonsai" {
+                    candidates.insert(.bonsai)
+                }
+                if token == "gpt", tokens.indices.contains(index + 1),
+                   tokens[index + 1] == "oss" {
+                    candidates.insert(.gptOSS)
+                }
+            }
+        }
+        return candidates.count == 1 ? (candidates.first ?? .unknown) : .unknown
+    }
+
+    /// Map a parsed `config.json` / GGUF architecture identifier. This is more authoritative than tags
+    /// and therefore takes precedence when `RemoteModel` is converted to an `LLMModel`.
+    static func family(modelType: String) -> LLMFamily {
+        family(tags: [modelType])
+    }
+
+    /// Hugging Face exposes SPDX-ish license IDs as `license:<id>` tags. Map only IDs whose terms the app
+    /// can name accurately; an absent or unfamiliar ID remains explicit `.unknown`.
+    static func license(tags: [String]) -> ModelLicense {
+        let identifiers = tags.compactMap { tag -> String? in
+            let lower = tag.lowercased()
+            guard lower.hasPrefix("license:") else { return nil }
+            return String(lower.dropFirst("license:".count))
+        }
+        var candidates: Set<ModelLicense> = []
+        for id in identifiers {
+            switch id {
+            case "apache-2.0", "apache2": candidates.insert(.apache2)
+            case "mit": candidates.insert(.mit)
+            case "gemma", "gemma-terms-of-use": candidates.insert(.gemma)
+            case "llama2", "llama3", "llama3.1", "llama3.2", "llama4":
+                candidates.insert(.llamaCommunity)
+            case "tencent-hunyuan-community": candidates.insert(.tencentHunyuan)
+            default: continue
+            }
+        }
+        return candidates.count == 1 ? (candidates.first ?? .unknown) : .unknown
+    }
+
     /// Group a flat repo list into models-with-variants: peel the trailing quant descriptor off each repo
     /// name to get the base identity, then collect every quant under it (most-downloaded model first).
     public static func group(_ repos: [(repo: String, dl: Int)],
                              publisher: String, engine: EngineKind) -> [RemoteModel] {
-        struct Acc { var name: String; var dl: Int; var variants: [RemoteVariant] }
+        group(repos.map {
+            HubRepository(repo: $0.repo, downloads: $0.dl, revision: "main", tags: [])
+        }, publisher: publisher, engine: engine)
+    }
+
+    static func group(_ repos: [HubRepository],
+                      publisher: String, engine: EngineKind) -> [RemoteModel] {
+        struct Acc {
+            var name: String
+            var dl: Int
+            var variants: [RemoteVariant]
+            var families: Set<LLMFamily>
+            var licenses: Set<ModelLicense>
+        }
         var byBase: [String: Acc] = [:]
         var order: [String] = []
 
-        for (repo, dl) in repos {
-            let leaf = repo.split(separator: "/").last.map(String.init) ?? repo
+        for item in repos {
+            let leaf = item.repo.split(separator: "/").last.map(String.init) ?? item.repo
             guard isChatModel(leaf) else { continue }
             let (base, quant) = splitQuant(leaf)
             let key = base.lowercased()
-            let v = RemoteVariant(quantLabel: quant, repo: repo, fileName: nil, sizeBytes: nil)
-            if byBase[key] == nil { byBase[key] = Acc(name: prettify(base), dl: dl, variants: [v]); order.append(key) }
+            let itemFamily = family(tags: item.tags)
+            let itemLicense = license(tags: item.tags)
+            let v = RemoteVariant(quantLabel: quant, repo: item.repo, revision: item.revision,
+                                  fileName: nil, sizeBytes: nil)
+            if byBase[key] == nil {
+                byBase[key] = Acc(
+                    name: prettify(base), dl: item.downloads, variants: [v],
+                    families: itemFamily == .unknown ? [] : [itemFamily],
+                    licenses: itemLicense == .unknown ? [] : [itemLicense])
+                order.append(key)
+            }
             else {
-                byBase[key]!.dl = max(byBase[key]!.dl, dl)
+                byBase[key]!.dl = max(byBase[key]!.dl, item.downloads)
+                if itemFamily != .unknown { byBase[key]!.families.insert(itemFamily) }
+                if itemLicense != .unknown { byBase[key]!.licenses.insert(itemLicense) }
                 if !byBase[key]!.variants.contains(where: { $0.quantLabel == quant }) { byBase[key]!.variants.append(v) }
             }
         }
         // Preserve download order (repos arrive sorted), variants sorted by a bit-precision rank.
         return order.map { key in
             let a = byBase[key]!
+            let resolvedFamily = a.families.count == 1 ? (a.families.first ?? .unknown) : .unknown
+            let resolvedLicense = a.licenses.count == 1 ? (a.licenses.first ?? .unknown) : .unknown
             return RemoteModel(id: "\(publisher)/\(a.name)", name: a.name, publisher: publisher,
                                engine: engine, downloads: a.dl,
+                               family: resolvedFamily, license: resolvedLicense,
+                               revision: a.variants.first?.revision ?? "main",
                                variants: a.variants.sorted { quantRank($0.quantLabel) < quantRank($1.quantLabel) })
         }
     }

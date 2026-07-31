@@ -42,28 +42,28 @@ public final class MemoryBook {
 
     /// Save a fact the user typed. Tagged `.user`, so the screen can show it as theirs rather than
     /// implying the model noticed it. Blank text is ignored.
-    public func add(_ text: String) async {
+    public func add(_ text: String) async throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        await store.save(trimmed, source: .user)
+        try await store.save(trimmed, source: .user)
         await refresh()
     }
 
     /// Correct a fact's text in place (the inline editor). Keeps its id, date, and source — see
     /// `MemoryStore.update`.
-    public func update(id: String, text: String) async {
-        await store.update(id: id, text: text)
+    public func update(id: String, text: String) async throws {
+        try await store.update(id: id, text: text)
         await refresh()
     }
 
-    public func delete(id: String) async {
-        await store.delete(id: id)
+    public func delete(id: String) async throws {
+        try await store.delete(id: id)
         await refresh()
     }
 
     /// Forget everything (the confirmed "Forget everything" action).
-    public func deleteAll() async {
-        await store.deleteAll()
+    public func deleteAll() async throws {
+        try await store.deleteAll()
         await refresh()
     }
 

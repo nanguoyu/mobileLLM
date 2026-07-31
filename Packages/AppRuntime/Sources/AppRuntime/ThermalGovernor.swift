@@ -23,6 +23,11 @@ public enum MemoryPressure: Int, Sendable, Comparable {
     public static func < (a: MemoryPressure, b: MemoryPressure) -> Bool { a.rawValue < b.rawValue }
 }
 
+/// Injectable thermal/memory-pressure boundary used by inference engines.
+public protocol ThermalGoverning: Sendable {
+    func throttleIfNeeded(onCooling: (@Sendable () -> Void)?) async throws
+}
+
 /// On-device thermal & memory-pressure governor — the single hard guarantee against a thermal
 /// shutdown while generating.
 ///
@@ -41,16 +46,16 @@ public enum MemoryPressure: Int, Sendable, Comparable {
 /// memory source reports `.normal`, so `throttleIfNeeded` falls straight through the `.nominal` branch.
 ///
 /// ## MLX-free
-/// MLX is decoupled from this governor: the three `MLX.GPU.clearCache()` call sites
+/// MLX is decoupled from this governor: the engine's `MLX.Memory.clearCache()` call sites
 /// are replaced by an injected `clearCache: @Sendable () -> Void` (default no-op). The LLM engine
-/// injects `{ MLX.GPU.clearCache() }` from inside its own MLX-linked package; every layer below it
+/// injects `{ MLX.Memory.clearCache() }` from inside its own MLX-linked package; every layer below it
 /// stays MLX-free and testable deviceless.
 ///
 /// ## Testability
 /// The thermal-state and memory-pressure inputs, the cooperative sleep, and the cache-clear are all
 /// injected. A test constructs a governor with scripted sources and no-op sleep/clearCache to exercise
 /// the real pacing logic deterministically without a device or wall-clock waits.
-public final class ThermalGovernor: @unchecked Sendable {
+public final class ThermalGovernor: ThermalGoverning, @unchecked Sendable {
     public static let shared = ThermalGovernor()
 
     public typealias ThermalSource = @Sendable () -> ThermalSeverity
@@ -79,7 +84,7 @@ public final class ThermalGovernor: @unchecked Sendable {
     #endif
 
     /// Production initializer — wires the live system thermal/memory sources and `Task.sleep`.
-    /// `clearCache` is injected by the caller (the MLX-linked engine passes `MLX.GPU.clearCache`).
+    /// `clearCache` is injected by the caller (the MLX-linked engine passes `MLX.Memory.clearCache`).
     public convenience init(clearCache: @escaping ClearCacheFn = {}) {
         #if os(iOS)
         let box = SeverityBox(.nominal)
@@ -97,12 +102,18 @@ public final class ThermalGovernor: @unchecked Sendable {
             box.value = Self.map(ProcessInfo.processInfo.thermalState)
         }
         let source = DispatchSource.makeMemoryPressureSource(
-            eventMask: [.warning, .critical], queue: .global(qos: .utility))
+            eventMask: [.normal, .warning, .critical], queue: .global(qos: .utility))
         source.setEventHandler { [weak source] in
             guard let source else { return }
             // Record only; never clear the cache from the dispatch thread (the accelerator may be
             // mid-eval on the generation task). The next `throttleIfNeeded` clears it on that task.
-            pressureBox.value = source.data.contains(.critical) ? .critical : .warning
+            if source.data.contains(.critical) {
+                pressureBox.value = .critical
+            } else if source.data.contains(.warning) {
+                pressureBox.value = .warning
+            } else {
+                pressureBox.value = .normal
+            }
         }
         source.resume()
         memorySource = source

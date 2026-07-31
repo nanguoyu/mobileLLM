@@ -10,7 +10,8 @@ public enum LLMFit: Sendable, Equatable {
     /// Amber — it runs, but you're deep into the budget; `maxContext` is the largest context that
     /// stays under the hard ceiling.
     case tight(maxContext: Int)
-    /// Gray — the weights + runtime don't fit at all (no context helps; it's the weights).
+    /// Gray — the planner estimates that weights + runtime exceed its budget even at minimal context.
+    /// This is advisory and never prevents an activation attempt.
     case unsupported
 
     public var isSupported: Bool {
@@ -23,7 +24,8 @@ public enum LLMFit: Sendable, Equatable {
 /// is bandwidth-bound at batch-1, so weights must be resident — a model either fits in RAM or it can't
 /// run. The only lever is the KV cache.
 ///
-/// `peak = baseResidentBytes + KV(context)`, where `baseResidentBytes = onDiskBytes + runtimeOverhead`.
+/// `peak = baseResidentBytes + KV(context)`, where `baseResidentBytes` includes every model artifact
+/// required by the variant (text weights plus a vision projector, when present) and runtime overhead.
 public enum LLMMemoryGovernor {
 
     /// Fraction of the ceiling below which a plan is "comfortable" (green).
@@ -34,8 +36,8 @@ public enum LLMMemoryGovernor {
     /// anonymous/dirty resident weights — so only a portion is truly "hard" resident. An **estimate**
     /// (iOS 18+ residency sets can wire GPU buffers and erase this discount → the experimental hybrid
     /// is never allowed green regardless; see below).
-    /// Public so the activation pre-flight computes the SAME engine-aware peak the fit badge shows —
-    /// two copies of this constant already diverged once (a model shown amber refused to even try).
+    /// Public so every informational resident estimate uses the same engine-aware accounting as the fit
+    /// badge. Keeping one constant also prevents contradictory labels across UI surfaces.
     public static let mmapResidentFraction = 0.60
 
     /// The usable resident ceiling for a device (DESIGN §1.2):
@@ -106,8 +108,9 @@ public enum LLMMemoryGovernor {
         // one: it answers "can I use this model", and one that read green and then got killed the moment
         // you attached a photo would be worse than one that says up front it's tight. Under-promise here;
         // the lazy load is the over-deliver. The mmproj is a GGUF loaded via mtmd, so the same clean-page
-        // mmap discount applies to it. `?? 0` keeps text/MLX numbers byte-identical.
-        let weightBytes = variant.onDiskBytes + (variant.visionProjector?.sizeBytes ?? 0)
+        // mmap discount applies to it. `totalOnDiskBytes` is the shared accounting source used by
+        // downloads, storage, fit presentation, and resident estimates.
+        let weightBytes = variant.totalOnDiskBytes
         let discountedBase = Int64(Double(weightBytes) * mmapResidentFraction) + overhead
         let rawBase = weightBytes + overhead
         let kv = model.architecture.attention.kvBytes(tokens: context)

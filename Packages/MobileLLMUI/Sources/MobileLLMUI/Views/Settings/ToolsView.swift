@@ -7,9 +7,9 @@ import LLMCore
 import UIKit
 #endif
 
-/// Settings → Behavior → Manage tools. The built-in tool suite the model may call when Tools are on:
-/// which search engines web search scrapes, per-tool on/off (with the privacy-sensitive three clearly
-/// marked as permission-gated), and a link into the MCP servers screen. Everything here persists into
+/// Settings → Behavior → Choose tools, also reachable directly from the chat's Tools submenu. The screen
+/// makes the two levels explicit: a master authorization and the exact per-tool selection exposed when it
+/// is on. It also controls search engines and MCP servers. Everything here persists into
 /// `AppSettings` (`disabledBuiltInTools` + `searchEngines`) and takes effect on the next send via
 /// `ChatStore.toolRegistry()`.
 struct ToolsView: View {
@@ -27,8 +27,9 @@ struct ToolsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
-                searchEnginesSection
+                accessSection
                 builtInSection
+                searchEnginesSection
                 connectionsSection
             }
             .frame(maxWidth: Theme.Layout.form, alignment: .leading)
@@ -54,8 +55,28 @@ struct ToolsView: View {
             Button("Open Settings") { openSystemSettings(); deniedRow = nil }
             Button("Not now", role: .cancel) { deniedRow = nil }
         } message: { row in
-            Text("\(row.title) is turned off for mobileLLM in system Settings. The tool stays enabled "
+            Text("\(row.title) is turned off for mobileLLM in system Settings. The tool stays selected "
                  + "here, but the model's calls will fail until you allow access.")
+        }
+    }
+
+    // MARK: Access
+
+    private var accessSection: some View {
+        section("Tool access", icon: "checklist") {
+            Toggle(isOn: $settings.toolsEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Allow selected tools").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                    Text("Only the tools selected below are exposed to the model.")
+                        .font(.caption).foregroundStyle(Theme.textTertiary)
+                }
+            }
+            .tint(Theme.accent)
+            Text("The model decides whether to call an allowed tool. Each call adds another model pass; "
+                 + "network tools such as web search, Wikipedia, and remote MCP also wait for the network, "
+                 + "so they can make a reply noticeably slower.")
+                .font(.caption).foregroundStyle(Theme.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -160,13 +181,7 @@ struct ToolsView: View {
     /// there. The toggle itself stays on either way (the user's intent is recorded; a denied tool call
     /// returns an instructive error until access is granted).
     private func requestSystemPermission(for row: BuiltInToolRow) async {
-        let result: ToolPermission?
-        switch row.id {
-        case "calendar": result = await eventStore?.requestPermission(for: .events)
-        case "reminders": result = await eventStore?.requestPermission(for: .reminders)
-        case "location": result = await locationProvider?.requestPermission()
-        default: result = nil
-        }
+        let result = await row.requestPermission(eventStore: eventStore, locationProvider: locationProvider)
         if result == .denied { deniedRow = row }
     }
 
@@ -227,15 +242,15 @@ struct ToolsView: View {
 }
 
 extension ToolsView {
-    /// One-line status for the Settings → "Manage tools" row: how many built-in tools are on, plus any
-    /// enabled MCP servers. Static so `SettingsView` can render it without owning the row model.
+    /// One-line status for the Settings → "Choose tools" row. "Selected" is deliberate: the selection
+    /// persists while the master authorization is off, so saying those tools are "on" would be false.
     @MainActor static func summary(for settings: AppSettings) -> String {
         let total = BuiltInToolRow.all.count
         let on = BuiltInToolRow.all.count(where: { $0.isOn(in: settings) })
-        var text = "\(on) of \(total) built-in tools on"
+        var text = "\(on) of \(total) built-in tools selected"
         let servers = settings.mcpServers.count(where: \.isEnabled)
-        if servers > 0 { text += " · \(servers) MCP server\(servers == 1 ? "" : "s")" }
-        return text
+        if servers > 0 { text += " · \(servers) MCP server\(servers == 1 ? "" : "s") selected" }
+        return settings.toolsEnabled ? text : "Off · \(text)"
     }
 }
 
@@ -256,16 +271,27 @@ struct BuiltInToolRow: Identifiable {
         toolIDs.allSatisfy { !settings.disabledBuiltInTools.contains($0.rawValue) }
     }
 
+    /// The permission flow shared by the full Tools screen and the chat's compact picker.
+    func requestPermission(eventStore: (any EventStoring)?,
+                           locationProvider: (any LocationProviding)?) async -> ToolPermission? {
+        switch id {
+        case "calendar": return await eventStore?.requestPermission(for: .events)
+        case "reminders": return await eventStore?.requestPermission(for: .reminders)
+        case "location": return await locationProvider?.requestPermission()
+        default: return nil
+        }
+    }
+
     /// The rows, in display order. The privacy-sensitive three come last, grouped and marked.
     static let all: [BuiltInToolRow] = [
         .init(id: "web_search", title: "Web search",
-              subtitle: "Search the live web for current info.",
+              subtitle: "Search the live web. Uses the network and adds another model pass.",
               icon: "magnifyingglass", toolIDs: [.webSearch]),
         .init(id: "fetch_webpage", title: "Webpage reader",
-              subtitle: "Open a link and read its main text.",
+              subtitle: "Open a link and read its main text over the network.",
               icon: "doc.text.magnifyingglass", toolIDs: [.fetchWebpage]),
         .init(id: "wikipedia", title: "Wikipedia",
-              subtitle: "Look up a topic on Wikipedia.",
+              subtitle: "Look up a topic on Wikipedia over the network.",
               icon: "character.book.closed", toolIDs: [.wikipedia]),
         .init(id: "calculator", title: "Calculator",
               subtitle: "Do arithmetic on-device.",
