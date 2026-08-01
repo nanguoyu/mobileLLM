@@ -146,7 +146,8 @@ Owns the minimal versioned value vocabulary shared across runtime, sandbox API, 
 
 - strongly typed run, step, request, artifact, event-cursor, and execution-handle identifiers;
 - versioned request/result/event envelopes;
-- capability grants, budgets, command envelopes, and redaction metadata;
+- run capability ceilings, step grants, budgets, command envelopes, and redaction metadata;
+- immutable `ExternalOperationPlan` and authorization-bound request envelopes;
 - provider-neutral artifact references and typed failure classifications.
 
 It contains no scheduler, persistence implementation, UI, model engine, tool implementation, or sandbox behavior.
@@ -194,7 +195,8 @@ on `AgentRuntime`, SwiftUI, a model engine, or a concrete sandbox.
 - **Attempt:** one try of a retryable step.
 - **Invocation:** one normalized call to one tool.
 - **Artifact:** durable content referenced by metadata rather than embedded in run events.
-- **Capability grant:** immutable authority available to a run.
+- **Run capability ceiling:** immutable maximum authority frozen for a run.
+- **Step capability grant:** immutable subset of the run ceiling available to one step.
 - **Approval receipt:** durable evidence that the user approved a bounded action or action class.
 - **Projection:** UI-oriented state derived from journal events.
 
@@ -221,8 +223,8 @@ pass:
 - active system-prompt and Skill versions;
 - relevant Memory record identifiers;
 - user-allowed and runtime-advertised tool sets;
-- tool schema hashes;
-- capability grant and approval policy version;
+- exact tool descriptor IDs, including schema and trust revisions;
+- run capability ceiling and approval policy version;
 - budgets and lifecycle policy.
 
 Before each model attempt, `ContextCompiler` commits an immutable `CompiledRequestManifest`. It records exact source
@@ -375,7 +377,7 @@ fail closed with current-state information; UI destruction or stream cancellatio
 On explicit resume:
 
 1. Load the latest materialized projection and replay later events.
-2. Verify the pinned model, prompt, Skill, tool schemas, and capability grant are still available.
+2. Verify the pinned model, prompt, Skill, tool schemas, and run capability ceiling are still available.
 3. Classify the interrupted step as replayable, completed, uncertain, or incompatible.
 4. Reuse completed artifacts and idempotent outcomes.
 5. Restart an interrupted model attempt from its preceding stable boundary.
@@ -393,10 +395,15 @@ removes conversation projections, run/step/model/tool/interaction events, approv
 bookmarks, artifacts with no remaining owner, projection outbox entries, snapshots, migration backups, and bounded
 diagnostics for that conversation. Recovery replays an incomplete deletion intent until every owned store agrees.
 
-`Delete All` closes the database, removes the database together with `-wal` and `-shm`, conversation projections,
-artifacts, bookmarks, backups, and diagnostics, and only then creates a clean store. SQLite uses secure deletion and a
-truncate checkpoint before ordinary row-level purges where possible, but the product does not claim forensic physical
-erasure from flash media; protection relies additionally on platform encryption and key destruction.
+`Delete All` first atomically writes a non-sensitive, protected, backup-excluded marker at
+`<Application Support>/mobileLLM.delete-all.pending`, owned by the app-level erase coordinator and outside every
+database/artifact/conversation directory being removed. On launch, that marker blocks all store opening and mutation
+until deletion finishes. The operation
+then closes the database, removes the database together with `-wal` and `-shm`, conversation projections, artifacts,
+bookmarks, backups, and diagnostics, creates clean stores, and removes the marker last. A crash at any point re-enters
+deletion from the marker. SQLite uses secure deletion and a truncate checkpoint before ordinary row-level purges where
+possible, but the product does not claim forensic physical erasure from flash media; protection relies additionally
+on platform encryption and key destruction.
 
 ## 10. Model-provider abstraction
 
@@ -406,9 +413,26 @@ The first implementation adapts the current local `LLMEngine` into `AgentModelPr
 protocol AgentModelProvider: Sendable {
     var descriptor: AgentModelProviderDescriptor { get }
     func capabilities(for model: AgentModelSelection) async -> AgentModelCapabilities
-    func generate(_ request: AgentModelRequest) -> AsyncThrowingStream<AgentModelEvent, Error>
+    func prepare(
+        _ request: AgentModelRequest,
+        context: ModelPreparationContext
+    ) async throws -> PreparedModelRequest
+    func generate(
+        _ request: AuthorizedModelRequest
+    ) -> AsyncThrowingStream<AgentModelEvent, Error>
 }
 ```
+
+`capabilities(for:)` and `prepare` may read only local registered or cached metadata; they perform no network or
+private-data access. A future capability refresh is itself a separately prepared external operation.
+
+`PreparedModelRequest` contains the immutable compiled-request manifest plus an `ExternalOperationPlan`. A local
+provider produces a `localPure` plan with no approval requirement. A future online provider's plan declares its exact
+endpoint and redirect bounds, provider/model, prompt and artifact data categories or payload digests, maximum request
+and response bytes, retention-policy metadata, and credential reference. Only `ApprovalPolicyEngine` can construct
+`AuthorizedModelRequest`, binding authorization to the plan hash. `generate` may transmit or process only that bound
+request; any expansion requires a new plan and approval. This makes online-provider support an additive adapter rather
+than a future breaking change to the provider contract.
 
 Capabilities include:
 
@@ -535,14 +559,20 @@ run. There is no unbounded implementation-review loop.
 Every tool has a stable namespaced identity and complete descriptor:
 
 ```swift
-struct AgentToolID {
-    var provider: String
+struct AgentToolLogicalID {
+    var providerID: String
     var name: String
+}
+
+struct AgentToolDescriptorID {
+    var logicalID: AgentToolLogicalID
     var version: String
+    var schemaHash: String
+    var trustRevision: String
 }
 
 struct AgentToolDescriptor {
-    var id: AgentToolID
+    var id: AgentToolDescriptorID
     var title: String
     var summary: String
     var inputSchema: JSONSchema
@@ -564,9 +594,8 @@ reference depth 16, and pattern length 256. Unsupported or unknown keywords are 
 but marked unenforced; they never silently pass as locally validated. A partially validated remote tool receives the
 conservative external-effect and approval policy.
 
-JSON arguments are normalized with RFC 8785 JSON Canonicalization Scheme semantics after schema validation. Tool
-identity, descriptor version, trust mapping, normalized arguments, and schema hash all participate in invocation and
-approval fingerprints.
+JSON arguments are normalized with RFC 8785 JSON Canonicalization Scheme semantics after schema validation. Exact
+descriptor ID, normalized arguments, and effect scope all participate in invocation and approval fingerprints.
 
 ### 13.2 Execution
 
@@ -595,8 +624,8 @@ plan stops execution and requires a new prepare/approval transaction. Runtime-ob
 the plan is allowed and recorded.
 
 The execution context includes run, step, and invocation IDs; plan and schema hashes; deadline; cancellation;
-idempotency key; capability grant; approval receipt; artifact writer; secret references; and redacted logger. A tool
-stream has exactly one terminal outcome and no later events.
+idempotency key; step capability grant; approval receipt; artifact writer; secret references; and redacted logger. A
+tool stream has exactly one terminal outcome and no later events.
 
 Results support text, structured JSON, image, resource links, and artifact references. Errors are typed and classify
 retryability, uncertainty, user action, and whether any external effect may have occurred.
@@ -626,8 +655,8 @@ Each conversation persists a versioned policy:
 ```swift
 struct ConversationToolPolicy: Codable, Sendable {
     var masterEnabled: Bool
-    var allowedToolIDs: Set<AgentToolID>
-    var pinnedToolIDs: Set<AgentToolID>
+    var allowedToolIDs: Set<AgentToolLogicalID>
+    var pinnedToolIDs: Set<AgentToolLogicalID>
     var selectionPolicyVersion: Int
     var materializedFromGlobalTemplate: Bool
 }
@@ -638,9 +667,10 @@ materializes the current global template exactly once, on its first edit or firs
 the marker. Later global changes affect new conversations only unless the user explicitly applies them to an existing
 conversation or all conversations. Every run then freezes the conversation policy it actually used.
 
-Logical tool identity is separate from descriptor/schema revision and hash. If a tool disappears, its trusted effect
-mapping changes, or its schema changes incompatibly, the conversation keeps the user's logical selection but the run
-marks the tool unavailable and requires inspection or renewed approval; it must not silently inherit an old receipt.
+Conversation policy stores logical IDs so user intent survives compatible upgrades. Each run resolves and snapshots
+exact descriptor IDs. If a tool disappears, its trusted effect mapping changes, or its schema changes incompatibly,
+the conversation keeps the user's logical selection but the run marks the tool unavailable and requires inspection
+or renewed approval; it must not silently inherit an old receipt.
 
 The selector:
 
@@ -710,8 +740,10 @@ must all produce it rather than implementing parallel approval formats.
 
 Approval records contain the displayed preview, normalized scope, arguments hash, policy version, timestamp, expiry,
 actual host/destination matcher, redirect/fallback bounds, data-category or payload digest, descriptor/schema/trust
-hashes, and user decision. Capability grants are immutable for a running step. Future child agents may receive only a
-subset of the parent's grant. Any time-of-check/time-of-use mismatch invalidates authorization before external I/O.
+hashes, and user decision. The run capability ceiling is immutable for the run; every step receives an immutable
+subset. Approval authorizes an operation inside that ceiling and never expands it. Future child agents may receive
+only a subset of the parent's ceiling. Any time-of-check/time-of-use mismatch invalidates authorization before
+external I/O.
 
 ## 16. Context compiler, Memory, and Skills
 
@@ -780,7 +812,7 @@ potentially side-effecting.
   reconciliation operation.
 - A timeout or transport loss after a non-idempotent external intent produces `waitingForReconciliation`; the runtime
   must not claim success, continue the ordinary loop, or replay the action.
-- Duplicate suppression uses tool ID, schema version, normalized arguments, and effect scope, not raw model text.
+- Duplicate suppression uses exact descriptor ID, normalized arguments, and effect scope, not raw model text.
 - Cancellation propagates from run to step to model/tool execution. Noncooperative implementations are detached only
   after the journal records uncertainty and resource ownership is made safe.
 
@@ -814,13 +846,16 @@ register a `BGContinuedProcessingTask`; the integration:
 - uses availability guards and does not raise the deployment target;
 - requests GPU resources only on supported devices and only for local engines that need them;
 - reports real progress to the system UI;
-- handles queueing, rejection, expiration, and user cancellation;
+- handles submission failure, expiration, and user cancellation;
 - uses the same journal and recovery semantics as foreground execution;
 - never treats continued processing as guaranteed runtime.
 
-Queueing or rejection leaves the run `waitingForForeground` with a diagnostic reason. Expiration and system
-cancellation first attempt safe quiescence and then leave resumable work `waitingForForeground`; user cancellation
-from system UI maps to the explicit cancellation policy. No case silently restarts inference or an external action.
+The first release uses the scheduler's fail-if-not-immediately-runnable strategy, not delayed queueing, so work cannot
+start later after the user has foreground-resumed it. A rejected submission leaves the run `waitingForForeground`
+with a diagnostic reason; any pre-existing queued request is explicitly cancelled and that cancellation is journaled
+before the same transition. Expiration and system cancellation first attempt safe quiescence and then leave resumable
+work `waitingForForeground`; user cancellation from system UI maps to the explicit cancellation policy. No case
+silently restarts inference or an external action.
 
 An already-running, user-authorized continued task may keep executing when the app leaves the foreground. A normal
 app launch must still not load a model or resume an unrelated run.
@@ -944,7 +979,7 @@ Respond command changes the run. Commands carry target run/request IDs and expec
 - requesting step ID;
 - role/instruction and output schema;
 - model policy;
-- capability grant;
+- run capability ceiling;
 - independent budget;
 - context and artifact references;
 - optional sandbox requirement;
@@ -968,7 +1003,7 @@ The current harness reserves only what that orchestrator will need:
 
 - stable run, step, parent, and artifact identities;
 - structured inputs and outputs;
-- immutable capability grants;
+- immutable run capability ceilings and attenuated step grants;
 - independent budgets and usage ledgers;
 - resumable execution events;
 - provider-neutral model routing;
@@ -982,7 +1017,8 @@ dependency scheduler, or workflow UI is added in this release.
 ## 24. Security and privacy requirements
 
 - Local inference remains local. Future online inference is opt-in and visibly classified as data egress.
-- Capability grants are deny-by-default, immutable within a step, auditable, and attenuated for future child agents.
+- Run capability ceilings are deny-by-default and immutable for a run; step grants are auditable immutable subsets
+  and future child ceilings are attenuated subsets.
 - External content is separated from control instructions and labeled untrusted.
 - Tool names are namespaced; schema hashes prevent silent tool substitution during resume.
 - Approval receipts bind normalized scope and policy version.
@@ -1057,7 +1093,8 @@ production sandbox implementation.
 
 ### 27.2 Integration tests
 
-- pure chat performs exactly one model pass and no tool-selection pass;
+- pure chat performs exactly one model pass; deterministic local tool selection may run, but no additional model
+  inference pass is used for selection;
 - multi-tool chains produce one committed final answer;
 - malformed tool output receives one repair and then terminates;
 - an image question never enables or invokes Web Search unless that conversation allows it and approval succeeds;
@@ -1171,6 +1208,8 @@ changes**. This revision incorporates its blocking findings:
 - explicit iOS 17 quiescence and bounded iOS 26 continued-processing eligibility;
 - reconnectable durable AgentExecutor and minimal experimental sandbox handles;
 - data protection, backup, deletion, accessibility, and corresponding fault-injection requirements.
+- separate logical conversation tool identity from exact run/approval descriptor identity;
+- bind future online-model generation to the same prepared and authorized external-operation contract.
 
 The review found the Dynamic Workflows boundary correctly deferred. No production implementation may begin unless a
 final consistency check confirms that this revision contains the listed changes.
