@@ -38,6 +38,14 @@ public struct RootView: View {
         shell
             .tint(Theme.accent)
             .background(Theme.bg)
+            #if os(macOS)
+            // NavigationSplitView otherwise lets the detail title bar fall back to AppKit's cold grey
+            // toolbar material while the app uses warm rice-paper everywhere else. Make the complete
+            // unified window toolbar part of the same adaptive palette (light and dark).
+            .toolbarBackground(Theme.bg, for: .windowToolbar)
+            // Keep the macOS 14 deployment target; the renamed visibility spelling starts in macOS 15.
+            .toolbarBackground(.visible, for: .windowToolbar)
+            #endif
             .preferredColorScheme(container.settings.appearance.colorScheme)
             .bannerHost(container.chat)
             .task { await container.bootstrap() }
