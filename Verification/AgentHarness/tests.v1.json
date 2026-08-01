@@ -6,7 +6,10 @@
     {
       "id": "AHT-INFRA-001", "title": "Validate requirements manifest and pinned specification identity", "status": "active", "kind": "manifest", "riskTier": "P0",
       "requirementIDs": ["AH-INFRA-001", "AH-INFRA-002"],
-      "selectors": [{ "kind": "xctest", "value": "AgentHarnessVerificationTests.AgentHarnessVerificationTests/testRequirementsManifest" }],
+      "selectors": [
+        { "kind": "xctest", "value": "AgentHarnessVerificationTests.AgentHarnessVerificationTests/testRequirementsManifest" },
+        { "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testOfflineJSONSchemaValidatorCoversRepositoryDialect" }
+      ],
       "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"], "requiredEvidence": ["XCTest result with manifest and source-digest assertions"],
       "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
     },
@@ -18,18 +21,18 @@
       "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
     },
     {
-      "id": "AHT-INFRA-003", "title": "Validate semantic registries and declared completeness", "status": "planned", "kind": "manifest", "riskTier": "P0",
-      "requirementIDs": ["AH-INFRA-004"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
+      "id": "AHT-INFRA-003", "title": "Validate semantic registries and declared completeness", "status": "active", "kind": "manifest", "riskTier": "P0",
+      "requirementIDs": ["AH-INFRA-004"], "selectors": [{ "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testCheckedInRegistriesAndFixturesPassSemanticVerification" }], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
       "requiredEvidence": ["Registry schema, cardinality, uniqueness, and traceability report"], "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
     },
     {
-      "id": "AHT-INFRA-004", "title": "Validate deterministic model and app-container fixtures", "status": "planned", "kind": "manifest", "riskTier": "P1",
-      "requirementIDs": ["AH-INFRA-005"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
+      "id": "AHT-INFRA-004", "title": "Validate deterministic model and app-container fixtures", "status": "active", "kind": "manifest", "riskTier": "P1",
+      "requirementIDs": ["AH-INFRA-005"], "selectors": [{ "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testDeterministicFixtureFamiliesAreComplete" }], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
       "requiredEvidence": ["Fixture schema and deterministic identity report"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false, "fixtureIDs": ["AH-FIXTURE-MODEL-PURE-CHAT", "AH-FIXTURE-MODEL-TOOL-THEN-ANSWER", "AH-FIXTURE-MODEL-MALFORMED-REPAIR", "AH-FIXTURE-MODEL-USER-INPUT"] }
     },
     {
-      "id": "AHT-INFRA-005", "title": "Validate coverage policy, baseline, and exclusions", "status": "planned", "kind": "manifest", "riskTier": "P0",
-      "requirementIDs": ["AH-INFRA-006"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
+      "id": "AHT-INFRA-005", "title": "Validate coverage policy, baseline, and exclusions", "status": "active", "kind": "manifest", "riskTier": "P0",
+      "requirementIDs": ["AH-INFRA-006"], "selectors": [{ "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testConditionalCoverageSchemaRejectsIncompletePolicy" }], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
       "requiredEvidence": ["Coverage document schema and policy consistency report"], "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
     },
     {

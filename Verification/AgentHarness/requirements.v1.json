@@ -19,7 +19,7 @@
     {
       "id": "AH-INFRA-002", "area": "infrastructure", "title": "Verification JSON is schema-valid",
       "statement": "Requirements, tests, quarantine, semantic registries, scripted model fixtures, app-container fixtures, and coverage documents validate against their checked-in Draft 2020-12 schemas.",
-      "status": "planned", "riskTier": "P0",
+      "status": "active", "riskTier": "P0",
       "specAnchors": [{ "section": "27.5", "heading": "Coverage and release gates", "lineStart": 1182, "lineEnd": 1234 }],
       "platforms": ["all"], "verificationTiers": ["every-change", "pull-request", "nightly", "release-candidate"],
       "testIDs": ["AHT-INFRA-001"], "requiredEvidence": ["Per-document schema validation report"]
@@ -43,7 +43,7 @@
     {
       "id": "AH-INFRA-005", "area": "infrastructure", "title": "Deterministic fixtures are valid",
       "statement": "Scripted model and app-container fixtures have fixed identities, deterministic inputs, explicit behavioral oracles, and no dependency on prior test ordering.",
-      "status": "planned", "riskTier": "P1",
+      "status": "active", "riskTier": "P1",
       "specAnchors": [{ "section": "27.1", "heading": "Deterministic unit and property tests", "lineStart": 1106, "lineEnd": 1112 }, { "section": "27.3", "heading": "Real-device matrix", "lineStart": 1153, "lineEnd": 1163 }],
       "platforms": ["all"], "verificationTiers": ["every-change", "pull-request", "release-candidate"],
       "testIDs": ["AHT-INFRA-004"], "requiredEvidence": ["Fixture schema report and unique fixed seeds"]
@@ -51,7 +51,7 @@
     {
       "id": "AH-INFRA-006", "area": "infrastructure", "title": "Coverage policy is enforceable",
       "statement": "Coverage floors, semantic completeness gates, mutation gates, pending baselines, and exclusions are represented without claiming unavailable evidence.",
-      "status": "planned", "riskTier": "P0",
+      "status": "active", "riskTier": "P0",
       "specAnchors": [{ "section": "27.5", "heading": "Coverage and release gates", "lineStart": 1182, "lineEnd": 1246 }],
       "platforms": ["all"], "verificationTiers": ["every-change", "pull-request", "nightly", "release-candidate"],
       "testIDs": ["AHT-INFRA-005"], "requiredEvidence": ["Coverage policy, baseline, and exclusion validation"]

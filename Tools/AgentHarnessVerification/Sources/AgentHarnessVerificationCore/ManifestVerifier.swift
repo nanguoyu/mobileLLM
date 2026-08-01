@@ -9,6 +9,15 @@ public enum AgentHarnessManifestVerifier {
 
     public static func verify(_ configuration: VerificationConfiguration) -> VerificationReport {
         var diagnostics: [VerificationDiagnostic] = []
+        let verificationRoot = configuration.repositoryRoot.appending(
+            path: "Verification/AgentHarness", directoryHint: .isDirectory
+        )
+        if configuration.requirementsURL == verificationRoot.appending(path: "requirements.v1.json"),
+           configuration.testsURL == verificationRoot.appending(path: "tests.v1.json"),
+           configuration.quarantineURL == verificationRoot.appending(path: "quarantine.v1.json") {
+            RepositoryDocumentVerifier.verify(root: configuration.repositoryRoot,
+                                              diagnostics: &diagnostics)
+        }
         guard let requirements: RequirementsDocument = decode(
             RequirementsDocument.self, from: configuration.requirementsURL,
             root: configuration.repositoryRoot, label: "requirements", diagnostics: &diagnostics
