@@ -1290,9 +1290,30 @@ Implementation is one dependency-ordered program, followed by one consolidated i
 5. Replace ChatStore orchestration with commands/projections and add progressive activity/approval/resume UI.
 6. Enforce the requirements traceability, quantitative coverage, mutation, simulator, fault-injection, performance,
    and physical-device gates, and archive reproducible release evidence.
-7. Conduct one independent audit against this specification.
-8. Address release-blocking findings in one bounded remediation pass, rerun the complete verification suite, and
-   prepare the release decision.
+7. After steps 1-6 are complete and their evidence is assembled, conduct one independent, repository-wide audit
+   against the entire specification. The audit returns one consolidated, severity-ranked findings set.
+8. Address all accepted release-blocking findings together in one bounded remediation wave, rerun the complete
+   verification suite once, perform a closure check limited to those findings and regressions, and prepare the release
+   decision.
+
+### 29.1 Audit cadence and stop rule
+
+The program must not alternate formal independent audits with partial implementation. Steps 1-6 are one implementation
+wave. Normal developer review, compilation, automated tests, static checks, and fixing failures discovered by those
+checks remain continuous engineering work; they are not separate audit rounds and do not reopen the architecture after
+each component. No phase, package, pull request, or individual feature triggers an independent product audit while the
+planned implementation wave is incomplete.
+
+The sole full audit begins only when the complete release candidate satisfies the implementation checklist and has
+full test evidence. Reviewers inspect the integrated system once, not a succession of knowingly incomplete snapshots.
+All audit findings are triaged together before remediation begins, so fixes can be designed coherently instead of
+causing issue-by-issue audit churn.
+
+After the single remediation wave, the closure check verifies only that the consolidated blockers are resolved, no
+specified invariant regressed, and the full suite still passes. It is not a new open-ended audit. If a release blocker
+remains or remediation would require a material architectural change, stop and report a release decision/blocker rather
+than entering an unbounded `implement -> audit -> implement -> audit` loop. Non-blocking improvements are deferred to a
+later explicitly scoped release.
 
 No production implementation begins until this specification has completed independent review and its blocking
 findings have been resolved.
