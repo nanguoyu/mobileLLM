@@ -1063,6 +1063,15 @@ bounded size. Production correctness must not depend on telemetry or a remote se
 
 ## 27. Test strategy
 
+Testing is a release-control system, not a post-implementation demonstration. Every normative requirement, security
+boundary, state transition, and acceptance criterion in this specification must map to at least one automated test ID
+or, only where automation is impossible, a named physical-device inspection with recorded evidence. The mapping lives
+in a versioned requirements-to-tests manifest. Each entry has a stable `RequirementID` using the `AH-<AREA>-<NUMBER>`
+format, risk tier, source-spec anchor, test IDs, platform, execution tier/cadence, and required evidence. CI rejects
+unknown, duplicated, stale, or unmapped requirement/test IDs and any unexpected skip. A passing build, screenshot,
+process exit, or final `OK` token is not evidence that an agent scenario succeeded: tests must assert the requested
+output contract, journaled state, tool and approval history, side effects, and absence of forbidden actions.
+
 ### 27.1 Deterministic unit and property tests
 
 - every legal and illegal state transition;
@@ -1086,6 +1095,16 @@ bounded size. Production correctness must not depend on telemetry or a remote se
 - cancellation propagation and noncooperative implementation handling;
 - capability attenuation for reserved child and sandbox contracts;
 - fuzzing of model tool-call syntax, MCP schemas/results, and persisted event envelopes.
+
+All public commands, event variants, terminal reasons, approval decisions, recovery dispositions, and legal and
+illegal state-machine edges have explicit contract cases. Security-sensitive negative paths are first-class tests:
+denied, stale, widened, malformed, untrusted, over-budget, and replayed inputs must be proven unable to cross their
+boundary.
+
+The run-state transition matrix, approval decision matrix, and crash/fault boundaries are versioned, machine-enumerable
+tables shared with their tests. Completeness gates enumerate every `state x command x guard` row, every approval-policy
+decision row, and every registered fault point; adding or changing a case without corresponding test evidence fails CI.
+Their required 100% coverage refers to these semantic registries, not a line-coverage approximation.
 
 Tests use a virtual clock, deterministic IDs, scripted model providers, fake tools, fake approval responders, faulting
 storage, and a protocol-level fake sandbox provider. The fake sandbox validates the public API only and is not a
@@ -1127,6 +1146,19 @@ Each capable model is tested for ordinary chat, selected-tool calls, multi-step 
 duplicate suppression, stop, foreground/background transition, recovery, and final-answer conformance. Vision tests
 verify that the image is used directly and that Web Search does not activate without the required user decisions.
 
+Real-model assertions use deterministic decoding where the provider supports it. Where byte-for-byte output cannot be
+made deterministic, the oracle validates a bounded structured contract or semantic invariants rather than accepting
+arbitrary prose. For example, a requested JSON shape must parse and match its schema, a Memory scenario must recall the
+stored fact in a later turn, and a tool scenario must contain the expected authorized tool record and final-answer
+evidence. Merely observing that inference ended is never a pass.
+
+The release matrix includes both a clean-install path and an upgrade path with legacy conversations, Memory, Skills,
+tool policy, and downloaded-model metadata. Required offline, device-lock, memory-pressure, background/foreground,
+termination/relaunch, and storage-pressure scenarios run on physical hardware wherever the operating-system behavior
+cannot be faithfully simulated. Provisioned model artifacts may be reused read-only to control download cost, but each
+scenario receives an isolated conversation/database/artifact namespace and cannot depend on the outcome or ordering of
+a previous test.
+
 The device harness must never interact with unrelated system dialogs. Unexpected system UI is captured as a test
 failure with diagnostics.
 
@@ -1134,12 +1166,91 @@ failure with diagnostics.
 
 - no measurable extra model round trip for ordinary chat;
 - tool selection completes without model inference;
-- time-to-first-visible-output regression stays within an agreed threshold;
+- time-to-first-visible-output regression stays within the quantitative baseline gates below;
 - journal writes do not occur per token and do not stall streaming;
 - database and artifact storage remain bounded and recoverable;
 - one resident local model invariant is maintained under cancellation, backgrounding, and switching;
 - thermal and memory-pressure behavior remains safe on the smallest supported device tier;
 - no run can exceed hard budgets through retries, repair, or resume.
+
+Performance gates are compared with a checked-in benchmark definition and a recorded pre-migration baseline using the
+same device class, OS build, model artifact digest, engine, prompt fixture, and thermal starting state. Ordinary-chat
+median time to first visible output may not regress by more than 10%, p95 by more than 15%, or add a model pass. Any
+intentional exception requires measured evidence and an explicit release decision; an unspecified "agreed threshold"
+is not sufficient.
+
+### 27.5 Coverage and release gates
+
+Coverage is measured per production target and for the changed executable lines, not only as a repository-wide number
+that legacy code can dilute. Percentage denominators use compiler source mappings for hand-written executable code;
+compiler-synthesized accessors and async state-machine artifacts with no stable source mapping, generated sources, and
+structurally non-executable declarations may be excluded only by a versioned allowlist with a written reason. UI views,
+adapters, error paths, and difficult asynchronous code are not excluded merely because they are hard to test.
+Coverage-only test hooks must not create behavior unavailable in the production build.
+
+The following are minimum release floors, not completion goals:
+
+- new `AgentContracts` and `AgentRuntime` targets: at least 90% executable-line coverage and 90% executable-function
+  coverage;
+- the state reducer, journal/CAS transitions, approval policy and operation fingerprinting, budget/no-progress logic,
+  outbox, recovery/reconciliation, artifact confinement/deletion, lifecycle quiescence, and capability attenuation:
+  at least 95% executable-line coverage, every executable function covered, and every decision-table row represented;
+- new or changed executable lines in Agent Harness production targets and their model/tool/UI adapters: at least 90%
+  coverage;
+- `AgentSandboxAPI`: every public request, command, event, result, error, detach/reattach, cancellation, and authority-
+  attenuation contract exercised through the protocol-level fake provider, even where protocol declarations have no
+  executable lines to count;
+- 100% explicit coverage of the legal/illegal run-state transition matrix, terminal outcomes, external-operation
+  allow/deny classifications, and the crash boundaries named in this specification.
+
+Line or function percentage cannot compensate for a missing invariant. A small curated mutation suite must prove that
+tests fail when critical allow/deny decisions are inverted, expected-state-version checks are removed, an authorized
+operation is widened, idempotency keys are ignored, terminal uniqueness is broken, or a budget comparison is weakened.
+All such seeded mutations must be killed before release.
+
+Verification runs in four enforced tiers:
+
+1. Every change: deterministic unit, contract, state-machine, migration, and property tests for affected MLX-free
+   packages, with a fixed reproducible seed and a separately recorded rotating seed.
+2. Pull request: the complete MLX-free suite with coverage gates, app and engine builds, engine tests, simulator UI
+   tests, integration tests, schema/persistence fuzz smoke tests, and representative crash-injection shards.
+3. Nightly and before a release candidate: the full fuzz corpus, all crash points, storage/device-lock faults,
+   concurrency stress, leak/resource checks, and bounded long-run/thermal tests.
+4. Release candidate: the complete required physical-device/model matrix, clean-install and upgrade paths, followed by
+   rerunning every failed scenario after its fix and the full affected matrix rather than only the previously failing
+   case.
+
+P0 requirements cover authorization bypass, operation-plan widening, duplicate or uncertain external writes,
+journal/outbox loss or duplication, destructive deletion, recovery and lifecycle corruption, capability escalation,
+and any launch-time automatic model load, conversation navigation, run resume, or external action. A P0 failure,
+timeout, crash, unexpected skip, missing evidence, or first-attempt failure blocks the relevant integration or release
+gate. P0 tests cannot be quarantined, and a diagnostic rerun cannot rewrite their first-attempt outcome.
+
+Before the first Agent Harness production-code change, the repository must add the traceability manifest, generated or
+scripted model fixtures, deterministic app-container reset/provisioning, and checked-in `.xctestplan` files. SwiftPM
+coverage is collected with its coverage mode; Xcode tests use `-enableCodeCoverage YES` and an explicit
+`-resultBundlePath`. A versioned CI script normalizes SwiftPM/LLVM and `xccov` results, enforces target/diff floors and
+test discovery, and publishes machine-readable reports plus redacted result bundles. The existing SwiftPM/build/engine
+jobs are only a baseline: simulator UI, coverage, nightly fault/fuzz, and controlled physical-device runners are
+required before their corresponding gates can be considered implemented. Simulator UI fixtures must not depend on a
+developer manually seeding a GGUF file.
+
+The CI gate compares coverage against both these floors and the target's accepted baseline; a change may not lower the
+baseline without an explicit, reviewed justification. Test discovery itself is checked so that an accidentally empty
+suite or skipped target cannot report success. Unexpected skips, crashes, timeouts, or missing result bundles fail the
+gate.
+
+Flaky tests are defects. An automatic retry may collect diagnostics but does not erase the original failure from
+release evidence. Quarantine requires a tracked owner, reason, expiry, and replacement coverage; no security,
+persistence, approval, deletion, recovery, or required real-device test may be quarantined for release. Non-P0
+quarantine expires after at most seven days; an expired entry fails CI rather than silently extending itself.
+
+Every release-candidate verification record contains the source commit, test-plan version, Xcode/Swift and OS builds,
+device class with a privacy-safe identifier, locale/region/time zone, app build, permission state, available memory and
+disk, thermal state, model/provider/engine and artifact digest, sampling configuration and deterministic seeds,
+scenario-level assertions, duration/resource measurements, redacted logs, and `.xcresult`/coverage artifacts. Evidence
+must be sufficient for an independent reviewer to distinguish "the app stayed alive" from "the requested behavior and
+all safety invariants were verified."
 
 ## 28. Acceptance criteria
 
@@ -1161,7 +1272,8 @@ The first release is complete only when all of the following are true:
     detach/reattach, and subscription cancellation without cancelling execution.
 12. Data protection, backup exclusion, device-lock behavior, and conversation/Delete All cascades pass fault tests.
 13. All MLX-free package tests, app build tests, UI tests, fault-injection tests, and required physical-device scenarios
-    pass.
+    pass; the requirements-to-tests manifest has no uncovered normative requirement, all quantitative coverage and
+    mutation gates in section 27.5 pass, and the release evidence proves scenario outcomes rather than mere completion.
 14. One independent post-implementation audit finds no unresolved release-blocking correctness, persistence,
     permission, privacy, or lifecycle issue.
 
@@ -1169,13 +1281,15 @@ The first release is complete only when all of the following are true:
 
 Implementation is one dependency-ordered program, followed by one consolidated independent audit:
 
-1. Freeze value types, IDs, state machine, event envelope, Tool V2, model-provider, approval, `AgentExecutor`, and
-   `AgentSandboxAPI` contracts with exhaustive contract tests.
+1. Establish stable requirement/test IDs, risk tiers, semantic registries, coverage collection, deterministic fixtures,
+   and CI discovery gates; then freeze value types, IDs, state machine, event envelope, Tool V2, model-provider,
+   approval, `AgentExecutor`, and `AgentSandboxAPI` contracts with exhaustive contract tests.
 2. Add the SQLite journal, projections, artifact store, deterministic context compiler, and recovery tests.
 3. Adapt local models, existing tools, MCP, Memory, and Skills behind the new contracts.
 4. Implement the runtime controller, resource arbiter, budgets, retries, approval engine, and iOS lifecycle behavior.
 5. Replace ChatStore orchestration with commands/projections and add progressive activity/approval/resume UI.
-6. Run the full simulator, fault-injection, and physical-device matrix.
+6. Enforce the requirements traceability, quantitative coverage, mutation, simulator, fault-injection, performance,
+   and physical-device gates, and archive reproducible release evidence.
 7. Conduct one independent audit against this specification.
 8. Address release-blocking findings in one bounded remediation pass, rerun the complete verification suite, and
    prepare the release decision.
@@ -1213,6 +1327,11 @@ changes**. This revision incorporates its blocking findings:
 
 The review found the Dynamic Workflows boundary correctly deferred. No production implementation may begin unless a
 final consistency check confirms that this revision contains the listed changes.
+
+A separate independent test-strategy review completed on 2026-08-01. After the specification added stable
+requirement/test IDs, semantic completeness registries, P0 gates, automated coverage/result collection, isolated
+device fixtures, richer device evidence, and bounded flake quarantine, the reviewer returned **APPROVE** with no
+remaining blocker.
 
 ## 32. References
 
