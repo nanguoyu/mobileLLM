@@ -1,0 +1,46 @@
+{
+  "$schema": "../Schemas/semantic-registry.schema.json",
+  "schemaVersion": 1,
+  "documentID": "AH-REGISTRY-APPROVAL-DECISIONS-V1",
+  "registryType": "approval-decisions",
+  "completeness": "initial",
+  "sourceSpecification": {
+    "path": "spec.md", "sha256": "08773fb337da975514490abfb98d8c8a1d1137f935a829f0f305c1d78edf3220",
+    "section": "15", "lineStart": 690, "lineEnd": 746
+  },
+  "domains": [
+    { "id": "AH-APPROVAL-DOMAIN-001", "name": "effect", "values": ["localPure", "localRead", "localWrite", "privateDataRead", "networkRead", "unknownExternal", "externalWrite", "externalCommunication", "destructive", "financial", "codeExecution"] },
+    { "id": "AH-APPROVAL-DOMAIN-002", "name": "receipt", "values": ["none", "matching", "expired", "scopeMismatch", "argumentsChanged", "destinationChanged"] },
+    { "id": "AH-APPROVAL-DOMAIN-003", "name": "capability", "values": ["insideCeiling", "outsideCeiling", "stepGrantMissing"] },
+    { "id": "AH-APPROVAL-DOMAIN-004", "name": "applicationState", "values": ["foreground", "background"] },
+    { "id": "AH-APPROVAL-DOMAIN-005", "name": "systemPermission", "values": ["notApplicable", "granted", "notDetermined", "denied"] },
+    { "id": "AH-APPROVAL-DOMAIN-006", "name": "operation", "values": ["firstUse", "repeatUse", "reversible", "irreversible", "discovery", "dataEgress", "bookmarkCreation", "artifactExport"] }
+  ],
+  "entries": [
+    { "id": "AH-APPROVAL-ROW-001", "conditions": { "effect": "localPure", "capability": "insideCeiling" }, "decision": "authorizeLocalPolicy", "grantScope": "none", "automaticRetry": true, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-001"], "testIDs": ["AHT-AUTH-001"] },
+    { "id": "AH-APPROVAL-ROW-002", "conditions": { "effect": "localRead", "capability": "insideCeiling", "operation": "firstUse" }, "decision": "authorizeLocalPolicy", "grantScope": "none", "automaticRetry": true, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-002"], "testIDs": ["AHT-AUTH-002"] },
+    { "id": "AH-APPROVAL-ROW-003", "conditions": { "effect": "localWrite", "capability": "insideCeiling", "operation": "reversible" }, "decision": "authorizeLocalPolicy", "grantScope": "none", "automaticRetry": false, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-002"], "testIDs": ["AHT-AUTH-002"] },
+    { "id": "AH-APPROVAL-ROW-004", "conditions": { "effect": "networkRead", "receipt": "none", "operation": "firstUse", "applicationState": "foreground" }, "decision": "requireApproval", "grantScope": "boundedConversationRead", "automaticRetry": true, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-002"], "testIDs": ["AHT-AUTH-002"] },
+    { "id": "AH-APPROVAL-ROW-005", "conditions": { "effect": "networkRead", "receipt": "matching", "operation": "repeatUse" }, "decision": "authorizeMatchingReceipt", "grantScope": "boundedConversationRead", "automaticRetry": true, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-002"], "testIDs": ["AHT-AUTH-002"] },
+    { "id": "AH-APPROVAL-ROW-006", "conditions": { "effect": "networkRead", "receipt": "expired" }, "decision": "requireApproval", "grantScope": "boundedConversationRead", "automaticRetry": true, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-002"], "testIDs": ["AHT-AUTH-002"] },
+    { "id": "AH-APPROVAL-ROW-007", "conditions": { "effect": "networkRead", "receipt": "destinationChanged" }, "decision": "requireApproval", "grantScope": "boundedConversationRead", "automaticRetry": false, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-TOOLS-003", "AH-APPROVAL-002"], "testIDs": ["AHT-AUTH-001", "AHT-AUTH-002"] },
+    { "id": "AH-APPROVAL-ROW-008", "conditions": { "effect": "privateDataRead", "systemPermission": "granted", "receipt": "none", "applicationState": "foreground" }, "decision": "requireApproval", "grantScope": "boundedConversationRead", "automaticRetry": false, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-002", "AH-APPROVAL-003"], "testIDs": ["AHT-AUTH-002", "AHT-AUTH-003"] },
+    { "id": "AH-APPROVAL-ROW-009", "conditions": { "effect": "privateDataRead", "systemPermission": "denied" }, "decision": "deny", "grantScope": "none", "automaticRetry": false, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-003"], "testIDs": ["AHT-AUTH-003"] },
+    { "id": "AH-APPROVAL-ROW-010", "conditions": { "effect": "privateDataRead", "systemPermission": "notDetermined", "applicationState": "background" }, "decision": "waitForForeground", "grantScope": "none", "automaticRetry": false, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-003"], "testIDs": ["AHT-AUTH-003"] },
+    { "id": "AH-APPROVAL-ROW-011", "conditions": { "effect": "externalWrite", "operation": "irreversible" }, "decision": "requireApproval", "grantScope": "exactInvocation", "automaticRetry": false, "uncertainOnTransportLoss": true, "requirementIDs": ["AH-APPROVAL-002", "AH-RUN-005"], "testIDs": ["AHT-AUTH-002", "AHT-RECONCILE-001"] },
+    { "id": "AH-APPROVAL-ROW-012", "conditions": { "effect": "externalWrite", "operation": "reversible", "receipt": "none" }, "decision": "requireApproval", "grantScope": "explicitReversibleConversationWrite", "automaticRetry": false, "uncertainOnTransportLoss": true, "requirementIDs": ["AH-APPROVAL-002", "AH-RUN-005"], "testIDs": ["AHT-AUTH-002", "AHT-RECONCILE-001"] },
+    { "id": "AH-APPROVAL-ROW-013", "conditions": { "effect": "destructive" }, "decision": "requireApproval", "grantScope": "exactInvocation", "automaticRetry": false, "uncertainOnTransportLoss": true, "requirementIDs": ["AH-APPROVAL-002"], "testIDs": ["AHT-AUTH-002"] },
+    { "id": "AH-APPROVAL-ROW-014", "conditions": { "effect": "financial" }, "decision": "requireApproval", "grantScope": "exactInvocation", "automaticRetry": false, "uncertainOnTransportLoss": true, "requirementIDs": ["AH-APPROVAL-002"], "testIDs": ["AHT-AUTH-002"] },
+    { "id": "AH-APPROVAL-ROW-015", "conditions": { "effect": "externalCommunication" }, "decision": "requireApproval", "grantScope": "exactInvocation", "automaticRetry": false, "uncertainOnTransportLoss": true, "requirementIDs": ["AH-APPROVAL-002"], "testIDs": ["AHT-AUTH-002"] },
+    { "id": "AH-APPROVAL-ROW-016", "conditions": { "effect": "unknownExternal" }, "decision": "requireApproval", "grantScope": "exactInvocation", "automaticRetry": false, "uncertainOnTransportLoss": true, "requirementIDs": ["AH-TOOLS-004"], "testIDs": ["AHT-MCP-001"] },
+    { "id": "AH-APPROVAL-ROW-017", "conditions": { "effect": "codeExecution", "applicationState": "foreground" }, "decision": "requireApproval", "grantScope": "exactInvocation", "automaticRetry": false, "uncertainOnTransportLoss": true, "requirementIDs": ["AH-SANDBOX-003"], "testIDs": ["AHT-SANDBOX-003"] },
+    { "id": "AH-APPROVAL-ROW-018", "conditions": { "capability": "outsideCeiling" }, "decision": "deny", "grantScope": "none", "automaticRetry": false, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-001", "AH-SANDBOX-003"], "testIDs": ["AHT-AUTH-001", "AHT-SANDBOX-003"] },
+    { "id": "AH-APPROVAL-ROW-019", "conditions": { "capability": "stepGrantMissing" }, "decision": "deny", "grantScope": "none", "automaticRetry": false, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-001"], "testIDs": ["AHT-AUTH-001"] },
+    { "id": "AH-APPROVAL-ROW-020", "conditions": { "operation": "discovery", "receipt": "none" }, "decision": "requireApproval", "grantScope": "boundedConversationRead", "automaticRetry": false, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-TOOLS-004"], "testIDs": ["AHT-MCP-001"] },
+    { "id": "AH-APPROVAL-ROW-021", "conditions": { "operation": "dataEgress", "receipt": "none" }, "decision": "requireApproval", "grantScope": "exactInvocation", "automaticRetry": false, "uncertainOnTransportLoss": true, "requirementIDs": ["AH-APPROVAL-001"], "testIDs": ["AHT-AUTH-001"] },
+    { "id": "AH-APPROVAL-ROW-022", "conditions": { "operation": "bookmarkCreation", "receipt": "none" }, "decision": "requireApproval", "grantScope": "exactInvocation", "automaticRetry": false, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-001"], "testIDs": ["AHT-AUTH-001"] },
+    { "id": "AH-APPROVAL-ROW-023", "conditions": { "operation": "artifactExport", "receipt": "none" }, "decision": "requireApproval", "grantScope": "exactInvocation", "automaticRetry": false, "uncertainOnTransportLoss": true, "requirementIDs": ["AH-APPROVAL-001"], "testIDs": ["AHT-AUTH-001"] },
+    { "id": "AH-APPROVAL-ROW-024", "conditions": { "receipt": "argumentsChanged" }, "decision": "requireApproval", "grantScope": "exactInvocation", "automaticRetry": false, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-TOOLS-003"], "testIDs": ["AHT-AUTH-001"] },
+    { "id": "AH-APPROVAL-ROW-025", "conditions": { "effect": "externalWrite", "applicationState": "background", "receipt": "none" }, "decision": "waitForForeground", "grantScope": "none", "automaticRetry": false, "uncertainOnTransportLoss": false, "requirementIDs": ["AH-APPROVAL-003"], "testIDs": ["AHT-AUTH-003"] }
+  ]
+}

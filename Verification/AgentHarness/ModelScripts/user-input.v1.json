@@ -1,0 +1,39 @@
+{
+  "$schema": "../Schemas/scripted-model.schema.json",
+  "schemaVersion": 1,
+  "scriptID": "AH-FIXTURE-MODEL-USER-INPUT",
+  "name": "A durable interaction response continues the same run",
+  "seed": 196613,
+  "provider": { "id": "fixture.local", "kind": "scriptedLocal", "protocolVersion": "1.0.0" },
+  "model": { "id": "fixture-text", "variantID": "deterministic-v1", "capabilityRevision": "fixture-capabilities-v1", "contextLimit": 4096, "outputLimit": 256 },
+  "scenario": "userInput",
+  "steps": [
+    {
+      "ordinal": 1, "kind": "modelAttempt",
+      "assertRequest": { "advertisedToolLogicalIDs": [], "mustContain": ["Help me choose a color."], "thinkingEnabled": false },
+      "emissions": [
+        { "type": "requestUserInput", "requestID": "30000000-0000-4000-8000-000000000001", "prompt": "Do you prefer warm or cool colors?", "responseSchemaJSON": { "type": "string", "enum": ["warm", "cool"] } },
+        { "type": "usage", "promptTokens": 29, "outputTokens": 11 },
+        { "type": "completed" }
+      ]
+    },
+    {
+      "ordinal": 2, "kind": "userResponse",
+      "userResponse": { "requestID": "30000000-0000-4000-8000-000000000001", "valueJSON": "cool" }
+    },
+    {
+      "ordinal": 3, "kind": "modelAttempt",
+      "assertRequest": { "advertisedToolLogicalIDs": [], "mustContain": ["cool"], "thinkingEnabled": false },
+      "emissions": [
+        { "type": "answerDelta", "text": "Try a calm slate blue." },
+        { "type": "usage", "promptTokens": 34, "outputTokens": 7 },
+        { "type": "completed" }
+      ]
+    }
+  ],
+  "expected": {
+    "modelAttempts": 2, "toolInvocations": 0, "structuredRepairs": 0, "interactionRequests": 1,
+    "terminalState": "completed", "finalAnswer": "Try a calm slate blue.",
+    "forbiddenActions": ["newRootRun", "toolInvocation", "networkAccess", "duplicateInteractionResponse"]
+  }
+}

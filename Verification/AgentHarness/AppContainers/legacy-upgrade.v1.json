@@ -1,0 +1,79 @@
+{
+  "$schema": "../Schemas/app-container.schema.json",
+  "schemaVersion": 1,
+  "fixtureID": "AH-FIXTURE-CONTAINER-LEGACY-UPGRADE",
+  "scenario": "legacyUpgrade",
+  "isolationNamespace": "agent-harness-legacy-upgrade-v1",
+  "initialState": {
+    "legacyApplicationVersion": "0.1.0",
+    "conversations": [
+      {
+        "id": "40000000-0000-4000-8000-000000000001",
+        "title": "Legacy tools chat",
+        "createdAt": "2026-07-01T10:00:00Z",
+        "updatedAt": "2026-07-01T10:02:00Z",
+        "modelID": "bonsai-8b",
+        "variantID": "bonsai-8b-1bit",
+        "messages": [
+          { "id": "41000000-0000-4000-8000-000000000001", "role": "user", "createdAt": "2026-07-01T10:00:00Z", "answer": "Remember that my name is Dong." },
+          {
+            "id": "41000000-0000-4000-8000-000000000002", "role": "assistant", "createdAt": "2026-07-01T10:02:00Z", "answer": "I'll remember that.",
+            "toolRuns": [{ "id": "42000000-0000-4000-8000-000000000001", "name": "remember", "arguments": "The user's name is Dong.", "result": "Saved memory." }]
+          }
+        ],
+        "skillID": "43000000-0000-4000-8000-000000000001"
+      }
+    ],
+    "memoryFacts": [
+      { "id": "legacy-memory-dong", "text": "The user's name is Dong.", "createdAt": "2026-07-01T10:01:00Z", "source": "model", "sourceText": "Remember that my name is Dong." }
+    ],
+    "skills": [
+      { "id": "43000000-0000-4000-8000-000000000001", "name": "Concise", "version": 1, "instructions": "Answer concisely." }
+    ],
+    "globalToolSettings": {
+      "masterEnabled": true,
+      "enabledBuiltInToolIDs": ["calculator", "remember", "recall"],
+      "mcpServers": [{ "legacyURL": "https://example.invalid/mcp", "name": "Legacy test server", "enabled": false }]
+    },
+    "downloadedModelMetadata": [
+      { "modelID": "bonsai-8b", "variantID": "bonsai-8b-1bit", "revision": "fixture-revision", "artifactDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "readOnlyFixture": true }
+    ],
+    "agentJournalExists": false
+  },
+  "provisioning": {
+    "resetBeforeUse": true,
+    "reuseModelArtifactsReadOnly": true,
+    "networkEnabled": false,
+    "clockUTC": "2026-08-01T12:00:00Z",
+    "locale": "en_US",
+    "timeZone": "UTC",
+    "expectedMigrations": [
+      "preserveConversationAndMessages",
+      "preserveLegacyToolRunAsDisplayHistory",
+      "doNotFabricateAgentJournalForLegacyTurn",
+      "preserveMemoryAndSourceAlias",
+      "preserveSkillSelection",
+      "materializeConversationToolPolicyExactlyOnce",
+      "assignStableRandomIdentityBeforeAnyFutureMCPRefresh",
+      "preserveDownloadedModelMetadata"
+    ]
+  },
+  "expectedLaunchState": {
+    "selectedConversationID": null,
+    "loadedModelID": null,
+    "resumedRunIDs": [],
+    "externalOperations": []
+  },
+  "requiredAssertions": [
+    "legacyConversationReadable",
+    "legacyMessagesPreservedExactlyOnce",
+    "legacyToolRunDisplayable",
+    "noSyntheticRunForLegacyToolRun",
+    "memoryFactPreserved",
+    "skillSelectionPreserved",
+    "toolPolicyMaterializedOnceWithoutExpansion",
+    "modelMetadataPreservedWithoutLoading",
+    "disabledMCPServerNotContacted",
+    "neutralShellVisible"
+  ]
+}

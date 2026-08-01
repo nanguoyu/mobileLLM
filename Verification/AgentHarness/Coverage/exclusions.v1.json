@@ -1,0 +1,14 @@
+{
+  "$schema": "../Schemas/coverage-policy.schema.json",
+  "schemaVersion": 1,
+  "documentID": "AH-COVERAGE-EXCLUSIONS-V1",
+  "documentType": "exclusions",
+  "allowlistRules": [
+    "Only compiler-synthesized accessors or async machinery without stable source mapping may be excluded.",
+    "Generated sources may be excluded only when their generator and generated marker are versioned.",
+    "Structurally non-executable declarations may be excluded with a written source-level reason.",
+    "UI views, adapters, error paths, concurrency code, and difficult asynchronous code are never excluded merely because they are hard to test.",
+    "Every exclusion requires an owner, exact source path or mapping identity, reason, approval reference, and review date."
+  ],
+  "entries": []
+}

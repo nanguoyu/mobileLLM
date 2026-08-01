@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilellm.local/schemas/agent-harness/quarantine.v1.schema.json",
+  "title": "mobileLLM Agent Harness quarantine manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "documentID", "policy", "entries"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "documentID": { "const": "AH-QUARANTINE-V1" },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumDays", "forbiddenRiskTiers", "forbiddenAreas", "expiredEntryFailsVerification"],
+      "properties": {
+        "maximumDays": { "const": 7 },
+        "forbiddenRiskTiers": {
+          "type": "array",
+          "contains": { "const": "P0" },
+          "items": { "enum": ["P0", "P1", "P2"] },
+          "uniqueItems": true
+        },
+        "forbiddenAreas": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "expiredEntryFailsVerification": { "const": true }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["testID", "owner", "reason", "createdAtUTC", "expiresAtUTC", "replacementCoverageTestIDs"],
+      "properties": {
+        "testID": { "type": "string", "pattern": "^AHT-[A-Z0-9]+(?:-[A-Z0-9]+)+$" },
+        "owner": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "trackingReference": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "createdAtUTC": { "type": "string", "format": "date-time" },
+        "expiresAtUTC": { "type": "string", "format": "date-time" },
+        "replacementCoverageTestIDs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^AHT-[A-Z0-9]+(?:-[A-Z0-9]+)+$" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "configurations" : [
+    {
+      "id" : "6E6D3179-06A6-4D1F-A46E-7634123775E3",
+      "name" : "Simulator UI",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:mobileLLM.xcodeproj",
+      "identifier" : "5EA2BB4C50B6CB125163180C",
+      "name" : "mobileLLM"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:mobileLLM.xcodeproj",
+        "identifier" : "E1A8201437C70B781A96B9F7",
+        "name" : "mobileLLMUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

@@ -1,0 +1,34 @@
+{
+  "$schema": "../Schemas/coverage-policy.schema.json",
+  "schemaVersion": 1,
+  "documentID": "AH-COVERAGE-POLICY-V1",
+  "documentType": "policy",
+  "floors": [
+    { "scope": "AgentContracts", "linePercent": 90, "functionPercent": 90, "baselineMayDecrease": false, "notes": "All hand-written executable production code." },
+    { "scope": "AgentRuntime", "linePercent": 90, "functionPercent": 90, "baselineMayDecrease": false, "notes": "All hand-written executable production code." },
+    { "scope": "security-critical-runtime-components", "linePercent": 95, "functionPercent": 100, "baselineMayDecrease": false, "notes": "State reducer, journal/CAS, approval/fingerprints, budgets, outbox, recovery, reconciliation, artifact confinement/deletion, lifecycle quiescence, and attenuation." },
+    { "scope": "changed-agent-harness-lines-and-adapters", "linePercent": 90, "functionPercent": 90, "baselineMayDecrease": false, "notes": "Includes UI views, adapters, async error paths, and changed executable lines." }
+  ],
+  "semanticGates": [
+    { "id": "AH-COVERAGE-SEMANTIC-001", "registry": "Registries/run-states.v1.json", "requiredPercent": 100 },
+    { "id": "AH-COVERAGE-SEMANTIC-002", "registry": "Registries/run-transitions.v1.json", "requiredPercent": 100 },
+    { "id": "AH-COVERAGE-SEMANTIC-003", "registry": "Registries/approval-decisions.v1.json", "requiredPercent": 100 },
+    { "id": "AH-COVERAGE-SEMANTIC-004", "registry": "Registries/stable-boundary-faults.v1.json", "requiredPercent": 100 },
+    { "id": "AH-COVERAGE-SEMANTIC-005", "registry": "AgentSandboxAPI-public-contract-inventory", "requiredPercent": 100 }
+  ],
+  "mutationGates": [
+    { "id": "AH-MUTATION-001", "mutation": "invert an approval allow/deny decision", "mustBeKilled": true },
+    { "id": "AH-MUTATION-002", "mutation": "remove expected-run-version validation", "mustBeKilled": true },
+    { "id": "AH-MUTATION-003", "mutation": "allow an authorized destination or effect to widen", "mustBeKilled": true },
+    { "id": "AH-MUTATION-004", "mutation": "ignore a start, command, or write idempotency key", "mustBeKilled": true },
+    { "id": "AH-MUTATION-005", "mutation": "permit multiple terminal events for one run", "mustBeKilled": true },
+    { "id": "AH-MUTATION-006", "mutation": "weaken a hard budget comparison from greater-than-or-equal to greater-than", "mustBeKilled": true }
+  ],
+  "collection": {
+    "swiftPM": "swift test --enable-code-coverage",
+    "xcode": "-enableCodeCoverage YES with explicit -resultBundlePath",
+    "missingResultFails": true,
+    "unexpectedSkipFails": true,
+    "emptyDiscoveryFails": true
+  }
+}

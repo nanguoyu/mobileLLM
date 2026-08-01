@@ -1,0 +1,30 @@
+{
+  "configurations" : [
+    {
+      "id" : "BC2EBBF3-A794-4A67-A170-5FFFE9A57BB7",
+      "name" : "Physical Device E2E",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:mobileLLM.xcodeproj",
+      "identifier" : "5EA2BB4C50B6CB125163180C",
+      "name" : "mobileLLM"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:mobileLLM.xcodeproj",
+        "identifier" : "ECFE065C32F709814F0A102D",
+        "name" : "mobileLLMDeviceE2ETests"
+      }
+    }
+  ],
+  "version" : 1
+}

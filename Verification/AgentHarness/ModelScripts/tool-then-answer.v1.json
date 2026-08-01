@@ -1,0 +1,39 @@
+{
+  "$schema": "../Schemas/scripted-model.schema.json",
+  "schemaVersion": 1,
+  "scriptID": "AH-FIXTURE-MODEL-TOOL-THEN-ANSWER",
+  "name": "One authorized local-pure tool followed by final synthesis",
+  "seed": 130363,
+  "provider": { "id": "fixture.local", "kind": "scriptedLocal", "protocolVersion": "1.0.0" },
+  "model": { "id": "fixture-tools", "variantID": "deterministic-v1", "capabilityRevision": "fixture-capabilities-v1", "contextLimit": 4096, "outputLimit": 256 },
+  "scenario": "toolThenAnswer",
+  "steps": [
+    {
+      "ordinal": 1, "kind": "modelAttempt",
+      "assertRequest": { "advertisedToolLogicalIDs": ["builtin:calculator"], "mustContain": ["What is 17 + 25?"], "thinkingEnabled": false },
+      "emissions": [
+        { "type": "toolCalls", "calls": [{ "invocationID": "10000000-0000-4000-8000-000000000001", "toolLogicalID": "builtin:calculator", "argumentsJSON": { "expression": "17 + 25" } }] },
+        { "type": "usage", "promptTokens": 38, "outputTokens": 12 },
+        { "type": "completed" }
+      ]
+    },
+    {
+      "ordinal": 2, "kind": "toolOutcome",
+      "toolOutcome": { "invocationID": "10000000-0000-4000-8000-000000000001", "toolLogicalID": "builtin:calculator", "resultJSON": { "value": 42 }, "effectsConfirmed": false }
+    },
+    {
+      "ordinal": 3, "kind": "modelAttempt",
+      "assertRequest": { "advertisedToolLogicalIDs": [], "mustContain": ["42"], "mustNotContain": ["<tool_call>"], "thinkingEnabled": false },
+      "emissions": [
+        { "type": "answerDelta", "text": "17 + 25 is 42." },
+        { "type": "usage", "promptTokens": 45, "outputTokens": 7 },
+        { "type": "completed" }
+      ]
+    }
+  ],
+  "expected": {
+    "modelAttempts": 2, "toolInvocations": 1, "structuredRepairs": 0, "interactionRequests": 0,
+    "terminalState": "completed", "finalAnswer": "17 + 25 is 42.",
+    "forbiddenActions": ["networkAccess", "duplicateToolInvocation", "thirdModelAttempt"]
+  }
+}

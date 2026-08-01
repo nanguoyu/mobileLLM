@@ -1,0 +1,15 @@
+{
+  "$schema": "../Schemas/coverage-policy.schema.json",
+  "schemaVersion": 1,
+  "documentID": "AH-COVERAGE-BASELINE-V1",
+  "documentType": "baseline",
+  "baselineCapturedAtCommit": "4dba0b6bcbe0b2260075c7544e4f4823e1e8a750",
+  "baselineStatus": "pending-first-measurement",
+  "releaseGate": "blocked-until-established",
+  "entries": [
+    { "scope": "AgentContracts", "status": "target-not-yet-present", "linePercent": null, "functionPercent": null, "reason": "The target does not exist at the pre-implementation baseline commit." },
+    { "scope": "AgentRuntime", "status": "target-not-yet-present", "linePercent": null, "functionPercent": null, "reason": "The target does not exist at the pre-implementation baseline commit." },
+    { "scope": "AgentSandboxAPI", "status": "target-not-yet-present", "linePercent": null, "functionPercent": null, "reason": "The target does not exist at the pre-implementation baseline commit; public contract coverage remains a semantic gate." },
+    { "scope": "changed-agent-harness-lines-and-adapters", "status": "no-change-set-yet", "linePercent": null, "functionPercent": null, "reason": "A diff denominator is established by the first production implementation commit." }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "../Schemas/app-container.schema.json",
+  "schemaVersion": 1,
+  "fixtureID": "AH-FIXTURE-CONTAINER-CLEAN-INSTALL",
+  "scenario": "cleanInstall",
+  "isolationNamespace": "agent-harness-clean-install-v1",
+  "initialState": {
+    "applicationSupportExists": false,
+    "documentsExists": false,
+    "agentDatabaseExists": false,
+    "conversationStoreExists": false,
+    "artifactStoreExists": false,
+    "deleteAllMarkerExists": false,
+    "userDefaults": {},
+    "keychainReferences": [],
+    "permissionState": {
+      "calendar": "notDetermined",
+      "reminders": "notDetermined",
+      "location": "notDetermined",
+      "photos": "notDetermined",
+      "camera": "notDetermined"
+    }
+  },
+  "provisioning": {
+    "resetBeforeUse": true,
+    "reuseModelArtifactsReadOnly": false,
+    "networkEnabled": false,
+    "clockUTC": "2026-08-01T12:00:00Z",
+    "locale": "en_US",
+    "timeZone": "UTC"
+  },
+  "expectedLaunchState": {
+    "selectedConversationID": null,
+    "loadedModelID": null,
+    "resumedRunIDs": [],
+    "externalOperations": []
+  },
+  "requiredAssertions": [
+    "neutralShellVisible",
+    "noConversationCreatedByLaunch",
+    "noModelLoadRequested",
+    "noRunSubmittedOrResumed",
+    "noMCPDiscovery",
+    "noPermissionPrompt",
+    "noExternalOperation",
+    "storesCreatedOnlyThroughExplicitMutation"
+  ]
+}

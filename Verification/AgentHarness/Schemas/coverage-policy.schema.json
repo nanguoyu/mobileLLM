@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilellm.local/schemas/agent-harness/coverage-policy.v1.schema.json",
+  "title": "mobileLLM Agent Harness coverage documents",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "documentID", "documentType"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "documentID": { "type": "string", "pattern": "^AH-COVERAGE-[A-Z0-9]+(?:-[A-Z0-9]+)*-V1$" },
+    "documentType": { "enum": ["policy", "baseline", "exclusions"] },
+    "floors": { "type": "array", "items": { "$ref": "#/$defs/floor" } },
+    "semanticGates": { "type": "array", "items": { "$ref": "#/$defs/semanticGate" } },
+    "mutationGates": { "type": "array", "items": { "$ref": "#/$defs/mutationGate" } },
+    "collection": { "$ref": "#/$defs/collection" },
+    "entries": { "type": "array" },
+    "allowlistRules": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "baselineCapturedAtCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "baselineStatus": { "enum": ["established", "pending-first-measurement"] },
+    "releaseGate": { "enum": ["open", "blocked-until-established"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "documentType": { "const": "policy" } } },
+      "then": { "required": ["floors", "semanticGates", "mutationGates", "collection"] }
+    },
+    {
+      "if": { "properties": { "documentType": { "const": "baseline" } } },
+      "then": { "required": ["entries", "baselineCapturedAtCommit", "baselineStatus", "releaseGate"] }
+    },
+    {
+      "if": { "properties": { "documentType": { "const": "exclusions" } } },
+      "then": { "required": ["entries", "allowlistRules"] }
+    }
+  ],
+  "$defs": {
+    "floor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "linePercent", "functionPercent", "baselineMayDecrease"],
+      "properties": {
+        "scope": { "type": "string", "minLength": 1 },
+        "linePercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "functionPercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "baselineMayDecrease": { "const": false },
+        "notes": { "type": "string" }
+      }
+    },
+    "semanticGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "registry", "requiredPercent"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^AH-[A-Z0-9]+(?:-[A-Z0-9]+)+$" },
+        "registry": { "type": "string", "minLength": 1 },
+        "requiredPercent": { "const": 100 }
+      }
+    },
+    "mutationGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "mutation", "mustBeKilled"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^AH-[A-Z0-9]+(?:-[A-Z0-9]+)+$" },
+        "mutation": { "type": "string", "minLength": 1 },
+        "mustBeKilled": { "const": true }
+      }
+    },
+    "collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["swiftPM", "xcode", "missingResultFails", "unexpectedSkipFails", "emptyDiscoveryFails"],
+      "properties": {
+        "swiftPM": { "const": "swift test --enable-code-coverage" },
+        "xcode": { "const": "-enableCodeCoverage YES with explicit -resultBundlePath" },
+        "missingResultFails": { "const": true },
+        "unexpectedSkipFails": { "const": true },
+        "emptyDiscoveryFails": { "const": true }
+      }
+    }
+  }
+}

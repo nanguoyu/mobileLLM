@@ -1,0 +1,22 @@
+{
+  "$schema": "Schemas/quarantine.schema.json",
+  "schemaVersion": 1,
+  "documentID": "AH-QUARANTINE-V1",
+  "policy": {
+    "maximumDays": 7,
+    "forbiddenRiskTiers": ["P0"],
+    "forbiddenAreas": [
+      "authorization",
+      "capability-attenuation",
+      "persistence",
+      "outbox",
+      "deletion",
+      "recovery",
+      "reconciliation",
+      "ios-lifecycle",
+      "required-real-device"
+    ],
+    "expiredEntryFailsVerification": true
+  },
+  "entries": []
+}

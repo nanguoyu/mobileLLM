@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilellm.local/schemas/agent-harness/requirements.v1.schema.json",
+  "title": "mobileLLM Agent Harness requirements manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "documentID",
+    "sourceSpecification",
+    "requirements"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "documentID": { "const": "AH-REQUIREMENTS-V1" },
+    "sourceSpecification": { "$ref": "#/$defs/sourceSpecification" },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/requirement" }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^AH-[A-Z0-9]+(?:-[A-Z0-9]+)+$"
+    },
+    "testIdentifier": {
+      "type": "string",
+      "pattern": "^AHT-[A-Z0-9]+(?:-[A-Z0-9]+)+$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sourceSpecification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "capturedAtUTC"],
+      "properties": {
+        "path": { "const": "spec.md" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "capturedAtUTC": { "type": "string", "format": "date-time" }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["section", "heading", "lineStart", "lineEnd"],
+      "properties": {
+        "section": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "heading": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "lineStart": { "type": "integer", "minimum": 1 },
+        "lineEnd": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "area",
+        "title",
+        "statement",
+        "status",
+        "riskTier",
+        "specAnchors",
+        "platforms",
+        "verificationTiers",
+        "testIDs",
+        "requiredEvidence"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "area": {
+          "enum": [
+            "infrastructure",
+            "architecture",
+            "identity",
+            "run-lifecycle",
+            "persistence",
+            "model-provider",
+            "resource-arbitration",
+            "agent-loop",
+            "tools",
+            "tool-selection",
+            "approval",
+            "context",
+            "artifacts",
+            "retry-reconciliation",
+            "ios-lifecycle",
+            "ui-accessibility",
+            "sandbox",
+            "subagents-workflows",
+            "security-privacy",
+            "observability",
+            "compatibility-rollout",
+            "testing",
+            "performance",
+            "audit"
+          ]
+        },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "statement": { "type": "string", "minLength": 1, "maxLength": 1200 },
+        "status": { "enum": ["active", "planned", "retired"] },
+        "riskTier": { "enum": ["P0", "P1", "P2"] },
+        "specAnchors": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/anchor" }
+        },
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["all", "swiftpm", "ios", "ios-device", "ios-simulator", "macos"]
+          }
+        },
+        "verificationTiers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["every-change", "pull-request", "nightly", "release-candidate"] }
+        },
+        "testIDs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/testIdentifier" }
+        },
+        "requiredEvidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+        },
+        "notes": { "type": "string", "maxLength": 1000 }
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "../Schemas/semantic-registry.schema.json",
+  "schemaVersion": 1,
+  "documentID": "AH-REGISTRY-RUN-STATES-V1",
+  "registryType": "run-states",
+  "completeness": "complete",
+  "sourceSpecification": {
+    "path": "spec.md", "sha256": "08773fb337da975514490abfb98d8c8a1d1137f935a829f0f305c1d78edf3220",
+    "section": "8", "lineStart": 215, "lineEnd": 312
+  },
+  "entries": [
+    { "id": "AH-STATE-001", "name": "created", "terminal": false, "resumable": false, "ownsExecutionSlot": false, "allowedUserCommands": ["cancel"], "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
+    { "id": "AH-STATE-002", "name": "preparing", "terminal": false, "resumable": false, "ownsExecutionSlot": true, "allowedUserCommands": ["pause", "cancel"], "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
+    { "id": "AH-STATE-003", "name": "waitingForModel", "terminal": false, "resumable": false, "ownsExecutionSlot": true, "allowedUserCommands": ["pause", "cancel"], "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
+    { "id": "AH-STATE-004", "name": "generating", "terminal": false, "resumable": false, "ownsExecutionSlot": true, "allowedUserCommands": ["pause", "cancel"], "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
+    { "id": "AH-STATE-005", "name": "validatingAction", "terminal": false, "resumable": false, "ownsExecutionSlot": true, "allowedUserCommands": ["pause", "cancel"], "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
+    { "id": "AH-STATE-006", "name": "waitingForApproval", "terminal": false, "resumable": true, "ownsExecutionSlot": false, "allowedUserCommands": ["approve", "deny", "cancel"], "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
+    { "id": "AH-STATE-007", "name": "executingTools", "terminal": false, "resumable": false, "ownsExecutionSlot": true, "allowedUserCommands": ["pause", "cancel"], "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
+    { "id": "AH-STATE-008", "name": "waitingForUser", "terminal": false, "resumable": true, "ownsExecutionSlot": false, "allowedUserCommands": ["respond", "cancel"], "requirementIDs": ["AH-RUN-001", "AH-RUN-004"], "testIDs": ["AHT-RUN-001", "AHT-RUN-003"] },
+    { "id": "AH-STATE-009", "name": "synthesizing", "terminal": false, "resumable": false, "ownsExecutionSlot": true, "allowedUserCommands": ["pause", "cancel"], "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
+    { "id": "AH-STATE-010", "name": "pausing", "terminal": false, "resumable": false, "ownsExecutionSlot": true, "allowedUserCommands": ["cancel"], "requirementIDs": ["AH-RUN-001", "AH-RESOURCE-002"], "testIDs": ["AHT-RUN-001", "AHT-LIFECYCLE-001"] },
+    { "id": "AH-STATE-011", "name": "paused", "terminal": false, "resumable": true, "ownsExecutionSlot": false, "allowedUserCommands": ["resume", "cancel"], "requirementIDs": ["AH-RUN-001", "AH-RESOURCE-002"], "testIDs": ["AHT-RUN-001", "AHT-LIFECYCLE-001"] },
+    { "id": "AH-STATE-012", "name": "waitingForForeground", "terminal": false, "resumable": true, "ownsExecutionSlot": false, "allowedUserCommands": ["resume", "cancel"], "requirementIDs": ["AH-RUN-001", "AH-IOS-001"], "testIDs": ["AHT-RUN-001", "AHT-LIFECYCLE-001"] },
+    { "id": "AH-STATE-013", "name": "waitingForReconciliation", "terminal": false, "resumable": true, "ownsExecutionSlot": false, "allowedUserCommands": ["reconcile", "cancel"], "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
+    { "id": "AH-STATE-014", "name": "completed", "terminal": true, "resumable": false, "ownsExecutionSlot": false, "allowedUserCommands": [], "requirementIDs": ["AH-RUN-001", "AH-RUN-003"], "testIDs": ["AHT-RUN-001", "AHT-RUN-002"] },
+    { "id": "AH-STATE-015", "name": "failed", "terminal": true, "resumable": false, "ownsExecutionSlot": false, "allowedUserCommands": [], "requirementIDs": ["AH-RUN-001", "AH-RUN-003"], "testIDs": ["AHT-RUN-001", "AHT-RUN-002"] },
+    { "id": "AH-STATE-016", "name": "cancelled", "terminal": true, "resumable": false, "ownsExecutionSlot": false, "allowedUserCommands": [], "requirementIDs": ["AH-RUN-001", "AH-RUN-003"], "testIDs": ["AHT-RUN-001", "AHT-RUN-002"] }
+  ]
+}

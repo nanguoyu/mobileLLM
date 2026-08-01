@@ -1,0 +1,48 @@
+{
+  "$schema": "../Schemas/scripted-model.schema.json",
+  "schemaVersion": 1,
+  "scriptID": "AH-FIXTURE-MODEL-MALFORMED-REPAIR",
+  "name": "Malformed tool action receives exactly one bounded repair",
+  "seed": 155921,
+  "provider": { "id": "fixture.local", "kind": "scriptedLocal", "protocolVersion": "1.0.0" },
+  "model": { "id": "fixture-tools", "variantID": "deterministic-v1", "capabilityRevision": "fixture-capabilities-v1", "contextLimit": 4096, "outputLimit": 384 },
+  "scenario": "malformedRepair",
+  "steps": [
+    {
+      "ordinal": 1, "kind": "modelAttempt",
+      "assertRequest": { "advertisedToolLogicalIDs": ["builtin:calculator"], "thinkingEnabled": false },
+      "emissions": [
+        { "type": "malformedAction", "text": "{\"name\":\"calculator\",\"arguments\":" },
+        { "type": "usage", "promptTokens": 37, "outputTokens": 10 },
+        { "type": "completed" }
+      ]
+    },
+    {
+      "ordinal": 2, "kind": "modelAttempt",
+      "assertRequest": { "advertisedToolLogicalIDs": ["builtin:calculator"], "mustContain": ["Return one corrected structured action"], "thinkingEnabled": false, "maximumOutputTokens": 384 },
+      "emissions": [
+        { "type": "toolCalls", "calls": [{ "invocationID": "20000000-0000-4000-8000-000000000001", "toolLogicalID": "builtin:calculator", "argumentsJSON": { "expression": "6 * 7" } }] },
+        { "type": "usage", "promptTokens": 52, "outputTokens": 13 },
+        { "type": "completed" }
+      ]
+    },
+    {
+      "ordinal": 3, "kind": "toolOutcome",
+      "toolOutcome": { "invocationID": "20000000-0000-4000-8000-000000000001", "toolLogicalID": "builtin:calculator", "resultJSON": { "value": 42 }, "effectsConfirmed": false }
+    },
+    {
+      "ordinal": 4, "kind": "modelAttempt",
+      "assertRequest": { "advertisedToolLogicalIDs": [], "mustContain": ["42"], "thinkingEnabled": false },
+      "emissions": [
+        { "type": "answerDelta", "text": "6 × 7 is 42." },
+        { "type": "usage", "promptTokens": 44, "outputTokens": 7 },
+        { "type": "completed" }
+      ]
+    }
+  ],
+  "expected": {
+    "modelAttempts": 3, "toolInvocations": 1, "structuredRepairs": 1, "interactionRequests": 0,
+    "terminalState": "completed", "finalAnswer": "6 × 7 is 42.",
+    "forbiddenActions": ["secondStructuredRepair", "duplicateToolInvocation", "networkAccess"]
+  }
+}

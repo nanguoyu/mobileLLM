@@ -1,0 +1,27 @@
+{
+  "$schema": "../Schemas/scripted-model.schema.json",
+  "schemaVersion": 1,
+  "scriptID": "AH-FIXTURE-MODEL-PURE-CHAT",
+  "name": "Pure chat completes in one local model attempt",
+  "seed": 104729,
+  "provider": { "id": "fixture.local", "kind": "scriptedLocal", "protocolVersion": "1.0.0" },
+  "model": { "id": "fixture-text", "variantID": "deterministic-v1", "capabilityRevision": "fixture-capabilities-v1", "contextLimit": 4096, "outputLimit": 256 },
+  "scenario": "pureChat",
+  "steps": [
+    {
+      "ordinal": 1,
+      "kind": "modelAttempt",
+      "assertRequest": { "advertisedToolLogicalIDs": [], "mustContain": ["Reply with the fixture answer."], "thinkingEnabled": false, "maximumOutputTokens": 256 },
+      "emissions": [
+        { "type": "answerDelta", "text": "The deterministic fixture answer is 42." },
+        { "type": "usage", "promptTokens": 24, "outputTokens": 8 },
+        { "type": "completed" }
+      ]
+    }
+  ],
+  "expected": {
+    "modelAttempts": 1, "toolInvocations": 0, "structuredRepairs": 0, "interactionRequests": 0,
+    "terminalState": "completed", "finalAnswer": "The deterministic fixture answer is 42.",
+    "forbiddenActions": ["secondModelAttempt", "toolInvocation", "networkAccess", "sandboxStart"]
+  }
+}

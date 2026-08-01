@@ -151,8 +151,9 @@ schemes:
       targets:
         mobileLLM: all
     test:
-      targets:
-        - mobileLLMUITests
+      testPlans:
+        - path: Verification/AgentHarness/TestPlans/SimulatorUI.xctestplan
+          defaultPlan: true
   # Full clean-install/download/inference matrix. Run only on the connected phone, with one worker and
   # no randomized ordering because the provisioning phase intentionally creates the model artifacts.
   DeviceE2E:
@@ -161,7 +162,6 @@ schemes:
         mobileLLM: [test]
     test:
       config: Debug
-      targets:
-        - name: mobileLLMDeviceE2ETests
-          parallelizable: false
-          randomExecutionOrder: false
+      testPlans:
+        - path: Verification/AgentHarness/TestPlans/DeviceE2E.xctestplan
+          defaultPlan: true

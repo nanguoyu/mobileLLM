@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilellm.local/schemas/agent-harness/semantic-registry.v1.schema.json",
+  "title": "mobileLLM Agent Harness semantic registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "documentID",
+    "registryType",
+    "completeness",
+    "sourceSpecification",
+    "entries"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "documentID": { "type": "string", "pattern": "^AH-REGISTRY-[A-Z0-9]+(?:-[A-Z0-9]+)*-V1$" },
+    "registryType": {
+      "enum": ["run-states", "run-transitions", "approval-decisions", "stable-boundary-faults"]
+    },
+    "completeness": { "enum": ["complete", "initial"] },
+    "sourceSpecification": { "$ref": "#/$defs/sourceSpecification" },
+    "domains": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/approvalDomain" }
+    },
+    "entries": { "type": "array", "minItems": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "registryType": { "const": "run-states" } } },
+      "then": {
+        "properties": {
+          "completeness": { "const": "complete" },
+          "entries": { "minItems": 16, "maxItems": 16, "items": { "$ref": "#/$defs/runState" } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "registryType": { "const": "run-transitions" } } },
+      "then": {
+        "properties": { "entries": { "items": { "$ref": "#/$defs/transition" } } }
+      }
+    },
+    {
+      "if": { "properties": { "registryType": { "const": "approval-decisions" } } },
+      "then": {
+        "required": ["domains"],
+        "properties": {
+          "domains": { "minItems": 1 },
+          "entries": { "items": { "$ref": "#/$defs/approvalRow" } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "registryType": { "const": "stable-boundary-faults" } } },
+      "then": {
+        "properties": {
+          "completeness": { "const": "complete" },
+          "entries": { "minItems": 20, "maxItems": 20, "items": { "$ref": "#/$defs/faultPoint" } }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^AH-[A-Z0-9]+(?:-[A-Z0-9]+)+$" },
+    "testIdentifier": { "type": "string", "pattern": "^AHT-[A-Z0-9]+(?:-[A-Z0-9]+)+$" },
+    "sourceSpecification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "section", "lineStart", "lineEnd"],
+      "properties": {
+        "path": { "const": "spec.md" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "section": { "type": "string", "minLength": 1 },
+        "lineStart": { "type": "integer", "minimum": 1 },
+        "lineEnd": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "traceability": {
+      "type": "object",
+      "required": ["requirementIDs", "testIDs"],
+      "properties": {
+        "requirementIDs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "testIDs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/testIdentifier" }
+        }
+      }
+    },
+    "runState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "name", "terminal", "resumable", "ownsExecutionSlot", "allowedUserCommands",
+        "requirementIDs", "testIDs"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "name": { "$ref": "#/$defs/runStateName" },
+        "terminal": { "type": "boolean" },
+        "resumable": { "type": "boolean" },
+        "ownsExecutionSlot": { "type": "boolean" },
+        "allowedUserCommands": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/commandName" }
+        },
+        "requirementIDs": { "$ref": "#/$defs/traceability/properties/requirementIDs" },
+        "testIDs": { "$ref": "#/$defs/traceability/properties/testIDs" }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "from", "trigger", "guard", "legal", "to", "requirementIDs", "testIDs"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "from": { "$ref": "#/$defs/runStateName" },
+        "trigger": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "guard": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "legal": { "type": "boolean" },
+        "to": { "oneOf": [{ "$ref": "#/$defs/runStateName" }, { "type": "null" }] },
+        "terminalReason": { "type": ["string", "null"], "maxLength": 80 },
+        "requirementIDs": { "$ref": "#/$defs/traceability/properties/requirementIDs" },
+        "testIDs": { "$ref": "#/$defs/traceability/properties/testIDs" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "legal": { "const": false } } },
+          "then": { "properties": { "to": { "type": "null" } } }
+        }
+      ]
+    },
+    "approvalDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "values"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 100 }
+        }
+      }
+    },
+    "approvalRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "conditions", "decision", "grantScope", "automaticRetry", "uncertainOnTransportLoss",
+        "requirementIDs", "testIDs"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "conditions": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 120 }
+        },
+        "decision": {
+          "enum": ["authorizeLocalPolicy", "authorizeMatchingReceipt", "requireApproval", "deny", "waitForForeground", "waitForReconciliation"]
+        },
+        "grantScope": {
+          "enum": ["none", "exactInvocation", "boundedConversationRead", "explicitReversibleConversationWrite"]
+        },
+        "automaticRetry": { "type": "boolean" },
+        "uncertainOnTransportLoss": { "type": "boolean" },
+        "requirementIDs": { "$ref": "#/$defs/traceability/properties/requirementIDs" },
+        "testIDs": { "$ref": "#/$defs/traceability/properties/testIDs" }
+      }
+    },
+    "faultPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "boundaryOrdinal", "boundary", "phase", "injectedFailure", "expectedRecovery",
+        "requirementIDs", "testIDs"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "boundaryOrdinal": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "boundary": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "phase": { "enum": ["before", "after"] },
+        "injectedFailure": { "enum": ["processTermination", "writeFailure", "transactionRollback"] },
+        "expectedRecovery": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "requirementIDs": { "$ref": "#/$defs/traceability/properties/requirementIDs" },
+        "testIDs": { "$ref": "#/$defs/traceability/properties/testIDs" }
+      }
+    },
+    "runStateName": {
+      "enum": [
+        "created", "preparing", "waitingForModel", "generating", "validatingAction",
+        "waitingForApproval", "executingTools", "waitingForUser", "synthesizing", "pausing",
+        "paused", "waitingForForeground", "waitingForReconciliation", "completed", "failed", "cancelled"
+      ]
+    },
+    "commandName": {
+      "enum": ["pause", "resume", "cancel", "approve", "deny", "respond", "reconcile"]
+    }
+  }
+}

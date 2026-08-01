@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilellm.local/schemas/agent-harness/tests.v1.schema.json",
+  "title": "mobileLLM Agent Harness tests manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "documentID", "tests"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "documentID": { "const": "AHT-TESTS-V1" },
+    "tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/test" }
+    }
+  },
+  "$defs": {
+    "testIdentifier": {
+      "type": "string",
+      "pattern": "^AHT-[A-Z0-9]+(?:-[A-Z0-9]+)+$"
+    },
+    "requirementIdentifier": {
+      "type": "string",
+      "pattern": "^AH-[A-Z0-9]+(?:-[A-Z0-9]+)+$"
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": { "enum": ["swift-test", "xctest", "ui-test", "script", "device-scenario", "manual-inspection"] },
+        "value": { "type": "string", "minLength": 1, "maxLength": 300 }
+      }
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "status",
+        "kind",
+        "riskTier",
+        "requirementIDs",
+        "selectors",
+        "platforms",
+        "verificationTiers",
+        "requiredEvidence",
+        "determinism"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/testIdentifier" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "status": { "enum": ["active", "planned", "retired"] },
+        "kind": {
+          "enum": [
+            "manifest",
+            "unit",
+            "contract",
+            "property",
+            "integration",
+            "migration",
+            "fault-injection",
+            "fuzz",
+            "ui",
+            "device",
+            "performance",
+            "mutation",
+            "audit"
+          ]
+        },
+        "riskTier": { "enum": ["P0", "P1", "P2"] },
+        "requirementIDs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/requirementIdentifier" }
+        },
+        "selectors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/selector" }
+        },
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["all", "swiftpm", "ios", "ios-device", "ios-simulator", "macos"] }
+        },
+        "verificationTiers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["every-change", "pull-request", "nightly", "release-candidate"] }
+        },
+        "requiredEvidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+        },
+        "determinism": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fixedSeedRequired", "rotatingSeedRequired"],
+          "properties": {
+            "fixedSeedRequired": { "type": "boolean" },
+            "rotatingSeedRequired": { "type": "boolean" },
+            "fixtureIDs": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^AH-FIXTURE-[A-Z0-9]+(?:-[A-Z0-9]+)+$" }
+            }
+          }
+        },
+        "notes": { "type": "string", "maxLength": 1000 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "active" } } },
+          "then": { "properties": { "selectors": { "minItems": 1 } } }
+        }
+      ]
+    }
+  }
+}
