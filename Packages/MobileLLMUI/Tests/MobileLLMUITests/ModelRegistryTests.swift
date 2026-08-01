@@ -135,4 +135,87 @@ final class ModelRegistryTests: XCTestCase {
         XCTAssertEqual(models.model(id: legacy.id)?.license, .gemma,
                        "a fresh Hub result replaces the conservative migrated placeholder")
     }
+
+    func testInterruptedExplorePartialSurvivesLaterUnrelatedRegistryWrite() async throws {
+        let base = tempBase()
+        let interruptedID = "community/Interrupted-GGUF"
+        let interruptedVariant = LLMVariant(
+            quant: .gguf4bit,
+            backend: .llamaCppGGUF,
+            onDiskBytes: 100,
+            source: ModelSource(huggingFaceRepo: interruptedID,
+                                revision: "commit-interrupted",
+                                fileName: "weights.gguf"),
+            identityScheme: .sourceArtifactV2
+        )
+        let interrupted = LLMModel(
+            id: interruptedID,
+            displayName: "Interrupted",
+            family: .unknown,
+            publisher: "community",
+            summary: "Interrupted Explore download fixture",
+            license: .unknown,
+            architecture: LLMCatalog.bonsai4b.architecture,
+            variants: [interruptedVariant],
+            defaultVariant: .gguf4bit
+        )
+        let root = ModelDownloader(downloadBase: base).localURL(repoId: interruptedID)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("partial".utf8).write(
+            to: root.appending(component: "weights.gguf").appendingPathExtension("part")
+        )
+        let registryURL = base.appending(component: "adopted-models.json")
+        try await DurableStore<LLMModel>(fileURL: registryURL).save([interrupted])
+
+        let unrelatedID = "community/Installed-Unrelated-GGUF"
+        let unrelatedVariant = LLMVariant(
+            quant: .gguf4bit,
+            backend: .llamaCppGGUF,
+            onDiskBytes: 100,
+            source: ModelSource(huggingFaceRepo: unrelatedID,
+                                revision: "commit-unrelated",
+                                fileName: "other.gguf"),
+            identityScheme: .sourceArtifactV2
+        )
+        let unrelated = LLMModel(
+            id: unrelatedID,
+            displayName: "Unrelated",
+            family: .unknown,
+            publisher: "community",
+            summary: "Unrelated registry write fixture",
+            license: .unknown,
+            architecture: LLMCatalog.bonsai4b.architecture,
+            variants: [unrelatedVariant],
+            defaultVariant: .gguf4bit
+        )
+        let second = ModelManager(
+            engine: MockLLMEngine(),
+            device: device,
+            downloadBase: base,
+            downloader: { _, _, _, progress in progress(1) },
+            installProbe: { variant, _ in variant.id == unrelatedVariant.id },
+            availableMemory: { .max }
+        )
+        await second.loadAdoptedRegistry()
+        XCTAssertNotNil(second.model(id: interruptedID))
+
+        second.adopt(unrelated)
+        let persistedRegistry = DurableStore<LLMModel>(fileURL: registryURL)
+        let deadline = Date().addingTimeInterval(3)
+        var didPersistUnrelatedModel = false
+        while Date() < deadline {
+            if await persistedRegistry.load().contains(where: { $0.id == unrelatedID }) {
+                didPersistUnrelatedModel = true
+                break
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(didPersistUnrelatedModel,
+                      "the unrelated write must actually land before registry retention is evaluated")
+
+        let third = manager(base: base, installedRepos: [])
+        await third.loadAdoptedRegistry()
+        XCTAssertNotNil(third.model(id: interruptedID),
+                        "an unrelated write must not orphan resumable Explore partial bytes")
+    }
 }

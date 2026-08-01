@@ -109,4 +109,24 @@ final class ChatStoreLifecycleTests: XCTestCase {
         let remaining = await store.loadAllLive()
         XCTAssertTrue(remaining.isEmpty)
     }
+
+    func testLaunchSnapshotCannotResurrectLocallyDeletedConversation() async {
+        let (chat, dir) = makeStore(engine: MockLLMEngine())
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let conversation = Conversation(modelID: model.id,
+                                        variantID: model.defaultVariantValue.id)
+        chat.conversations = [conversation]
+        chat.activeID = conversation.id
+
+        chat.delete(conversation.id)
+        XCTAssertTrue(chat.conversations.isEmpty)
+
+        // Represents loadAllLive() returning a snapshot captured before the asynchronous tombstone write.
+        chat.commitLoadedConversations([conversation])
+
+        XCTAssertTrue(chat.conversations.isEmpty,
+                      "an older bootstrap snapshot must not reinsert a conversation deleted in this session")
+        XCTAssertNil(chat.activeID)
+        await Task.yield()
+    }
 }

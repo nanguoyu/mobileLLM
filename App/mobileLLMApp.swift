@@ -8,6 +8,146 @@ import LLMEngineMLX
 import LLMEngineLlama
 import LLMEngineApple
 
+#if DEBUG && os(macOS)
+import AppKit
+
+/// Opt-in, in-process Mac screenshot configuration. Rendering the target window's own view hierarchy
+/// avoids depending on the active display, Spaces, screen-capture permission, or which of several remote
+/// monitors happens to be focused. Normal launches do not create this request and pay no runtime cost.
+private struct MacScreenshotRequest {
+    let outputURL: URL
+    let errorURL: URL
+    let section: AppSection
+    let appearance: AppearanceMode?
+
+    static func current(environment: [String: String] = ProcessInfo.processInfo.environment)
+        -> MacScreenshotRequest? {
+        guard let outputPath = environment["MOBILELLM_MAC_SCREENSHOT_PATH"], !outputPath.isEmpty else {
+            return nil
+        }
+        let outputURL = URL(fileURLWithPath: outputPath).standardizedFileURL
+        let errorPath = environment["MOBILELLM_MAC_SCREENSHOT_ERROR_PATH"]
+        let errorURL = errorPath.map { URL(fileURLWithPath: $0).standardizedFileURL }
+            ?? outputURL.appendingPathExtension("error.txt")
+        let section = environment["MOBILELLM_MAC_SCREENSHOT_SECTION"]
+            .flatMap(AppSection.init(rawValue:)) ?? .chat
+        let appearance: AppearanceMode? = switch environment["MOBILELLM_MAC_SCREENSHOT_APPEARANCE"] {
+        case "light": .light
+        case "dark": .dark
+        case "system": .system
+        default: nil
+        }
+        return MacScreenshotRequest(outputURL: outputURL, errorURL: errorURL,
+                                    section: section, appearance: appearance)
+    }
+}
+
+/// Captures the largest app window from inside the process. `screencapture` and CGWindow snapshots can
+/// omit privacy-protected SwiftUI windows, especially over remote desktop; an NSView cache is independent
+/// of window-sharing flags, active Spaces, physical monitor geometry, and frontmost-app state.
+@MainActor
+private enum MacWindowSnapshotter {
+    static func capture(_ request: MacScreenshotRequest) async {
+        // Bootstrap has completed before this method starts. Let SwiftUI commit that observable state,
+        // initial navigation, and sidebar animation before sampling rendered pixels.
+        try? await Task.sleep(for: .milliseconds(700))
+        var previousBounds: CGRect?
+        var previousPNG: Data?
+        var stablePasses = 0
+        for _ in 0..<100 {
+            guard !Task.isCancelled else { return }
+            guard let window = captureWindow(), let contentView = window.contentView else {
+                try? await Task.sleep(for: .milliseconds(50))
+                continue
+            }
+            let targetView = contentView.superview ?? contentView
+            window.layoutIfNeeded()
+            targetView.layoutSubtreeIfNeeded()
+            targetView.displayIfNeeded()
+            let bounds = targetView.bounds.integral
+            guard bounds.width >= 640, bounds.height >= 480 else {
+                stablePasses = 0
+                try? await Task.sleep(for: .milliseconds(50))
+                continue
+            }
+            if bounds != previousBounds {
+                previousBounds = bounds
+                previousPNG = nil
+                stablePasses = 0
+            }
+            do {
+                let png = try renderPNG(targetView)
+                if png == previousPNG {
+                    stablePasses += 1
+                } else {
+                    previousPNG = png
+                    stablePasses = 0
+                }
+                // Stable geometry alone is insufficient: async bootstrap can change the content without
+                // resizing the window. Publish only after three identical rendered frames.
+                if stablePasses >= 2 {
+                    try FileManager.default.createDirectory(
+                        at: request.outputURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true)
+                    try png.write(to: request.outputURL, options: .atomic)
+                    return
+                }
+            } catch {
+                report(error, to: request.errorURL)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        report(MacScreenshotError.windowNeverSettled, to: request.errorURL)
+    }
+
+    private static func captureWindow() -> NSWindow? {
+        NSApplication.shared.windows
+            .filter { window in
+                guard window.isVisible, let content = window.contentView else { return false }
+                return content.bounds.width >= 640 && content.bounds.height >= 480
+            }
+            .max { lhs, rhs in lhs.frame.width * lhs.frame.height < rhs.frame.width * rhs.frame.height }
+    }
+
+    private static func renderPNG(_ view: NSView) throws -> Data {
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+            throw MacScreenshotError.bitmapAllocationFailed
+        }
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        guard let png = bitmap.representation(using: .png, properties: [:]) else {
+            throw MacScreenshotError.pngEncodingFailed
+        }
+        return png
+    }
+
+    private static func report(_ error: Error, to errorURL: URL) {
+        let message = "macOS screenshot failed: \(error.localizedDescription)\n"
+        do {
+            try FileManager.default.createDirectory(at: errorURL.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try Data(message.utf8).write(to: errorURL, options: .atomic)
+        } catch {
+            print(message.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+}
+
+private enum MacScreenshotError: LocalizedError {
+    case windowNeverSettled
+    case bitmapAllocationFailed
+    case pngEncodingFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .windowNeverSettled: "the app window did not reach a stable capture size"
+        case .bitmapAllocationFailed: "AppKit could not allocate a window bitmap"
+        case .pngEncodingFailed: "AppKit could not encode the window bitmap as PNG"
+        }
+    }
+}
+#endif
+
 /// App assembly: a `RoutingEngine` fronting the three concrete engines (MLX-fork, llama.cpp, and Apple's
 /// system model) and the resumable `ModelDownloader` are injected into the `AppContainer` composition root
 /// here; everywhere else runs against the `LLMEngine` protocol. The router loads each variant on the engine
@@ -16,6 +156,9 @@ import LLMEngineApple
 struct MobileLLMApp: App {
     @State private var container: AppContainer
     @Environment(\.scenePhase) private var scenePhase
+    #if DEBUG && os(macOS)
+    private let macScreenshotRequest = MacScreenshotRequest.current()
+    #endif
     #if DEBUG && os(iOS)
     private let deviceE2E = DeviceE2EConfiguration.current()
     #endif
@@ -61,12 +204,41 @@ struct MobileLLMApp: App {
                 eventStore: eventStore,
                 locationProvider: locationProvider)
         }
+        #if DEBUG && os(macOS)
+        if let appearance = macScreenshotRequest?.appearance {
+            container.settings.appearance = appearance
+        }
+        #endif
         _container = State(initialValue: container)
+        #if DEBUG && os(macOS)
+        // Keep screenshot automation independent of SwiftUI view identity. A view-scoped `.task` can be
+        // cancelled while bootstrap publishes its first observable changes, leaving a remote QA runner
+        // waiting forever even though the app window is healthy. This unstructured MainActor task lives
+        // for the short capture attempt and finds the app-owned window after launch has settled.
+        if let request = macScreenshotRequest {
+            let screenshotContainer = container
+            Task { @MainActor in
+                // Capture a fully hydrated page, not merely a stable-sized window. `bootstrap()` is
+                // idempotent, so RootView can safely await the same operation at the same time.
+                await screenshotContainer.bootstrap()
+                await Task.yield()
+                await MacWindowSnapshotter.capture(request)
+            }
+        }
+        #endif
+    }
+
+    private var initialSection: AppSection {
+        #if DEBUG && os(macOS)
+        macScreenshotRequest?.section ?? .chat
+        #else
+        .chat
+        #endif
     }
 
     var body: some Scene {
         WindowGroup {
-            RootView(container: container)
+            RootView(container: container, initialSection: initialSection)
                 #if DEBUG && os(iOS)
                 .overlay(alignment: .topLeading) {
                     if deviceE2E != nil { DeviceE2EDiagnosticsOverlay(container: container) }

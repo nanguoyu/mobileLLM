@@ -22,12 +22,16 @@ extension AppearanceMode {
 public struct RootView: View {
     @Bindable var container: AppContainer
     @State private var section: AppSection = .chat
+    #if os(macOS)
+    @State private var hoveredSidebarSection: AppSection?
+    #endif
     #if !os(macOS)
     @Environment(\.horizontalSizeClass) private var hSize
     #endif
 
-    public init(container: AppContainer) {
+    public init(container: AppContainer, initialSection: AppSection = .chat) {
         self.container = container
+        _section = State(initialValue: initialSection)
     }
 
     public var body: some View {
@@ -106,14 +110,29 @@ public struct RootView: View {
     private var splitShell: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
+                #if os(macOS)
+                // A Mac sidebar stays useful while Models or Settings is open: conversation rows remain
+                // visible and selecting one returns to Chat. This avoids the empty-sidebar dead end where
+                // New Chat (which mutates data) was previously the only route back.
+                ConversationListView(chat: container.chat, showsActiveSelection: section == .chat) {
+                    _ in section = .chat
+                }
+                #else
                 if section == .chat {
                     ConversationListView(chat: container.chat) { _ in section = .chat }
                 } else {
                     Spacer()
                 }
+                #endif
                 Divider().background(Theme.hairline)
                 sidebarFooter
             }
+            // Keep the sidebar's paper surface stable while switching sections. Without an explicit
+            // background, Models and Settings exposed the system split-view material while Chat painted
+            // its own background, making one sidebar alternate between beige and grey.
+            #if os(macOS)
+            .background(Theme.bg.ignoresSafeArea())
+            #endif
             .frame(minWidth: 240)
             .navigationSplitViewColumnWidth(min: 240, ideal: 280)
             .toolbar {
@@ -141,15 +160,66 @@ public struct RootView: View {
         Binding(get: { container.switcherRequested }, set: { container.switcherRequested = $0 })
     }
 
+    @ViewBuilder
     private var sidebarFooter: some View {
+        #if os(macOS)
+        // Mac sidebars read as vertical lists, not tab bars. Full-width rows give each destination a
+        // generous hit target and use the same cinnabar selection tint as the rest of the app.
+        VStack(spacing: 2) {
+            macSidebarButton(.models)
+            macSidebarButton(.settings)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .background(Theme.bg)
+        #else
         HStack(spacing: Theme.Space.sm) {
             footerButton(.models)
             footerButton(.settings)
             Spacer()
         }
         .padding(Theme.Space.sm)
+        #endif
     }
 
+    #if os(macOS)
+    private func macSidebarButton(_ target: AppSection) -> some View {
+        let isSelected = section == target
+        let isHovered = hoveredSidebarSection == target
+
+        return Button { section = target } label: {
+            HStack(spacing: 9) {
+                Image(systemName: target.icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .frame(width: 18)
+                Text(target.title)
+                    .font(.callout)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(isSelected ? Theme.onAccent : Theme.textPrimary)
+            .padding(.horizontal, 9)
+            .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isSelected ? Theme.accent : (isHovered ? Theme.surface2 : .clear))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            if hovering {
+                hoveredSidebarSection = target
+            } else if hoveredSidebarSection == target {
+                hoveredSidebarSection = nil
+            }
+        }
+        .accessibilityLabel(target.title)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityIdentifier("sidebar-navigation-\(target.rawValue)")
+        .help(target.title)
+    }
+    #else
     private func footerButton(_ target: AppSection) -> some View {
         Button { section = target } label: {
             Label(target.title, systemImage: target.icon)
@@ -161,6 +231,7 @@ public struct RootView: View {
         }
         .buttonStyle(.plain)
     }
+    #endif
 
     @ViewBuilder private var detail: some View {
         switch section {

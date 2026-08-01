@@ -40,6 +40,12 @@ public final class AppContainer {
     /// selected thread's remembered identity when it completes late.
     private var conversationRestoreTask: Task<Void, Never>?
     private var conversationRestoreGeneration: UInt64 = 0
+    private struct ConversationRestoreRequest: Equatable {
+        let conversationID: UUID
+        let modelID: String
+        let variantID: String
+    }
+    private var conversationRestoreRequest: ConversationRestoreRequest?
 
     public init(engine: any LLMEngine,
                 downloadBase: URL,
@@ -100,15 +106,30 @@ public final class AppContainer {
         chat.resolvePersistedVariantID = { [weak self] modelID, variantID in
             self?.resolvedInstalledVariant(modelID: modelID, persistedID: variantID)?.id
         }
+        // ModelsView owns ModelManager directly, so deletion does not pass through an AppContainer
+        // wrapper. Mirror every selection mutation at its source; use the conservative no-reseed mode and
+        // let explicit Use operations opt into reseeding only after their activation succeeds.
+        models.activeModelDidChange = { [weak self] model in
+            self?.chat.synchronizeActiveModel(model, reseedEmptyConversation: false)
+        }
     }
 
     /// Activate the (model, variant) a conversation remembers, if it's still installed. Falls back to any
     /// installed variant of the same model (the exact quant may have been deleted); silently keeps the
     /// resident model when nothing of it is on disk — the header + switcher make that visible.
     private func restoreConversationModel(modelID: String, variantID: String) {
-        cancelConversationModelRestore()
-        guard let model = models.model(id: modelID),
+        guard let conversationID = chat.activeID,
+              let model = models.model(id: modelID),
               let variant = resolvedInstalledVariant(modelID: modelID, persistedID: variantID) else { return }
+        let request = ConversationRestoreRequest(conversationID: conversationID,
+                                                 modelID: model.id,
+                                                 variantID: variant.id)
+        // ConversationListView.select() and ChatDetailView.onAppear are two UI events for one navigation.
+        // If the first event already owns this exact restore, the second joins it by doing nothing: in
+        // particular it must not cancel a non-cooperative multi-GB load and enqueue the same load again.
+        if conversationRestoreTask != nil, conversationRestoreRequest == request { return }
+
+        cancelConversationModelRestore()
         // Already the selected artifact: mirror it (a legacy id may have resolved onto it) and stop.
         guard models.active?.variant.id != variant.id else {
             syncActive(reseedEmptyConversation: false)
@@ -116,13 +137,16 @@ public final class AppContainer {
         }
         // Deliberately NOT guarded on `models.switching`: selecting B while A is still loading must still
         // restore B. ModelManager serializes the two loads; the newest request is the one that wins.
-        let conversationID = chat.activeID
         conversationRestoreGeneration &+= 1
         let generation = conversationRestoreGeneration
+        conversationRestoreRequest = request
         conversationRestoreTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
-                if generation == conversationRestoreGeneration { conversationRestoreTask = nil }
+                if generation == conversationRestoreGeneration {
+                    conversationRestoreTask = nil
+                    conversationRestoreRequest = nil
+                }
             }
             do {
                 try await models.activate(model, variant: variant, context: settings.contextLength)
@@ -154,6 +178,7 @@ public final class AppContainer {
         conversationRestoreGeneration &+= 1
         conversationRestoreTask?.cancel()
         conversationRestoreTask = nil
+        conversationRestoreRequest = nil
     }
 
     /// The installed variant a persisted id names. An exact artifact id wins; otherwise the id is a legacy
@@ -237,7 +262,9 @@ public final class AppContainer {
         if models.active == nil, let fallback = smallestInstalledFallback(excluding: variant?.id) {
             models.restoreSelection(fallback.0, variant: fallback.1)
         }
-        syncActive()
+        // Bootstrap is hydration, not a user model switch. If a new empty conversation was created while
+        // the other stores were loading, restoring the launch identity must not rewrite that live thread.
+        syncActive(reseedEmptyConversation: false)
     }
 
     /// The smallest installed (model, variant) on disk — the boot fallback that keeps the header from

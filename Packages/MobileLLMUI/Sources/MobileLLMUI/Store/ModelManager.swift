@@ -171,7 +171,9 @@ public final class ModelManager {
     private func persistAdoptedRegistry() {
         guard !isErasingDownloadedData else { return }
         let keep = exploreModels.filter { model in
-            model.variants.contains { installed.contains($0.id) || downloads[$0.id] != nil }
+            model.variants.contains {
+                installed.contains($0.id) || downloads[$0.id] != nil || hasLocalDownloadArtifacts($0)
+            }
         }
         // Queue behind the write already in flight; a cancelled link (the erase snapshot arriving) simply
         // skips its own write instead of resurrecting records that are about to be deleted.
@@ -181,6 +183,36 @@ public final class ModelManager {
             guard !Task.isCancelled, let self else { return }
             try? await saveAdoptedRegistry(keep)
         }
+    }
+
+    /// A paused/failed Explore download is not installed and has no live `downloads` entry after launch,
+    /// but its partial bytes still need the adopted-model metadata required to resume or delete it. Disk
+    /// presence therefore participates in registry retention; otherwise any unrelated registry write can
+    /// orphan a multi-gigabyte `.part` file on the very next launch.
+    private func hasLocalDownloadArtifacts(
+        _ variant: LLMVariant,
+        excludingFileNames: Set<String> = []
+    ) -> Bool {
+        let fm = FileManager.default
+        let root = ModelDownloader(downloadBase: downloadBase)
+            .localURL(repoId: variant.source.huggingFaceRepo)
+        guard fm.fileExists(atPath: root.path) else { return false }
+
+        let requiredNames = variant.requiredFileNames
+        if !requiredNames.isEmpty {
+            return requiredNames.lazy
+                .filter { !excludingFileNames.contains($0) }
+                .contains { name in
+                    let file = root.appending(component: name)
+                    return fm.fileExists(atPath: file.path)
+                        || fm.fileExists(atPath: file.appendingPathExtension("part").path)
+                }
+        }
+
+        // Flat MLX downloads may have completed config/tokenizer files before the first weight shard, so
+        // retain the record for any materialized file, not only a `*.part` whose name we cannot predict.
+        guard let walker = fm.enumerator(at: root, includingPropertiesForKeys: nil) else { return false }
+        return walker.nextObject() != nil
     }
 
     /// The one place adopted records reach durable storage. `registryWriter` is injected by tests to make
@@ -202,7 +234,12 @@ public final class ModelManager {
     public private(set) var systemModelStatus: SystemModelStatus
     /// The selected model, if any. Its identity remains active while its weights are suspended or lazily
     /// restored; `engineResident` is the authoritative residency bit.
-    public internal(set) var active: LoadedModel?
+    public internal(set) var active: LoadedModel? {
+        didSet { activeModelDidChange?(active) }
+    }
+    /// AppContainer's narrow bridge into ChatStore. Kept out of Observation because it is wiring, not UI
+    /// state; every selection mutation (including a direct ModelsView deletion) crosses this one seam.
+    @ObservationIgnored var activeModelDidChange: (@MainActor (LoadedModel?) -> Void)?
     /// Download UI state keyed by artifact-level variant id. Multiple GGUF quants can share a repository
     /// without borrowing one another's progress, pause, error or retry state.
     public private(set) var downloads: [String: VariantDownload] = [:]
@@ -251,6 +288,19 @@ public final class ModelManager {
     /// so the engine is never asked to load and unload at the same time.
     private var modelOperationTask: Task<LoadedModel?, Error>?
     private var modelOperationToken: UUID?
+    /// The model bytes currently being read by the engine-mutation lane. Deletion consults this reservation
+    /// before unlinking files, so deleting the very model a non-cooperative native loader is opening cancels
+    /// and drains that loader first without needlessly cancelling an unrelated hot swap.
+    private var modelOperationRequest: DownloadRequest?
+    /// Cleanup scheduled after deleting the selected resident model. Keeping the task observable lets
+    /// lifecycle callers/tests drain work that was already enqueued instead of guessing with sleeps or
+    /// actor yields; model operations inside the task are still serialized by the normal mutation lane.
+    private var invalidatedSelectionCleanupTask: Task<Void, Never>?
+    /// Orders residency-producing calls against background suspension requests. A load keeps the intent
+    /// it was created with; if a newer suspend arrives while the engine is inside a non-cooperative load,
+    /// that load is drained and immediately unloaded instead of becoming a hidden resident afterwards.
+    private var residencyIntentCounter: UInt64 = 0
+    private var latestSuspendIntent: UInt64 = 0
     /// Reopens the erase gate after a drain timed out and the straggler finally exited.
     private var eraseRecoveryTask: Task<Void, Never>?
 
@@ -270,6 +320,24 @@ public final class ModelManager {
             if fileNames.isEmpty || other.fileNames.isEmpty { return true }
             return !fileNames.isDisjoint(with: other.fileNames)
         }
+    }
+
+    private func artifactRequest(for variant: LLMVariant,
+                                 fileNames: Set<String>? = nil) -> DownloadRequest {
+        DownloadRequest(repoID: variant.source.huggingFaceRepo,
+                        revision: variant.source.revision,
+                        fileNames: fileNames ?? Set(variant.requiredFileNames))
+    }
+
+    private func conflictsWithPendingDeletion(_ request: DownloadRequest) -> Bool {
+        pendingDeletionRequests.values.contains { $0.conflicts(with: request) }
+    }
+
+    /// Claim a total order for a load/suspend intent. Wrapping is harmless in practice (one process would
+    /// need 2^64 model lifecycle events), and avoids making lifecycle calls unexpectedly throwable.
+    private func nextResidencyIntent() -> UInt64 {
+        residencyIntentCounter &+= 1
+        return residencyIntentCounter
     }
 
     public init(engine: any LLMEngine,
@@ -432,6 +500,7 @@ public final class ModelManager {
     @discardableResult
     public func restoreSelection(_ model: LLMModel, variant: LLMVariant) -> LoadedModel? {
         guard !isErasingDownloadedData, installed.contains(variant.id) else { return nil }
+        guard !conflictsWithPendingDeletion(artifactRequest(for: variant)) else { return nil }
         // Repointing the selection while the engine really holds another model's weights would make
         // `engineResident` a lie; changing a live selection is `activate`'s job, not this one's.
         guard !engineResident else { return nil }
@@ -499,6 +568,7 @@ public final class ModelManager {
     /// Run one engine mutation on the lane. The work runs in a tracked child task so `eraseDownloadedData`
     /// can cancel a load that is already inside the engine, and so a cancelled CALLER cancels it too.
     private func performModelOperation(
+        request: DownloadRequest? = nil,
         _ operation: @escaping @MainActor @Sendable () async throws -> LoadedModel?
     ) async throws -> LoadedModel? {
         try await beginModelOperation()
@@ -510,11 +580,13 @@ public final class ModelManager {
         let task = Task { @MainActor in try await operation() }
         modelOperationToken = token
         modelOperationTask = task
+        modelOperationRequest = request
         defer {
             // A later operation may already own the lane; only the owner clears it.
             if modelOperationToken == token {
                 modelOperationTask = nil
                 modelOperationToken = nil
+                modelOperationRequest = nil
                 switching = false
             }
         }
@@ -533,14 +605,24 @@ public final class ModelManager {
                          force: Bool = false) async throws -> LoadedModel {
         guard installed.contains(variant.id) else { throw ModelActivationError.notInstalled }
         try validateEngineAvailability(variant)
+        let loadRequest = artifactRequest(for: variant)
+        guard !conflictsWithPendingDeletion(loadRequest) else { throw CancellationError() }
+        let residencyIntent = nextResidencyIntent()
         // Published before the lane is taken: a queued activation must still show its spinner.
         activatingVariantID = variant.id
         loadProgress = nil
         defer { activatingVariantID = nil; loadProgress = nil }
 
-        let loaded = try await performModelOperation { [weak self] in
-            guard let self, installed.contains(variant.id) else { return nil }
-            if let active, active.variant.id == variant.id, engineResident { return active }
+        let loaded = try await performModelOperation(request: loadRequest) { [weak self] in
+            guard let self, installed.contains(variant.id),
+                  !conflictsWithPendingDeletion(loadRequest) else { return nil }
+            if let active, active.variant.id == variant.id, engineResident {
+                if residencyIntent < latestSuspendIntent {
+                    await engine.unload()
+                    engineResident = false
+                }
+                return active
+            }
             // Re-published inside the lane: a queued activation's spinner was cleared when the operation
             // ahead of it finished.
             activatingVariantID = variant.id
@@ -564,11 +646,22 @@ public final class ModelManager {
                 throw error
             }
             // An engine that ignores cancellation can still return normally after the swap was abandoned;
-            // publishing it here would resurrect a model the user already moved off.
-            if Task.isCancelled { throw CancellationError() }
+            // publishing it here would resurrect a model the user already moved off. It may nevertheless
+            // have installed a real context, so cancellation must explicitly unload it before returning.
+            if Task.isCancelled {
+                await engine.unload()
+                engineResident = false
+                throw CancellationError()
+            }
             let loaded = LoadedModel(model: model, variant: variant)
             active = loaded
             engineResident = true
+            // `suspend()` deliberately returns promptly while a load is non-cooperatively blocked. Its
+            // newer intent is consumed here, before this operation releases the mutation lane.
+            if residencyIntent < latestSuspendIntent {
+                await engine.unload()
+                engineResident = false
+            }
             return loaded
         }
         guard let loaded else { throw CancellationError() }
@@ -589,7 +682,12 @@ public final class ModelManager {
     /// Called when idle (app backgrounded / left the chat) so a 5 GB model doesn't hog memory — and, on
     /// the 8 GB phone, so iOS doesn't jetsam-kill the app in the background against a 5 GB footprint.
     public func suspend() async {
-        guard active != nil, engineResident, !switching, !isErasingDownloadedData else { return }
+        guard !isErasingDownloadedData else { return }
+        latestSuspendIntent = nextResidencyIntent()
+        // Do not await a non-cooperative load: lifecycle callers must be able to finish backgrounding.
+        // The in-flight (and any already-queued) load has an older intent and unloads itself on completion.
+        guard !switching else { return }
+        guard active != nil, engineResident else { return }
         _ = try? await performModelOperation { [weak self] in
             guard let self, active != nil, engineResident else { return nil }
             await engine.unload()
@@ -600,10 +698,24 @@ public final class ModelManager {
 
     /// Reload the active model if it was suspended (awaited right before generation).
     public func ensureResident(context: Int) async throws {
-        _ = try await performModelOperation { [weak self] in
+        guard !isErasingDownloadedData else { throw CancellationError() }
+        let residencyIntent = nextResidencyIntent()
+        guard let selected = active else { throw ModelActivationError.noSelection }
+        let loadRequest = artifactRequest(for: selected.variant)
+        guard !conflictsWithPendingDeletion(loadRequest) else { throw CancellationError() }
+        _ = try await performModelOperation(request: loadRequest) { [weak self] in
             guard let self else { return nil }
             guard let active else { throw ModelActivationError.noSelection }
-            guard !engineResident else { return active }
+            guard active.variant.id == selected.variant.id else { throw CancellationError() }
+            guard !conflictsWithPendingDeletion(loadRequest) else { throw CancellationError() }
+            if engineResident {
+                if residencyIntent < latestSuspendIntent {
+                    await engine.unload()
+                    engineResident = false
+                    throw CancellationError()
+                }
+                return active
+            }
             guard installed.contains(active.variant.id) else { throw ModelActivationError.notInstalled }
             try validateEngineAvailability(active.variant)
             try Task.checkCancellation()
@@ -616,8 +728,17 @@ public final class ModelManager {
                 await engine.unload()
                 throw error
             }
-            if Task.isCancelled { throw CancellationError() }
+            if Task.isCancelled {
+                await engine.unload()
+                engineResident = false
+                throw CancellationError()
+            }
             engineResident = true
+            if residencyIntent < latestSuspendIntent {
+                await engine.unload()
+                engineResident = false
+                throw CancellationError()
+            }
             return active
         }
     }
@@ -635,9 +756,7 @@ public final class ModelManager {
         // A writer that was asked to pause still owns its `.part` until it returns, and a deferred delete
         // keeps the same reservation — either way, resuming now would start a second writer for one file.
         guard downloadTasks[variantID] == nil, pendingDeletionTasks[variantID] == nil else { return }
-        let request = DownloadRequest(repoID: repoId,
-                                      revision: variant.source.revision,
-                                      fileNames: Set(variant.requiredFileNames))
+        let request = artifactRequest(for: variant)
         let blocked = downloadRequests.values.contains { $0.conflicts(with: request) }
             || pendingDeletionRequests.values.contains { $0.conflicts(with: request) }
         if blocked {
@@ -741,7 +860,12 @@ public final class ModelManager {
     /// create a second writer for the same `.part` file.
     public func pauseDownload(_ variant: LLMVariant) {
         guard !isErasingDownloadedData else { return }
-        let variantID = variant.id
+        requestDownloadPause(variant.id)
+    }
+
+    /// Internal id-scoped form used when deleting a sibling whose shared projector conflicts with a
+    /// different variant's writer.
+    private func requestDownloadPause(_ variantID: String) {
         guard let task = downloadTasks[variantID] else { return }
         downloadPauseRequests.insert(variantID)
         downloads[variantID]?.isPausing = true
@@ -766,8 +890,8 @@ public final class ModelManager {
     }
 
     /// Delete a variant's weights from disk (Models → delete with confirm). File-scoped for single-file
-    /// (GGUF) variants — removes just that file (+ any `.part`), so a shared repo's other files survive
-    /// — and whole-repo for flat MLX variants.
+    /// (GGUF) variants — removes just that variant's unshared files (+ any `.part`), so sibling weights and
+    /// shared projectors survive — and whole-repo for flat MLX variants.
     public func delete(_ variant: LLMVariant) {
         // Nothing of an OS-provided model is ours to delete: no weights, no directory. (The card offers no
         // delete for one — this keeps any other caller from removing a directory that isn't there, or
@@ -775,54 +899,125 @@ public final class ModelManager {
         guard !variant.isSystemProvided, !isErasingDownloadedData else { return }
         let variantID = variant.id
         guard pendingDeletionTasks[variantID] == nil else { return }
-        let runningDownload = downloadTasks[variantID]
-        let request = downloadRequests[variantID]
-            ?? DownloadRequest(repoID: variant.source.huggingFaceRepo,
-                               revision: variant.source.revision,
-                               fileNames: Set(variant.requiredFileNames))
-        if let runningDownload {
-            // Unlinking a `.part` under its live writer loses the file but not the writer: it keeps
-            // streaming into a deleted inode. Reserve the artifact, ask the writer to stop, and delete
-            // once it has really exited.
+        let requiredNames = variant.requiredFileNames
+        let fileNamesToDelete = requiredNames.isEmpty
+            ? []
+            : requiredNames.filter { !isFileClaimedBySibling($0, deleting: variant) }
+        // File-scoped variants always own at least their weight file. If a malformed catalog says every
+        // byte is shared, refusing the delete is safer than silently breaking every sibling that owns it.
+        guard requiredNames.isEmpty || !fileNamesToDelete.isEmpty else { return }
+        let request = artifactRequest(for: variant, fileNames: Set(fileNamesToDelete))
+        let conflictingDownloads = downloadRequests.compactMap { id, existing -> Task<Void, Never>? in
+            guard existing.conflicts(with: request) else { return nil }
+            return downloadTasks[id]
+        }
+        let conflictingDownloadIDs = downloadRequests.compactMap { id, existing in
+            existing.conflicts(with: request) ? id : nil
+        }
+        let conflictingDeletions = pendingDeletionRequests.compactMap { id, existing -> Task<Void, Never>? in
+            guard id != variantID, existing.conflicts(with: request) else { return nil }
+            return pendingDeletionTasks[id]
+        }
+        let conflictingModelOperation: Task<LoadedModel?, Error>? = {
+            guard modelOperationRequest?.conflicts(with: request) == true else { return nil }
+            return modelOperationTask
+        }()
+        if !conflictingDownloads.isEmpty || !conflictingDeletions.isEmpty || conflictingModelOperation != nil {
+            // The target's own writer, another request touching one of its exclusive bytes, or the engine
+            // reading those bytes must exit before unlink. Shared sibling-owned files were removed from the
+            // plan above, so an unrelated vision download keeps running.
             pendingDeletionRequests[variantID] = request
-            pauseDownload(variant)
+            conflictingDownloadIDs.forEach(requestDownloadPause)
+            conflictingModelOperation?.cancel()
             pendingDeletionTasks[variantID] = Task { @MainActor [weak self] in
-                _ = await runningDownload.value
+                for task in conflictingDownloads { await task.value }
+                for task in conflictingDeletions { await task.value }
+                if let conflictingModelOperation { _ = try? await conflictingModelOperation.value }
                 guard let self else { return }
                 defer {
                     pendingDeletionTasks[variantID] = nil
                     pendingDeletionRequests[variantID] = nil
                 }
                 guard !Task.isCancelled, !isErasingDownloadedData else { return }
-                deleteDownloadedFiles(variant)
+                deleteDownloadedFiles(variant, fileNames: fileNamesToDelete)
             }
             return
         }
-        deleteDownloadedFiles(variant)
+        deleteDownloadedFiles(variant, fileNames: fileNamesToDelete)
     }
 
-    private func deleteDownloadedFiles(_ variant: LLMVariant) {
+    /// A projector (or other auxiliary file) belongs to every variant that references it. Preserve it when
+    /// another installed, selected, in-progress, or resumable-on-disk sibling still has a live claim;
+    /// deleting one quant must not cancel that sibling's download, discard a cold `.part` recovered after
+    /// relaunch, or turn an installed vision model into a partial install.
+    private func isFileClaimedBySibling(_ fileName: String, deleting variant: LLMVariant) -> Bool {
+        allModels.lazy.flatMap(\.variants).contains { sibling in
+            guard sibling.id != variant.id,
+                  sibling.source.huggingFaceRepo == variant.source.huggingFaceRepo,
+                  sibling.requiredFileNames.contains(fileName),
+                  pendingDeletionRequests[sibling.id] == nil else { return false }
+            return installed.contains(sibling.id)
+                || downloads[sibling.id] != nil
+                // The file currently being allocated is shared evidence, not proof that this particular
+                // sibling owns it. Require another sibling-specific artifact (normally its GGUF weight or
+                // `.part`) so an untouched catalog sibling cannot make the last projector undeletable.
+                || hasLocalDownloadArtifacts(sibling, excludingFileNames: [fileName])
+                || active?.variant.id == sibling.id
+                || activatingVariantID == sibling.id
+        }
+    }
+
+    private func deleteDownloadedFiles(_ variant: LLMVariant, fileNames: [String]) {
         let variantID = variant.id
         let repoId = variant.source.huggingFaceRepo
         downloads[variantID] = nil
         let root = ModelDownloader(downloadBase: downloadBase).localURL(repoId: repoId)
-        let names = variant.requiredFileNames
-        if names.isEmpty {
+        if variant.requiredFileNames.isEmpty {
             try? FileManager.default.removeItem(at: root)   // flat MLX repo — remove the whole directory
         } else {
-            // File-scoped: remove each required file (GGUF weight + any mmproj) and its `.part`, so a
-            // shared repo's other files survive.
-            for name in names {
+            // File-scoped: remove each unshared target file and its `.part`; sibling-owned projectors were
+            // filtered out when the immutable deletion plan was created.
+            for name in fileNames {
                 let file = root.appending(component: name)
                 try? FileManager.default.removeItem(at: file)
                 try? FileManager.default.removeItem(at: file.appendingPathExtension("part"))
             }
         }
-        if active?.variant.id == variant.id { Task { await deactivate() } }
+        if active?.variant.id == variant.id {
+            // Selection invalidation is synchronous so headers/send gates cannot expose a deleted model.
+            // If its weights are still resident, queue cleanup; the guard prevents that cleanup from
+            // unloading a newer model that wins the lane before it runs.
+            active = nil
+            if engineResident {
+                let previous = invalidatedSelectionCleanupTask
+                invalidatedSelectionCleanupTask = Task { @MainActor [weak self] in
+                    await previous?.value
+                    await self?.unloadInvalidatedSelection()
+                }
+            }
+        }
         refreshInstalled()
         // Deleting the last installed variant of an adopted model drops it from the persisted registry
         // (persist keeps only models with weights still on disk); it stays in memory for this session.
         persistAdoptedRegistry()
+    }
+
+    private func unloadInvalidatedSelection() async {
+        _ = try? await performModelOperation { [weak self] in
+            guard let self else { return nil }
+            guard active == nil, engineResident else { return active }
+            await engine.unload()
+            engineResident = false
+            return nil
+        }
+    }
+
+    /// Drain cleanup that was synchronously scheduled by `delete`. Internal so deterministic lifecycle
+    /// regression tests can prove no stale cleanup unloads a newer winner without relying on timing.
+    func waitForInvalidatedSelectionCleanup() async -> Bool {
+        guard let task = invalidatedSelectionCleanupTask else { return false }
+        await task.value
+        return true
     }
 
     // MARK: - Destructive erase
@@ -947,10 +1142,13 @@ public final class ModelManager {
             failures.append("Adopted model registry: \(error.localizedDescription)")
         }
         // An injected writer may not be file-backed, so the registry files are removed explicitly too —
-        // including `DurableStore`'s atomic-write sibling, which a crash could have left behind.
+        // including `DurableStore`'s atomic-write and corruption-recovery siblings, either of which a
+        // crash/recovery could have left behind and both of which contain adopted-model metadata.
         let registryURL = downloadBase.appending(component: "adopted-models.json")
         let registryTempSibling = registryURL.appendingPathExtension("tmp")
-        for url in [registryURL, registryTempSibling] where FileManager.default.fileExists(atPath: url.path) {
+        let registryCorruptSibling = registryURL.appendingPathExtension("corrupt")
+        for url in [registryURL, registryTempSibling, registryCorruptSibling]
+            where FileManager.default.fileExists(atPath: url.path) {
             do {
                 try FileManager.default.removeItem(at: url)
             } catch {

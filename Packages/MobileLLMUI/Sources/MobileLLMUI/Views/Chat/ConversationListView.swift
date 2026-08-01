@@ -7,6 +7,7 @@ import AppUI
 /// swipe-delete-with-undo. Selecting a row activates it; `onSelect` lets iOS push the thread.
 struct ConversationListView: View {
     @Bindable var chat: ChatStore
+    var showsActiveSelection = true
     var onSelect: (UUID) -> Void = { _ in }
 
     @State private var query = ""
@@ -131,7 +132,7 @@ struct ConversationListView: View {
             .padding(.vertical, 2)
         }
         .buttonStyle(.plain)
-        .listRowBackground(convo.id == chat.activeID ? Theme.accentSoft : Color.clear)
+        .listRowBackground(showsActiveSelection && convo.id == chat.activeID ? Theme.accentSoft : Color.clear)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) { chat.delete(convo.id) } label: { Label("Delete", systemImage: "trash") }
                 .tint(Theme.danger)
@@ -155,7 +156,9 @@ struct ConversationListView: View {
 
     // MARK: Actions
 
-    private func startNew() { chat.newConversation() }
+    private func startNew() {
+        if let conversation = chat.newConversation() { onSelect(conversation.id) }
+    }
 
     private func beginRename(_ convo: Conversation) {
         renameText = convo.title

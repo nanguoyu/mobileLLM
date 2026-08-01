@@ -43,6 +43,13 @@ targets:
         "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": App/mobileLLM.entitlements
         "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/mobileLLM-macOS.entitlements
         SWIFT_VERSION: "6.0"
+        # The executable lives at the app root on iOS but under Contents/MacOS on macOS. Keep both
+        # runpaths so package frameworks embedded in the platform-standard Frameworks directory resolve
+        # when the built Mac app is launched outside Xcode as well as when the iPhone app launches.
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+          - "@executable_path/../Frameworks"
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         # App Store submission: declares no non-exempt encryption, so it skips the export-compliance prompt.

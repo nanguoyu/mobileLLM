@@ -79,6 +79,86 @@ private actor ControlledResidencyEngine: LLMEngine {
     }
 }
 
+/// Models a backend that notices neither Swift task cancellation nor backgrounding until its native
+/// context construction has finished. The manager must explicitly unload any context returned after the
+/// caller abandoned it.
+private actor NonCooperativeResidencyEngine: LLMEngine {
+    private var loadStarts = 0
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var residentVariantID: String?
+    private var unloads = 0
+
+    func load(model: LLMModel, variant: LLMVariant, weightsDir: URL,
+              progress: @escaping @Sendable (Double) -> Void) async throws {
+        loadStarts += 1
+        await withCheckedContinuation { continuation = $0 }
+        residentVariantID = variant.id
+        progress(1)
+    }
+
+    func unload() async {
+        unloads += 1
+        residentVariantID = nil
+    }
+
+    nonisolated func generate(messages: [ChatTurn], params: Sampling)
+        -> AsyncThrowingStream<EngineDelta, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+
+    func startedLoads() -> Int { loadStarts }
+    func residentID() -> String? { residentVariantID }
+    func unloadCount() -> Int { unloads }
+
+    func releaseLoad() {
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
+/// Holds the second unload of a hot swap. While it is blocked, ModelManager still truthfully reports A as
+/// resident, so deleting A must enqueue the exact invalidation cleanup whose post-swap behavior we test.
+private actor DeleteDuringSwitchEngine: LLMEngine {
+    private var loadStarts = 0
+    private var secondUnloadContinuation: CheckedContinuation<Void, Never>?
+    private var residentVariantID: String?
+    private var unloads = 0
+
+    func load(model: LLMModel, variant: LLMVariant, weightsDir: URL,
+              progress: @escaping @Sendable (Double) -> Void) async throws {
+        loadStarts += 1
+        residentVariantID = variant.id
+        progress(1)
+    }
+
+    func unload() async {
+        unloads += 1
+        if unloads == 2 {
+            await withCheckedContinuation { secondUnloadContinuation = $0 }
+        }
+        residentVariantID = nil
+    }
+
+    nonisolated func generate(messages: [ChatTurn], params: Sampling)
+        -> AsyncThrowingStream<EngineDelta, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+
+    func startedLoads() -> Int { loadStarts }
+    func residentID() -> String? { residentVariantID }
+    func unloadCount() -> Int { unloads }
+
+    func releaseSecondUnload() {
+        secondUnloadContinuation?.resume()
+        secondUnloadContinuation = nil
+    }
+}
+
+private struct ModelManagerWaitTimeout: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
 /// A cancellation-cooperative operation whose exit is controlled by the test. It models engine loads and
 /// download writers that observe cancellation but still need an asynchronous cleanup interval.
 private actor DelayedCancellationExit {
@@ -173,7 +253,9 @@ final class ModelManagerEngineTests: XCTestCase {
                                          timeout: TimeInterval = 3) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while models.isDownloading(variant) {
-            if Date() > deadline { throw XCTSkip("download did not finish in time") }
+            if Date() > deadline {
+                throw ModelManagerWaitTimeout(message: "download did not finish in time")
+            }
             try await Task.sleep(nanoseconds: 5_000_000)
         }
     }
@@ -182,7 +264,9 @@ final class ModelManagerEngineTests: XCTestCase {
                            timeout: TimeInterval = 3) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while !(await condition()) {
-            if Date() > deadline { throw XCTSkip("timed out waiting for deterministic test state") }
+            if Date() > deadline {
+                throw ModelManagerWaitTimeout(message: "timed out waiting for deterministic test state")
+            }
             try await Task.sleep(nanoseconds: 2_000_000)
         }
     }
@@ -378,6 +462,271 @@ final class ModelManagerEngineTests: XCTestCase {
         let actualResident = await engine.residentID()
         XCTAssertEqual(actualResident, second.id)
         XCTAssertFalse(models.switching)
+    }
+
+    func testCancelledNonCooperativeActivationUnloadsReturnedContext() async throws {
+        let engine = NonCooperativeResidencyEngine()
+        let model = LLMCatalog.bonsai8b
+        let variant = try XCTUnwrap(model.variant(engine: .llamaCpp, quant: .binary1bit))
+        let models = ModelManager(
+            engine: engine,
+            device: phone8,
+            downloadBase: tempBase(),
+            downloader: { _, _, _, progress in progress(1) },
+            installProbe: { _, _ in true },
+            availableMemory: { .max }
+        )
+        models.refreshInstalled()
+
+        let activation = Task { @MainActor in
+            try await models.activate(model, variant: variant, context: 2_048)
+        }
+        try await waitUntil { await engine.startedLoads() == 1 }
+        activation.cancel()
+        await engine.releaseLoad()
+
+        do {
+            _ = try await activation.value
+            XCTFail("a cancelled activation must not report success")
+        } catch is CancellationError {
+            // expected
+        }
+        XCTAssertFalse(models.engineResident)
+        let actualResident = await engine.residentID()
+        XCTAssertNil(actualResident,
+                     "a native loader returning after cancellation must be explicitly unloaded")
+        let unloads = await engine.unloadCount()
+        XCTAssertGreaterThanOrEqual(unloads, 2,
+                                    "swap cleanup unloads the predecessor and the abandoned new context")
+    }
+
+    func testCancelledNonCooperativeEnsureResidentUnloadsReturnedContext() async throws {
+        let engine = NonCooperativeResidencyEngine()
+        let model = LLMCatalog.bonsai8b
+        let variant = try XCTUnwrap(model.variant(engine: .llamaCpp, quant: .binary1bit))
+        let models = ModelManager(
+            engine: engine,
+            device: phone8,
+            downloadBase: tempBase(),
+            downloader: { _, _, _, progress in progress(1) },
+            installProbe: { _, _ in true },
+            availableMemory: { .max }
+        )
+        models.refreshInstalled()
+        XCTAssertNotNil(models.restoreSelection(model, variant: variant))
+
+        let residency = Task { @MainActor in try await models.ensureResident(context: 2_048) }
+        try await waitUntil { await engine.startedLoads() == 1 }
+        residency.cancel()
+        await engine.releaseLoad()
+
+        do {
+            try await residency.value
+            XCTFail("a cancelled residency restore must not report success")
+        } catch is CancellationError {
+            // expected
+        }
+        XCTAssertEqual(models.active?.variant.id, variant.id,
+                       "cancellation keeps the cold selection available for a future retry")
+        XCTAssertFalse(models.engineResident)
+        let actualResident = await engine.residentID()
+        XCTAssertNil(actualResident)
+    }
+
+    func testSuspendRequestedDuringActivationAppliesAfterNonCooperativeLoad() async throws {
+        let engine = NonCooperativeResidencyEngine()
+        let model = LLMCatalog.bonsai8b
+        let variant = try XCTUnwrap(model.variant(engine: .llamaCpp, quant: .binary1bit))
+        let models = ModelManager(
+            engine: engine,
+            device: phone8,
+            downloadBase: tempBase(),
+            downloader: { _, _, _, progress in progress(1) },
+            installProbe: { _, _ in true },
+            availableMemory: { .max }
+        )
+        models.refreshInstalled()
+
+        let activation = Task { @MainActor in
+            try await models.activate(model, variant: variant, context: 2_048)
+        }
+        try await waitUntil { await engine.startedLoads() == 1 }
+        await models.suspend()
+        await engine.releaseLoad()
+        _ = try await activation.value
+
+        XCTAssertEqual(models.active?.variant.id, variant.id,
+                       "backgrounding keeps selection for lazy reload")
+        XCTAssertFalse(models.engineResident,
+                       "a suspend requested during load must apply before the lane is released")
+        let actualResident = await engine.residentID()
+        XCTAssertNil(actualResident)
+    }
+
+    func testSuspendRequestedDuringEnsureResidentDoesNotReportReady() async throws {
+        let engine = NonCooperativeResidencyEngine()
+        let model = LLMCatalog.bonsai8b
+        let variant = try XCTUnwrap(model.variant(engine: .llamaCpp, quant: .binary1bit))
+        let models = ModelManager(
+            engine: engine,
+            device: phone8,
+            downloadBase: tempBase(),
+            downloader: { _, _, _, progress in progress(1) },
+            installProbe: { _, _ in true },
+            availableMemory: { .max }
+        )
+        models.refreshInstalled()
+        XCTAssertNotNil(models.restoreSelection(model, variant: variant))
+
+        let residency = Task { @MainActor in try await models.ensureResident(context: 2_048) }
+        try await waitUntil { await engine.startedLoads() == 1 }
+        await models.suspend()
+        await engine.releaseLoad()
+
+        do {
+            try await residency.value
+            XCTFail("ensureResident must not report ready after a newer suspend wins")
+        } catch is CancellationError {
+            // Expected: the caller must stop before generation against an unloaded engine.
+        }
+        XCTAssertEqual(models.active?.variant.id, variant.id)
+        XCTAssertFalse(models.engineResident)
+        let actualResident = await engine.residentID()
+        XCTAssertNil(actualResident)
+    }
+
+    func testDeletingVariantDuringNonCooperativeActivationDrainsBeforeUnlinkAndNeverPublishesIt() async throws {
+        let engine = NonCooperativeResidencyEngine()
+        let model = LLMCatalog.bonsai8b
+        let variant = try XCTUnwrap(model.variant(engine: .llamaCpp, quant: .binary1bit))
+        let base = tempBase()
+        let root = ModelDownloader(downloadBase: base).localURL(repoId: variant.source.huggingFaceRepo)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let weight = root.appending(component: try XCTUnwrap(variant.source.fileName))
+        try Data("weights".utf8).write(to: weight)
+        let models = ModelManager(
+            engine: engine,
+            device: phone8,
+            downloadBase: base,
+            downloader: { _, _, _, progress in progress(1) },
+            installProbe: { candidate, _ in
+                guard let name = candidate.source.fileName else { return false }
+                return FileManager.default.fileExists(atPath: root.appending(component: name).path)
+            },
+            availableMemory: { .max }
+        )
+        models.refreshInstalled()
+
+        let activation = Task { @MainActor in
+            try await models.activate(model, variant: variant, context: 2_048)
+        }
+        try await waitUntil { await engine.startedLoads() == 1 }
+        models.delete(variant)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: weight.path),
+                      "delete must wait while the engine still owns the model bytes")
+        await engine.releaseLoad()
+
+        do {
+            _ = try await activation.value
+            XCTFail("deleting the loading target must cancel its activation")
+        } catch is CancellationError {
+            // expected
+        }
+        try await waitUntil {
+            !FileManager.default.fileExists(atPath: weight.path) && !models.switching
+        }
+        XCTAssertNil(models.active)
+        XCTAssertFalse(models.engineResident)
+        let actualResident = await engine.residentID()
+        XCTAssertNil(actualResident)
+    }
+
+    func testDeletingVariantDuringNonCooperativeEnsureResidentCannotLeaveGhostResidency() async throws {
+        let engine = NonCooperativeResidencyEngine()
+        let model = LLMCatalog.bonsai8b
+        let variant = try XCTUnwrap(model.variant(engine: .llamaCpp, quant: .binary1bit))
+        let base = tempBase()
+        let root = ModelDownloader(downloadBase: base).localURL(repoId: variant.source.huggingFaceRepo)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let weight = root.appending(component: try XCTUnwrap(variant.source.fileName))
+        try Data("weights".utf8).write(to: weight)
+        let models = ModelManager(
+            engine: engine,
+            device: phone8,
+            downloadBase: base,
+            downloader: { _, _, _, progress in progress(1) },
+            installProbe: { candidate, _ in
+                guard let name = candidate.source.fileName else { return false }
+                return FileManager.default.fileExists(atPath: root.appending(component: name).path)
+            },
+            availableMemory: { .max }
+        )
+        models.refreshInstalled()
+        XCTAssertNotNil(models.restoreSelection(model, variant: variant))
+
+        let residency = Task { @MainActor in try await models.ensureResident(context: 2_048) }
+        try await waitUntil { await engine.startedLoads() == 1 }
+        models.delete(variant)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: weight.path))
+        await engine.releaseLoad()
+
+        do {
+            try await residency.value
+            XCTFail("deleting the cold selection must cancel its resident load")
+        } catch is CancellationError {
+            // expected
+        }
+        try await waitUntil {
+            !FileManager.default.fileExists(atPath: weight.path) && !models.switching
+        }
+        XCTAssertNil(models.active)
+        XCTAssertFalse(models.engineResident)
+        let actualResident = await engine.residentID()
+        XCTAssertNil(actualResident,
+                     "a native context returned after deletion must be explicitly unloaded")
+    }
+
+    func testDeletingOldSelectionDuringHotSwapDoesNotUnloadWinner() async throws {
+        let engine = DeleteDuringSwitchEngine()
+        let firstModel = LLMCatalog.bonsai4b
+        let first = try XCTUnwrap(firstModel.variant(engine: .llamaCpp, quant: .binary1bit))
+        let secondModel = LLMCatalog.bonsai8b
+        let second = try XCTUnwrap(secondModel.variant(engine: .llamaCpp, quant: .binary1bit))
+        let models = ModelManager(
+            engine: engine,
+            device: phone8,
+            downloadBase: tempBase(),
+            downloader: { _, _, _, progress in progress(1) },
+            installProbe: { _, _ in true },
+            availableMemory: { .max }
+        )
+        models.refreshInstalled()
+        _ = try await models.activate(firstModel, variant: first, context: 2_048)
+
+        let swap = Task { @MainActor in
+            try await models.activate(secondModel, variant: second, context: 2_048)
+        }
+        try await waitUntil { await engine.unloadCount() == 2 }
+        XCTAssertTrue(models.engineResident,
+                      "the blocked unload must leave A resident so delete enqueues invalidation cleanup")
+        models.delete(first)
+        XCTAssertNil(models.active,
+                     "the deleted selection must disappear synchronously while the replacement loads")
+        await engine.releaseSecondUnload()
+        _ = try await swap.value
+
+        // Drain the exact non-nil cleanup task captured synchronously by delete. A fixed number of actor
+        // yields can assert before a stale cleanup finally wins the mutation lane and makes this race green.
+        let drainedCleanup = await models.waitForInvalidatedSelectionCleanup()
+        XCTAssertTrue(drainedCleanup, "the test must exercise a real queued invalidation cleanup")
+        XCTAssertEqual(models.active?.variant.id, second.id)
+        XCTAssertTrue(models.engineResident)
+        let actualResident = await engine.residentID()
+        XCTAssertEqual(actualResident, second.id,
+                       "cleanup for deleted A must never issue an unconditional deactivate after B wins")
+        let unloads = await engine.unloadCount()
+        XCTAssertEqual(unloads, 2,
+                       "only the two intentional swap unloads may run; no delayed delete cleanup is allowed")
     }
 
     func testEnsureResidentWithoutSelectionFailsBeforeTouchingEngine() async {

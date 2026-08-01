@@ -51,7 +51,14 @@ public final class ChatStore {
 
     /// The in-memory mirror of live conversations, newest first (pinned on top).
     public internal(set) var conversations: [Conversation] = []
-    public var activeID: UUID?
+    public var activeID: UUID? {
+        didSet {
+            // Every navigation path — row selection, back, delete fallback, Undo, erase — invalidates the
+            // previous conversation's asynchronous model restore. Keeping this at the state boundary avoids
+            // one forgotten assignment letting a slow native load switch models after the user moved on.
+            if activeID != oldValue { cancelModelRestore?() }
+        }
+    }
     public var draft: String = ""
     /// Live in-flight turn; `nil` when idle.
     public private(set) var streaming: StreamingState?
@@ -140,6 +147,10 @@ public final class ChatStore {
     /// Raised before an erase drains generation + autosaves. New mutations may still update transient UI,
     /// but no new conversation snapshot is allowed to enter the durable store until the erase finishes.
     private var conversationEraseInProgress = false
+    /// Optimistically removed conversations stay excluded from any older launch-time disk snapshot. A
+    /// `loadAllLive()` begun before the tombstone write can otherwise reinsert a chat after the user deleted
+    /// it. IDs leave this set only when delete fails, Undo succeeds, or a full erase resets the session.
+    private var locallyRemovedConversationIDs: Set<UUID> = []
     /// Settings can be open in more than one macOS window. Each erase request owns a reservation so an
     /// earlier failing request cannot reopen persistence while another window is still deleting files.
     private var conversationEraseReservations = 0
@@ -183,17 +194,37 @@ public final class ChatStore {
     // MARK: - Loading
 
     /// Hydrate the conversation LIST from disk (call once at launch). Launch deliberately has no active
-    /// thread: the user must select history, create a chat, or send from the blank detail before a
-    /// conversation is entered. Sweeps stale tombstones first so a deleted chat doesn't survive on disk
-    /// past its retention window (DESIGN §2.4 — the privacy promise).
+    /// thread unless the user has already entered or created one while bootstrap was awaiting another
+    /// store. In that case the live mirror wins per id and its selection is preserved: launch hydration
+    /// must never navigate the user back out of work they already started. Sweeps stale tombstones first
+    /// so a deleted chat doesn't survive on disk past its retention window (DESIGN §2.4 — the privacy
+    /// promise).
     public func load() async {
         guard !conversationEraseInProgress else { return }
         let epoch = persistenceEpoch
         await store.sweepExpiredTombstones(olderThan: Self.tombstoneRetention)
         let loaded = await store.loadAllLive().sorted(by: Self.recency)
         guard persistenceEpoch == epoch, !conversationEraseInProgress else { return }
-        conversations = loaded
-        activeID = nil
+
+        // The main actor is re-entrant across the store awaits above. A user can therefore create/select
+        // a thread while bootstrap is still reading memory or conversations. Merge at the commit point,
+        // preferring the live value for duplicate ids, instead of replacing the mirror with an older disk
+        // snapshot. On an ordinary cold launch `conversations` and `activeID` are empty, so this reduces to
+        // the original "load history, select nothing" behavior.
+        commitLoadedConversations(loaded)
+    }
+
+    /// Commit a launch snapshot against the current live mirror. Internal so the stale-snapshot contract can
+    /// be tested deterministically without adding timing hooks to the durable ConversationStore actor.
+    func commitLoadedConversations(_ loaded: [Conversation]) {
+        let live = conversations
+        let liveIDs = Set(live.map(\.id))
+        conversations = (live + loaded.filter {
+            !liveIDs.contains($0.id) && !locallyRemovedConversationIDs.contains($0.id)
+        }).sorted(by: Self.recency)
+        if let selected = activeID, !conversations.contains(where: { $0.id == selected }) {
+            activeID = nil
+        }
     }
 
     private static func recency(_ a: Conversation, _ b: Conversation) -> Bool {
@@ -253,6 +284,8 @@ public final class ChatStore {
     @discardableResult
     public func newConversation() -> Conversation? {
         guard !conversationEraseInProgress else { return nil }
+        // New Chat is an explicit intent even when it reuses the one empty placeholder and activeID does
+        // not change; any historical restore attached to that placeholder is no longer authoritative.
         cancelModelRestore?()
         if let existing = conversations.first(where: { $0.messages.isEmpty }),
            let i = conversations.firstIndex(where: { $0.id == existing.id }) {
@@ -290,7 +323,10 @@ public final class ChatStore {
 
     public func select(_ id: UUID) {
         guard !conversationEraseInProgress else { return }
-        cancelModelRestore?()
+        guard conversations.contains(where: { $0.id == id }) else { return }
+        // A list-row tap is immediately followed by ChatDetailView.onAppear on compact navigation. The
+        // activeID observer cancels only when the row truly changes; the shell-level restore request then
+        // makes the pair share one engine load.
         activeID = id
         restoreConversationModelIfNeeded()
     }
@@ -347,6 +383,7 @@ public final class ChatStore {
         if succeeded {
             conversations = []
             activeID = nil
+            locallyRemovedConversationIDs.removeAll()
         }
         if succeeded || resetSessionState {
             draft = ""
@@ -396,8 +433,12 @@ public final class ChatStore {
     public func delete(_ id: UUID) {
         guard let removed = conversations.first(where: { $0.id == id }) else { return }
         let previousActive = activeID
+        locallyRemovedConversationIDs.insert(id)
         conversations.removeAll { $0.id == id }
-        if activeID == id { activeID = conversations.first?.id }
+        if activeID == id {
+            activeID = conversations.first?.id
+            restoreConversationModelIfNeeded()
+        }
         // Optimistic: offer Undo instantly. The disk write + failure-rollback happen behind it.
         showToast(Toast("Conversation deleted", actionTitle: "Undo", autoDismiss: Self.undoWindow),
                   action: { [weak self] in self?.restore(removed) })
@@ -413,9 +454,11 @@ public final class ChatStore {
                 // Roll the mirror back — disk still has it live, so the list must too (guarded so a race
                 // with a just-tapped Undo can't double-insert it).
                 if !self.conversations.contains(where: { $0.id == id }) {
+                    self.locallyRemovedConversationIDs.remove(id)
                     self.conversations.append(removed)
                     self.conversations.sort(by: Self.recency)
                     self.activeID = previousActive
+                    self.restoreConversationModelIfNeeded()
                 }
                 self.showToast(Toast("Couldn't delete the conversation.", kind: .error, autoDismiss: 4))
             }
@@ -429,9 +472,11 @@ public final class ChatStore {
             do {
                 try await self.store.restore(convo.id)   // only re-add on success, else mirror/disk diverge
                 guard self.persistenceEpoch == epoch, !self.conversationEraseInProgress else { return }
+                self.locallyRemovedConversationIDs.remove(convo.id)
                 self.conversations.append(convo)
                 self.conversations.sort(by: Self.recency)
                 self.activeID = convo.id
+                self.restoreConversationModelIfNeeded()
             } catch {
                 guard self.persistenceEpoch == epoch, !self.conversationEraseInProgress else { return }
                 self.showToast(Toast("Couldn't restore the conversation.", kind: .error, autoDismiss: 4))

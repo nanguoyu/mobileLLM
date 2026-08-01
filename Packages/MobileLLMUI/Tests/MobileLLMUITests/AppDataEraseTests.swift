@@ -64,6 +64,8 @@ final class AppDataEraseTests: XCTestCase {
         try Data("outside models root".utf8).write(to: outsideModelRoot)
         let registryURL = downloadBase.appending(component: "adopted-models.json")
         try await DurableStore<LLMModel>(fileURL: registryURL).save([LLMCatalog.bonsai8b])
+        let corruptRegistryURL = registryURL.appendingPathExtension("corrupt")
+        try Data("private adopted model metadata".utf8).write(to: corruptRegistryURL)
 
         container.settings.systemPrompt = "private prompt"
         container.settings.toolsEnabled = true
@@ -85,6 +87,8 @@ final class AppDataEraseTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: outsideModelRoot.path),
                       "model erasure is confined to downloadBase/models")
         XCTAssertTrue(remainingRegistry.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: corruptRegistryURL.path),
+                       "erase-all must remove DurableStore's forensic adopted-model backup too")
         XCTAssertNil(container.models.active)
         XCTAssertEqual(container.settings.systemPrompt, SystemPrompt.standard)
         XCTAssertFalse(container.settings.toolsEnabled)
