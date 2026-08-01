@@ -22,8 +22,13 @@
     },
     {
       "id": "AHT-INFRA-003", "title": "Validate semantic registries and declared completeness", "status": "active", "kind": "manifest", "riskTier": "P0",
-      "requirementIDs": ["AH-INFRA-004"], "selectors": [{ "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testCheckedInRegistriesAndFixturesPassSemanticVerification" }], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Registry schema, cardinality, uniqueness, and traceability report"], "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
+      "requirementIDs": ["AH-INFRA-004"], "selectors": [
+        { "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testCheckedInRegistriesAndFixturesPassSemanticVerification" },
+        { "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testSemanticDecisionRegistriesRejectGapsConflictsDeadRulesAndUnknownDomains" },
+        { "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testSemanticDecisionRegistriesRejectCommandAndApprovalSecurityDrift" },
+        { "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testSemanticDecisionRegistryOrderingIsIrrelevantAndEvidenceMatchesExpansion" }
+      ], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
+      "requiredEvidence": ["Finite cell/rule/winner counts plus negative gap, conflict, dead-rule, domain, command-drift, and approval-security results"], "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
     },
     {
       "id": "AHT-INFRA-004", "title": "Validate deterministic model and app-container fixtures", "status": "active", "kind": "manifest", "riskTier": "P1",
@@ -58,13 +63,13 @@
       "requiredEvidence": ["Forbidden symbol, dependency, and entitlement scan"], "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
     },
     {
-      "id": "AHT-CONTRACT-001", "title": "Round-trip and isolate every durable identifier", "status": "planned", "kind": "contract", "riskTier": "P0",
-      "requirementIDs": ["AH-IDENTITY-001"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
+      "id": "AHT-CONTRACT-001", "title": "Round-trip and isolate every durable identifier", "status": "active", "kind": "contract", "riskTier": "P0",
+      "requirementIDs": ["AH-IDENTITY-001"], "selectors": [{ "kind": "xctest", "value": "AgentContractsTests.IdentifiersVersioningAndWireTests/testStableIdentifierRoundTripsAndDomains" }], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
       "requiredEvidence": ["Golden encoding and malformed identifier results"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
     },
     {
-      "id": "AHT-CONTRACT-002", "title": "Validate public envelope version negotiation and wire stability", "status": "planned", "kind": "contract", "riskTier": "P0",
-      "requirementIDs": ["AH-IDENTITY-002"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
+      "id": "AHT-CONTRACT-002", "title": "Validate public envelope version negotiation and wire stability", "status": "active", "kind": "contract", "riskTier": "P0",
+      "requirementIDs": ["AH-IDENTITY-002"], "selectors": [{ "kind": "xctest", "value": "AgentContractsTests.IdentifiersVersioningAndWireTests/testVersionedEnvelopeCompatibilityAndGoldenWire" }], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
       "requiredEvidence": ["Golden envelopes and unsupported-major failures"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
     },
     {

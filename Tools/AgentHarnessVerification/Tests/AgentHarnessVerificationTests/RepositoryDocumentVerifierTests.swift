@@ -136,6 +136,143 @@ final class RepositoryDocumentVerifierTests: XCTestCase {
         XCTAssertTrue(diagnostics.contains { $0.code == "AHV-TESTPLAN-PROJECT" })
     }
 
+    // TEST-ID: AHT-INFRA-003
+    func testSemanticDecisionRegistriesRejectGapsConflictsDeadRulesAndUnknownDomains() throws {
+        let gap = try diagnosticsAfterRegistryMutation("run-transitions.v1.json") { object in
+            var entries = object["entries"] as! [[String: Any]]
+            entries.removeAll { $0["id"] as? String == "AH-TRANSITION-ADMISSION-008" }
+            object["entries"] = entries
+        }
+        XCTAssertTrue(gap.contains { $0.code == "AHV-REGISTRY-GAP" })
+
+        let conflict = try diagnosticsAfterRegistryMutation("run-transitions.v1.json") { object in
+            var entries = object["entries"] as! [[String: Any]]
+            var duplicate = entries.first {
+                $0["id"] as? String == "AH-TRANSITION-ADMISSION-008"
+            }!
+            duplicate["id"] = "AH-TRANSITION-ADMISSION-CONFLICT"
+            entries.append(duplicate)
+            object["entries"] = entries
+        }
+        XCTAssertTrue(conflict.contains { $0.code == "AHV-REGISTRY-PRIORITY-CONFLICT" })
+
+        let deadRule = try diagnosticsAfterRegistryMutation("run-transitions.v1.json") { object in
+            var entries = object["entries"] as! [[String: Any]]
+            var shadowed = entries.first {
+                $0["id"] as? String == "AH-TRANSITION-ADMISSION-001"
+            }!
+            shadowed["id"] = "AH-TRANSITION-ADMISSION-SHADOWED"
+            shadowed["priority"] = 1
+            entries.append(shadowed)
+            object["entries"] = entries
+        }
+        XCTAssertTrue(deadRule.contains { $0.code == "AHV-REGISTRY-DEAD-RULE" })
+
+        let unknownAxis = try diagnosticsAfterRegistryMutation("run-transitions.v1.json") { object in
+            var entries = object["entries"] as! [[String: Any]]
+            let index = entries.firstIndex {
+                $0["id"] as? String == "AH-TRANSITION-ADMISSION-001"
+            }!
+            entries[index]["conditions"] = ["wireValiditty": "malformed"]
+            object["entries"] = entries
+        }
+        XCTAssertTrue(unknownAxis.contains { $0.code == "AHV-REGISTRY-RULE-AXIS" })
+
+        let unknownValue = try diagnosticsAfterRegistryMutation("run-transitions.v1.json") { object in
+            var entries = object["entries"] as! [[String: Any]]
+            let index = entries.firstIndex {
+                $0["id"] as? String == "AH-TRANSITION-ADMISSION-001"
+            }!
+            entries[index]["conditions"] = ["wireValidity": "almostValid"]
+            object["entries"] = entries
+        }
+        XCTAssertTrue(unknownValue.contains { $0.code == "AHV-REGISTRY-RULE-VALUE" })
+
+        let missingValue = try diagnosticsAfterRegistryMutation("approval-decisions.v1.json") { object in
+            var domains = object["domains"] as! [[String: Any]]
+            let index = domains.firstIndex {
+                $0["table"] as? String == "authorization" && $0["name"] as? String == "authority"
+            }!
+            domains[index]["values"] = ["valid", "missingStepGrant", "outsideRunCeiling",
+                                         "planOutsideStepGrant"]
+            object["domains"] = domains
+        }
+        XCTAssertTrue(missingValue.contains { $0.code == "AHV-REGISTRY-DOMAIN-COVERAGE" })
+    }
+
+    // TEST-ID: AHT-INFRA-003
+    func testSemanticDecisionRegistriesRejectCommandAndApprovalSecurityDrift() throws {
+        let commandDrift = try diagnosticsAfterRegistryMutation("run-states.v1.json") { object in
+            var entries = object["entries"] as! [[String: Any]]
+            let index = entries.firstIndex { $0["name"] as? String == "created" }!
+            entries[index]["allowedUserCommands"] = ["cancel", "resume"]
+            object["entries"] = entries
+        }
+        XCTAssertTrue(commandDrift.contains { $0.code == "AHV-REGISTRY-COMMAND-DRIFT" })
+
+        let authorityExpansion = try diagnosticsAfterRegistryMutation("approval-decisions.v1.json") {
+            object in
+            var entries = object["entries"] as! [[String: Any]]
+            let index = entries.firstIndex {
+                $0["id"] as? String == "AH-APPROVAL-AUTHORITY-001"
+            }!
+            var outcome = entries[index]["outcome"] as! [String: Any]
+            outcome["decision"] = "authorizeLocalPolicy"
+            entries[index]["outcome"] = outcome
+            object["entries"] = entries
+        }
+        XCTAssertTrue(authorityExpansion.contains { $0.code == "AHV-REGISTRY-SECURITY" })
+
+        let backgroundPresentation = try diagnosticsAfterRegistryMutation(
+            "approval-decisions.v1.json"
+        ) { object in
+            var entries = object["entries"] as! [[String: Any]]
+            let index = entries.firstIndex {
+                $0["id"] as? String == "AH-APPROVAL-PRESENTATION-002"
+            }!
+            var outcome = entries[index]["outcome"] as! [String: Any]
+            outcome["runState"] = "waitingForForeground"
+            entries[index]["outcome"] = outcome
+            object["entries"] = entries
+        }
+        XCTAssertTrue(backgroundPresentation.contains { $0.code == "AHV-REGISTRY-SECURITY" })
+
+        let conversationWrite = try diagnosticsAfterRegistryMutation("approval-decisions.v1.json") {
+            object in
+            var entries = object["entries"] as! [[String: Any]]
+            let index = entries.firstIndex {
+                $0["id"] as? String == "AH-APPROVAL-AUTHORITY-018"
+            }!
+            var outcome = entries[index]["outcome"] as! [String: Any]
+            outcome["grantScope"] = "boundedConversationWrite"
+            entries[index]["outcome"] = outcome
+            object["entries"] = entries
+        }
+        XCTAssertTrue(conversationWrite.contains { $0.code == "AHV-REGISTRY-SECURITY" })
+    }
+
+    // TEST-ID: AHT-INFRA-003
+    func testSemanticDecisionRegistryOrderingIsIrrelevantAndEvidenceMatchesExpansion() throws {
+        let reordered = try diagnosticsAfterRegistryMutation("run-transitions.v1.json") { object in
+            object["domains"] = Array((object["domains"] as! [[String: Any]]).reversed())
+            object["entries"] = Array((object["entries"] as! [[String: Any]]).reversed())
+            object["enumerationEvidence"] = Array(
+                (object["enumerationEvidence"] as! [[String: Any]]).reversed()
+            )
+        }
+        XCTAssertTrue(reordered.isEmpty, reordered.map {
+            "\($0.location): [\($0.code)] \($0.message)"
+        }.joined(separator: "\n"))
+
+        let tamperedEvidence = try diagnosticsAfterRegistryMutation("run-transitions.v1.json") {
+            object in
+            var evidence = object["enumerationEvidence"] as! [[String: Any]]
+            evidence[0]["winningRuleCount"] = 999
+            object["enumerationEvidence"] = evidence
+        }
+        XCTAssertTrue(tamperedEvidence.contains { $0.code == "AHV-REGISTRY-EVIDENCE" })
+    }
+
     private func repositoryRoot() -> URL {
         var url = URL(fileURLWithPath: #filePath)
         for _ in 0..<5 { url.deleteLastPathComponent() }
@@ -150,5 +287,38 @@ final class RepositoryDocumentVerifierTests: XCTestCase {
             let object = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
             return object[key] as! String
         })
+    }
+
+    private func diagnosticsAfterRegistryMutation(
+        _ fileName: String, mutate: (inout [String: Any]) throws -> Void
+    ) throws -> [VerificationDiagnostic] {
+        let sourceRoot = repositoryRoot()
+        let temporaryRoot = FileManager.default.temporaryDirectory.appending(
+            path: "agent-harness-registry-\(UUID().uuidString)", directoryHint: .isDirectory
+        )
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+        let verificationRoot = temporaryRoot.appending(
+            path: "Verification/AgentHarness", directoryHint: .isDirectory
+        )
+        try FileManager.default.createDirectory(at: verificationRoot, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(
+            at: sourceRoot.appending(path: "Verification/AgentHarness/Registries"),
+            to: verificationRoot.appending(path: "Registries")
+        )
+        for manifest in ["requirements.v1.json", "tests.v1.json"] {
+            try FileManager.default.copyItem(
+                at: sourceRoot.appending(path: "Verification/AgentHarness/\(manifest)"),
+                to: verificationRoot.appending(path: manifest)
+            )
+        }
+        let target = verificationRoot.appending(path: "Registries/\(fileName)")
+        var object = try JSONSerialization.jsonObject(with: Data(contentsOf: target))
+            as! [String: Any]
+        try mutate(&object)
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: target, options: .atomic)
+        var diagnostics: [VerificationDiagnostic] = []
+        SemanticRegistryVerifier.verify(root: temporaryRoot, diagnostics: &diagnostics)
+        return diagnostics
     }
 }

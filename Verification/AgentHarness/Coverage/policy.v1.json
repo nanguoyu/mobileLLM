@@ -6,6 +6,7 @@
   "floors": [
     { "scope": "AgentContracts", "linePercent": 90, "functionPercent": 90, "baselineMayDecrease": false, "notes": "All hand-written executable production code." },
     { "scope": "AgentRuntime", "linePercent": 90, "functionPercent": 90, "baselineMayDecrease": false, "notes": "All hand-written executable production code." },
+    { "scope": "AgentSandboxAPI", "linePercent": 90, "functionPercent": 90, "baselineMayDecrease": false, "notes": "All executable public-contract validation and protocol-support code; the separate semantic inventory remains 100%." },
     { "scope": "security-critical-runtime-components", "linePercent": 95, "functionPercent": 100, "baselineMayDecrease": false, "notes": "State reducer, journal/CAS, approval/fingerprints, budgets, outbox, recovery, reconciliation, artifact confinement/deletion, lifecycle quiescence, and attenuation." },
     { "scope": "changed-agent-harness-lines-and-adapters", "linePercent": 90, "functionPercent": 90, "baselineMayDecrease": false, "notes": "Includes UI views, adapters, async error paths, and changed executable lines." }
   ],

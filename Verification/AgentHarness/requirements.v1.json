@@ -35,10 +35,10 @@
     {
       "id": "AH-INFRA-004", "area": "infrastructure", "title": "Semantic registries are complete and enumerable",
       "statement": "The run-state, transition, approval-decision, and stable-boundary registries are machine-enumerable and their declared completeness is verified.",
-      "status": "planned", "riskTier": "P0",
+      "status": "active", "riskTier": "P0",
       "specAnchors": [{ "section": "27.1", "heading": "Deterministic unit and property tests", "lineStart": 1075, "lineEnd": 1112 }],
       "platforms": ["all"], "verificationTiers": ["every-change", "pull-request", "nightly", "release-candidate"],
-      "testIDs": ["AHT-INFRA-003"], "requiredEvidence": ["Registry counts and duplicate/link checks"]
+      "testIDs": ["AHT-INFRA-003"], "requiredEvidence": ["Finite cell, rule, unique-winner, dead-rule, security-invariant, and cross-document registry report"]
     },
     {
       "id": "AH-INFRA-005", "area": "infrastructure", "title": "Deterministic fixtures are valid",
@@ -91,7 +91,7 @@
     {
       "id": "AH-IDENTITY-001", "area": "identity", "title": "Durable identities are strongly typed",
       "statement": "Runs, steps, requests, invocations, approvals, artifacts, events, handles, commands, messages, and conversations use non-interchangeable stable identifiers.",
-      "status": "planned", "riskTier": "P0",
+      "status": "active", "riskTier": "P0",
       "specAnchors": [{ "section": "7", "heading": "Core terminology and identity", "lineStart": 189, "lineEnd": 213 }],
       "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
       "testIDs": ["AHT-CONTRACT-001"], "requiredEvidence": ["ID round-trip, malformed input, and compile-time signature coverage"]
@@ -99,7 +99,7 @@
     {
       "id": "AH-IDENTITY-002", "area": "identity", "title": "Public envelopes are versioned",
       "statement": "Requests, commands, receipts, events, results, sandbox messages, and persisted payloads carry semantic protocol and payload versions and fail closed on unsupported major versions.",
-      "status": "planned", "riskTier": "P0",
+      "status": "active", "riskTier": "P0",
       "specAnchors": [{ "section": "6.1", "heading": "AgentContracts", "lineStart": 143, "lineEnd": 155 }, { "section": "9.2", "heading": "Minimum records", "lineStart": 346, "lineEnd": 361 }],
       "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
       "testIDs": ["AHT-CONTRACT-002"], "requiredEvidence": ["Golden wire fixtures and unsupported-version failures"]

@@ -9,6 +9,7 @@ enum RepositoryDocumentVerifier {
     }
 
     static func verify(root: URL, diagnostics: inout [VerificationDiagnostic]) {
+        ArchitectureBoundaryVerifier.verify(root: root, diagnostics: &diagnostics)
         let families = [
             DocumentFamily(
                 schema: "Verification/AgentHarness/Schemas/requirements.schema.json",
@@ -174,46 +175,7 @@ enum RepositoryDocumentVerifier {
 
     private static func validateRegistrySemantics(root: URL,
                                                   diagnostics: inout [VerificationDiagnostic]) {
-        let paths = repositoryFiles(root: root, directory: "Verification/AgentHarness/Registries",
-                                    extension: "json")
-        var registryTypes: Set<String> = []
-        for path in paths {
-            guard let object = loadJSON(path: path, root: root, diagnostics: &diagnostics) as? [String: Any],
-                  let type = object["registryType"] as? String,
-                  let entries = object["entries"] as? [[String: Any]] else { continue }
-            if !registryTypes.insert(type).inserted {
-                add(&diagnostics, "AHV-REGISTRY-DUPLICATE", path, "registry type \(type) is duplicated")
-            }
-            let ids = entries.compactMap { $0["id"] as? String }
-            if Set(ids).count != ids.count {
-                add(&diagnostics, "AHV-REGISTRY-ID-DUPLICATE", path,
-                    "registry entry identifiers must be unique")
-            }
-            if (type == "run-states" || type == "stable-boundary-faults"),
-               object["completeness"] as? String != "complete" {
-                add(&diagnostics, "AHV-REGISTRY-INCOMPLETE", path,
-                    "\(type) registry must be complete")
-            }
-            if type == "stable-boundary-faults" {
-                let keys = entries.compactMap { entry -> String? in
-                    guard let ordinal = (entry["boundaryOrdinal"] as? NSNumber)?.intValue,
-                          let phase = entry["phase"] as? String else { return nil }
-                    return "\(ordinal):\(phase)"
-                }
-                let expected = Set((1...10).flatMap { ["\($0):before", "\($0):after"] })
-                if Set(keys) != expected {
-                    add(&diagnostics, "AHV-REGISTRY-FAULT-COVERAGE", path,
-                        "fault registry must contain before and after for each stable boundary 1...10")
-                }
-            }
-        }
-        let expected: Set<String> = [
-            "run-states", "run-transitions", "approval-decisions", "stable-boundary-faults",
-        ]
-        if registryTypes != expected {
-            add(&diagnostics, "AHV-REGISTRY-DISCOVERY", "Verification/AgentHarness/Registries",
-                "registry types must equal \(expected.sorted().joined(separator: ", "))")
-        }
+        SemanticRegistryVerifier.verify(root: root, diagnostics: &diagnostics)
     }
 
     private static func validateCoverageDocuments(root: URL,

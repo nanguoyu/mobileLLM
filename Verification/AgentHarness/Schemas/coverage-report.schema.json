@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobilellm.local/schemas/agent-harness/coverage-report.v1.schema.json",
+  "title": "mobileLLM Agent Harness coverage report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "documentType", "scope", "succeeded", "generatedAtUTC", "inputs", "metrics", "files", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "documentType": { "const": "agent-harness-coverage-report" },
+    "scope": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" },
+    "succeeded": { "type": "boolean" },
+    "generatedAtUTC": { "type": "string", "format": "date-time" },
+    "inputs": { "$ref": "#/$defs/inputs" },
+    "metrics": { "$ref": "#/$defs/metrics" },
+    "files": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/file" }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    }
+  },
+  "$defs": {
+    "count": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "covered"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "covered": { "type": "integer", "minimum": 0 },
+        "percent": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRoot", "policyPath", "baselinePath", "reportSchemaPath", "criticalSources"],
+      "properties": {
+        "llvmCoverageType": { "const": "llvm.coverage.json.export" },
+        "llvmCoverageVersion": { "type": "string", "minLength": 1 },
+        "xunitSHA256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "sourceRoot": { "type": "string", "minLength": 1 },
+        "policyPath": { "type": "string", "minLength": 1 },
+        "baselinePath": { "type": "string", "minLength": 1 },
+        "reportSchemaPath": { "type": "string", "minLength": 1 },
+        "changedDiffSHA256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "criticalSources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tests", "target", "critical", "changedExecutableLines", "baseline"],
+      "properties": {
+        "tests": { "$ref": "#/$defs/tests" },
+        "target": { "$ref": "#/$defs/metricGroup" },
+        "critical": { "$ref": "#/$defs/critical" },
+        "changedExecutableLines": { "$ref": "#/$defs/changed" },
+        "baseline": { "$ref": "#/$defs/baseline" }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "tests", "failures", "errors", "skipped"],
+      "properties": {
+        "status": { "enum": ["measured", "empty", "missing-evidence"] },
+        "tests": { "type": "integer", "minimum": 0 },
+        "failures": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "metricGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lines", "functions"],
+      "properties": {
+        "lines": { "$ref": "#/$defs/count" },
+        "functions": { "$ref": "#/$defs/count" },
+        "requiredLinePercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "requiredFunctionPercent": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "critical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "lines", "functions", "matchedSources", "uncoveredFunctions"],
+      "properties": {
+        "status": { "enum": ["not-requested", "missing-evidence", "measured"] },
+        "lines": { "$ref": "#/$defs/count" },
+        "functions": { "$ref": "#/$defs/count" },
+        "requiredLinePercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "requiredFunctionPercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "matchedSources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "uncoveredFunctions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/function" }
+        }
+      }
+    },
+    "changed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "lines", "functions", "locations", "matchedFunctions"],
+      "properties": {
+        "status": { "enum": ["measured", "no-measurable-changes"] },
+        "lines": { "$ref": "#/$defs/count" },
+        "functions": { "$ref": "#/$defs/count" },
+        "requiredLinePercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "requiredFunctionPercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "locations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/line" }
+        },
+        "matchedFunctions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/function" }
+        }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["not-established", "missing-current-evidence", "compared"] },
+        "baselineLinePercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "baselineFunctionPercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "currentLinePercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "currentFunctionPercent": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "lines", "functions"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "lines": { "$ref": "#/$defs/count" },
+        "functions": { "$ref": "#/$defs/count" }
+      }
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "paths", "executionCount", "sourceRanges"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "executionCount": { "type": "integer", "minimum": 0 },
+        "sourceRanges": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/sourceRange" }
+        }
+      }
+    },
+    "sourceRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "startLine", "endLine"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line", "executionCount"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "executionCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "location", "message"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^AHV-[A-Z0-9]+(?:-[A-Z0-9]+)+$" },
+        "location": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

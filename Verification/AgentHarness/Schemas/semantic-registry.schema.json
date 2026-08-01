@@ -15,16 +15,35 @@
   "properties": {
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
-    "documentID": { "type": "string", "pattern": "^AH-REGISTRY-[A-Z0-9]+(?:-[A-Z0-9]+)*-V1$" },
+    "registryVersion": { "const": 1 },
+    "documentID": {
+      "type": "string",
+      "pattern": "^AH-REGISTRY-[A-Z0-9]+(?:-[A-Z0-9]+)*-V1$"
+    },
     "registryType": {
-      "enum": ["run-states", "run-transitions", "approval-decisions", "stable-boundary-faults"]
+      "enum": [
+        "run-states",
+        "run-transitions",
+        "approval-decisions",
+        "stable-boundary-faults"
+      ]
     },
     "completeness": { "enum": ["complete", "initial"] },
     "sourceSpecification": { "$ref": "#/$defs/sourceSpecification" },
+    "evaluationSemantics": { "$ref": "#/$defs/evaluationSemantics" },
     "domains": {
       "type": "array",
-      "items": { "$ref": "#/$defs/approvalDomain" }
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/finiteDomain" }
     },
+    "enumerationEvidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/enumerationEvidence" }
+    },
+    "effectNormalization": { "$ref": "#/$defs/effectNormalization" },
+    "requirementIDs": { "$ref": "#/$defs/traceability/properties/requirementIDs" },
+    "testIDs": { "$ref": "#/$defs/traceability/properties/testIDs" },
     "entries": { "type": "array", "minItems": 1 }
   },
   "allOf": [
@@ -33,23 +52,46 @@
       "then": {
         "properties": {
           "completeness": { "const": "complete" },
-          "entries": { "minItems": 16, "maxItems": 16, "items": { "$ref": "#/$defs/runState" } }
+          "entries": {
+            "minItems": 16,
+            "maxItems": 16,
+            "items": { "$ref": "#/$defs/runState" }
+          }
         }
       }
     },
     {
       "if": { "properties": { "registryType": { "const": "run-transitions" } } },
       "then": {
-        "properties": { "entries": { "items": { "$ref": "#/$defs/transition" } } }
+        "required": [
+          "registryVersion",
+          "evaluationSemantics",
+          "domains",
+          "enumerationEvidence",
+          "requirementIDs",
+          "testIDs"
+        ],
+        "properties": {
+          "completeness": { "const": "complete" },
+          "entries": { "items": { "$ref": "#/$defs/runTransitionRule" } }
+        }
       }
     },
     {
       "if": { "properties": { "registryType": { "const": "approval-decisions" } } },
       "then": {
-        "required": ["domains"],
+        "required": [
+          "registryVersion",
+          "evaluationSemantics",
+          "domains",
+          "enumerationEvidence",
+          "effectNormalization",
+          "requirementIDs",
+          "testIDs"
+        ],
         "properties": {
-          "domains": { "minItems": 1 },
-          "entries": { "items": { "$ref": "#/$defs/approvalRow" } }
+          "completeness": { "const": "complete" },
+          "entries": { "items": { "$ref": "#/$defs/approvalDecisionRule" } }
         }
       }
     },
@@ -58,14 +100,24 @@
       "then": {
         "properties": {
           "completeness": { "const": "complete" },
-          "entries": { "minItems": 20, "maxItems": 20, "items": { "$ref": "#/$defs/faultPoint" } }
+          "entries": {
+            "minItems": 20,
+            "maxItems": 20,
+            "items": { "$ref": "#/$defs/faultPoint" }
+          }
         }
       }
     }
   ],
   "$defs": {
-    "identifier": { "type": "string", "pattern": "^AH-[A-Z0-9]+(?:-[A-Z0-9]+)+$" },
-    "testIdentifier": { "type": "string", "pattern": "^AHT-[A-Z0-9]+(?:-[A-Z0-9]+)+$" },
+    "identifier": {
+      "type": "string",
+      "pattern": "^AH-[A-Z0-9]+(?:-[A-Z0-9]+)+$"
+    },
+    "testIdentifier": {
+      "type": "string",
+      "pattern": "^AHT-[A-Z0-9]+(?:-[A-Z0-9]+)+$"
+    },
     "sourceSpecification": {
       "type": "object",
       "additionalProperties": false,
@@ -80,6 +132,7 @@
     },
     "traceability": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["requirementIDs", "testIDs"],
       "properties": {
         "requirementIDs": {
@@ -93,6 +146,181 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/testIdentifier" }
+        }
+      }
+    },
+    "evaluationSemantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "precedence",
+        "noMatch",
+        "equalPriorityConflict",
+        "unknownDomainValue",
+        "deadRule"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "precedence": { "const": "higherPriorityWins" },
+        "noMatch": { "const": "denyAndEmitDiagnostic" },
+        "equalPriorityConflict": { "const": "registryInvalid" },
+        "unknownDomainValue": { "const": "denyAndEmitDiagnostic" },
+        "deadRule": { "const": "registryInvalid" }
+      }
+    },
+    "finiteDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["table", "name", "values"],
+      "properties": {
+        "table": { "$ref": "#/$defs/tableName" },
+        "name": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 100 }
+        }
+      }
+    },
+    "enumerationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["table", "cellCount", "ruleCount", "winningRuleCount"],
+      "properties": {
+        "table": { "$ref": "#/$defs/tableName" },
+        "cellCount": { "type": "integer", "minimum": 1 },
+        "ruleCount": { "type": "integer", "minimum": 1 },
+        "winningRuleCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "conditionMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      }
+    },
+    "runTransitionRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "table", "priority", "conditions", "outcome", "requirementIDs", "testIDs"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "table": {
+          "enum": [
+            "commandAdmission", "pauseCancelRouting", "resumeRouting", "approvalCommandRouting",
+            "responseCommandRouting", "reconciliationCommandRouting", "trustedProgressRouting",
+            "quiescenceRouting", "terminalFailureRouting"
+          ]
+        },
+        "priority": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "conditions": { "$ref": "#/$defs/conditionMap" },
+        "outcome": { "$ref": "#/$defs/runTransitionOutcome" },
+        "requirementIDs": { "$ref": "#/$defs/traceability/properties/requirementIDs" },
+        "testIDs": { "$ref": "#/$defs/traceability/properties/testIDs" }
+      }
+    },
+    "runTransitionOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disposition", "nextState", "terminalReason", "diagnostic"],
+      "properties": {
+        "disposition": {
+          "enum": ["proceed", "accepted", "replayOriginalReceipt", "stale", "rejected"]
+        },
+        "nextState": {
+          "oneOf": [{ "$ref": "#/$defs/runStateName" }, { "type": "null" }]
+        },
+        "terminalReason": {
+          "oneOf": [{ "$ref": "#/$defs/terminalReason" }, { "type": "null" }]
+        },
+        "diagnostic": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 100 },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "approvalDecisionRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "table", "priority", "conditions", "outcome", "requirementIDs", "testIDs"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "table": {
+          "enum": ["authorization", "approvalPresentation", "systemAccess", "retryAndTransportLoss"]
+        },
+        "priority": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "conditions": { "$ref": "#/$defs/conditionMap" },
+        "outcome": { "$ref": "#/$defs/approvalOutcome" },
+        "requirementIDs": { "$ref": "#/$defs/traceability/properties/requirementIDs" },
+        "testIDs": { "$ref": "#/$defs/traceability/properties/testIDs" }
+      }
+    },
+    "approvalOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision", "grantScope", "retryDirective", "uncertainOnTransportLoss", "runState", "diagnostic"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "authorizeLocalPolicy", "authorizeMatchingReceipt", "requireApproval", "deny",
+            "presentApproval", "deferApproval", "noPresentation", "continue",
+            "requestSystemPrompt", "waitForForeground", "complete", "retrySameOperation",
+            "failKnownNoEffect", "waitForReconciliation"
+          ]
+        },
+        "grantScope": { "enum": ["none", "exactInvocation", "boundedConversationRead"] },
+        "retryDirective": { "enum": ["none", "boundedExponential"] },
+        "uncertainOnTransportLoss": { "type": "boolean" },
+        "runState": {
+          "oneOf": [{ "$ref": "#/$defs/runStateName" }, { "type": "null" }]
+        },
+        "diagnostic": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$", "maxLength": 100 },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "effectNormalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputSemantics", "outputSemantics", "classes"],
+      "properties": {
+        "inputSemantics": { "const": "setOfTrustedObservedEffects" },
+        "outputSemantics": { "const": "highestRiskWins" },
+        "classes": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/effectNormalizationClass" }
+        }
+      }
+    },
+    "effectNormalizationClass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rank", "effectClass", "sourceEffects"],
+      "properties": {
+        "rank": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "effectClass": { "$ref": "#/$defs/effectClass" },
+        "sourceEffects": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 100 }
         }
       }
     },
@@ -118,69 +346,6 @@
         "testIDs": { "$ref": "#/$defs/traceability/properties/testIDs" }
       }
     },
-    "transition": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "from", "trigger", "guard", "legal", "to", "requirementIDs", "testIDs"],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "from": { "$ref": "#/$defs/runStateName" },
-        "trigger": { "type": "string", "minLength": 1, "maxLength": 100 },
-        "guard": { "type": "string", "minLength": 1, "maxLength": 300 },
-        "legal": { "type": "boolean" },
-        "to": { "oneOf": [{ "$ref": "#/$defs/runStateName" }, { "type": "null" }] },
-        "terminalReason": { "type": ["string", "null"], "maxLength": 80 },
-        "requirementIDs": { "$ref": "#/$defs/traceability/properties/requirementIDs" },
-        "testIDs": { "$ref": "#/$defs/traceability/properties/testIDs" }
-      },
-      "allOf": [
-        {
-          "if": { "properties": { "legal": { "const": false } } },
-          "then": { "properties": { "to": { "type": "null" } } }
-        }
-      ]
-    },
-    "approvalDomain": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "values"],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
-        "values": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": { "type": "string", "minLength": 1, "maxLength": 100 }
-        }
-      }
-    },
-    "approvalRow": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "id", "conditions", "decision", "grantScope", "automaticRetry", "uncertainOnTransportLoss",
-        "requirementIDs", "testIDs"
-      ],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "conditions": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 120 }
-        },
-        "decision": {
-          "enum": ["authorizeLocalPolicy", "authorizeMatchingReceipt", "requireApproval", "deny", "waitForForeground", "waitForReconciliation"]
-        },
-        "grantScope": {
-          "enum": ["none", "exactInvocation", "boundedConversationRead", "explicitReversibleConversationWrite"]
-        },
-        "automaticRetry": { "type": "boolean" },
-        "uncertainOnTransportLoss": { "type": "boolean" },
-        "requirementIDs": { "$ref": "#/$defs/traceability/properties/requirementIDs" },
-        "testIDs": { "$ref": "#/$defs/traceability/properties/testIDs" }
-      }
-    },
     "faultPoint": {
       "type": "object",
       "additionalProperties": false,
@@ -193,21 +358,45 @@
         "boundaryOrdinal": { "type": "integer", "minimum": 1, "maximum": 10 },
         "boundary": { "type": "string", "minLength": 1, "maxLength": 120 },
         "phase": { "enum": ["before", "after"] },
-        "injectedFailure": { "enum": ["processTermination", "writeFailure", "transactionRollback"] },
+        "injectedFailure": {
+          "enum": ["processTermination", "writeFailure", "transactionRollback"]
+        },
         "expectedRecovery": { "type": "string", "minLength": 1, "maxLength": 500 },
         "requirementIDs": { "$ref": "#/$defs/traceability/properties/requirementIDs" },
         "testIDs": { "$ref": "#/$defs/traceability/properties/testIDs" }
       }
     },
+    "tableName": {
+      "enum": [
+        "commandAdmission", "pauseCancelRouting", "resumeRouting", "approvalCommandRouting",
+        "responseCommandRouting", "reconciliationCommandRouting", "trustedProgressRouting",
+        "quiescenceRouting", "terminalFailureRouting", "authorization", "approvalPresentation",
+        "systemAccess", "retryAndTransportLoss"
+      ]
+    },
     "runStateName": {
       "enum": [
         "created", "preparing", "waitingForModel", "generating", "validatingAction",
         "waitingForApproval", "executingTools", "waitingForUser", "synthesizing", "pausing",
-        "paused", "waitingForForeground", "waitingForReconciliation", "completed", "failed", "cancelled"
+        "paused", "waitingForForeground", "waitingForReconciliation", "completed", "failed",
+        "cancelled"
       ]
     },
     "commandName": {
-      "enum": ["pause", "resume", "cancel", "approve", "deny", "respond", "reconcile"]
+      "enum": ["pause", "resume", "cancel", "decideApproval", "reconcile", "respond"]
+    },
+    "terminalReason": {
+      "enum": [
+        "completed", "cancelledByUser", "budgetExceeded", "noProgress", "permissionDenied",
+        "toolUnavailable", "modelUnavailable", "contextUnsatisfiable", "externalResultUncertain",
+        "internalFailure"
+      ]
+    },
+    "effectClass": {
+      "enum": [
+        "localPure", "appLocalRead", "appLocalWrite", "externalRead", "externalWrite",
+        "strongExact", "codeExecution", "unknownExternal"
+      ]
     }
   }
 }

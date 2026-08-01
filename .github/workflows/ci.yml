@@ -36,6 +36,7 @@ jobs:
           find Verification/AgentHarness -type f \( -name '*.json' -o -name '*.xctestplan' \) -print0 \
             | xargs -0 -n1 jq empty
           bash -n scripts/verification/reset-agent-test-container.sh
+          bash -n scripts/verification/run-agent-package-coverage.sh
 
       - name: Test the verification gate
         run: swift test --package-path Tools/AgentHarnessVerification
@@ -45,6 +46,58 @@ jobs:
           swift run --package-path Tools/AgentHarnessVerification
           agent-harness-verify static
           --repo-root "$GITHUB_WORKSPACE"
+
+  agent-contracts-coverage:
+    name: AgentContracts coverage evidence
+    needs: agent-harness-verification
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select latest stable Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          swift --version
+
+      - name: Resolve changed-lines base
+        id: coverage-base
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          zero_sha='0000000000000000000000000000000000000000'
+          if [[ -n "${PR_BASE_SHA:-}" ]] && git cat-file -e "${PR_BASE_SHA}^{commit}"; then
+            base_sha="$PR_BASE_SHA"
+          elif [[ -n "${PUSH_BEFORE_SHA:-}" && "$PUSH_BEFORE_SHA" != "$zero_sha" ]] \
+              && git cat-file -e "${PUSH_BEFORE_SHA}^{commit}"; then
+            base_sha="$PUSH_BEFORE_SHA"
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            base_sha="$(git rev-parse HEAD^)"
+          else
+            base_sha="$(git rev-parse HEAD)"
+          fi
+          echo "base-sha=$base_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Test once and enforce AgentContracts coverage
+        timeout-minutes: 18
+        run: |
+          bash scripts/verification/run-agent-package-coverage.sh \
+            --package AgentContracts \
+            --base-ref "${{ steps.coverage-base.outputs.base-sha }}" \
+            --output-dir "$RUNNER_TEMP/agent-contracts-coverage"
+
+      - name: Upload normalized coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-contracts-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/agent-contracts-coverage
+          if-no-files-found: error
+          retention-days: 14
 
   test:
     name: swift test (${{ matrix.package }})
@@ -76,7 +129,7 @@ jobs:
 
   build-app-and-engines:
     name: xcodebuild (app + engines)
-    needs: test
+    needs: [test, agent-contracts-coverage]
     runs-on: macos-15
     timeout-minutes: 90
     steps:
