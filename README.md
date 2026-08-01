@@ -185,6 +185,7 @@ brew install xcodegen cmake
 ./scripts/build-llama-xcframework.sh
 
 # 3. Signing — copy the template and add your Apple Developer Team ID (Signing.xcconfig is gitignored).
+#    The app bundle identifier is versioned in project.yml.
 cp Signing.xcconfig.example Signing.xcconfig
 
 # 4. Generate and open the project.

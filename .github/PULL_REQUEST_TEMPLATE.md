@@ -25,7 +25,7 @@
 ## Checklist
 
 - [ ] Tests added or updated for the changed behavior; existing tests not weakened without reason
-- [ ] No signing identifiers or secrets committed (no `Signing.xcconfig`, Team ID, real bundle id, tokens/keys)
+- [ ] No signing secrets committed (`Signing.xcconfig`, Team ID, tokens/keys); bundle-ID changes use `project.yml`
 - [ ] The five fast packages stay free of MLX/vendored binaries (engine code remains in its engine package)
 - [ ] Network changes validate redirects and resolved addresses, and enforce bounded response bodies
 - [ ] New Swift files start with `// SPDX-License-Identifier: MIT`; 4-space indent, existing idiom

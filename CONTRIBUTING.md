@@ -18,7 +18,7 @@ brew install xcodegen cmake
 ./scripts/build-llama-xcframework.sh
 
 # 3. Signing — copy the template and add your Apple Developer Team ID (Signing.xcconfig is gitignored;
-#    never commit a Team ID or bundle identifier).
+#    never commit a Team ID). The app bundle identifier is versioned in project.yml.
 cp Signing.xcconfig.example Signing.xcconfig
 
 # 4. Generate and open the project.
@@ -100,9 +100,9 @@ variants there by design; anything MLX is validated on real hardware.
 
 - **Tests stay green.** Add or update tests for the behavior you change; existing tests are pinned behavior
   — don't weaken or delete one unless the behavior changed by design, and say so if it did.
-- **No signing identifiers or secrets.** Never commit `Signing.xcconfig`, a Development Team ID, a real
-  bundle identifier, or any token/key. `Signing.xcconfig` and the generated `.xcodeproj` are gitignored;
-  keep it that way.
+- **No signing secrets.** Never commit `Signing.xcconfig`, a Development Team ID, or any token/key.
+  The app bundle identifier is intentionally versioned in `project.yml`; change it there rather than in
+  the generated `.xcodeproj`. Keep both `Signing.xcconfig` and the generated project gitignored.
 - **Match the existing idiom.** 4-space indent; `// SPDX-License-Identifier: MIT` as the first line of every
   new Swift file; comments state non-obvious constraints rather than narrating the code.
 - **Keep the MLX-free packages MLX-free.** Anything touching MLX belongs in `LLMEngineMLX`; anything touching
