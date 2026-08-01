@@ -3,13 +3,13 @@
   "schemaVersion": 1,
   "documentID": "AH-COVERAGE-BASELINE-V1",
   "documentType": "baseline",
-  "baselineCapturedAtCommit": "4dba0b6bcbe0b2260075c7544e4f4823e1e8a750",
+  "baselineCapturedAtCommit": "5bf8b9f5e1852da2b312805fb36895ac38f71fb6",
   "baselineStatus": "pending-first-measurement",
   "releaseGate": "blocked-until-established",
   "entries": [
-    { "scope": "AgentContracts", "status": "target-not-yet-present", "linePercent": null, "functionPercent": null, "reason": "The target does not exist at the pre-implementation baseline commit." },
+    { "scope": "AgentContracts", "status": "measured", "linePercent": 93.50737413120868, "functionPercent": 95.67164179104478, "reason": "Formal SwiftPM/LLVM evidence from the first committed AgentContracts implementation." },
     { "scope": "AgentRuntime", "status": "target-not-yet-present", "linePercent": null, "functionPercent": null, "reason": "The target does not exist at the pre-implementation baseline commit." },
     { "scope": "AgentSandboxAPI", "status": "target-not-yet-present", "linePercent": null, "functionPercent": null, "reason": "The target does not exist at the pre-implementation baseline commit; public contract coverage remains a semantic gate." },
-    { "scope": "changed-agent-harness-lines-and-adapters", "status": "no-change-set-yet", "linePercent": null, "functionPercent": null, "reason": "A diff denominator is established by the first production implementation commit." }
+    { "scope": "changed-agent-harness-lines-and-adapters", "status": "measured", "linePercent": 94.52465779111195, "functionPercent": 95.45454545454545, "reason": "Formal changed-source evidence against the pre-implementation merge base for the first AgentContracts implementation." }
   ]
 }
