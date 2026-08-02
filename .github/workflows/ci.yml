@@ -47,11 +47,17 @@ jobs:
           agent-harness-verify static
           --repo-root "$GITHUB_WORKSPACE"
 
-  agent-contracts-coverage:
-    name: AgentContracts coverage evidence
+  agent-package-coverage:
+    name: ${{ matrix.package }} coverage evidence
     needs: agent-harness-verification
     runs-on: macos-15
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - AgentContracts
+          - AgentSandboxAPI
     steps:
       - name: Checkout full history
         uses: actions/checkout@v4
@@ -82,20 +88,20 @@ jobs:
           fi
           echo "base-sha=$base_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Test once and enforce AgentContracts coverage
+      - name: Test once and enforce package coverage
         timeout-minutes: 18
         run: |
           bash scripts/verification/run-agent-package-coverage.sh \
-            --package AgentContracts \
+            --package "${{ matrix.package }}" \
             --base-ref "${{ steps.coverage-base.outputs.base-sha }}" \
-            --output-dir "$RUNNER_TEMP/agent-contracts-coverage"
+            --output-dir "$RUNNER_TEMP/agent-package-coverage"
 
       - name: Upload normalized coverage evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: agent-contracts-coverage-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/agent-contracts-coverage
+          name: ${{ matrix.package }}-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/agent-package-coverage
           if-no-files-found: error
           retention-days: 14
 
@@ -129,7 +135,7 @@ jobs:
 
   build-app-and-engines:
     name: xcodebuild (app + engines)
-    needs: [test, agent-contracts-coverage]
+    needs: [test, agent-package-coverage]
     runs-on: macos-15
     timeout-minutes: 90
     steps:

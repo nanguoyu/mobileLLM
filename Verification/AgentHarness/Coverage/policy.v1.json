@@ -15,7 +15,7 @@
     { "id": "AH-COVERAGE-SEMANTIC-002", "registry": "Registries/run-transitions.v1.json", "requiredPercent": 100 },
     { "id": "AH-COVERAGE-SEMANTIC-003", "registry": "Registries/approval-decisions.v1.json", "requiredPercent": 100 },
     { "id": "AH-COVERAGE-SEMANTIC-004", "registry": "Registries/stable-boundary-faults.v1.json", "requiredPercent": 100 },
-    { "id": "AH-COVERAGE-SEMANTIC-005", "registry": "AgentSandboxAPI-public-contract-inventory", "requiredPercent": 100 }
+    { "id": "AH-COVERAGE-SEMANTIC-005", "registry": "Packages/AgentSandboxAPI/Tests/AgentSandboxAPITests/Fixtures/public-contract-inventory.v1.json", "requiredPercent": 100 }
   ],
   "mutationGates": [
     { "id": "AH-MUTATION-001", "mutation": "invert an approval allow/deny decision", "mustBeKilled": true },

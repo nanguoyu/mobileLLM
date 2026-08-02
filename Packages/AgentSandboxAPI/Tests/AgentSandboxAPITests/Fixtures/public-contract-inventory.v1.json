@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "documentID": "AgentSandboxAPI-public-contract-inventory",
+  "documentType": "semantic-public-contract-inventory",
+  "families": [
+    {
+      "id": "feature",
+      "cases": [
+        { "id": "artifactOutput", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "cancellation", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "checkpointResume", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "codeExecution", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "filesystemRead", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "filesystemWrite", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "networkAccess", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "processExecution", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "progressEvents", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "structuredOutput", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "workspaceReuse", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] }
+      ]
+    },
+    {
+      "id": "status",
+      "cases": [
+        { "id": "accepted", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] },
+        { "id": "running", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] },
+        { "id": "cancellationRequested", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] },
+        { "id": "completed", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] },
+        { "id": "failed", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] },
+        { "id": "cancelled", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] }
+      ]
+    },
+    {
+      "id": "request",
+      "cases": [
+        { "id": "valid-round-trip", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testRequestRoundTripAndImmutableAuthorityBudgetBindings"] },
+        { "id": "protocol-version-binding", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testRequestRoundTripAndImmutableAuthorityBudgetBindings"] },
+        { "id": "authorization-binding", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testAuthorizationReferenceCannotBeRebound"] },
+        { "id": "required-feature-derivation", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testPublicContractInventoryExercisesCollectionAndCursorSemantics"] },
+        { "id": "unavailable-feature-rejected", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testRequestRoundTripAndImmutableAuthorityBudgetBindings"] },
+        { "id": "authority-expansion-rejected", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testRequestRejectsCapabilityAndBudgetExpansion"] },
+        { "id": "budget-expansion-rejected", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testRequestRejectsCapabilityAndBudgetExpansion"] },
+        { "id": "unscoped-artifact-rejected", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testRequestRejectsUnscopedArtifactAndSecretReferences"] },
+        { "id": "unscoped-secret-rejected", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testRequestRejectsUnscopedArtifactAndSecretReferences"] },
+        { "id": "fingerprint-tamper-rejected", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testRequestRoundTripAndImmutableAuthorityBudgetBindings"] },
+        { "id": "artifact-ordering", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testPublicContractInventoryExercisesCollectionAndCursorSemantics"] },
+        { "id": "derived-start-key", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testRequestRoundTripAndImmutableAuthorityBudgetBindings"] },
+        { "id": "raw-start-key", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testPublicContractInventoryExercisesCollectionAndCursorSemantics"] }
+      ]
+    },
+    {
+      "id": "command",
+      "cases": [
+        { "id": "action.cancel", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] },
+        { "id": "disposition.accepted", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] },
+        { "id": "disposition.stale", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] },
+        { "id": "disposition.rejected", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] },
+        { "id": "target-binding", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testCASIdempotentCommandsAndExplicitCancellation"] },
+        { "id": "expected-state-cas", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testCASIdempotentCommandsAndExplicitCancellation"] },
+        { "id": "idempotent-duplicate", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testCASIdempotentCommandsAndExplicitCancellation"] },
+        { "id": "idempotency-conflict", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testCASIdempotentCommandsAndExplicitCancellation"] },
+        { "id": "protocol-binding", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testCASIdempotentCommandsAndExplicitCancellation"] },
+        { "id": "explicit-cancellation", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testCASIdempotentCommandsAndExplicitCancellation"] },
+        { "id": "terminal-rejection", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testCASIdempotentCommandsAndExplicitCancellation"] },
+        { "id": "receipt-status-binding", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] },
+        { "id": "receipt-fingerprint-tamper-rejected", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryStatusCommandAndReceiptCaseIsValidatedAndRoundTrips"] }
+      ]
+    },
+    {
+      "id": "event",
+      "cases": [
+        { "id": "case.accepted", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryEventCaseBuildsAContinuousHashChainAndReplaysFromCursor"] },
+        { "id": "case.started", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryEventCaseBuildsAContinuousHashChainAndReplaysFromCursor"] },
+        { "id": "case.progress", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryEventCaseBuildsAContinuousHashChainAndReplaysFromCursor"] },
+        { "id": "case.audit", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryEventCaseBuildsAContinuousHashChainAndReplaysFromCursor"] },
+        { "id": "case.artifactProduced", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryEventCaseBuildsAContinuousHashChainAndReplaysFromCursor"] },
+        { "id": "case.checkpointCreated", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryEventCaseBuildsAContinuousHashChainAndReplaysFromCursor"] },
+        { "id": "case.commandProcessed", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryEventCaseBuildsAContinuousHashChainAndReplaysFromCursor"] },
+        { "id": "case.terminal", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryEventCaseBuildsAContinuousHashChainAndReplaysFromCursor"] },
+        { "id": "agent-cursor", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEveryEventCaseBuildsAContinuousHashChainAndReplaysFromCursor"] },
+        { "id": "sandbox-cursor", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testPublicContractInventoryExercisesCollectionAndCursorSemantics"] },
+        { "id": "invalid-cursor", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testInvalidCursorFailsInsideStreamWithoutMutatingExecution"] },
+        { "id": "hash-chain", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEventDigestSequenceAndTerminalPlacementFailClosed"] },
+        { "id": "sequence-continuity", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEventDigestSequenceAndTerminalPlacementFailClosed"] },
+        { "id": "protocol-binding", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEventDigestSequenceAndTerminalPlacementFailClosed"] },
+        { "id": "terminal-placement", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEventDigestSequenceAndTerminalPlacementFailClosed"] },
+        { "id": "terminal-result-binding", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testTerminalResultsAreStatusBoundAndTamperEvident"] },
+        { "id": "cumulative-usage-monotonic", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testEventDigestSequenceAndTerminalPlacementFailClosed"] },
+        { "id": "multiple-observers", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testMultipleObserversReceiveIdenticalEventsAndTerminalResultIsStable"] },
+        { "id": "detach-does-not-cancel", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testDetachDoesNotCancelAndReattachReplaysAfterCursor"] },
+        { "id": "reattach-from-cursor", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testDetachDoesNotCancelAndReattachReplaysAfterCursor"] },
+        { "id": "observation-ends-at-terminal", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testMultipleObserversReceiveIdenticalEventsAndTerminalResultIsStable"] }
+      ]
+    },
+    {
+      "id": "result",
+      "cases": [
+        { "id": "completed", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testMultipleObserversReceiveIdenticalEventsAndTerminalResultIsStable"] },
+        { "id": "failed", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testFailureProducesOneConsistentTerminalEventStatusAndResult"] },
+        { "id": "cancelled", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testCASIdempotentCommandsAndExplicitCancellation"] },
+        { "id": "status-binding", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testTerminalResultsAreStatusBoundAndTamperEvident"] },
+        { "id": "usage-binding", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testTerminalResultsAreStatusBoundAndTamperEvident"] },
+        { "id": "fingerprint-tamper-rejected", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testTerminalResultsAreStatusBoundAndTamperEvident"] },
+        { "id": "stable-query", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testMultipleObserversReceiveIdenticalEventsAndTerminalResultIsStable"] },
+        { "id": "artifact-ordering", "testSelectors": ["AgentSandboxAPITests.ExecutionAndEventContractTests/testPublicContractInventoryExercisesCollectionAndCursorSemantics"] }
+      ]
+    },
+    {
+      "id": "error",
+      "cases": [
+        { "id": "invalidValue", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "providerIdentityMismatch", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "descriptorFingerprintMismatch", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "trustRevisionMismatch", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "incompatibleProtocol", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "capabilityReportBindingMismatch", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "negotiatedCapabilityMismatch", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "authorityOrBudgetExpansion", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "requestBindingMismatch", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "idempotencyConflict", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "executionNotFound", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "staleCommand", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "invalidCursor", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "invalidEventChain", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] },
+        { "id": "terminalExecution", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testAllPublicProviderEnumsAndErrorsRemainExhaustivelyRepresentable"] }
+      ]
+    },
+    {
+      "id": "attenuation",
+      "cases": [
+        { "id": "protocol-version", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testDescriptorAndCapabilityReportMustUseTheSameProtocol"] },
+        { "id": "provider-identity", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testIdentityFingerprintTrustAndProtocolTamperingFailClosed"] },
+        { "id": "descriptor-fingerprint", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testIdentityFingerprintTrustAndProtocolTamperingFailClosed"] },
+        { "id": "trust-revision", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testIdentityFingerprintTrustAndProtocolTamperingFailClosed"] },
+        { "id": "capability-report-binding", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testIdentityFingerprintTrustAndProtocolTamperingFailClosed"] },
+        { "id": "features", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "maximum-concurrency", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "authority.capabilities", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "authority.destinations", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "authority.data-categories", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "authority.artifacts", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "authority.secrets", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "authority.workspaces", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "authority.checkpoints", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "authority.constraints", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "authority.missing-constraint-denies", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testMissingConstraintKeyProducesNoAuthorityForThatDimension"] },
+        { "id": "budget.modelAttempts", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.toolInvocations", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.structuredRepairs", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.repeatedCallsPerFingerprint", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.consecutiveNoProgressActions", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.activeMilliseconds", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.inputTokens", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.outputTokens", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.contextTokensPerAttempt", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.networkRequestBytes", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.networkResponseBytesPerOperation", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.networkResponseBytesTotal", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.generatedArtifactBytes", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.persistedOutputBytes", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "budget.peakMemoryBytes", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "maximum-thermal-state", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testNegotiationIsExactLocalAndReportedIntersection"] },
+        { "id": "memory-pressure-response", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testMemoryPressureBehaviorMustBeSupportedByBothPolicyAndProvider"] },
+        { "id": "provider-downgrade-without-expansion", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testProviderCanDowngradeButCannotExpandLocalPolicy"] }
+      ]
+    },
+    {
+      "id": "provider",
+      "cases": [
+        { "id": "descriptor", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testProviderValuesRoundTripAndUseNamespacedSchemas"] },
+        { "id": "capabilities", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testStartIsIdempotentAndConflictingReuseFails"] },
+        { "id": "start-idempotent", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testStartIsIdempotentAndConflictingReuseFails"] },
+        { "id": "start-conflict", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testStartIsIdempotentAndConflictingReuseFails"] },
+        { "id": "attach-existing", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testDetachDoesNotCancelAndReattachReplaysAfterCursor"] },
+        { "id": "attach-missing", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testStartIsIdempotentAndConflictingReuseFails"] },
+        { "id": "handle.status", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testDetachDoesNotCancelAndReattachReplaysAfterCursor"] },
+        { "id": "handle.result", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testMultipleObserversReceiveIdenticalEventsAndTerminalResultIsStable"] },
+        { "id": "handle.events", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testMultipleObserversReceiveIdenticalEventsAndTerminalResultIsStable"] },
+        { "id": "handle.send", "testSelectors": ["AgentSandboxAPITests.ProviderBehaviorTests/testCASIdempotentCommandsAndExplicitCancellation"] }
+      ]
+    },
+    {
+      "id": "fingerprint",
+      "cases": [
+        { "id": "canonical-json", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testFingerprintUsesCanonicalJSONAcrossInsertionAndNumberRepresentations"] },
+        { "id": "bounded-wire-preflight", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testFingerprintRejectsBoundedNonFiniteAndNonIJSONInputs"] },
+        { "id": "non-finite-and-non-ijson-rejected", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testFingerprintRejectsBoundedNonFiniteAndNonIJSONInputs"] },
+        { "id": "encoding-error-propagated", "testSelectors": ["AgentSandboxAPITests.ProviderContractTests/testFingerprintEncodingFailurePropagatesWithoutTrap"] }
+      ]
+    },
+    {
+      "id": "wire",
+      "cases": [
+        { "id": "namespaced-unique-schema-ids", "testSelectors": ["AgentSandboxAPITests.PublicContractInventoryTests/testAllPayloadSchemasAreNamespacedAndUnique"] }
+      ]
+    }
+  ]
+}
