@@ -83,14 +83,20 @@ final class MemoryAliasRetrievalTests: XCTestCase {
     }
 
     /// `ToolLoop` is what attaches the alias — pinned here so the wiring can't be dropped silently.
-    func testCanonicalizedCallCarriesTheUsersOwnSentence() throws {
+    func testCanonicalizedCallCarriesOnlyTheRuntimeOwnedUserSentence() async throws {
         let raw = ToolCall(name: "remember",
-                           argumentsJSON: #"{"text":"The user lives in Nanjing"}"#)
+                           argumentsJSON: #"{"text":"The user lives in Nanjing","original":"MODEL_FORGED"}"#)
         let normalized = try XCTUnwrap(
             RememberTool.canonicalizedCall(raw, originalUserText: "我住在南京"))
         XCTAssertEqual(normalized.arg("text"), "The user lives in Nanjing")
         XCTAssertEqual(normalized.arg("original"), "我住在南京")
-        // Without a user turn the call is byte-identical to what shipped.
+        let store = FakeMemoryStore()
+        let result = await RememberTool(store: store).execute(argumentsJSON: normalized.argumentsJSON)
+        XCTAssertEqual(result, "Saved to memory.")
+        let facts = await store.list()
+        XCTAssertEqual(facts.first?.sourceText, "我住在南京")
+
+        // A model-provided lookalike is discarded. Only the runtime-owned turn can cross this seam.
         let bare = try XCTUnwrap(RememberTool.canonicalizedCall(raw))
         XCTAssertNil(bare.arg("original"))
     }

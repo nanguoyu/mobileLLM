@@ -99,50 +99,55 @@ final class MemoryBookTests: XCTestCase {
 
     func testAddTagsTheFactAsTheUsersAndShowsItNewestFirst() async throws {
         let (book, store) = makeBook()
-        try await book.add("first")
-        try await book.add("second")
+        try await book.add("The user has a first fact.")
+        try await book.add("The user has a second fact.")
 
-        XCTAssertEqual(book.facts.map(\.text), ["second", "first"], "the list reads newest first")
+        XCTAssertEqual(book.facts.map(\.text),
+                       ["The user has a second fact.", "The user has a first fact."],
+                       "the list reads newest first")
         XCTAssertEqual(book.facts.map(\.source), [.user, .user], "what you type is yours, not the model's")
         let persisted = await store.list()
-        XCTAssertEqual(persisted.map(\.text), ["first", "second"], "and it reached the durable store")
+        XCTAssertEqual(persisted.map(\.text),
+                       ["The user has a first fact.", "The user has a second fact."],
+                       "and it reached the durable store")
     }
 
     func testAddIgnoresBlankTextAndTrims() async throws {
         let (book, _) = makeBook()
         try await book.add("   ")
         XCTAssertTrue(book.isEmpty, "a blank memory is not a memory")
-        try await book.add("  spaced out  ")
-        XCTAssertEqual(book.facts.map(\.text), ["spaced out"])
+        try await book.add("  The user likes spacious rooms.  ")
+        XCTAssertEqual(book.facts.map(\.text), ["The user likes spacious rooms."])
     }
 
     func testUpdateEditsInPlaceOnScreenAndOnDisk() async throws {
         let (book, store) = makeBook()
-        try await book.add("the dog is named Momo")
+        try await book.add("The user says their dog is named Momo.")
         let id = book.facts[0].id
-        try await book.update(id: id, text: "the dog is named Mochi")
+        try await book.update(id: id, text: "The user says their dog is named Mochi.")
 
-        XCTAssertEqual(book.facts.map(\.text), ["the dog is named Mochi"])
+        XCTAssertEqual(book.facts.map(\.text), ["The user says their dog is named Mochi."])
         XCTAssertEqual(book.facts[0].id, id, "the row keeps its identity through an edit")
         let persisted = await store.list()
-        XCTAssertEqual(persisted.map(\.text), ["the dog is named Mochi"])
+        XCTAssertEqual(persisted.map(\.text), ["The user says their dog is named Mochi."])
     }
 
     func testDeleteRemovesFromBothTheMirrorAndTheStore() async throws {
         let (book, store) = makeBook()
-        try await book.add("keep")
-        try await book.add("drop")
-        try await book.delete(id: book.facts[0].id)   // newest first ⇒ [0] is "drop"
+        try await book.add("The user keeps this fact.")
+        try await book.add("The user drops this fact.")
+        try await book.delete(id: book.facts[0].id)   // newest first ⇒ [0] is the dropped fact
 
-        XCTAssertEqual(book.facts.map(\.text), ["keep"])
+        XCTAssertEqual(book.facts.map(\.text), ["The user keeps this fact."])
         let persisted = await store.list()
-        XCTAssertEqual(persisted.map(\.text), ["keep"], "a deleted memory doesn't linger on disk")
+        XCTAssertEqual(persisted.map(\.text), ["The user keeps this fact."],
+                       "a deleted memory doesn't linger on disk")
     }
 
     func testDeleteAllForgetsEverything() async throws {
         let (book, store) = makeBook()
-        try await book.add("one")
-        try await book.add("two")
+        try await book.add("The user has one fact.")
+        try await book.add("The user has two facts.")
         try await book.deleteAll()
 
         XCTAssertTrue(book.isEmpty)
@@ -156,7 +161,7 @@ final class MemoryBookTests: XCTestCase {
         let book = MemoryBook(store: MemoryStore(fileURL: blocker.appending(component: "memory.json")))
 
         do {
-            try await book.add("must not appear")
+            try await book.add("The user has a fact that must not appear.")
             XCTFail("the UI-facing write should throw")
         } catch {
             // Expected.
@@ -168,12 +173,13 @@ final class MemoryBookTests: XCTestCase {
     /// model just saved would be invisible on the very screen that exists to show it.
     func testRefreshPicksUpAFactSavedByTheToolBehindTheUIsBack() async throws {
         let (book, store) = makeBook()
-        try await book.add("typed by the user")
-        try await store.save("saved by the model", source: .model)
+        try await book.add("The user typed this fact.")
+        try await store.save("The user has a fact saved by the model.", source: .model)
 
         XCTAssertEqual(book.facts.count, 1, "the mirror hasn't been told yet")
         await book.refresh()
-        XCTAssertEqual(book.facts.map(\.text), ["saved by the model", "typed by the user"])
+        XCTAssertEqual(book.facts.map(\.text),
+                       ["The user has a fact saved by the model.", "The user typed this fact."])
         XCTAssertEqual(book.facts.map(\.source), [.model, .user], "both provenances survive the round trip")
         XCTAssertEqual(book.userAuthoredCount, 1)
     }
@@ -185,9 +191,9 @@ final class MemoryBookTests: XCTestCase {
         let settings = AppSettings(defaults: UserDefaults(suiteName: "membook-\(UUID().uuidString)")!)
 
         XCTAssertEqual(MemoryView.summary(book: book, settings: settings), "Nothing saved yet")
-        try await book.add("mine")
+        try await book.add("The user added this fact.")
         XCTAssertEqual(MemoryView.summary(book: book, settings: settings), "1 memory · 1 added by you")
-        try await book.store.save("the model's", source: .model)
+        try await book.store.save("The user has a model-saved fact.", source: .model)
         await book.refresh()
         XCTAssertEqual(MemoryView.summary(book: book, settings: settings), "2 memories · 1 added by you")
     }
@@ -200,7 +206,7 @@ final class MemoryBookTests: XCTestCase {
         settings.disabledBuiltInTools.formUnion([ToolID.recall.rawValue, ToolID.remember.rawValue])
 
         XCTAssertEqual(MemoryView.summary(book: book, settings: settings), "Off")
-        try await book.add("mine")
+        try await book.add("The user added this fact.")
         XCTAssertEqual(MemoryView.summary(book: book, settings: settings), "Off · 1 saved")
     }
 
@@ -221,14 +227,15 @@ final class MemoryBookTests: XCTestCase {
 
         XCTAssertTrue(container.chat.memoryBook === container.memory,
                       "what you edit in Settings → Memory is what the next turn's prompt is composed from")
-        try await container.memory.add("the user's dog is named Momo")
-        XCTAssertEqual(container.chat.memoryBook?.facts.map(\.text), ["the user's dog is named Momo"])
+        try await container.memory.add("The user says their dog is named Momo.")
+        XCTAssertEqual(container.chat.memoryBook?.facts.map(\.text),
+                       ["The user says their dog is named Momo."])
     }
 
     func testProvenanceNamesTheAuthor() {
         let now = Date()
-        let mine = MemoryFact(text: "x", createdAt: now, source: .user)
-        let theirs = MemoryFact(text: "x", createdAt: now, source: .model)
+        let mine = MemoryFact(text: "The user added this fact.", createdAt: now, source: .user)
+        let theirs = MemoryFact(text: "The user has a model-saved fact.", createdAt: now, source: .model)
         XCTAssertTrue(MemoryView.provenance(mine, now: now).hasPrefix("Added by you"))
         XCTAssertTrue(MemoryView.provenance(theirs, now: now).hasPrefix("Saved by mobileLLM"))
     }

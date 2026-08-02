@@ -26,55 +26,10 @@ public struct RememberTool: Tool {
     /// `The user is named 王东` is retained. Latin-script language cannot be proven by a character check;
     /// that part is deliberately governed by the English schema/prompt rather than a heavyweight language
     /// recognizer. No device locale, network service, or second LLM pass participates in this decision.
-    static let canonicalPrefix = "The user "
+    static let canonicalPrefix = CanonicalMemoryText.canonicalPrefix
 
     static func canonicalMemory(from text: String) -> String? {
-        let note = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !note.contains(where: \.isNewline) else { return nil }
-
-        let canonical: String
-        if note.hasPrefix(canonicalPrefix) {
-            canonical = note
-        } else if note.hasPrefix("The user's ") {
-            let fact = String(note.dropFirst("The user's ".count))
-            guard !fact.isEmpty else { return nil }
-            canonical = "The user says their \(fact)"
-        } else if note.hasPrefix("The user’s ") {
-            let fact = String(note.dropFirst("The user’s ".count))
-            guard !fact.isEmpty else { return nil }
-            canonical = "The user says their \(fact)"
-        } else {
-            return nil
-        }
-
-        let body = String(canonical.dropFirst(canonicalPrefix.count))
-        guard let first = body.unicodeScalars.first, Self.isLatinOrASCII(first),
-              body.unicodeScalars.contains(where: Self.isASCIILetter) else { return nil }
-
-        let scalars = Array(body.unicodeScalars)
-        var index = 0
-        while index < scalars.count {
-            let scalar = scalars[index]
-            if Self.isCJK(scalar) {
-                let prefix = String(decoding: scalars[..<index].map(\.value), as: UTF32.self)
-                guard Self.cjkMayBeProperName(after: prefix) else { return nil }
-
-                let nameStart = index
-                while index < scalars.count, Self.isCJK(scalars[index]) { index += 1 }
-                let nameLength = index - nameStart
-                // This exception is intentionally narrow: a terminal 1–4-scalar CJK personal name. A
-                // longer run could just as easily be prose (`王东住在北京`), which must be translated.
-                guard (1...4).contains(nameLength),
-                      scalars[index...].allSatisfy(Self.isAllowedAfterCJKName) else { return nil }
-                return canonical
-            } else if scalar.properties.isAlphabetic && !Self.isLatinOrASCII(scalar) {
-                // Other scripts cannot be distinguished from prose deterministically. Proper names can
-                // still be preserved in Latin transliteration; CJK names have the explicit exception above.
-                return nil
-            }
-            index += 1
-        }
-        return canonical
+        try? CanonicalMemoryText(text).value
     }
 
     /// Normalize a parsed remember call as well as direct `execute` callers. Keeping this at the tool
@@ -119,44 +74,6 @@ public struct RememberTool: Tool {
 
     static let rejectedMemoryReply =
         "I couldn't save that memory. Nothing was saved."
-
-    private static func isLatinOrASCII(_ scalar: UnicodeScalar) -> Bool {
-        scalar.isASCII || (0x00C0...0x024F).contains(scalar.value)
-    }
-
-    private static func isASCIILetter(_ scalar: UnicodeScalar) -> Bool {
-        (0x41...0x5A).contains(scalar.value) || (0x61...0x7A).contains(scalar.value)
-    }
-
-    private static func isCJK(_ scalar: UnicodeScalar) -> Bool {
-        switch scalar.value {
-        case 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF,
-             0x20000...0x2FA1F, 0x3040...0x30FF, 0xAC00...0xD7AF:
-            return true
-        default:
-            return false
-        }
-    }
-
-    private static func isAllowedAfterCJKName(_ scalar: UnicodeScalar) -> Bool {
-        if CharacterSet.whitespacesAndNewlines.contains(scalar) { return true }
-        switch scalar.value {
-        case 0x0021, 0x0022, 0x0027, 0x0029, 0x002E, 0x003F, 0x005D,
-             0x3002, 0x300D, 0x300F, 0x3011, 0xFF01, 0xFF09, 0xFF1F,
-             0x2019, 0x201D:
-            return true
-        default:
-            return false
-        }
-    }
-
-    private static func cjkMayBeProperName(after prefix: String) -> Bool {
-        let normalized = prefix.lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        return ["named", "called", "name is", "goes by", "known as"].contains {
-            normalized.hasSuffix($0)
-        }
-    }
 
     public var schema: ToolSchema {
         ToolSchema(name: "remember",
@@ -210,10 +127,10 @@ public struct RememberTool: Tool {
         guard let canonicalText = Self.canonicalMemory(from: text) else {
             return "Error: \(Self.canonicalRetryInstruction)"
         }
-        // The model is the only party that holds BOTH phrasings at this point — it just translated the
-        // user's sentence — so it is asked for the original as an optional second field. Absent, behavior
-        // is exactly as before; present, it becomes the search alias that lets a question asked in the
-        // user's own language find this note (see `MemoryFact.sourceText`).
+        // `original` is not advertised in the schema and is rebuilt by `canonicalizedCall` from the
+        // runtime-owned latest user turn after the model call is parsed. It stays separate from the
+        // model-produced canonical `text`; the future Agent adapter will bind the same trusted source
+        // directly rather than carrying this legacy-loop transport field.
         let original = call.arg("original")?.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             switch try await store.saveIfAbsent(canonicalText, source: .model,

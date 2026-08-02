@@ -20,12 +20,16 @@ actor FakeMemoryStore: MemoryStoring {
     }
     @discardableResult func saveIfAbsent(_ text: String,
                                          source: MemoryFact.Source) -> MemorySaveResult {
+        saveIfAbsent(text, source: source, sourceText: nil)
+    }
+    @discardableResult func saveIfAbsent(_ text: String, source: MemoryFact.Source,
+                                         sourceText: String?) -> MemorySaveResult {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = MemoryDeduplication.key(trimmed)
         if let existing = facts.first(where: { MemoryDeduplication.key($0.text) == key }) {
             return .duplicate(existing)
         }
-        let fact = MemoryFact(text: trimmed, source: source)
+        let fact = MemoryFact(text: trimmed, source: source, sourceText: sourceText)
         facts.append(fact)
         return .saved(fact)
     }

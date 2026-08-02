@@ -66,7 +66,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         settings.systemPrompt = "BASE_PROMPT_SENTINEL: be concise."
-        try await book.add("The user's dog is named MEMORY_SENTINEL_MOMO")
+        try await book.add("The user says their dog is named MEMORY_SENTINEL_MOMO.")
         _ = try XCTUnwrap(chat.newConversation())
 
         let system = try await systemTurn(after: "what should I feed my dog?", chat: chat, engine: engine)
@@ -88,8 +88,10 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         let (chat, book, _, _, dir) = makeChat(engine: engine)
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        try await book.add("The user's dog Momo is a corgi")
-        for i in 0..<8 { try await book.add("Note \(i): the quarterly SENTINEL_NOISE spreadsheet") }
+        try await book.add("The user says their dog Momo is a corgi.")
+        for i in 0..<8 {
+            try await book.add("The user has quarterly SENTINEL_NOISE spreadsheet note \(i).")
+        }
         _ = try XCTUnwrap(chat.newConversation())
 
         let system = try await systemTurn(after: "corgi grooming advice?", chat: chat, engine: engine)
@@ -111,7 +113,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         XCTAssertFalse(before.content.contains(header), "nothing saved yet — no block")
 
         // Exactly what RememberTool does, behind the UI's back.
-        try await store.save("The user's cat is named TOOL_SAVED_SENTINEL", source: .model)
+        try await store.save("The user says their cat is named TOOL_SAVED_SENTINEL.", source: .model)
 
         let after = try await systemTurn(after: "tell me about my cat", chat: chat, engine: engine)
         XCTAssertTrue(after.content.contains("TOOL_SAVED_SENTINEL"),
@@ -126,7 +128,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         settings.systemPrompt = "BASE_PROMPT_SENTINEL: be concise."
-        try await book.add("The user's dog is named MEMORY_SENTINEL_MOMO")
+        try await book.add("The user says their dog is named MEMORY_SENTINEL_MOMO.")
         settings.disabledBuiltInTools.formUnion([ToolID.recall.rawValue, ToolID.remember.rawValue])
         _ = try XCTUnwrap(chat.newConversation())
 
@@ -155,7 +157,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         let engine = RecordingEngine()
         let (chat, book, _, settings, dir) = makeChat(engine: engine)
         defer { try? FileManager.default.removeItem(at: dir) }
-        try await book.add("The user's dog is named COLD_LOAD_MOMO")
+        try await book.add("The user says their dog is named COLD_LOAD_MOMO.")
         _ = try XCTUnwrap(chat.newConversation())
         let gate = ModelReadinessGate()
         chat.ensureModelReady = { await gate.wait() }
@@ -177,7 +179,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         let engine = RecordingEngine()
         let (chat, book, _, settings, dir) = makeChat(engine: engine)
         defer { try? FileManager.default.removeItem(at: dir) }
-        try await book.add("The user's dog is named COLD_LOAD_MOMO")
+        try await book.add("The user says their dog is named COLD_LOAD_MOMO.")
         settings.memoryEnabled = false
         _ = try XCTUnwrap(chat.newConversation())
         let gate = ModelReadinessGate()
@@ -207,7 +209,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         let skill = Skill(name: "Francophile", emoji: "🇫🇷", summary: "",
                           instructions: "SKILL_INSTRUCTION_SENTINEL: always answer in French.")
         chat.skillStore?.skills = [skill]
-        try await book.add("The user's dog is named MEMORY_SENTINEL_MOMO")
+        try await book.add("The user says their dog is named MEMORY_SENTINEL_MOMO.")
         _ = try XCTUnwrap(chat.newConversation())
         chat.setActiveSkill(skill.id)
 
@@ -230,7 +232,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
         chat.draft = "what should I feed my dog?"
 
         let before = chat.contextUsage().used
-        try await book.add("The user's dog is named Momo and eats twice a day")
+        try await book.add("The user says their dog is named Momo and eats twice a day.")
         let after = chat.contextUsage().used
         XCTAssertGreaterThan(after, before, "injected memory is charged to the window, not hidden from it")
     }
@@ -238,7 +240,8 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
     // MARK: - Pure composition (bounds, query, ranking)
 
     func testTheBlockIsHardCappedNoMatterHowMuchIsSaved() throws {
-        let facts = (0..<50).map { MemoryFact(text: "Fact \($0): " + String(repeating: "dog ", count: 60),
+        let facts = (0..<50).map { MemoryFact(text: "The user has dog fact \($0): "
+                                                + String(repeating: "dog ", count: 60),
                                               createdAt: Date(timeIntervalSince1970: Double($0))) }
         let block = try XCTUnwrap(ChatStore.memoryBlock(facts, query: "dog"))
         XCTAssertLessThanOrEqual(block.count, 400, "a full store can't eat the context window")
@@ -248,9 +251,11 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
     /// One rambling fact must not swallow the whole budget and starve the rest: lines are clipped first,
     /// then packed.
     func testALongFactIsClippedRatherThanCrowdingOutTheOthers() throws {
-        let rambler = MemoryFact(text: "dog " + String(repeating: "very long ", count: 100),
+        let rambler = MemoryFact(text: "The user has a dog fact that is "
+                                    + String(repeating: "very long ", count: 100),
                                  createdAt: Date(timeIntervalSince1970: 2))
-        let short = MemoryFact(text: "dog is named Momo", createdAt: Date(timeIntervalSince1970: 1))
+        let short = MemoryFact(text: "The user says their dog is named Momo.",
+                               createdAt: Date(timeIntervalSince1970: 1))
         let block = try XCTUnwrap(ChatStore.memoryBlock([rambler, short], query: "dog"))
         XCTAssertLessThanOrEqual(block.count, 400)
         XCTAssertTrue(block.contains("…"), "the long fact is truncated")
@@ -275,7 +280,7 @@ final class ChatStoreMemoryInjectionTests: XCTestCase {
     }
 
     func testBlockCapsTheNumberOfFacts() throws {
-        let facts = (0..<10).map { MemoryFact(text: "dog note \($0)",
+        let facts = (0..<10).map { MemoryFact(text: "The user has dog note \($0).",
                                               createdAt: Date(timeIntervalSince1970: Double($0))) }
         let block = try XCTUnwrap(ChatStore.memoryBlock(facts, query: "dog"))
         XCTAssertEqual(block.components(separatedBy: "\n- ").count - 1, 5, "top 5, newest first")

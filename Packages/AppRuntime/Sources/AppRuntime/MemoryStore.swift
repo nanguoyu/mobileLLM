@@ -19,6 +19,12 @@ public struct MemoryFact: Codable, Sendable, Hashable, Identifiable {
     public let text: String
     public let createdAt: Date
     public let source: Source
+    /// Monotonic per-record content revision. A run freezes this together with the canonical text so an
+    /// edit cannot masquerade as the same Memory source during recovery.
+    public let revision: UInt64
+    /// Whether `text` is certified for model use. Legacy data is retained for management even when it
+    /// predates the canonical-English contract.
+    public let canonicalizationStatus: MemoryCanonicalizationStatus
     /// The user's own words for this fact, kept ONLY so the ranker can find it again.
     ///
     /// Notes are stored canonically in English (one vocabulary for every model and conversation, and it
@@ -31,14 +37,26 @@ public struct MemoryFact: Codable, Sendable, Hashable, Identifiable {
     public let sourceText: String?
 
     public init(id: String = UUID().uuidString, text: String, createdAt: Date = Date(),
-                source: Source = .model, sourceText: String? = nil) {
-        self.id = id; self.text = text; self.createdAt = createdAt; self.source = source
+                source: Source = .model, sourceText: String? = nil, revision: UInt64 = 1) {
+        let stored = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.id = id
+        self.text = stored
+        self.createdAt = createdAt
+        self.source = source
+        self.revision = max(1, revision)
+        canonicalizationStatus = CanonicalMemoryText.certifiesStoredText(stored)
+            ? .canonicalEnglishV1 : .legacyUnverified
         // A verbatim copy adds nothing to score and doubles the record; only a genuinely different
         // phrasing (i.e. a translated note) is worth keeping.
-        self.sourceText = sourceText.flatMap { $0 == text ? nil : $0 }
+        let alias = sourceText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.sourceText = alias.flatMap { $0.isEmpty || $0 == stored ? nil : $0 }
     }
 
-    private enum CodingKeys: String, CodingKey { case id, text, createdAt, source, sourceText }
+    public var isCanonicalEnglish: Bool { canonicalizationStatus == .canonicalEnglishV1 }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, text, createdAt, source, sourceText, revision, canonicalizationStatus
+    }
 
     /// Facts written before `source` existed decode as `.model` — the tool was the only writer then, so
     /// that's the truth. Hand-rolled because the synthesized decoder would reject those records outright
@@ -47,11 +65,26 @@ public struct MemoryFact: Codable, Sendable, Hashable, Identifiable {
     /// the alias existed simply rank on their English text as they do today.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedText = try c.decode(String.self, forKey: .text)
         id = try c.decode(String.self, forKey: .id)
-        text = try c.decode(String.self, forKey: .text)
+        text = decodedText
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         source = try c.decodeIfPresent(Source.self, forKey: .source) ?? .model
-        sourceText = try c.decodeIfPresent(String.self, forKey: .sourceText)
+        revision = max(1, try c.decodeIfPresent(UInt64.self, forKey: .revision) ?? 1)
+        let declared = try c.decodeIfPresent(
+            MemoryCanonicalizationStatus.self,
+            forKey: .canonicalizationStatus
+        )
+        // A legacy record with no status may be migrated in memory only when its exact stored bytes meet
+        // today's canonical boundary. An explicit legacy marker is sticky until a user/model saves a
+        // canonical equivalent; forged canonical markers are independently revalidated here.
+        canonicalizationStatus = declared == .legacyUnverified
+            ? .legacyUnverified
+            : (CanonicalMemoryText.certifiesStoredText(decodedText)
+                ? .canonicalEnglishV1 : .legacyUnverified)
+        let alias = try c.decodeIfPresent(String.self, forKey: .sourceText)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        sourceText = alias.flatMap { $0.isEmpty || $0 == decodedText ? nil : $0 }
     }
 }
 
@@ -59,6 +92,7 @@ public struct MemoryFact: Codable, Sendable, Hashable, Identifiable {
 /// auto-injected memory block, so all three agree on what "most relevant" means (it began as one
 /// tool-private function; the store and the injector need the same answer, not a lookalike).
 public enum MemoryRanking {
+    public static let policyRevision: UInt32 = 2
 
     /// Split a query into words. Uses Foundation's ICU word segmentation rather than splitting on
     /// non-alphanumerics, because that rule cannot see a word boundary in a language without spaces: every
@@ -87,7 +121,12 @@ public enum MemoryRanking {
     /// taking the better of them — rather than concatenating — keeps a bilingual record from outscoring a
     /// single-language one just for having more text to match against.
     public static func rank(_ facts: [MemoryFact], query: String, limit: Int) -> [MemoryFact] {
-        let byRecency = facts.sorted { $0.createdAt > $1.createdAt }
+        guard limit > 0 else { return [] }
+        let eligible = facts.filter(\.isCanonicalEnglish)
+        let byRecency = eligible.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
+            return $0.id < $1.id
+        }
         let tokens = tokenize(query)
         guard !tokens.isEmpty else { return Array(byRecency.prefix(limit)) }
         func score(_ haystack: String) -> Int {
@@ -99,7 +138,13 @@ public enum MemoryRanking {
             return score > 0 ? (fact, score) : nil
         }
         return scored
-            .sorted { $0.score != $1.score ? $0.score > $1.score : $0.fact.createdAt > $1.fact.createdAt }
+            .sorted {
+                if $0.score != $1.score { return $0.score > $1.score }
+                if $0.fact.createdAt != $1.fact.createdAt {
+                    return $0.fact.createdAt > $1.fact.createdAt
+                }
+                return $0.fact.id < $1.fact.id
+            }
             .prefix(limit)
             .map(\.fact)
     }
@@ -125,8 +170,28 @@ public enum MemoryDeduplication {
 /// The result of the atomic remember-if-new transaction. Returning the existing fact lets callers report
 /// a duplicate without a second read (which would reopen the race the transaction is meant to close).
 public enum MemorySaveResult: Sendable, Hashable {
+    /// A new record was inserted, or an equivalent legacy record was atomically certified in place.
     case saved(MemoryFact)
     case duplicate(MemoryFact)
+}
+
+/// Mutation failures that must never be hidden by wrapping arithmetic or a session-only cache update.
+public enum MemoryMutationError: LocalizedError, Sendable, Hashable {
+    case revisionOverflow(id: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .revisionOverflow(let id):
+            "Memory \(id) cannot be revised because its revision counter is exhausted."
+        }
+    }
+}
+
+/// Explicit handling for the retrieval-only original-language alias when a canonical fact is edited.
+public enum MemorySourceTextUpdate: Sendable, Hashable {
+    case preserve
+    case replace(String)
+    case clear
 }
 
 /// The persistence seam the memory tools (`remember` / `recall`) and the management UI talk to — injected
@@ -138,6 +203,12 @@ public protocol MemoryStoring: Sendable {
     /// Atomically compare the normalized text against every fact and save only when it is new.
     @discardableResult
     func saveIfAbsent(_ text: String, source: MemoryFact.Source) async throws -> MemorySaveResult
+    /// Same transaction with a trusted, out-of-band user utterance used only as a retrieval alias. The
+    /// canonical note and its source evidence stay separate; a model-produced memory argument is never
+    /// itself treated as the user's source text.
+    @discardableResult
+    func saveIfAbsent(_ text: String, source: MemoryFact.Source,
+                      sourceText: String?) async throws -> MemorySaveResult
     func list() async -> [MemoryFact]
     /// Rewrite a fact's text in place, keeping its id, date, and source. No-op for an unknown id.
     func update(id: String, text: String) async throws
@@ -145,6 +216,8 @@ public protocol MemoryStoring: Sendable {
     func deleteAll() async throws
     /// The best matches for `query`, most relevant first, capped at `limit`.
     func search(_ query: String, limit: Int) async -> [MemoryFact]
+    /// One immutable ranked view containing only canonical-English facts eligible for model use.
+    func canonicalSnapshot(query: String, limit: Int) async -> CanonicalMemorySnapshot
 }
 
 public struct MemoryDataDeletionError: LocalizedError, Sendable {
@@ -158,12 +231,17 @@ public extension MemoryStoring {
     /// Ranking over the full list — correct for any store, so a conformer only has to be able to `list()`.
     /// `MemoryStore` overrides it to rank its own cache without the extra hop.
     func search(_ query: String, limit: Int) async -> [MemoryFact] {
-        MemoryRanking.rank(await list(), query: query, limit: max(1, limit))
+        await canonicalSnapshot(query: query, limit: limit).facts
     }
 
-    /// Save with the user's original phrasing attached as a search alias. Defaulted here rather than added
-    /// to the protocol so every existing conformer (the test fakes especially) keeps compiling; a store
-    /// that doesn't retain aliases simply drops it, which costs only cross-language ranking.
+    func canonicalSnapshot(query: String, limit: Int) async -> CanonicalMemorySnapshot {
+        CanonicalMemorySnapshot(
+            facts: MemoryRanking.rank(await list(), query: query, limit: max(1, limit))
+        )
+    }
+
+    /// A conformer that does not retain trusted source evidence can deliberately drop the alias while
+    /// preserving canonical storage. Concrete durable stores override this protocol requirement.
     @discardableResult
     func saveIfAbsent(_ text: String, source: MemoryFact.Source,
                       sourceText: String?) async throws -> MemorySaveResult {
@@ -240,16 +318,26 @@ public actor MemoryStore: MemoryStoring {
     /// The best matches for `query` (see `MemoryRanking`), served from the cache — the prompt injector
     /// searches on every send, and that must cost an actor hop, not a disk read.
     public func search(_ query: String, limit: Int) async -> [MemoryFact] {
-        MemoryRanking.rank(await list(), query: query, limit: max(1, limit))
+        await canonicalSnapshot(query: query, limit: limit).facts
+    }
+
+    /// Capture and rank one immutable cache generation. Legacy/unverified records remain in `list()` for
+    /// the management UI but can never enter this model-facing snapshot.
+    public func canonicalSnapshot(query: String, limit: Int) async -> CanonicalMemorySnapshot {
+        let current = await list()
+        return CanonicalMemorySnapshot(
+            facts: MemoryRanking.rank(current, query: query, limit: max(1, limit))
+        )
     }
 
     @discardableResult
     public func save(_ text: String, source: MemoryFact.Source = .model) async throws -> MemoryFact {
+        let canonical = try CanonicalMemoryText(text)
         if let mutationRequested { await mutationRequested() }
         await acquireMutationLane()
         defer { releaseMutationLane() }
 
-        let fact = MemoryFact(text: text.trimmingCharacters(in: .whitespacesAndNewlines), source: source)
+        let fact = MemoryFact(text: canonical.value, source: source)
         var facts = await list()
         facts.append(fact)
         try await persist(facts)
@@ -267,18 +355,41 @@ public actor MemoryStore: MemoryStoring {
     /// canonical text alone, so the same fact restated in another language does not create a second note.
     public func saveIfAbsent(_ text: String, source: MemoryFact.Source = .model,
                              sourceText: String?) async throws -> MemorySaveResult {
+        let canonical = try CanonicalMemoryText(text)
         if let mutationRequested { await mutationRequested() }
         await acquireMutationLane()
         defer { releaseMutationLane() }
 
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let key = MemoryDeduplication.key(trimmed)
+        let key = MemoryDeduplication.key(canonical.value)
         var facts = await list()
-        if let existing = facts.first(where: { MemoryDeduplication.key($0.text) == key }) {
+        let equivalentIndices = facts.indices.filter {
+            MemoryDeduplication.key(facts[$0].text) == key
+        }
+        if let canonicalIndex = equivalentIndices.first(where: { facts[$0].isCanonicalEnglish }) {
+            let existing = facts[canonicalIndex]
             return .duplicate(existing)
         }
-        let fact = MemoryFact(text: trimmed, source: source,
-                              sourceText: sourceText?.trimmingCharacters(in: .whitespacesAndNewlines))
+
+        // A pre-contract record can have exactly the right text but no certification. Treating it as an
+        // ordinary duplicate permanently stranded the fact outside model context. The caller just supplied
+        // canonical text explicitly, so certify the existing record in the same serialized transaction
+        // instead of minting a second identity. Persistence lands before the promoted value is returned.
+        if let legacyIndex = equivalentIndices.first {
+            let old = facts[legacyIndex]
+            let promoted = MemoryFact(
+                id: old.id,
+                text: canonical.value,
+                createdAt: old.createdAt,
+                source: old.source,
+                sourceText: normalizedSourceText(sourceText) ?? old.sourceText,
+                revision: try nextRevision(after: old)
+            )
+            facts[legacyIndex] = promoted
+            try await persist(facts)
+            return .saved(promoted)
+        }
+        let fact = MemoryFact(text: canonical.value, source: source,
+                              sourceText: normalizedSourceText(sourceText))
         facts.append(fact)
         try await persist(facts)
         return .saved(fact)
@@ -288,6 +399,12 @@ public actor MemoryStore: MemoryStoring {
     /// rather than replacing it, so the list doesn't reshuffle under the user's cursor and provenance
     /// stays honest. Blank text is ignored — the store's own guard, independent of the UI's disabled Save.
     public func update(id: String, text: String) async throws {
+        try await update(id: id, text: text, sourceText: .preserve)
+    }
+
+    /// Rewrite a fact and explicitly decide what happens to its retrieval-only source alias.
+    public func update(id: String, text: String,
+                       sourceText update: MemorySourceTextUpdate) async throws {
         if let mutationRequested { await mutationRequested() }
         await acquireMutationLane()
         defer { releaseMutationLane() }
@@ -295,8 +412,22 @@ public actor MemoryStore: MemoryStoring {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         var facts = await list()
         guard !trimmed.isEmpty, let i = facts.firstIndex(where: { $0.id == id }) else { return }
+        let canonical = try CanonicalMemoryText(trimmed)
         let old = facts[i]
-        facts[i] = MemoryFact(id: old.id, text: trimmed, createdAt: old.createdAt, source: old.source)
+        let nextRevision = try nextRevision(after: old)
+        let alias: String? = switch update {
+        case .preserve: old.sourceText
+        case .replace(let value): value
+        case .clear: nil
+        }
+        facts[i] = MemoryFact(
+            id: old.id,
+            text: canonical.value,
+            createdAt: old.createdAt,
+            source: old.source,
+            sourceText: alias,
+            revision: nextRevision
+        )
         try await persist(facts)
     }
 
@@ -342,6 +473,18 @@ public actor MemoryStore: MemoryStoring {
         if let beforePersist { try await beforePersist() }
         try await store.save(facts)
         cache = facts
+    }
+
+    private func normalizedSourceText(_ text: String?) -> String? {
+        guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    private func nextRevision(after fact: MemoryFact) throws -> UInt64 {
+        let (revision, overflow) = fact.revision.addingReportingOverflow(1)
+        guard !overflow else { throw MemoryMutationError.revisionOverflow(id: fact.id) }
+        return revision
     }
 
     private func acquireMutationLane() async {
