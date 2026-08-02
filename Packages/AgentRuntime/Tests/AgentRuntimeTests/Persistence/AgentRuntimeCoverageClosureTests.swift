@@ -14,8 +14,7 @@ final class AgentRuntimeCoverageClosureTests: XCTestCase {
         let absentPragmas = try await store.pragmaReport()
         XCTAssertNil(absentPragmas)
         let absentRecovery = try await store.recoveryDirective(
-            for: RuntimeTestFixtures.Stream(offset: 2_000).runID,
-            interruptedOperation: .stable
+            for: RuntimeTestFixtures.Stream(offset: 2_000).runID
         )
         XCTAssertNil(absentRecovery)
         let absentDeletionIntents = try await store.pendingDeletionIntents()

@@ -16,7 +16,7 @@ final class SQLiteRunJournalTests: XCTestCase {
         XCTAssertFalse(store.databaseExists())
 
         let report = try await store.openForWrite()
-        XCTAssertEqual(report.currentVersion, 2)
+        XCTAssertEqual(report.currentVersion, SQLiteRunJournal.schemaVersion)
         XCTAssertTrue(store.databaseExists())
         let optionalPragmas = try await store.pragmaReport()
         let pragmas = try XCTUnwrap(optionalPragmas)
@@ -219,22 +219,15 @@ final class SQLiteRunJournalTests: XCTestCase {
         XCTAssertEqual(finalOutboxCount, 2)
     }
 
-    func testRecoveryNeverAutoResumesAndUncertainWriteRequiresReconciliation() async throws {
+    func testRecoveryNeverAutoResumesAndUsesOnlyDurableFacts() async throws {
         let store = SQLiteRunJournal(databaseURL: temporaryDatabaseURL())
         let stream = RuntimeTestFixtures.Stream(offset: 300)
         _ = try await store.append(appendRequest(event: initialEvent(stream: stream, number: 340), command: 340))
-        let expectations: [(InterruptedOperationKind, RecoveryDisposition)] = [
-            (.modelAttempt, .discardIncompleteModelAttempt), (.pureRead, .retryPureRead),
-            (.idempotentWrite, .retryIdempotentWrite), (.nonIdempotentWrite, .waitingForReconciliation),
-            (.stable, .alreadyStable),
-        ]
-        for (kind, disposition) in expectations {
-            let optionalDirective = try await store.recoveryDirective(for: stream.runID, interruptedOperation: kind)
-            let directive = try XCTUnwrap(optionalDirective)
-            XCTAssertEqual(directive.disposition, disposition)
-            XCTAssertTrue(directive.requiresExplicitResume)
-            XCTAssertEqual(directive.stableSequence, 1)
-        }
+        let loaded = try await store.recoveryDirective(for: stream.runID)
+        let directive = try XCTUnwrap(loaded)
+        XCTAssertEqual(directive.disposition, .alreadyStable)
+        XCTAssertTrue(directive.requiresExplicitResume)
+        XCTAssertEqual(directive.stableSequence, 1)
     }
 
     func testMigrationMakesConsistentBackupAndCorruptionBlocksMutation() async throws {
@@ -289,7 +282,7 @@ final class SQLiteRunJournalTests: XCTestCase {
         XCTAssertTrue(marker.blocksStoreOpening)
         try marker.removeLast()
         XCTAssertFalse(marker.blocksStoreOpening)
-        XCTAssertEqual(SQLiteJournalFaultPoint.registryVersion, 1)
+        XCTAssertEqual(SQLiteJournalFaultPoint.registryVersion, 2)
         XCTAssertEqual(Set(SQLiteJournalFaultPoint.allCases.map(\.rawValue)).count, SQLiteJournalFaultPoint.allCases.count)
         let coveredFaults: Set<SQLiteJournalFaultPoint> = [
             .beforeOpenForWrite, .afterMigrationBackup, .beforeTransaction, .afterTransactionBegin,
@@ -298,6 +291,12 @@ final class SQLiteRunJournalTests: XCTestCase {
             .beforeOutboxClaim, .afterOutboxClaim, .beforeOutboxDelivery, .afterOutboxDelivery,
             .beforeRecovery, .beforeDeletionIntent, .afterDeletionIntent,
             .beforeConversationCascade, .afterConversationCascade,
+            .beforeCommandAdmission, .afterCommandAdmission,
+            .beforeCommandClaim, .afterCommandClaim,
+            .beforeCommandCompletion, .afterCommandCompletion,
+            .beforeBudgetMutation, .afterBudgetMutation,
+            .beforeSubmissionBoundary, .afterSubmissionBoundary,
+            .beforeStableBoundaryProjection, .afterStableBoundaryProjection,
         ]
         XCTAssertEqual(coveredFaults, Set(SQLiteJournalFaultPoint.allCases))
     }
@@ -338,16 +337,10 @@ final class SQLiteRunJournalTests: XCTestCase {
         XCTAssertNil(projection)
     }
 
-    func testMinimumAuxiliaryRecordTablesAndArtifactDeletionIntent() async throws {
+    func testMinimumExternalClaimAndArtifactDeletionIntentTables() async throws {
         let store = SQLiteRunJournal(databaseURL: temporaryDatabaseURL())
         let stream = RuntimeTestFixtures.Stream(offset: 700)
         _ = try await store.append(appendRequest(event: initialEvent(stream: stream, number: 400), command: 400))
-        let reservation = try BudgetReservation(
-            id: BudgetReservationID(rawValue: RuntimeTestFixtures.uuid(800)),
-            maximumUsage: .zero,
-            reason: "test"
-        )
-        try await store.recordBudgetReservation(runID: stream.runID, reservation: reservation)
         try await store.recordExternalClaim(
             ExternalClaimReference(
                 id: "claim-1", runID: stream.runID, invocationID: nil, kind: "provider.reconciliation",
@@ -359,10 +352,8 @@ final class SQLiteRunJournalTests: XCTestCase {
             artifactID: ArtifactID(rawValue: RuntimeTestFixtures.uuid(801)),
             at: .init(rawValue: 10)
         )
-        let budgetCount = try await store.rowCount(table: "budget_reservations")
         let claimCount = try await store.rowCount(table: "external_claims")
         let deletionCount = try await store.rowCount(table: "artifact_deletion_intents")
-        XCTAssertEqual(budgetCount, 1)
         XCTAssertEqual(claimCount, 1)
         XCTAssertEqual(deletionCount, 1)
     }
@@ -443,7 +434,7 @@ final class SQLiteRunJournalTests: XCTestCase {
             if point == .beforeRecovery { throw SQLiteStoreError.injected(point) }
         }
         await XCTAssertThrowsErrorAsync {
-            _ = try await recoveryFault.recoveryDirective(for: recoverySeed.stream.runID, interruptedOperation: .pureRead)
+            _ = try await recoveryFault.recoveryDirective(for: recoverySeed.stream.runID)
         }
         await recoveryFault.close()
         let recoveredProjection = try await SQLiteRunJournal(databaseURL: recoveryURL).loadProjection(for: recoverySeed.stream.runID)

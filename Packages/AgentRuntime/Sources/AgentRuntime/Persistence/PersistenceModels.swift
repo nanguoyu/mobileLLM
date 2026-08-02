@@ -5,7 +5,7 @@ import Foundation
 
 /// Versioned registry used by crash-injection tests. Every durable boundary is named here.
 public enum SQLiteJournalFaultPoint: String, CaseIterable, Codable, Sendable {
-    public static let registryVersion: UInt16 = 1
+    public static let registryVersion: UInt16 = 2
 
     case beforeOpenForWrite
     case afterMigrationBackup
@@ -28,6 +28,18 @@ public enum SQLiteJournalFaultPoint: String, CaseIterable, Codable, Sendable {
     case afterDeletionIntent
     case beforeConversationCascade
     case afterConversationCascade
+    case beforeCommandAdmission
+    case afterCommandAdmission
+    case beforeCommandClaim
+    case afterCommandClaim
+    case beforeCommandCompletion
+    case afterCommandCompletion
+    case beforeBudgetMutation
+    case afterBudgetMutation
+    case beforeSubmissionBoundary
+    case afterSubmissionBoundary
+    case beforeStableBoundaryProjection
+    case afterStableBoundaryProjection
 }
 
 public typealias SQLiteJournalFaultInjector = @Sendable (SQLiteJournalFaultPoint) throws -> Void
@@ -99,6 +111,7 @@ public enum RecoveryDisposition: String, CaseIterable, Codable, Sendable {
     case alreadyStable
 }
 
+@available(*, deprecated, message: "Recovery classification is derived from RuntimeRecoveryFacts")
 public enum InterruptedOperationKind: String, Codable, Sendable {
     case modelAttempt, pureRead, idempotentWrite, nonIdempotentWrite, stable
 }
@@ -108,6 +121,256 @@ public struct RecoveryDirective: Hashable, Codable, Sendable {
     public let disposition: RecoveryDisposition
     public let stableSequence: UInt64
     public let requiresExplicitResume: Bool
+}
+
+// MARK: - Production repository seam
+
+/// Storage-level validation failures. Concrete SQLite availability failures remain implementation
+/// details while these cases are safe for the runtime coordinator to branch on.
+public enum RuntimeRepositoryError: Error, Hashable, Sendable {
+    case invalidSubmission(String)
+    case commandConflict(AgentCommandID)
+    case commandNotFound(AgentCommandID)
+    case commandLeaseMismatch(AgentCommandID)
+    case commandLeaseExpired(AgentCommandID)
+    case commandReceiptConflict(AgentCommandID)
+    case budgetLedgerNotFound(AgentRunID)
+    case budgetOperationConflict(BudgetReservationID)
+    case durableFactCorrupt(String)
+}
+
+/// Durable lifecycle of one admitted state-changing command.
+public enum DurableAgentCommandState: String, CaseIterable, Hashable, Codable, Sendable {
+    case pending
+    case claimed
+    case completed
+}
+
+/// ABA-safe processing lease. A generation/token pair changes on every claim or reclaim.
+public struct AgentCommandLeaseIdentity: Hashable, Codable, Sendable {
+    public let owner: String
+    public let token: UUID
+    public let generation: UInt64
+    public let expiresAt: AgentTimestamp
+
+    public init(owner: String, token: UUID, generation: UInt64, expiresAt: AgentTimestamp) {
+        self.owner = owner
+        self.token = token
+        self.generation = generation
+        self.expiresAt = expiresAt
+    }
+}
+
+/// Canonical command inbox row. Admission sequence is database-global and never reused.
+public struct DurableAgentCommand: Hashable, Sendable {
+    public let admissionSequence: UInt64
+    public let envelope: AgentCommandEnvelope
+    public let fingerprint: StableDigest
+    public let state: DurableAgentCommandState
+    public let admittedAt: AgentTimestamp
+    public let claimOwner: String?
+    public let claimExpiresAt: AgentTimestamp?
+    public let leaseToken: UUID?
+    public let leaseGeneration: UInt64
+    public let attemptCount: UInt32
+    public let receipt: AgentCommandReceiptEnvelope?
+    public let completedAt: AgentTimestamp?
+
+    public var commandID: AgentCommandID { envelope.payload.commandID }
+    public var runID: AgentRunID { envelope.payload.runID }
+    public var lease: AgentCommandLeaseIdentity? {
+        guard let claimOwner, let claimExpiresAt, let leaseToken else { return nil }
+        return AgentCommandLeaseIdentity(
+            owner: claimOwner,
+            token: leaseToken,
+            generation: leaseGeneration,
+            expiresAt: claimExpiresAt
+        )
+    }
+}
+
+/// Whether enqueue created a new inbox row, replayed the exact row, or found a reused identity.
+public enum AgentCommandAdmissionDisposition: String, CaseIterable, Hashable, Codable, Sendable {
+    case admitted
+    case replayed
+    case conflict
+}
+
+public struct AgentCommandAdmission: Hashable, Sendable {
+    public let disposition: AgentCommandAdmissionDisposition
+    public let command: DurableAgentCommand
+}
+
+public struct AgentCommandClaim: Hashable, Sendable {
+    public let owner: String
+    public let expiresAt: AgentTimestamp
+    public let commands: [DurableAgentCommand]
+}
+
+/// A ledger mutation that must share the same SQLite transaction as its causal CAS/event append.
+public enum BudgetLedgerOperation: Hashable, Codable, Sendable {
+    case reserve(BudgetReservation)
+    case settle(reservationID: BudgetReservationID, actualUsage: AgentUsage)
+    case release(reservationID: BudgetReservationID)
+}
+
+/// Production event mutation. Budget changes cannot be submitted outside the causal journal CAS.
+public struct RuntimeJournalMutation: Sendable {
+    public let append: RunJournalAppendRequest
+    public let budgetOperations: [BudgetLedgerOperation]
+
+    public init(
+        append: RunJournalAppendRequest,
+        budgetOperations: some Sequence<BudgetLedgerOperation> = []
+    ) {
+        self.append = append
+        self.budgetOperations = Array(budgetOperations)
+    }
+}
+
+public struct RuntimeJournalMutationReceipt: Sendable {
+    public let appendReceipt: RunJournalAppendReceipt
+    public let budgetLedger: BudgetLedgerSnapshot
+}
+
+/// Complete first durable transaction for an agent execution.
+public struct RuntimeSubmissionCommit: Sendable {
+    public let commandID: AgentCommandID
+    public let request: AgentRequestEnvelope
+    public let executionHandleID: AgentExecutionHandleID
+    public let userMessage: JournalMessageReference
+    public let inputSnapshot: AgentStableBoundaryReference
+    public let initialAppend: RunJournalAppendRequest
+    public let initialLedger: BudgetLedgerSnapshot
+    public let outbox: ProjectionOutboxItem
+
+    public init(
+        commandID: AgentCommandID,
+        request: AgentRequestEnvelope,
+        executionHandleID: AgentExecutionHandleID,
+        userMessage: JournalMessageReference,
+        inputSnapshot: AgentStableBoundaryReference,
+        initialAppend: RunJournalAppendRequest,
+        initialLedger: BudgetLedgerSnapshot,
+        outbox: ProjectionOutboxItem
+    ) {
+        self.commandID = commandID
+        self.request = request
+        self.executionHandleID = executionHandleID
+        self.userMessage = userMessage
+        self.inputSnapshot = inputSnapshot
+        self.initialAppend = initialAppend
+        self.initialLedger = initialLedger
+        self.outbox = outbox
+    }
+}
+
+public struct RuntimeSubmissionReceipt: Sendable {
+    public let executionHandleID: AgentExecutionHandleID
+    public let appendReceipt: RunJournalAppendReceipt
+    public let budgetLedger: BudgetLedgerSnapshot
+}
+
+/// Exact durable submission binding, decoded through the bounded contract entry point.
+public struct RuntimeSubmissionRecord: Hashable, Sendable {
+    public let commandID: AgentCommandID
+    public let request: AgentRequestEnvelope
+    public let executionHandleID: AgentExecutionHandleID
+    public let inputSnapshot: AgentStableBoundaryReference
+    public let fingerprint: StableDigest
+}
+
+/// Typed canonical and materialized facts needed to attach to an existing run.
+public struct RuntimeRunFacts: Sendable {
+    public let projection: AgentRunProjection
+    public let conversationID: ConversationID?
+    public let submission: RuntimeSubmissionRecord?
+    public let budgetLedger: BudgetLedgerSnapshot?
+}
+
+public struct DurableCompiledManifest: Hashable, Sendable {
+    public let eventID: AgentEventID
+    public let runID: AgentRunID
+    public let stepID: AgentStepID
+    public let reference: AgentStableBoundaryReference
+}
+
+public enum DurableApprovalState: String, CaseIterable, Hashable, Codable, Sendable {
+    case requested
+    case decided
+}
+
+public struct DurableApproval: Hashable, Sendable {
+    public let runID: AgentRunID
+    public let state: DurableApprovalState
+    public let request: AgentApprovalRequest
+    public let receipt: ApprovalReceipt?
+}
+
+public enum DurableInteractionState: String, CaseIterable, Hashable, Codable, Sendable {
+    case requested
+    case responded
+}
+
+public struct DurableInteraction: Hashable, Sendable {
+    public let runID: AgentRunID
+    public let state: DurableInteractionState
+    public let request: UserInputRequest
+    public let response: AgentStableBoundaryReference?
+}
+
+public enum DurableToolInvocationState: String, CaseIterable, Hashable, Codable, Sendable {
+    case prepared
+    case completed
+}
+
+public struct DurableToolInvocation: Hashable, Sendable {
+    public let runID: AgentRunID
+    public let state: DurableToolInvocationState
+    public let request: PreparedExternalOperationRequest
+    public let outcome: AgentToolInvocationOutcome?
+
+    public var invocationID: ToolInvocationID? { request.invocationID }
+}
+
+/// Facts used by recovery classification. No transient caller guess participates in the result.
+public struct RuntimeRecoveryFacts: Sendable {
+    public let run: RuntimeRunFacts
+    public let outstandingReservations: [BudgetReservation]
+    public let toolInvocations: [DurableToolInvocation]
+    public let pendingApprovalIDs: [ApprovalID]
+    public let pendingInteractionIDs: [InteractionRequestID]
+    public let hasIncompleteModelAttempt: Bool
+}
+
+/// Production persistence boundary for submissions, commands, journal CAS, budgets, and recovery.
+public protocol RuntimeRepository: RunJournal {
+    func commitSubmission(_ submission: RuntimeSubmissionCommit) async throws -> RuntimeSubmissionReceipt
+    func commit(_ mutation: RuntimeJournalMutation) async throws -> RuntimeJournalMutationReceipt
+
+    func enqueueCommand(_ envelope: AgentCommandEnvelope) async throws -> AgentCommandAdmission
+    func claimCommands(
+        owner: String,
+        now: AgentTimestamp,
+        leaseUntil: AgentTimestamp,
+        limit: Int
+    ) async throws -> AgentCommandClaim
+    func completeCommand(
+        commandID: AgentCommandID,
+        lease: AgentCommandLeaseIdentity,
+        receipt: AgentCommandReceiptEnvelope,
+        completedAt: AgentTimestamp
+    ) async throws -> DurableAgentCommand
+    func loadCommand(_ commandID: AgentCommandID) async throws -> DurableAgentCommand?
+
+    func loadRunFacts(for runID: AgentRunID) async throws -> RuntimeRunFacts?
+    func loadBudgetLedger(for runID: AgentRunID) async throws -> BudgetLedgerSnapshot?
+    func loadCompiledManifests(for runID: AgentRunID) async throws -> [DurableCompiledManifest]
+    func loadApprovals(for runID: AgentRunID) async throws -> [DurableApproval]
+    func loadInteractions(for runID: AgentRunID) async throws -> [DurableInteraction]
+    func loadToolInvocations(for runID: AgentRunID) async throws -> [DurableToolInvocation]
+    func loadRecoveryFacts(for runID: AgentRunID) async throws -> RuntimeRecoveryFacts?
+    func recoveryDirective(for runID: AgentRunID) async throws -> RecoveryDirective?
 }
 
 public enum DeletionIntentScope: String, Codable, Sendable { case conversation, deleteAll }
