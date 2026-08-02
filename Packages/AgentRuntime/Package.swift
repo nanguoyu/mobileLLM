@@ -13,18 +13,22 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../AgentContracts"),
+        .package(path: "../LLMCore"),
     ],
     targets: [
         .target(
             name: "AgentRuntime",
-            dependencies: ["AgentContracts"],
+            dependencies: [
+                "AgentContracts",
+                .product(name: "LLMCore", package: "LLMCore"),
+            ],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
             ]
         ),
         .testTarget(
             name: "AgentRuntimeTests",
-            dependencies: ["AgentRuntime", "AgentContracts"]
+            dependencies: ["AgentRuntime", "AgentContracts", "LLMCore"]
         ),
     ]
 )

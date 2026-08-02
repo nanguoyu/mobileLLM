@@ -257,29 +257,88 @@ public struct ToolExecutionContext: Sendable {
     public let stepID: AgentStepID
     public let invocationID: ToolInvocationID
     public let deadline: AgentTimestamp
+    public let attemptNumber: UInt16
     public let budgetReservationID: BudgetReservationID
     public let cancellation: any ToolCancellationChecking
     public let artifactWriter: any ToolArtifactWriting
     public let logger: any ToolRedactedLogging
+    private let preparedOperation: PreparedExternalOperationRequest
+    private let attempt: ExternalOperationAttempt
+    private let authorizationGate: ExternalExecutionAuthorizationGate
 
     public init(
         authorized: AuthorizedToolInvocation,
         deadline: AgentTimestamp,
+        attemptNumber: UInt16,
         budgetReservationID: BudgetReservationID,
         cancellation: any ToolCancellationChecking,
         artifactWriter: any ToolArtifactWriting,
-        logger: any ToolRedactedLogging
+        logger: any ToolRedactedLogging,
+        authorizationClock: any AgentAuthorizationClock,
+        authorizationPolicyValidator: any AgentAuthorizationPolicyValidating,
+        attemptLedger: any ExternalOperationAttemptClaiming
     ) throws {
         guard deadline.rawValue > 0 else { throw ToolV2ContractError.invalidExecutionContext }
         let operation = authorized.prepared.externalOperation
+        let attempt = try ExternalOperationAttempt(
+            prepared: operation,
+            attemptNumber: attemptNumber
+        )
         runID = operation.runID
         stepID = operation.stepID
         invocationID = authorized.prepared.request.proposedCall.invocationID
         self.deadline = deadline
+        self.attemptNumber = attemptNumber
         self.budgetReservationID = budgetReservationID
         self.cancellation = cancellation
         self.artifactWriter = artifactWriter
         self.logger = logger
+        preparedOperation = operation
+        self.attempt = attempt
+        authorizationGate = authorized.authorization.executionGate(
+            clock: DeadlineAuthorizationClock(
+                underlying: authorizationClock,
+                deadline: deadline
+            ),
+            policyValidator: authorizationPolicyValidator,
+            attemptLedger: attemptLedger
+        )
+    }
+
+    /// Executes one real local/private/network/file boundary under the exact immutable plan.
+    ///
+    /// The destination selects the primary, redirect, or fallback hop from the prepared itinerary;
+    /// adapters cannot invent a hop number or retain the one-shot byte control after this method returns.
+    /// A retry receives a new context with a higher `attemptNumber` and therefore a different durable
+    /// claim identity.
+    public func performBoundary(
+        observation: ExternalOperationObservation,
+        operation: @escaping @Sendable (
+            ExternalOperationBoundaryControl
+        ) async throws -> ExternalOperationBoundaryCompletion
+    ) async throws -> ExternalOperationBoundaryResult {
+        let hop = try ExternalOperationBoundaryHop(
+            prepared: preparedOperation,
+            attempt: attempt,
+            destination: observation.destination
+        )
+        return try await authorizationGate.perform(
+            observation: observation,
+            attempt: attempt,
+            hop: hop,
+            operation: operation
+        )
+    }
+}
+
+private struct DeadlineAuthorizationClock: AgentAuthorizationClock, Sendable {
+    let underlying: any AgentAuthorizationClock
+    let deadline: AgentTimestamp
+
+    func now() async throws -> AgentTimestamp {
+        let timestamp = try await underlying.now()
+        guard timestamp <= deadline else { throw ToolV2ContractError.deadlineExceeded }
+        return timestamp
     }
 }
 
@@ -308,6 +367,7 @@ public enum ToolV2ContractError: Error, Hashable, Sendable {
     case preparedPlanMismatch
     case authorizationMismatch
     case invalidExecutionContext
+    case deadlineExceeded
     case executingWrongDescriptor
     case progressNotSupported
     case missingTerminal

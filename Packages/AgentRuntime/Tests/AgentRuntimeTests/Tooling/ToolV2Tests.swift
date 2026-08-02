@@ -116,24 +116,136 @@ final class ToolV2Tests: XCTestCase {
         let context = try ToolExecutionContext(
             authorized: wrapped,
             deadline: AgentTimestamp(rawValue: 9_000),
+            attemptNumber: 1,
             budgetReservationID: BudgetReservationID(),
             cancellation: NeverCancelled(),
             artifactWriter: RejectingArtifactWriter(),
-            logger: RecordingLogger()
+            logger: RecordingLogger(),
+            authorizationClock: FixedAuthorizationClock(),
+            authorizationPolicyValidator: makeToolApprovalPolicyEngine(),
+            attemptLedger: TestAttemptLedger()
         )
         XCTAssertEqual(context.runID, fixture.runID)
         XCTAssertEqual(context.stepID, fixture.stepID)
         XCTAssertEqual(context.invocationID, fixture.invocationID)
+        XCTAssertEqual(context.attemptNumber, 1)
         XCTAssertThrowsError(
             try ToolExecutionContext(
                 authorized: wrapped,
                 deadline: AgentTimestamp(rawValue: 0),
+                attemptNumber: 1,
                 budgetReservationID: BudgetReservationID(),
                 cancellation: NeverCancelled(),
                 artifactWriter: RejectingArtifactWriter(),
-                logger: RecordingLogger()
+                logger: RecordingLogger(),
+                authorizationClock: FixedAuthorizationClock(),
+                authorizationPolicyValidator: makeToolApprovalPolicyEngine(),
+                attemptLedger: TestAttemptLedger()
             )
         )
+        XCTAssertThrowsError(
+            try ToolExecutionContext(
+                authorized: wrapped,
+                deadline: AgentTimestamp(rawValue: 9_000),
+                attemptNumber: 2,
+                budgetReservationID: BudgetReservationID(),
+                cancellation: NeverCancelled(),
+                artifactWriter: RejectingArtifactWriter(),
+                logger: RecordingLogger(),
+                authorizationClock: FixedAuthorizationClock(),
+                authorizationPolicyValidator: makeToolApprovalPolicyEngine(),
+                attemptLedger: TestAttemptLedger()
+            )
+        )
+    }
+
+    func testExecutionContextOwnsOneShotTOCTOUBoundaryAndByteAccounting() async throws {
+        let fixture = try ToolFixture()
+        let authorized = try AuthorizedToolInvocation(
+            prepared: fixture.prepared,
+            authorization: try await fixture.authorized()
+        )
+        let counter = ToolBoundaryCounter()
+        let context = try ToolExecutionContext(
+            authorized: authorized,
+            deadline: AgentTimestamp(rawValue: 9_000),
+            attemptNumber: 1,
+            budgetReservationID: BudgetReservationID(),
+            cancellation: NeverCancelled(),
+            artifactWriter: RejectingArtifactWriter(),
+            logger: RecordingLogger(),
+            authorizationClock: FixedAuthorizationClock(),
+            authorizationPolicyValidator: makeToolApprovalPolicyEngine(),
+            attemptLedger: TestAttemptLedger()
+        )
+        let body = try CanonicalJSON(.object(["value": .integer(1)]))
+        let result = try await context.performBoundary(
+            observation: fixture.makeObservation()
+        ) { control in
+            await counter.increment()
+            try await control.consumeResponseBytes(UInt64(body.data.count))
+            return ExternalOperationBoundaryCompletion(
+                value: .canonicalJSON(body),
+                responseDigest: body.fingerprint
+            )
+        }
+        XCTAssertEqual(result.value, .canonicalJSON(body))
+        XCTAssertEqual(result.responseBytes, UInt64(body.data.count))
+        XCTAssertEqual(result.responseDigest, body.fingerprint)
+
+        do {
+            _ = try await context.performBoundary(
+                observation: fixture.makeObservation()
+            ) { _ in
+                await counter.increment()
+                return ExternalOperationBoundaryCompletion(value: .none)
+            }
+            XCTFail("A boundary hop must be one-shot")
+        } catch {
+            XCTAssertEqual(
+                error as? AgentContractError,
+                .authorizationBindingMismatch("duplicate boundary hop")
+            )
+        }
+        let completedBoundaryCount = await counter.value()
+        XCTAssertEqual(completedBoundaryCount, 1)
+    }
+
+    func testExecutionContextRejectsDeadlineAndWideningBeforeOperationStarts() async throws {
+        let fixture = try ToolFixture()
+        let authorized = try AuthorizedToolInvocation(
+            prepared: fixture.prepared,
+            authorization: try await fixture.authorized()
+        )
+        for (clock, observation) in [
+            (FixedAuthorizationClock(2_000), try fixture.makeObservation()),
+            (FixedAuthorizationClock(500), try fixture.makeObservation(descriptorID: "forged")),
+        ] {
+            let counter = ToolBoundaryCounter()
+            let context = try ToolExecutionContext(
+                authorized: authorized,
+                deadline: AgentTimestamp(rawValue: 1_000),
+                attemptNumber: 1,
+                budgetReservationID: BudgetReservationID(),
+                cancellation: NeverCancelled(),
+                artifactWriter: RejectingArtifactWriter(),
+                logger: RecordingLogger(),
+                authorizationClock: clock,
+                authorizationPolicyValidator: makeToolApprovalPolicyEngine(),
+                attemptLedger: TestAttemptLedger()
+            )
+            do {
+                _ = try await context.performBoundary(observation: observation) { _ in
+                    await counter.increment()
+                    return ExternalOperationBoundaryCompletion(value: .none)
+                }
+                XCTFail("Expired or widened work must not cross its boundary")
+            } catch {
+                // The exact typed error differs by the intentionally invalid condition.
+            }
+            let rejectedBoundaryCount = await counter.value()
+            XCTAssertEqual(rejectedBoundaryCount, 0)
+        }
     }
 
     func testExecutorConsumesProgressAndExactlyOneTerminalResult() async throws {
@@ -557,11 +669,30 @@ private struct ToolFixture {
         )
     }
 
+    func makeObservation(
+        descriptorID: String? = nil
+    ) throws -> ExternalOperationObservation {
+        try ExternalOperationObservation(
+            destination: plan.destination,
+            dataCategories: plan.dataCategories,
+            effects: plan.effects,
+            requestBytes: UInt64(sanitized.data.count),
+            responseBytesLimit: plan.maximumResponseBytes,
+            payloadDigest: plan.payloadDigest,
+            executionConstraintDigest: plan.executionConstraintDigest,
+            artifactIDs: plan.artifactIDs,
+            workspaceID: plan.workspaceID,
+            descriptorID: descriptorID ?? plan.descriptorID,
+            schemaDigest: plan.schemaDigest,
+            trustRevision: plan.trustRevision,
+            idempotencyKey: plan.idempotencyKey,
+            credentialReference: plan.credentialReference,
+            resolvedSecretReferenceIDs: sanitized.referencedSecretIDs
+        )
+    }
+
     func authorized() async throws -> AuthorizedExternalOperationRequest {
-        try await DefaultApprovalPolicyEngine(
-            policyVersion: 1,
-            sanitizationValidator: toolTestSanitizationAttestor
-        ).bindLocalPolicy(
+        try await makeToolApprovalPolicyEngine().bindLocalPolicy(
             prepared: prepared.externalOperation,
             approvalID: ApprovalID(),
             trustedRunAuthority: trustedAuthority,
@@ -583,10 +714,14 @@ private struct ToolFixture {
             try ToolExecutionContext(
                 authorized: value,
                 deadline: AgentTimestamp(rawValue: 9_000),
+                attemptNumber: 1,
                 budgetReservationID: BudgetReservationID(),
                 cancellation: NeverCancelled(),
                 artifactWriter: RejectingArtifactWriter(),
-                logger: RecordingLogger()
+                logger: RecordingLogger(),
+                authorizationClock: FixedAuthorizationClock(),
+                authorizationPolicyValidator: makeToolApprovalPolicyEngine(),
+                attemptLedger: TestAttemptLedger()
             )
         )
     }
@@ -596,6 +731,20 @@ private let toolTestSanitizationAttestor = try! LocalSanitizationAttestor(
     key: Data(repeating: 0x5c, count: 32),
     policyRevision: 1
 )
+
+private func makeToolApprovalPolicyEngine() throws -> DefaultApprovalPolicyEngine {
+    try DefaultApprovalPolicyEngine(
+        policyVersion: 1,
+        sanitizationValidator: toolTestSanitizationAttestor
+    )
+}
+
+private actor ToolBoundaryCounter {
+    private var count = 0
+
+    func increment() { count += 1 }
+    func value() -> Int { count }
+}
 
 private struct ScriptedTool: ToolV2 {
     let descriptor: AgentToolDescriptor
