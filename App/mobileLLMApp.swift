@@ -204,6 +204,35 @@ struct MobileLLMApp: App {
                 eventStore: eventStore,
                 locationProvider: locationProvider)
         }
+        // Attach the durable agent runtime (spec §6 / §20): SQLite journal, artifact store, local
+        // model providers over the same routing engine, and the run store the UI projects. A failure
+        // here keeps the legacy in-process loop — the rollout switch (spec §26) is the assembly's
+        // presence, and the app never crashes on it.
+        MainActor.assumeIsolated {
+            if let assembly = try? AgentRuntimeAssembly(
+                engine: engine,
+                downloadBase: base,
+                conversationDirectory: container.conversationStore.directory,
+                snapshot: { [weak container] conversationID, userTurnID, text, imageRefs in
+                    guard let container else { return nil }
+                    return makeAgentSnapshot(
+                        container: container,
+                        conversationID: conversationID,
+                        userTurnID: userTurnID,
+                        text: text,
+                        imageRefs: imageRefs,
+                        downloadBase: base
+                    )
+                }
+            ) {
+                container.attachAgentRuns(assembly.runStore)
+                AgentRuntimeAssembly.logger(
+                    "Agent runtime attached (journal: \(assembly.repository.location.path))"
+                )
+            } else {
+                AgentRuntimeAssembly.logger("Agent runtime unavailable — legacy chat loop active")
+            }
+        }
         #if DEBUG && os(macOS)
         if let appearance = macScreenshotRequest?.appearance {
             container.settings.appearance = appearance
@@ -267,6 +296,41 @@ struct MobileLLMApp: App {
         }
         #endif
     }
+}
+
+@MainActor
+private func makeAgentSnapshot(
+    container: AppContainer,
+    conversationID: UUID,
+    userTurnID: UUID,
+    text: String,
+    imageRefs: [ImageRef],
+    downloadBase: URL
+) -> AgentRunRequestSnapshot? {
+    guard let active = container.chat.activeModel else { return nil }
+    return AgentRunRequestSnapshot(
+        conversationID: conversationID,
+        userTurnID: userTurnID,
+        text: text,
+        imageRefs: imageRefs,
+        messages: container.chat.activeConversation?.messages ?? [],
+        systemPrompt: container.settings.systemPrompt,
+        memoryFacts: container.chat.memoryBook?.facts ?? [],
+        activeSkill: container.chat.activeSkill,
+        model: active.model,
+        variant: active.variant,
+        weightsDirectory: ModelDownloader(downloadBase: downloadBase)
+            .localURL(repoId: active.variant.id),
+        thinkingEnabled: container.chat.thinkingEnabled,
+        contextLength: container.settings.contextLength,
+        maxTokens: container.settings.maxTokens,
+        temperature: container.settings.temperature,
+        topP: container.settings.topP,
+        topK: container.settings.topK,
+        repetitionPenalty: container.settings.repetitionPenalty,
+        toolsEnabled: container.settings.toolsEnabled,
+        localToolNames: AppToolCatalog.localToolNames
+    )
 }
 
 #if os(macOS)

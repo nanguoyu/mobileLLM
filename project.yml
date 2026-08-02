@@ -23,6 +23,9 @@ packages:
   AppUI: { path: Packages/AppUI }
   AppRuntime: { path: Packages/AppRuntime }
   LLMCore: { path: Packages/LLMCore }
+  AgentContracts: { path: Packages/AgentContracts }
+  AgentRuntime: { path: Packages/AgentRuntime }
+  AgentSandboxAPI: { path: Packages/AgentSandboxAPI }
   LLMEngineMLX: { path: Packages/LLMEngineMLX }
   LLMEngineLlama: { path: Packages/LLMEngineLlama }
   LLMEngineApple: { path: Packages/LLMEngineApple }
@@ -86,6 +89,10 @@ targets:
       - package: LLMEngineApple
         product: LLMEngineApple
       - package: AppRuntime
+      - package: AgentRuntime
+        product: AgentRuntime
+      - package: AgentContracts
+        product: AgentContracts
 
   # UI regression tests (iOS simulator): the keyboard/composer geometry that burned four blind fixes —
   # asserted with XCUITest instead of eyeballs. Run:

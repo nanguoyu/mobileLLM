@@ -87,6 +87,42 @@ public actor SQLiteRunJournal: RuntimeRepository {
         return try projection(for: runID, db: db)
     }
 
+    /// Enumerates every durable run, newest first. The launch inbox uses this to surface pending runs
+    /// without loading a model, selecting a conversation, or resuming anything.
+    public func listRuns() async throws -> [JournalRunSummary] {
+        guard let db = try existingConnection() else { return [] }
+        let rows = try db.rows(
+            """
+            SELECT run_id, conversation_id, execution_handle_id, state, updated_at
+            FROM runs ORDER BY updated_at DESC
+            """
+        )
+        return try rows.map { row -> JournalRunSummary in
+            guard row.count >= 5,
+                  let runIDText = row[0].text,
+                  let runUUID = UUID(uuidString: runIDText),
+                  let handleText = row[2].text,
+                  let handleUUID = UUID(uuidString: handleText),
+                  let stateText = row[3].text,
+                  let state = AgentRunState(rawValue: stateText),
+                  let updated = row[4].integer
+            else { throw SQLiteStoreError.corrupt }
+            let conversationID: ConversationID?
+            if let conversationText = row[1].text, let conversationUUID = UUID(uuidString: conversationText) {
+                conversationID = ConversationID(rawValue: conversationUUID)
+            } else {
+                conversationID = nil
+            }
+            return JournalRunSummary(
+                runID: AgentRunID(rawValue: runUUID),
+                conversationID: conversationID,
+                executionHandleID: AgentExecutionHandleID(rawValue: handleUUID),
+                state: state,
+                updatedAt: AgentTimestamp(rawValue: updated)
+            )
+        }
+    }
+
     public func readEvents(_ request: RunJournalReadRequest) async throws -> RunJournalEventPage {
         guard let db = try existingConnection() else {
             return try RunJournalEventPage(events: [], nextCursor: nil, reachedEnd: true)

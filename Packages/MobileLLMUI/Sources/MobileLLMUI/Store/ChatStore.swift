@@ -4,6 +4,8 @@ import Foundation
 import Observation
 import AppRuntime
 import LLMCore
+import AgentContracts
+import AgentRuntime
 
 /// Everything `send()` mutates before an attachment reaches disk. Keeping this snapshot small and
 /// explicit lets the asynchronous write path restore the composer + conversation without rolling back
@@ -100,6 +102,12 @@ public final class ChatStore {
     /// raw 48 MP original). Capped at `maxAttachments`; cleared when the turn is sent. Held in memory
     /// only until send stamps them onto the user turn + writes them to disk.
     public private(set) var pendingImages: [PendingImage] = []
+    /// The durable agent runtime projection (spec §20). Nil in tests/previews that exercise the
+    /// legacy in-process loop; when present every send routes through `AgentRuntime`.
+    public private(set) var agentRuns: AgentRunStore?
+    /// Whether the app is wired to the durable agent runtime. A false value keeps the legacy loop,
+    /// which is how the rollout switch is implemented (spec §26).
+    public var agentRuntimeEnabled: Bool { agentRuns != nil }
 
     /// The most images a single turn may carry (keeps the mtmd prefill — and memory — bounded).
     public static let maxAttachments = 3
@@ -170,7 +178,8 @@ public final class ChatStore {
                 memoryBook: MemoryBook? = nil,
                 eventStore: (any EventStoring)? = nil,
                 locationProvider: (any LocationProviding)? = nil,
-                skillStore: SkillStore? = nil) {
+                skillStore: SkillStore? = nil,
+                agentRuns: AgentRunStore? = nil) {
         self.engine = engine
         self.store = store
         self.settings = settings
@@ -179,7 +188,39 @@ public final class ChatStore {
         self.eventStore = eventStore
         self.locationProvider = locationProvider
         self.skillStore = skillStore
+        self.agentRuns = agentRuns
         self.thinkingEnabled = settings.thinkingDefault
+        if let agentRuns {
+            attachAgentRuntime(agentRuns)
+        }
+    }
+
+    /// Wires the durable agent runtime projection into chat. Called at app assembly after the
+    /// container exists (the runtime needs a snapshot closure that reads this store).
+    public func attachAgentRuntime(_ agentRuns: AgentRunStore) {
+        self.agentRuns = agentRuns
+        agentRuns.onAnswer = { [weak self] conversationID, assistantMessageID, text, reasoning, steps in
+            self?.commitAgentAnswer(
+                conversationID: conversationID,
+                assistantMessageID: assistantMessageID,
+                text: text,
+                reasoning: reasoning,
+                steps: steps
+            )
+        }
+        agentRuns.onRunFailed = { [weak self] conversationID, assistantMessageID, message in
+            self?.commitAgentFailure(
+                conversationID: conversationID,
+                assistantMessageID: assistantMessageID,
+                message: message
+            )
+        }
+        agentRuns.onRunStarted = { [weak self] conversationID, assistantMessageID in
+            self?.agentRunDidStart(
+                conversationID: conversationID,
+                assistantMessageID: assistantMessageID
+            )
+        }
     }
 
     /// Synchronize the engine selection into chat state. Explicit Models → Use operations may reseed an
@@ -555,12 +596,185 @@ public final class ChatStore {
         conversations[idx].updatedAt = Date()
 
         let attachments = zip(refs, images).map { (id: $0.0.id, data: $0.1) }
-        startGeneration(assistantID: assistant.id, in: conversations[idx].id,
-                        writeAttachments: attachments,
-                        attachmentRollback: rollback.accepting(
-                            assistantID: assistant.id,
-                            conversation: conversations[idx]
-                        ))
+        let finalRollback = rollback.accepting(
+            assistantID: assistant.id,
+            conversation: conversations[idx]
+        )
+        if let agentRuns {
+            startAgentRun(
+                conversationID: conversations[idx].id,
+                user: user,
+                assistant: assistant,
+                text: text,
+                attachments: attachments,
+                attachmentRollback: finalRollback,
+                agentRuns: agentRuns
+            )
+        } else {
+            startGeneration(assistantID: assistant.id, in: conversations[idx].id,
+                            writeAttachments: attachments,
+                            attachmentRollback: finalRollback)
+        }
+    }
+
+    /// Routes one turn through the durable agent runtime (spec §9.1 send order): attachment bytes
+    /// reach disk first, then the run is submitted; the committed answer is projected back into the
+    /// conversation record only after the journal terminal event arrives.
+    private func startAgentRun(
+        conversationID: UUID,
+        user: Message,
+        assistant: Message,
+        text: String,
+        attachments: [(id: UUID, data: Data)],
+        attachmentRollback: AttachmentSendRollback,
+        agentRuns: AgentRunStore
+    ) {
+        let store = self.store
+        let imageRefs = user.attachments ?? []
+        streamingMessageID = assistant.id
+        streaming = StreamingState(messageID: assistant.id)
+        genTask = Task { @MainActor [weak self] in
+            do {
+                do {
+                    for attachment in attachments {
+                        try await store.writeAttachment(attachment.data, id: attachment.id)
+                    }
+                } catch {
+                    await store.removeAttachments(imageRefs)
+                    self?.recoverFailedAttachmentSend(attachmentRollback, error: error)
+                    return
+                }
+                // Cold launch restores model identity only; the first agent turn loads weights here.
+                guard await self?.ensureModelReady?() ?? true,
+                      self?.activeModel != nil
+                else {
+                    self?.finalizeAgentRun(
+                        conversationID: conversationID,
+                        assistantMessageID: assistant.id,
+                        failed: true,
+                        errorMessage: "The model could not be loaded."
+                    )
+                    return
+                }
+                _ = try await agentRuns.start(
+                    conversationID: conversationID,
+                    userMessageID: user.id,
+                    assistantMessageID: assistant.id,
+                    text: text,
+                    imageRefs: imageRefs
+                )
+            } catch is CancellationError {
+                self?.finalizeAgentRun(
+                    conversationID: conversationID,
+                    assistantMessageID: assistant.id,
+                    failed: true,
+                    errorMessage: "The run was cancelled before it started."
+                )
+            } catch {
+                self?.finalizeAgentRun(
+                    conversationID: conversationID,
+                    assistantMessageID: assistant.id,
+                    failed: true,
+                    errorMessage: error.localizedDescription
+                )
+            }
+        }
+    }
+
+    /// The runtime accepted the run; keep the UI busy state alive until the terminal event lands.
+    private func agentRunDidStart(conversationID: UUID, assistantMessageID: UUID) {
+        guard streamingMessageID == assistantMessageID else { return }
+        if streaming?.phase != .stopping {
+            streaming?.phase = .warming
+        }
+    }
+
+    /// Project the committed journal answer into the conversation record (spec §9.1: journal first,
+    /// JSON projection second).
+    private func commitAgentAnswer(
+        conversationID: UUID,
+        assistantMessageID: UUID,
+        text: String,
+        reasoning: String?,
+        steps: [AgentRunStep]
+    ) {
+        guard let ci = conversations.firstIndex(where: { $0.id == conversationID }),
+              let mi = conversations[ci].messages.firstIndex(where: { $0.id == assistantMessageID })
+        else { return }
+        var message = conversations[ci].messages[mi]
+        message.answer = text
+        message.reasoning = reasoning
+        let toolRuns = steps.compactMap { step -> ToolRun? in
+            guard step.kind == .toolCall else { return nil }
+            return ToolRun(name: step.title, arguments: step.detail, result: step.statusText)
+        }
+        if !toolRuns.isEmpty { message.toolRuns = toolRuns }
+        if let model = activeModel { message.generatedBy = GenerationModel(model) }
+        conversations[ci].messages[mi] = message
+        conversations[ci].updatedAt = Date()
+        persist(conversations[ci])
+        if streamingMessageID == assistantMessageID {
+            streaming = nil
+            streamingMessageID = nil
+            genTask = nil
+        }
+    }
+
+    private func commitAgentFailure(
+        conversationID: UUID,
+        assistantMessageID: UUID,
+        message: String
+    ) {
+        finalizeAgentRun(
+            conversationID: conversationID,
+            assistantMessageID: assistantMessageID,
+            failed: true,
+            errorMessage: message
+        )
+    }
+
+    private func finalizeAgentRun(
+        conversationID: UUID,
+        assistantMessageID: UUID,
+        failed: Bool,
+        errorMessage: String
+    ) {
+        guard let ci = conversations.firstIndex(where: { $0.id == conversationID }),
+              let mi = conversations[ci].messages.firstIndex(where: { $0.id == assistantMessageID })
+        else { return }
+        if failed {
+            var message = conversations[ci].messages[mi]
+            message.emptyOutcome = .failed
+            conversations[ci].messages[mi] = message
+            conversations[ci].updatedAt = Date()
+            persist(conversations[ci])
+            showToast(Toast(errorMessage, kind: .error, autoDismiss: 5))
+        }
+        if streamingMessageID == assistantMessageID {
+            streaming = nil
+            streamingMessageID = nil
+            genTask = nil
+        }
+    }
+
+    /// Reattaches to recoverable runs for the active thread without resuming them (spec §9.4:
+    /// recovery is explicit user intent).
+    public func recoverAgentRuns() async {
+        await agentRuns?.refreshRecoverableRuns()
+    }
+
+    /// Reopens a recoverable run when the user opens its thread; the run stays paused until Resume.
+    public func reopenAgentRun(_ recoverable: RecoverableAgentRun) async {
+        do {
+            let assistantMessageID = activeConversation?.messages
+                .last(where: { $0.role == .assistant })?.id
+            try await agentRuns?.reopen(
+                recoverable: recoverable,
+                assistantMessageID: assistantMessageID
+            )
+        } catch {
+            showToast(Toast(error.localizedDescription, kind: .error, autoDismiss: 5))
+        }
     }
 
     /// Regenerate an assistant turn: drop it (and anything after) and stream a fresh reply to the
@@ -1030,6 +1244,17 @@ public final class ChatStore {
     /// protection lives on the composer's Stop BUTTON (briefly disabled after send), not here, so an
     /// intentional stop during a long warm-up still works.
     public func stop() {
+        // Agent runtime mode: Stop is a durable cancel command, not a task cancellation.
+        if agentRuntimeEnabled,
+           let agentRuns,
+           let conversationID = activeConversation?.id,
+           agentRuns.presentation(for: conversationID) != nil
+        {
+            pauseReasoningClock()
+            streaming?.phase = .stopping
+            Task { await agentRuns.cancel(conversationID: conversationID) }
+            return
+        }
         guard streaming != nil else { return }
         pauseReasoningClock()
         streaming?.phase = .stopping

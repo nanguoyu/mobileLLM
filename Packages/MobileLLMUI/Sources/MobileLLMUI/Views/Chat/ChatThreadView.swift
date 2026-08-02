@@ -36,6 +36,8 @@ struct ChatThreadView: View {
     var onOpenModels: () -> Void
     /// Open the quick model switcher (the empty state's title is the picker).
     var onSwitchModel: () -> Void = {}
+    /// The durable agent runtime projection surface; nil in legacy/preview layouts.
+    var agentRuns: AgentRunStore? = nil
 
     @State private var atBottom = true
     /// True once the thread content is taller than the viewport — the precondition for follow-scrolling.
@@ -119,6 +121,13 @@ struct ChatThreadView: View {
                     LazyVStack(alignment: .leading, spacing: Theme.Space.lg) {
                         ForEach(convo.messages) { message in
                             row(message).id(message.id)
+                        }
+                        if let agentRuns,
+                           let run = agentRuns.presentation(for: convo.id),
+                           !run.steps.isEmpty || !run.isTerminal
+                        {
+                            AgentRunPanel(store: agentRuns, conversationID: convo.id)
+                                .id("agent-run-\(run.runID.description)")
                         }
                         Color.clear
                             .frame(height: 1)

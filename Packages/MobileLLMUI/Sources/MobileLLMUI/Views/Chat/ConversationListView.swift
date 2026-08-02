@@ -9,6 +9,9 @@ struct ConversationListView: View {
     @Bindable var chat: ChatStore
     var showsActiveSelection = true
     var onSelect: (UUID) -> Void = { _ in }
+    /// Durable agent runs for list badges (spec §20: a neutral launch exposes pending runs through
+    /// conversation badges without navigating to them).
+    var agentRuns: AgentRunStore? = nil
 
     @State private var query = ""
     @State private var renaming: Conversation?
@@ -123,6 +126,24 @@ struct ConversationListView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: Theme.Space.sm)
+                if let run = agentRuns?.presentation(for: convo.id), !run.isTerminal {
+                    AgentRunBadge(run: run)
+                } else if let recoverable = agentRuns?.recoverableRuns.first(where: {
+                    $0.conversationID == convo.id
+                }) {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Theme.fitAmber)
+                            .frame(width: 7, height: 7)
+                        Text(recoverable.state == .paused ? "paused" : "needs resume")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(
+                        recoverable.state == .paused ? "Run paused" : "Run needs resume"
+                    )
+                }
                 Text(Format.relative(convo.updatedAt))
                     .font(.caption2)
                     .foregroundStyle(Theme.textTertiary)

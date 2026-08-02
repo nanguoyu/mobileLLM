@@ -16,6 +16,8 @@ let package = Package(
         .package(path: "../AppUI"),
         .package(path: "../AppRuntime"),
         .package(path: "../LLMCore"),
+        .package(path: "../AgentContracts"),
+        .package(path: "../AgentRuntime"),
     ],
     targets: [
         .target(
@@ -24,6 +26,8 @@ let package = Package(
                 .product(name: "AppUI", package: "AppUI"),
                 .product(name: "AppRuntime", package: "AppRuntime"),
                 .product(name: "LLMCore", package: "LLMCore"),
+                .product(name: "AgentContracts", package: "AgentContracts"),
+                .product(name: "AgentRuntime", package: "AgentRuntime"),
             ]
         ),
         // The captured live-feed fixture is read source-relative (via #filePath) rather than from a

@@ -37,7 +37,8 @@ struct ChatDetailView: View {
                        isLoadingModel: container.models.switching,
                        loadingModelName: loadingModelName,
                        onOpenModels: onOpenModels,
-                       onSwitchModel: { showSwitcher = true })
+                       onSwitchModel: { showSwitcher = true },
+                       agentRuns: container.agentRuns)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Composer(chat: container.chat,
@@ -95,6 +96,15 @@ struct ChatDetailView: View {
         // Entering a conversation restores ITS model even when a platform-specific navigation path did
         // not route through select(). Cold launch itself leaves history unselected.
         .onAppear { chat.restoreConversationModelIfNeeded() }
+        // Neutral recovery: list recoverable runs, and only when the user explicitly opens this thread
+        // reattach to its pending run — still without resuming it (spec §9.4).
+        .task {
+            await chat.recoverAgentRuns()
+            guard let recoverable = chat.agentRuns?.recoverableRuns.first(where: {
+                $0.conversationID == chat.activeID
+            }) else { return }
+            await chat.reopenAgentRun(recoverable)
+        }
         // Leaving the conversation frees the model's memory (reloaded lazily on the next turn), so a
         // 5 GB model doesn't sit resident while you're not chatting. No-op mid-generation.
         .onDisappear { container.suspendModel() }

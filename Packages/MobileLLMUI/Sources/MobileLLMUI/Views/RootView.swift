@@ -49,6 +49,9 @@ public struct RootView: View {
             .preferredColorScheme(container.settings.appearance.colorScheme)
             .bannerHost(container.chat)
             .task { await container.bootstrap() }
+            // Neutral launch inbox: discover pending runs without loading a model, selecting a
+            // conversation, or resuming anything (spec §9.4 / §20).
+            .task { await container.chat.recoverAgentRuns() }
             // A navigation intent from the container (e.g. a "not installed" banner's "Open Models") drives
             // the shell's section; clear it once honored so it fires once.
             .onChange(of: container.navigationRequest) { _, request in
@@ -74,7 +77,11 @@ public struct RootView: View {
         // `selection` is bound so a navigation intent can switch tabs programmatically.
         TabView(selection: $section) {
             NavigationStack {
-                ConversationListView(chat: container.chat) { _ in }
+                ConversationListView(
+                    chat: container.chat,
+                    agentRuns: container.agentRuns,
+                    onSelect: { _ in }
+                )
                     .navigationTitle("Chat")
                     .navigationDestination(isPresented: hasActive) {
                         ChatDetailView(container: container, onOpenModels: { section = .models })
@@ -122,12 +129,17 @@ public struct RootView: View {
                 // A Mac sidebar stays useful while Models or Settings is open: conversation rows remain
                 // visible and selecting one returns to Chat. This avoids the empty-sidebar dead end where
                 // New Chat (which mutates data) was previously the only route back.
-                ConversationListView(chat: container.chat, showsActiveSelection: section == .chat) {
-                    _ in section = .chat
-                }
+                ConversationListView(chat: container.chat,
+                                     showsActiveSelection: section == .chat,
+                                     onSelect: { _ in section = .chat },
+                                     agentRuns: container.agentRuns)
                 #else
                 if section == .chat {
-                    ConversationListView(chat: container.chat) { _ in section = .chat }
+                    ConversationListView(
+                        chat: container.chat,
+                        onSelect: { _ in section = .chat },
+                        agentRuns: container.agentRuns
+                    )
                 } else {
                     Spacer()
                 }

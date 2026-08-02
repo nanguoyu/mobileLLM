@@ -4,6 +4,7 @@ import Foundation
 import Observation
 import AppRuntime
 import LLMCore
+import AgentRuntime
 
 /// Composition root (DESIGN §2). Owns the four stores, wires the shared engine into both the chat and
 /// the model manager, and keeps `ChatStore.activeModel` in sync with the selected model. The real
@@ -26,6 +27,9 @@ public final class AppContainer {
     /// request the system permission right there (nil in tests/previews — the screen then skips prompting).
     public let toolEventStore: (any EventStoring)?
     public let toolLocationProvider: (any LocationProviding)?
+    /// The durable agent runtime projection and command surface (spec §20). Nil keeps the legacy
+    /// in-process loop (tests/previews and the rollout-off state).
+    public private(set) var agentRuns: AgentRunStore?
 
     /// A one-shot navigation intent the shell (RootView) honors and clears — e.g. a "not installed" error
     /// banner jumping to Models. The container can't push tabs itself (RootView owns the section state).
@@ -58,7 +62,8 @@ public final class AppContainer {
                 systemModelProbe: @escaping @Sendable () -> SystemModelStatus = { .unavailable(.unsupportedOS) },
                 availableMemory: @escaping @Sendable () -> Int64 = { Int64(bitPattern: MemoryProbe.availableBytes()) },
                 eventStore: (any EventStoring)? = nil,
-                locationProvider: (any LocationProviding)? = nil) {
+                locationProvider: (any LocationProviding)? = nil,
+                agentRuns: AgentRunStore? = nil) {
         let settings = settings ?? AppSettings(fallbackDefaultModelID: LLMCatalog.defaultModel(for: device).id)
         let store = conversationStore ?? ConversationStore()
         self.settings = settings
@@ -85,9 +90,11 @@ public final class AppContainer {
         self.skills = skillStore
         self.toolEventStore = eventStore
         self.toolLocationProvider = locationProvider
+        self.agentRuns = agentRuns
         self.chat = ChatStore(engine: engine, store: store, settings: settings,
                               memoryBook: memoryBook, eventStore: eventStore,
-                              locationProvider: locationProvider, skillStore: skillStore)
+                              locationProvider: locationProvider, skillStore: skillStore,
+                              agentRuns: agentRuns)
         // Cold launch restores identity only, so the first turn is where the weights are actually loaded.
         // A false answer stops the turn instead of generating against an empty engine.
         chat.ensureModelReady = { [weak self] in
@@ -112,6 +119,13 @@ public final class AppContainer {
         models.activeModelDidChange = { [weak self] model in
             self?.chat.synchronizeActiveModel(model, reseedEmptyConversation: false)
         }
+    }
+
+    /// Attaches the durable agent runtime after the container exists (the runtime snapshots this
+    /// container's stores at submission time, so wiring happens post-init at app assembly).
+    public func attachAgentRuns(_ agentRuns: AgentRunStore) {
+        self.agentRuns = agentRuns
+        chat.attachAgentRuntime(agentRuns)
     }
 
     /// Activate the (model, variant) a conversation remembers, if it's still installed. Falls back to any

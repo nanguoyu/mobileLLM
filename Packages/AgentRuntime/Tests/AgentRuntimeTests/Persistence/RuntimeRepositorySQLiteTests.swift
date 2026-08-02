@@ -6,6 +6,32 @@ import XCTest
 @testable import AgentRuntime
 
 final class RuntimeRepositorySQLiteTests: XCTestCase {
+    func testListRunsEnumeratesSubmissionsNewestFirst() async throws {
+        let url = temporaryDatabaseURL()
+        let store = SQLiteRunJournal(databaseURL: url)
+        let first = try submission(offset: 88_000)
+        let second = try submission(offset: 88_100)
+        _ = try await store.commitSubmission(first.commit)
+        _ = try await store.commitSubmission(second.commit)
+
+        let listed = try await store.listRuns()
+        XCTAssertEqual(
+            Set(listed.map(\.runID)),
+            Set([first.stream.runID, second.stream.runID])
+        )
+        XCTAssertTrue(listed.allSatisfy { $0.state == .created })
+        let byRun = Dictionary(uniqueKeysWithValues: listed.map { ($0.runID, $0) })
+        XCTAssertEqual(
+            byRun[first.stream.runID]?.conversationID,
+            ConversationID(rawValue: RuntimeTestFixtures.uuid(88_010))
+        )
+        XCTAssertEqual(
+            byRun[second.stream.runID]?.executionHandleID,
+            second.stream.executionHandleID
+        )
+        XCTAssertTrue(listed.allSatisfy { $0.updatedAt.rawValue > 0 })
+    }
+
     func testSubmissionCommitsEveryBoundaryReopensAndRejectsConflictingReplay() async throws {
         let url = temporaryDatabaseURL()
         let fixture = try submission(offset: 10)

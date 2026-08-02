@@ -457,6 +457,30 @@ public protocol RuntimeRepository: RunJournal {
 
 public enum DeletionIntentScope: String, Codable, Sendable { case conversation, deleteAll }
 
+/// One row of the durable runs table, used by the neutral launch inbox (spec §9.4 / §20: pending
+/// runs are discoverable but never auto-resumed or navigated to).
+public struct JournalRunSummary: Hashable, Sendable {
+    public let runID: AgentRunID
+    public let conversationID: ConversationID?
+    public let executionHandleID: AgentExecutionHandleID
+    public let state: AgentRunState
+    public let updatedAt: AgentTimestamp
+
+    public init(
+        runID: AgentRunID,
+        conversationID: ConversationID?,
+        executionHandleID: AgentExecutionHandleID,
+        state: AgentRunState,
+        updatedAt: AgentTimestamp
+    ) {
+        self.runID = runID
+        self.conversationID = conversationID
+        self.executionHandleID = executionHandleID
+        self.state = state
+        self.updatedAt = updatedAt
+    }
+}
+
 public struct DeletionIntent: Hashable, Codable, Sendable {
     public let id: String
     public let scope: DeletionIntentScope
