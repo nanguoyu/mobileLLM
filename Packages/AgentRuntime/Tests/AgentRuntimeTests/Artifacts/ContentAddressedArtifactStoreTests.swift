@@ -2,6 +2,7 @@
 
 import AgentContracts
 @testable import AgentRuntime
+import Darwin
 import Foundation
 import XCTest
 
@@ -261,6 +262,11 @@ final class ContentAddressedArtifactStoreTests: XCTestCase, @unchecked Sendable 
             .missingContent(reference.id),
             try await store.data(for: reference.id)
         )
+
+        try original.write(to: objectURL)
+        try FileManager.default.removeItem(at: objectURL.deletingLastPathComponent())
+        let missingParent = try await store.verify(reference.id)
+        XCTAssertEqual(missingParent.integrityStatus, .missing)
     }
 
     func testReadLimitAndForgedReferenceFailBeforeReturningBytes() async throws {
@@ -378,6 +384,19 @@ final class ContentAddressedArtifactStoreTests: XCTestCase, @unchecked Sendable 
                     provenance: provenance,
                     retentionPolicy: .run,
                     sensitivity: .secret,
+                    initialOwner: .run(runID)
+                )
+            )
+        )
+        await XCTAssertThrowsArtifactError(
+            .secretContentProhibited,
+            try await store.commit(
+                ArtifactCommitRequest(
+                    data: Data("eyJabcdefgh.abcdefghijk.abcdefghijk".utf8),
+                    mimeType: "text/plain",
+                    provenance: provenance,
+                    retentionPolicy: .run,
+                    sensitivity: .sensitive,
                     initialOwner: .run(runID)
                 )
             )
@@ -534,21 +553,120 @@ final class ContentAddressedArtifactStoreTests: XCTestCase, @unchecked Sendable 
         }
     }
 
+    #if os(macOS)
+    func testCrossProcessPOSIXLockBlocksASecondStore() throws {
+        let environment = ProcessInfo.processInfo.environment
+        if environment["MOBILELLM_ARTIFACT_LOCK_HELPER_PATH"] != nil {
+            try runPOSIXLockHelper(environment: environment)
+            return
+        }
+
+        let root = uniqueRoot("cross-process-lock")
+        var bootstrap: ContentAddressedArtifactStore? = try makeStore(root: root)
+        XCTAssertNotNil(bootstrap)
+        bootstrap = nil
+
+        let lockPath = root.appendingPathComponent(".artifact-store.lock").path
+        let readyURL = root.appendingPathComponent("lock-helper.ready")
+        let releaseURL = root.appendingPathComponent("lock-helper.release")
+        let childOutput = Pipe()
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        child.arguments = [
+            "xctest",
+            "-XCTest",
+            "AgentRuntimeTests.ContentAddressedArtifactStoreTests/testCrossProcessPOSIXLockBlocksASecondStore",
+            Bundle(for: ContentAddressedArtifactStoreTests.self).bundleURL.path,
+        ]
+        var childEnvironment = ProcessInfo.processInfo.environment
+        childEnvironment["MOBILELLM_ARTIFACT_LOCK_HELPER_PATH"] = lockPath
+        childEnvironment["MOBILELLM_ARTIFACT_LOCK_HELPER_READY"] = readyURL.path
+        childEnvironment["MOBILELLM_ARTIFACT_LOCK_HELPER_RELEASE"] = releaseURL.path
+        childEnvironment["LLVM_PROFILE_FILE"] = root.appendingPathComponent("helper-%p.profraw").path
+        child.environment = childEnvironment
+        child.standardOutput = childOutput
+        child.standardError = childOutput
+        try child.run()
+        defer {
+            if child.isRunning {
+                child.terminate()
+                child.waitUntilExit()
+            }
+        }
+
+        let readyDeadline = Date().addingTimeInterval(10)
+        while !FileManager.default.fileExists(atPath: readyURL.path),
+              child.isRunning,
+              Date() < readyDeadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        guard FileManager.default.fileExists(atPath: readyURL.path) else {
+            if child.isRunning { child.terminate() }
+            child.waitUntilExit()
+            let output = childOutput.fileHandleForReading.readDataToEndOfFile()
+            XCTFail("lock helper failed before readiness: \(String(decoding: output, as: UTF8.self))")
+            return
+        }
+
+        XCTAssertThrowsError(try makeStore(root: root)) {
+            XCTAssertEqual($0 as? ArtifactStoreError, .storeAlreadyOpen)
+        }
+        try Data([1]).write(to: releaseURL, options: .atomic)
+        child.waitUntilExit()
+        let output = childOutput.fileHandleForReading.readDataToEndOfFile()
+        XCTAssertEqual(
+            child.terminationStatus,
+            0,
+            "lock helper failed: \(String(decoding: output, as: UTF8.self))"
+        )
+    }
+
+    private func runPOSIXLockHelper(environment: [String: String]) throws {
+        let lockPath = try XCTUnwrap(environment["MOBILELLM_ARTIFACT_LOCK_HELPER_PATH"])
+        let readyPath = try XCTUnwrap(environment["MOBILELLM_ARTIFACT_LOCK_HELPER_READY"])
+        let releasePath = try XCTUnwrap(environment["MOBILELLM_ARTIFACT_LOCK_HELPER_RELEASE"])
+        let descriptor = Darwin.open(lockPath, O_RDWR | O_CLOEXEC | O_NOFOLLOW)
+        XCTAssertGreaterThanOrEqual(descriptor, 0)
+        guard descriptor >= 0 else { return }
+        defer { Darwin.close(descriptor) }
+
+        var lock = Darwin.flock()
+        lock.l_type = Int16(F_WRLCK)
+        lock.l_whence = Int16(SEEK_SET)
+        lock.l_start = 0
+        lock.l_len = 0
+        XCTAssertEqual(Darwin.fcntl(descriptor, F_SETLK, &lock), 0)
+        defer {
+            lock.l_type = Int16(F_UNLCK)
+            _ = Darwin.fcntl(descriptor, F_SETLK, &lock)
+        }
+
+        try Data([1]).write(to: URL(fileURLWithPath: readyPath), options: .atomic)
+        let deadline = Date().addingTimeInterval(10)
+        while !FileManager.default.fileExists(atPath: releasePath), Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: releasePath))
+    }
+    #endif
+
     func testOrphanAndTemporaryCleanupIsDeterministicOnReopen() async throws {
         let root = uniqueRoot("orphan-cleanup")
         var store: ContentAddressedArtifactStore? = try makeStore(root: root)
         XCTAssertNotNil(store)
         store = nil
 
-        let orphanDigest = StableDigest.sha256(Data("orphan".utf8))
-        let objectDirectory = root.appendingPathComponent(
-            "objects/\(orphanDigest.rawValue.prefix(2))",
-            isDirectory: true
-        )
-        try FileManager.default.createDirectory(at: objectDirectory, withIntermediateDirectories: true)
-        try Data("orphan".utf8).write(
-            to: objectDirectory.appendingPathComponent("\(orphanDigest.rawValue).blob")
-        )
+        let orphans = distinctOrderedOrphans()
+        for orphan in orphans {
+            let objectDirectory = root.appendingPathComponent(
+                "objects/\(orphan.digest.rawValue.prefix(2))",
+                isDirectory: true
+            )
+            try FileManager.default.createDirectory(at: objectDirectory, withIntermediateDirectories: true)
+            try orphan.data.write(
+                to: objectDirectory.appendingPathComponent("\(orphan.digest.rawValue).blob")
+            )
+        }
         try Data("stage".utf8).write(
             to: root.appendingPathComponent("staging/manual.stage")
         )
@@ -557,11 +675,702 @@ final class ContentAddressedArtifactStoreTests: XCTestCase, @unchecked Sendable 
         )
 
         let reopened = try makeStore(root: root)
-        XCTAssertEqual(reopened.startupCleanupReport.removedObjectDigests, [orphanDigest])
+        XCTAssertEqual(
+            reopened.startupCleanupReport.removedObjectDigests,
+            orphans.map(\.digest).sorted { $0.rawValue < $1.rawValue }
+        )
         XCTAssertEqual(reopened.startupCleanupReport.removedStagingFileCount, 1)
         XCTAssertEqual(reopened.startupCleanupReport.removedMetadataTemporaryFileCount, 1)
         let reopenedSnapshot = try await reopened.snapshot()
         XCTAssertEqual(reopenedSnapshot.physicalObjectCount, 0)
+    }
+
+    func testCoverageClosureExercisesDefaultsManualCleanupAndDistinctDigestDeletion() async throws {
+        let root = uniqueRoot("coverage-defaults")
+        let configuration = try ArtifactStoreConfiguration(
+            rootURL: root,
+            excludeFromBackup: false,
+            verifyPlatformProtection: false
+        )
+        let store = try ContentAddressedArtifactStore(configuration: configuration)
+        let runID = id(AgentRunIDDomain.self, 500)
+        let first = try await store.commit(
+            ArtifactCommitRequest(
+                data: Data("first-distinct".utf8),
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: runID),
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+        let second = try await store.commit(
+            ArtifactCommitRequest(
+                data: Data("second-distinct".utf8),
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: runID),
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+        XCTAssertNotEqual(first.contentDigest, second.contentDigest)
+
+        let deletion = try await store.deleteArtifactsOwned(by: .run(runID))
+        XCTAssertEqual(deletion.removedArtifactIDs.count, 2)
+        XCTAssertEqual(deletion.removedObjectDigests.count, 2)
+
+        let retainedRunID = id(AgentRunIDDomain.self, 502)
+        _ = try await store.commit(
+            ArtifactCommitRequest(
+                data: Data("retained-through-cleanup".utf8),
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: retainedRunID),
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(retainedRunID)
+            )
+        )
+
+        let messageOwner = ArtifactOwner.message(id(MessageIDDomain.self, 501))
+        XCTAssertEqual(messageOwner.kind, .message)
+        let sortedReport = ArtifactCleanupReport(
+            removedObjectDigests: [
+                StableDigest.sha256(Data("z".utf8)),
+                StableDigest.sha256(Data("a".utf8)),
+            ]
+        )
+        XCTAssertEqual(
+            sortedReport.removedObjectDigests,
+            sortedReport.removedObjectDigests.sorted { $0.rawValue < $1.rawValue }
+        )
+
+        let orphans = distinctOrderedOrphans()
+        for orphan in orphans {
+            let directory = root.appendingPathComponent(
+                "objects/\(orphan.digest.rawValue.prefix(2))",
+                isDirectory: true
+            )
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try orphan.data.write(
+                to: directory.appendingPathComponent("\(orphan.digest.rawValue).blob")
+            )
+        }
+        try Data("manual-stage".utf8).write(
+            to: root.appendingPathComponent("staging/manual-coverage.stage")
+        )
+        try Data("manual-index-temp".utf8).write(
+            to: root.appendingPathComponent("metadata/index.coverage.tmp")
+        )
+        let cleanup = try await store.cleanupOrphans()
+        XCTAssertEqual(cleanup.removedObjectDigests.count, orphans.count)
+        XCTAssertEqual(cleanup.removedStagingFileCount, 1)
+        XCTAssertEqual(cleanup.removedMetadataTemporaryFileCount, 1)
+    }
+
+    func testCoverageClosurePOSIXConfinementAndFailureClassification() async throws {
+        let runID = id(AgentRunIDDomain.self, 560)
+        let provenance = try ArtifactProvenance(runID: runID)
+
+        let unwritableRoot = uniqueRoot("unwritable-existing-root")
+        try FileManager.default.createDirectory(at: unwritableRoot, withIntermediateDirectories: true)
+        XCTAssertEqual(Darwin.chmod(unwritableRoot.path, S_IRUSR | S_IXUSR), 0)
+        XCTAssertThrowsError(try makeStore(root: unwritableRoot)) {
+            guard case .ioFailure(let operation, _) = $0 as? ArtifactStoreError else {
+                return XCTFail("Unexpected error: \($0)")
+            }
+            XCTAssertEqual(operation, "create-directory")
+        }
+        XCTAssertEqual(Darwin.chmod(unwritableRoot.path, S_IRWXU), 0)
+
+        let stagingRoot = uniqueRoot("unwritable-stage")
+        let stagingStore = try makeStore(root: stagingRoot)
+        let stagingDirectory = stagingRoot.appendingPathComponent("staging", isDirectory: true)
+        XCTAssertEqual(Darwin.chmod(stagingDirectory.path, S_IRUSR | S_IXUSR), 0)
+        do {
+            _ = try await stagingStore.commit(
+                ArtifactCommitRequest(
+                    data: Data("cannot-stage".utf8),
+                    mimeType: "text/plain",
+                    provenance: provenance,
+                    retentionPolicy: .run,
+                    sensitivity: .internalMetadata,
+                    initialOwner: .run(runID)
+                )
+            )
+            XCTFail("Expected staging create failure")
+        } catch let error as ArtifactStoreError {
+            guard case .ioFailure(let operation, _) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(operation, "create-file")
+        }
+        XCTAssertEqual(Darwin.chmod(stagingDirectory.path, S_IRWXU), 0)
+
+        let objectDirectoryRoot = uniqueRoot("unwritable-object-directory")
+        let objectDirectoryStore = try makeStore(root: objectDirectoryRoot)
+        let objectDirectory = objectDirectoryRoot.appendingPathComponent("objects", isDirectory: true)
+        XCTAssertEqual(Darwin.chmod(objectDirectory.path, S_IRUSR | S_IXUSR), 0)
+        do {
+            _ = try await objectDirectoryStore.commit(
+                ArtifactCommitRequest(
+                    data: Data("cannot-create-prefix".utf8),
+                    mimeType: "text/plain",
+                    provenance: provenance,
+                    retentionPolicy: .run,
+                    sensitivity: .internalMetadata,
+                    initialOwner: .run(runID)
+                )
+            )
+            XCTFail("Expected object-directory create failure")
+        } catch let error as ArtifactStoreError {
+            guard case .ioFailure(let operation, _) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(operation, "create-object-directory")
+        }
+        XCTAssertEqual(Darwin.chmod(objectDirectory.path, S_IRWXU), 0)
+
+        let publishRoot = uniqueRoot("unwritable-publish")
+        let publishStore = try makeStore(root: publishRoot)
+        let publishBody = Data("cannot-link-object".utf8)
+        let publishDigest = StableDigest.sha256(publishBody)
+        let publishDirectory = publishRoot.appendingPathComponent(
+            "objects/\(publishDigest.rawValue.prefix(2))",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: publishDirectory, withIntermediateDirectories: true)
+        XCTAssertEqual(Darwin.chmod(publishDirectory.path, S_IRUSR | S_IXUSR), 0)
+        do {
+            _ = try await publishStore.commit(
+                ArtifactCommitRequest(
+                    data: publishBody,
+                    mimeType: "text/plain",
+                    provenance: provenance,
+                    retentionPolicy: .run,
+                    sensitivity: .internalMetadata,
+                    initialOwner: .run(runID)
+                )
+            )
+            XCTFail("Expected atomic publish failure")
+        } catch let error as ArtifactStoreError {
+            guard case .ioFailure(let operation, _) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(operation, "publish-object")
+        }
+        XCTAssertEqual(Darwin.chmod(publishDirectory.path, S_IRWXU), 0)
+
+        let unreadableRoot = uniqueRoot("unreadable-object")
+        let unreadableStore = try makeStore(root: unreadableRoot)
+        let unreadable = try await unreadableStore.commit(
+            ArtifactCommitRequest(
+                data: Data("unreadable".utf8),
+                mimeType: "text/plain",
+                provenance: provenance,
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+        let unreadableURL = unreadableRoot.appendingPathComponent(unreadable.locator.value)
+        XCTAssertEqual(Darwin.chmod(unreadableURL.path, 0), 0)
+        do {
+            _ = try await unreadableStore.data(for: unreadable.id)
+            XCTFail("Expected unreadable object failure")
+        } catch let error as ArtifactStoreError {
+            guard case .ioFailure(let operation, _) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(operation, "open-file")
+        }
+        XCTAssertEqual(Darwin.chmod(unreadableURL.path, S_IRUSR | S_IWUSR), 0)
+
+        let nonregularRoot = uniqueRoot("nonregular-object")
+        let nonregularStore = try makeStore(root: nonregularRoot)
+        let nonregular = try await nonregularStore.commit(
+            ArtifactCommitRequest(
+                data: Data("nonregular".utf8),
+                mimeType: "text/plain",
+                provenance: provenance,
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+        let nonregularURL = nonregularRoot.appendingPathComponent(nonregular.locator.value)
+        try FileManager.default.removeItem(at: nonregularURL)
+        try FileManager.default.createDirectory(at: nonregularURL, withIntermediateDirectories: false)
+        await XCTAssertThrowsArtifactError(
+            .symbolicLinkEncountered,
+            try await nonregularStore.data(for: nonregular.id)
+        )
+    }
+
+    func testCoverageClosureMetadataAndObjectNodeTypesFailClosed() async throws {
+        let indexSymlinkRoot = uniqueRoot("index-symlink")
+        var indexSymlinkStore: ContentAddressedArtifactStore? = try makeStore(root: indexSymlinkRoot)
+        XCTAssertNotNil(indexSymlinkStore)
+        indexSymlinkStore = nil
+        let indexURL = indexSymlinkRoot.appendingPathComponent("metadata/artifact-index-v1.json")
+        let indexBackup = indexSymlinkRoot.appendingPathComponent("index-backup")
+        try FileManager.default.moveItem(at: indexURL, to: indexBackup)
+        try FileManager.default.createSymbolicLink(at: indexURL, withDestinationURL: indexBackup)
+        XCTAssertThrowsError(try makeStore(root: indexSymlinkRoot)) {
+            XCTAssertEqual($0 as? ArtifactStoreError, .symbolicLinkEncountered)
+        }
+
+        let indexDirectoryRoot = uniqueRoot("index-directory")
+        var indexDirectoryStore: ContentAddressedArtifactStore? = try makeStore(root: indexDirectoryRoot)
+        XCTAssertNotNil(indexDirectoryStore)
+        indexDirectoryStore = nil
+        let directoryIndexURL = indexDirectoryRoot
+            .appendingPathComponent("metadata/artifact-index-v1.json")
+        try FileManager.default.removeItem(at: directoryIndexURL)
+        try FileManager.default.createDirectory(
+            at: directoryIndexURL,
+            withIntermediateDirectories: false
+        )
+        XCTAssertThrowsError(try makeStore(root: indexDirectoryRoot)) {
+            XCTAssertEqual($0 as? ArtifactStoreError, .metadataCorrupt)
+        }
+
+        let objectSymlinkRoot = uniqueRoot("object-node-symlink")
+        let runID = id(AgentRunIDDomain.self, 570)
+        let objectSymlinkStore = try makeStore(root: objectSymlinkRoot)
+        let symlinkReference = try await objectSymlinkStore.commit(
+            ArtifactCommitRequest(
+                data: Data("object-node".utf8),
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: runID),
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+        let symlinkObject = objectSymlinkRoot.appendingPathComponent(symlinkReference.locator.value)
+        let symlinkTarget = objectSymlinkRoot.appendingPathComponent("target")
+        try Data("target".utf8).write(to: symlinkTarget)
+        try FileManager.default.removeItem(at: symlinkObject)
+        try FileManager.default.createSymbolicLink(at: symlinkObject, withDestinationURL: symlinkTarget)
+        await XCTAssertThrowsArtifactError(
+            .symbolicLinkEncountered,
+            try await objectSymlinkStore.snapshot()
+        )
+
+        let objectDirectoryRoot = uniqueRoot("object-node-directory")
+        let objectDirectoryStore = try makeStore(root: objectDirectoryRoot)
+        let directoryReference = try await objectDirectoryStore.commit(
+            ArtifactCommitRequest(
+                data: Data("object-directory".utf8),
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: runID),
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+        let directoryObject = objectDirectoryRoot
+            .appendingPathComponent(directoryReference.locator.value)
+        try FileManager.default.removeItem(at: directoryObject)
+        try FileManager.default.createDirectory(at: directoryObject, withIntermediateDirectories: false)
+        await XCTAssertThrowsArtifactError(
+            .metadataCorrupt,
+            try await objectDirectoryStore.snapshot()
+        )
+
+        let prefixSymlinkRoot = uniqueRoot("prefix-symlink")
+        let prefixSymlinkStore = try makeStore(root: prefixSymlinkRoot)
+        try FileManager.default.createSymbolicLink(
+            at: prefixSymlinkRoot.appendingPathComponent("objects/aa"),
+            withDestinationURL: prefixSymlinkRoot.appendingPathComponent("staging")
+        )
+        await XCTAssertThrowsArtifactError(
+            .symbolicLinkEncountered,
+            try await prefixSymlinkStore.snapshot()
+        )
+
+        let prefixFileRoot = uniqueRoot("prefix-file")
+        let prefixFileStore = try makeStore(root: prefixFileRoot)
+        try Data("not-directory".utf8).write(
+            to: prefixFileRoot.appendingPathComponent("objects/aa")
+        )
+        await XCTAssertThrowsArtifactError(
+            .invalidConfiguration,
+            try await prefixFileStore.snapshot()
+        )
+    }
+
+    func testCoverageClosureRejectsSpecialLockUnsafeStagingAndMalformedObjectTree() async throws {
+        let lockRoot = uniqueRoot("special-lock")
+        try FileManager.default.createDirectory(at: lockRoot, withIntermediateDirectories: true)
+        let lockPath = lockRoot.appendingPathComponent(".artifact-store.lock").path
+        XCTAssertEqual(Darwin.mkfifo(lockPath, S_IRUSR | S_IWUSR), 0)
+        XCTAssertThrowsError(try makeStore(root: lockRoot)) {
+            XCTAssertEqual($0 as? ArtifactStoreError, .invalidConfiguration)
+        }
+
+        let stagingRoot = uniqueRoot("unsafe-staging")
+        let stagingStore = try makeStore(root: stagingRoot)
+        let unsafeDirectory = stagingRoot.appendingPathComponent(
+            "staging/unsafe.stage",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: unsafeDirectory, withIntermediateDirectories: true)
+        do {
+            _ = try await stagingStore.cleanupOrphans()
+            XCTFail("Expected unsafe staging directory rejection")
+        } catch let error as ArtifactStoreError {
+            guard case .ioFailure(let operation, _) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(operation, "remove-temporary-file")
+        }
+
+        let malformedRoot = uniqueRoot("malformed-object-tree")
+        let malformedStore = try makeStore(root: malformedRoot)
+        try FileManager.default.createDirectory(
+            at: malformedRoot.appendingPathComponent("objects/not-hex", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        await XCTAssertThrowsArtifactError(
+            .metadataCorrupt,
+            try await malformedStore.snapshot()
+        )
+    }
+
+    func testCoverageClosurePublicNegativeSurfaceAndAllRetentionKinds() async throws {
+        let root = uniqueRoot("public-negative-surface")
+        let runID = id(AgentRunIDDomain.self, 520)
+        let artifactID = id(ArtifactIDDomain.self, 521)
+        let unknownID = id(ArtifactIDDomain.self, 522)
+        let store = try makeStore(
+            root: root,
+            sequence: DeterministicNames(ids: [artifactID])
+        )
+        let reference = try await store.commit(
+            ArtifactCommitRequest(
+                data: Data("known".utf8),
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: runID),
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+        let unknownReference = try ArtifactReference(
+            id: unknownID,
+            contentDigest: reference.contentDigest,
+            byteCount: reference.byteCount,
+            mimeType: reference.mimeType,
+            provenance: reference.provenance,
+            createdAt: reference.createdAt,
+            retentionPolicy: reference.retentionPolicy,
+            locator: reference.locator,
+            sensitivity: reference.sensitivity,
+            integrityStatus: .verified
+        )
+        await XCTAssertThrowsArtifactError(
+            .artifactNotFound(unknownID),
+            try await store.data(for: unknownID)
+        )
+        await XCTAssertThrowsArtifactError(
+            .artifactNotFound(unknownID),
+            try await store.data(for: unknownReference)
+        )
+        await XCTAssertThrowsArtifactError(
+            .artifactNotFound(unknownID),
+            try await store.verify(unknownID)
+        )
+        await XCTAssertThrowsArtifactError(
+            .artifactNotFound(unknownID),
+            try await store.addReference(
+                to: unknownID,
+                owner: try ArtifactOwner(kind: .durableRecord, identifier: "unknown-owner")
+            )
+        )
+        await XCTAssertThrowsArtifactError(
+            .artifactNotFound(unknownID),
+            try await store.removeReference(
+                from: unknownID,
+                owner: try ArtifactOwner(kind: .durableRecord, identifier: "unknown-owner")
+            )
+        )
+        await XCTAssertThrowsArtifactError(
+            .artifactNotFound(unknownID),
+            try await store.deleteArtifact(unknownID, reason: .garbageCollection)
+        )
+        await XCTAssertThrowsArtifactError(
+            .artifactNotFound(unknownID),
+            try await store.owners(for: unknownID)
+        )
+        await XCTAssertThrowsArtifactError(
+            .artifactStillReferenced(reference.id),
+            try await store.deleteArtifact(reference.id, reason: .garbageCollection)
+        )
+
+        await XCTAssertThrowsArtifactError(
+            .retentionOwnerMismatch,
+            try await store.commit(
+                ArtifactCommitRequest(
+                    data: Data(),
+                    mimeType: "application/octet-stream",
+                    provenance: try ArtifactProvenance(runID: runID),
+                    retentionPolicy: .userManaged,
+                    sensitivity: .publicMetadata,
+                    initialOwner: .run(runID)
+                )
+            )
+        )
+        await XCTAssertThrowsArtifactError(
+            .retentionOwnerMismatch,
+            try await store.commit(
+                ArtifactCommitRequest(
+                    data: Data(),
+                    mimeType: "application/octet-stream",
+                    provenance: try ArtifactProvenance(runID: runID),
+                    retentionPolicy: .transient,
+                    sensitivity: .publicMetadata,
+                    initialOwner: .run(runID)
+                )
+            )
+        )
+        let transientOwner = try ArtifactOwner(kind: .transient, identifier: "transient-520")
+        let transient = try await store.commit(
+            ArtifactCommitRequest(
+                data: Data(),
+                mimeType: "application/octet-stream",
+                provenance: try ArtifactProvenance(providerID: "local.transient"),
+                retentionPolicy: .transient,
+                sensitivity: .publicMetadata,
+                initialOwner: transientOwner
+            )
+        )
+        let transientData = try await store.data(for: transient.id)
+        XCTAssertEqual(transientData.count, 0)
+    }
+
+    func testCoverageClosureSecretVariantsAndBothIntegrityMismatchClasses() async throws {
+        let root = uniqueRoot("secret-and-integrity-classes")
+        let runID = id(AgentRunIDDomain.self, 530)
+        let artifactID = id(ArtifactIDDomain.self, 531)
+        let store = try makeStore(
+            root: root,
+            sequence: DeterministicNames(ids: [artifactID]),
+            maximumBytes: 1_024
+        )
+        let provenance = try ArtifactProvenance(runID: runID)
+        for secret in [
+            "-----BEGIN PRIVATE KEY-----\nabc",
+            "-----BEGIN RSA PRIVATE KEY-----\nabc",
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nabc",
+            "eyjabc1-_.abcde1-_.abcdef1-_",
+        ] {
+            await XCTAssertThrowsArtifactError(
+                .secretContentProhibited,
+                try await store.commit(
+                    ArtifactCommitRequest(
+                        data: Data(secret.utf8),
+                        mimeType: "text/plain",
+                        provenance: provenance,
+                        retentionPolicy: .run,
+                        sensitivity: .sensitive,
+                        initialOwner: .run(runID)
+                    )
+                )
+            )
+        }
+
+        let original = Data("12345678".utf8)
+        let reference = try await store.commit(
+            ArtifactCommitRequest(
+                data: original,
+                mimeType: "application/octet-stream",
+                provenance: provenance,
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+        let objectURL = root.appendingPathComponent(reference.locator.value)
+        try Data("short".utf8).write(to: objectURL)
+        let wrongSize = try await store.verify(reference.id)
+        XCTAssertEqual(wrongSize.integrityStatus, .corrupt)
+        try Data("87654321".utf8).write(to: objectURL)
+        await XCTAssertThrowsArtifactError(
+            .integrityMismatch(reference.id),
+            try await store.data(for: reference.id)
+        )
+    }
+
+    func testCoverageClosureRecoversOwnerlessMetadataAndRejectsMalformedIndexes() async throws {
+        let recoveryRoot = uniqueRoot("ownerless-recovery")
+        let runID = id(AgentRunIDDomain.self, 540)
+        let artifactID = id(ArtifactIDDomain.self, 541)
+        var recoveryStore: ContentAddressedArtifactStore? = try makeStore(
+            root: recoveryRoot,
+            sequence: DeterministicNames(ids: [artifactID])
+        )
+        _ = try await recoveryStore!.commit(
+            ArtifactCommitRequest(
+                data: Data("ownerless-after-crash".utf8),
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: runID),
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+        recoveryStore = nil
+        try mutateIndex(at: recoveryRoot) { object in
+            var records = object["records"] as! [[String: Any]]
+            records[0]["owners"] = []
+            object["records"] = records
+        }
+        let recovered = try makeStore(root: recoveryRoot)
+        XCTAssertEqual(recovered.startupCleanupReport.removedArtifactIDs, [artifactID])
+        let recoveredReference = await recovered.reference(for: artifactID)
+        XCTAssertNil(recoveredReference)
+
+        let invalidJSONRoot = uniqueRoot("invalid-json-index")
+        var invalidJSONStore: ContentAddressedArtifactStore? = try makeStore(root: invalidJSONRoot)
+        XCTAssertNotNil(invalidJSONStore)
+        invalidJSONStore = nil
+        try Data("{".utf8).write(
+            to: invalidJSONRoot.appendingPathComponent("metadata/artifact-index-v1.json")
+        )
+        XCTAssertThrowsError(try makeStore(root: invalidJSONRoot)) {
+            XCTAssertEqual($0 as? ArtifactStoreError, .metadataCorrupt)
+        }
+
+        let duplicateRoot = uniqueRoot("duplicate-index")
+        var duplicateStore: ContentAddressedArtifactStore? = try makeStore(
+            root: duplicateRoot,
+            sequence: DeterministicNames(ids: [id(ArtifactIDDomain.self, 542)])
+        )
+        _ = try await duplicateStore!.commit(
+            ArtifactCommitRequest(
+                data: Data("duplicate".utf8),
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: runID),
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+        duplicateStore = nil
+        try mutateIndex(at: duplicateRoot) { object in
+            var records = object["records"] as! [[String: Any]]
+            records.append(records[0])
+            object["records"] = records
+        }
+        XCTAssertThrowsError(try makeStore(root: duplicateRoot)) {
+            XCTAssertEqual($0 as? ArtifactStoreError, .metadataCorrupt)
+        }
+    }
+
+    func testCoverageClosureFileProtectionIOAndAtomicFailureSurfaces() async throws {
+        let protectedRoot = uniqueRoot("backup-protection")
+        let protectedStore = try ContentAddressedArtifactStore(
+            configuration: ArtifactStoreConfiguration(rootURL: protectedRoot)
+        )
+        let runID = id(AgentRunIDDomain.self, 550)
+        let protectedReference = try await protectedStore.commit(
+            ArtifactCommitRequest(
+                data: Data("protected".utf8),
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: runID),
+                retentionPolicy: .run,
+                sensitivity: .personalData,
+                initialOwner: .run(runID)
+            )
+        )
+        let rootValues = try protectedRoot.resourceValues(forKeys: [.isExcludedFromBackupKey])
+        let objectValues = try protectedRoot
+            .appendingPathComponent(protectedReference.locator.value)
+            .resourceValues(forKeys: [.isExcludedFromBackupKey])
+        XCTAssertEqual(rootValues.isExcludedFromBackup, true)
+        XCTAssertEqual(objectValues.isExcludedFromBackup, true)
+
+        let blockedParent = uniqueRoot("blocked-parent")
+        try Data("not-a-directory".utf8).write(to: blockedParent)
+        XCTAssertThrowsError(try makeStore(root: blockedParent.appendingPathComponent("child"))) {
+            guard case .ioFailure(let operation, _) = $0 as? ArtifactStoreError else {
+                return XCTFail("Unexpected error: \($0)")
+            }
+            XCTAssertEqual(operation, "lstat-root")
+        }
+
+        let unwritableParent = uniqueRoot("unwritable-parent")
+        try FileManager.default.createDirectory(at: unwritableParent, withIntermediateDirectories: true)
+        XCTAssertEqual(Darwin.chmod(unwritableParent.path, S_IRUSR | S_IXUSR), 0)
+        defer { _ = Darwin.chmod(unwritableParent.path, S_IRWXU) }
+        XCTAssertThrowsError(try makeStore(root: unwritableParent.appendingPathComponent("child"))) {
+            guard case .ioFailure(let operation, _) = $0 as? ArtifactStoreError else {
+                return XCTFail("Unexpected error: \($0)")
+            }
+            XCTAssertEqual(operation, "create-root")
+        }
+
+        let lockSymlinkRoot = uniqueRoot("lock-symlink")
+        try FileManager.default.createDirectory(at: lockSymlinkRoot, withIntermediateDirectories: true)
+        let external = lockSymlinkRoot.appendingPathComponent("external")
+        try Data().write(to: external)
+        try FileManager.default.createSymbolicLink(
+            at: lockSymlinkRoot.appendingPathComponent(".artifact-store.lock"),
+            withDestinationURL: external
+        )
+        XCTAssertThrowsError(try makeStore(root: lockSymlinkRoot)) {
+            XCTAssertEqual($0 as? ArtifactStoreError, .symbolicLinkEncountered)
+        }
+
+        let staleTempRoot = uniqueRoot("stale-index-temp")
+        let sequence = DeterministicNames(
+            ids: [id(ArtifactIDDomain.self, 551)],
+            names: ["initial-index", "stage", "index-replace"]
+        )
+        let staleTempStore = try makeStore(root: staleTempRoot, sequence: sequence)
+        let staleName = StableDigest.sha256(Data("index-replace".utf8)).rawValue
+        try Data("stale".utf8).write(
+            to: staleTempRoot.appendingPathComponent("metadata/index.\(staleName).tmp")
+        )
+        _ = try await staleTempStore.commit(
+            ArtifactCommitRequest(
+                data: Data("stale-temp-replaced".utf8),
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: runID),
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+
+        let renameRoot = uniqueRoot("rename-failure")
+        let renameStore = try makeStore(
+            root: renameRoot,
+            sequence: DeterministicNames(ids: [id(ArtifactIDDomain.self, 552)])
+        )
+        let indexURL = renameRoot.appendingPathComponent("metadata/artifact-index-v1.json")
+        try FileManager.default.removeItem(at: indexURL)
+        try FileManager.default.createDirectory(at: indexURL, withIntermediateDirectories: false)
+        do {
+            _ = try await renameStore.commit(
+                ArtifactCommitRequest(
+                    data: Data("rename-must-fail".utf8),
+                    mimeType: "text/plain",
+                    provenance: try ArtifactProvenance(runID: runID),
+                    retentionPolicy: .run,
+                    sensitivity: .internalMetadata,
+                    initialOwner: .run(runID)
+                )
+            )
+            XCTFail("Expected atomic index rename failure")
+        } catch let error as ArtifactStoreError {
+            guard case .ioFailure(let operation, _) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(operation, "replace-index")
+        }
     }
 
     func testScopedToolWriterFixesProvenanceOwnershipAndRetention() async throws {
@@ -815,6 +1624,43 @@ final class ContentAddressedArtifactStoreTests: XCTestCase, @unchecked Sendable 
     private func uniqueRoot(_ name: String) -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("mobileLLM-artifacts-\(name)-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    /// Produces at least two objects in one prefix and one in another, so deterministic ordering
+    /// is exercised at both directory levels rather than merely asserted for singleton input.
+    private func distinctOrderedOrphans() -> [(data: Data, digest: StableDigest)] {
+        var buckets: [String: [(Data, StableDigest)]] = [:]
+        for number in 0 ..< 10_000 {
+            let data = Data("orphan-order-\(number)".utf8)
+            let digest = StableDigest.sha256(data)
+            let prefix = String(digest.rawValue.prefix(2))
+            buckets[prefix, default: []].append((data, digest))
+            if let pair = buckets.values.first(where: { $0.count >= 2 }),
+               let other = buckets.first(where: { $0.key != String(pair[0].1.rawValue.prefix(2)) })?.value.first
+            {
+                return [
+                    (pair[1].0, pair[1].1),
+                    (other.0, other.1),
+                    (pair[0].0, pair[0].1),
+                ]
+            }
+        }
+        fatalError("SHA-256 prefix fixture generation unexpectedly failed")
+    }
+
+    private func mutateIndex(
+        at root: URL,
+        mutation: (inout [String: Any]) -> Void
+    ) throws {
+        let url = root.appendingPathComponent("metadata/artifact-index-v1.json")
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        )
+        mutation(&object)
+        try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]).write(
+            to: url,
+            options: .atomic
+        )
     }
 
     private func id<Domain: AgentIdentifierDomain>(

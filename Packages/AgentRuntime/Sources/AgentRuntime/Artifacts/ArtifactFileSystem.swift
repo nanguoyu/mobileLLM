@@ -487,9 +487,13 @@ private final class ArtifactStoreLock: @unchecked Sendable {
             throw ArtifactStoreError.ioFailure(operation: "open-lock", code: errno)
         }
         var information = stat()
-        guard Darwin.fstat(openedDescriptor, &information) == 0,
-              (information.st_mode & S_IFMT) == S_IFREG
-        else {
+        guard Darwin.fstat(openedDescriptor, &information) == 0 else {
+            let code = errno
+            Darwin.close(openedDescriptor)
+            ArtifactStoreProcessRegistry.shared.release(registryKey)
+            throw ArtifactStoreError.ioFailure(operation: "stat-lock", code: code)
+        }
+        guard (information.st_mode & S_IFMT) == S_IFREG else {
             Darwin.close(openedDescriptor)
             ArtifactStoreProcessRegistry.shared.release(registryKey)
             throw ArtifactStoreError.invalidConfiguration
@@ -503,8 +507,12 @@ private final class ArtifactStoreLock: @unchecked Sendable {
             let code = errno
             Darwin.close(openedDescriptor)
             ArtifactStoreProcessRegistry.shared.release(registryKey)
-            if code == EAGAIN || code == EACCES { throw ArtifactStoreError.storeAlreadyOpen }
-            throw ArtifactStoreError.ioFailure(operation: "lock-store", code: code)
+            switch code {
+            case EAGAIN, EACCES:
+                throw ArtifactStoreError.storeAlreadyOpen
+            default:
+                throw ArtifactStoreError.ioFailure(operation: "lock-store", code: code)
+            }
         }
         descriptor = openedDescriptor
     }

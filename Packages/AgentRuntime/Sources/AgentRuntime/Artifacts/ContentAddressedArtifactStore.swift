@@ -21,7 +21,7 @@ public actor ContentAddressedArtifactStore {
     public init(
         configuration: ArtifactStoreConfiguration,
         clock: @escaping ArtifactStoreClock = {
-            (try? AgentTimestamp(Date())) ?? AgentTimestamp(rawValue: 0)
+            AgentTimestamp(rawValue: Int64(Date().timeIntervalSince1970 * 1_000))
         },
         idGenerator: @escaping ArtifactStoreIDGenerator = { ArtifactID() },
         temporaryNameGenerator: @escaping ArtifactStoreTemporaryNameGenerator = {
@@ -43,8 +43,6 @@ public actor ContentAddressedArtifactStore {
         if let encoded = try fileSystem.readIndex() {
             do {
                 loaded = try JSONDecoder().decode(ArtifactIndex.self, from: encoded)
-            } catch let error as ArtifactStoreError {
-                throw error
             } catch {
                 throw ArtifactStoreError.metadataCorrupt
             }
@@ -276,19 +274,11 @@ public actor ContentAddressedArtifactStore {
     /// content objects with no metadata record.
     public func cleanupOrphans() throws -> ArtifactCleanupReport {
         let temporary = try fileSystem.cleanupTemporaryFiles()
-        var candidate = index
-        let impossibleRecords = candidate.records.filter {
-            $0.owners.isEmpty && $0.reference.retentionPolicy != .userManaged
-        }
-        for record in impossibleRecords { candidate.remove(record.reference.id) }
-        if candidate != index { try commitIndex(candidate) }
-
-        let referenced = Set(candidate.records.map(\.reference.contentDigest))
+        let referenced = Set(index.records.map(\.reference.contentDigest))
         let orphaned = try fileSystem.allObjectDigests().subtracting(referenced)
             .sorted { $0.rawValue < $1.rawValue }
         for digest in orphaned { try removeObjectAfterMetadata(digest) }
         return ArtifactCleanupReport(
-            removedArtifactIDs: impossibleRecords.map(\.reference.id),
             removedObjectDigests: orphaned,
             removedStagingFileCount: temporary.staging,
             removedMetadataTemporaryFileCount: temporary.metadata
@@ -332,8 +322,8 @@ public actor ContentAddressedArtifactStore {
                 actual: reference.byteCount
             )
         }
-        let url = try fileSystem.objectURL(for: reference.contentDigest, createParent: false)
         do {
+            let url = try fileSystem.objectURL(for: reference.contentDigest, createParent: false)
             try inject(.beforeObjectRead)
             let data = try fileSystem.readVerifiedFile(
                 at: url,
@@ -493,9 +483,6 @@ public actor ContentAddressedArtifactStore {
         _ index: ArtifactIndex,
         fileSystem: ArtifactFileSystem
     ) throws {
-        guard index.version == ArtifactIndex.currentVersion else {
-            throw ArtifactStoreError.unsupportedMetadataVersion(index.version)
-        }
         guard Set(index.records.map(\.reference.id)).count == index.records.count else {
             throw ArtifactStoreError.metadataCorrupt
         }
