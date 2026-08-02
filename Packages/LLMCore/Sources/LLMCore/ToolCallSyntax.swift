@@ -84,36 +84,101 @@ enum ToolCallSyntax {
         let name = String(rest[rest.startIndex..<brace]).trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return nil }
         let inner = String(rest[rest.index(after: brace)..<rest.index(before: rest.endIndex)])
-        return ToolCall(name: name, argumentsJSON: gemmaArgsToJSON(inner))
+        guard let argumentsJSON = gemmaArgsToJSON(inner) else { return nil }
+        return ToolCall(name: name, argumentsJSON: argumentsJSON)
     }
 
     /// `k:<|"|>v<|"|>,k2:12` → `{"k":"v","k2":12}`. Splits on top-level commas only: a comma inside a
     /// quoted value is part of the value ("用户住在南京, 江苏" must not become two arguments).
-    static func gemmaArgsToJSON(_ inner: String) -> String {
+    static func gemmaArgsToJSON(_ inner: String) -> String? {
+        // This text arrives before the Agent Harness response-byte gate can persist an action. Bound the
+        // family-specific parse independently so a model cannot force unbounded recursion or allocation.
+        guard inner.utf8.count <= 32 * 1_024 else { return nil }
+        var budget = GemmaParseBudget(nodesRemaining: 256)
+        guard let out = gemmaObject(inner, depth: 1, budget: &budget),
+              JSONSerialization.isValidJSONObject(out),
+              let data = try? JSONSerialization.data(withJSONObject: out, options: [.sortedKeys]),
+              let value = String(data: data, encoding: .utf8)
+        else { return nil }
+        return value
+    }
+
+    private struct GemmaParseBudget { var nodesRemaining: Int }
+
+    private static func gemmaObject(
+        _ inner: String,
+        depth: Int,
+        budget: inout GemmaParseBudget
+    ) -> [String: Any]? {
+        guard depth <= 8, budget.nodesRemaining > 0 else { return nil }
+        budget.nodesRemaining -= 1
+        let trimmed = inner.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return [:] }
+        guard let fields = splitTopLevel(trimmed) else { return nil }
         var out: [String: Any] = [:]
-        for field in splitTopLevel(inner) {
-            guard let colon = field.firstIndex(of: ":") else { continue }
-            let key = String(field[field.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
-            var value = String(field[field.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
-            guard !key.isEmpty else { continue }
-            if value.hasPrefix("<|\"|>"), value.hasSuffix("<|\"|>"), value.count >= 10 {
-                value = String(value.dropFirst(5).dropLast(5))
-                out[key] = value
-            } else if let n = Double(value) {
-                out[key] = n
-            } else if value == "true" || value == "false" {
-                out[key] = value == "true"
-            } else {
-                out[key] = value
-            }
+        for field in fields {
+            guard let colon = firstTopLevelColon(in: field) else { return nil }
+            let rawKey = String(field[field.startIndex..<colon])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = gemmaUnquote(rawKey) ?? rawKey
+            let rawValue = String(field[field.index(after: colon)...])
+            guard !key.isEmpty, out[key] == nil,
+                  let value = gemmaValue(rawValue, depth: depth + 1, budget: &budget)
+            else { return nil }
+            out[key] = value
         }
-        guard !out.isEmpty, let d = try? JSONSerialization.data(withJSONObject: out),
-              let s = String(data: d, encoding: .utf8) else { return "{}" }
-        return s
+        return out
+    }
+
+    private static func gemmaValue(
+        _ raw: String,
+        depth: Int,
+        budget: inout GemmaParseBudget
+    ) -> Any? {
+        guard depth <= 8, budget.nodesRemaining > 0 else { return nil }
+        budget.nodesRemaining -= 1
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        if let string = gemmaUnquote(value) { return string }
+        if value.hasPrefix("{"), value.hasSuffix("}") {
+            return gemmaObject(String(value.dropFirst().dropLast()), depth: depth, budget: &budget)
+        }
+        if value.hasPrefix("["), value.hasSuffix("]") {
+            let body = String(value.dropFirst().dropLast())
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if body.isEmpty { return [Any]() }
+            guard let elements = splitTopLevel(body) else { return nil }
+            var result: [Any] = []
+            result.reserveCapacity(elements.count)
+            for element in elements {
+                guard let parsed = gemmaValue(element, depth: depth + 1, budget: &budget) else {
+                    return nil
+                }
+                result.append(parsed)
+            }
+            return result
+        }
+        if value == "true" { return true }
+        if value == "false" { return false }
+        if value == "null" { return NSNull() }
+        if let number = Double(value), number.isFinite { return number }
+        // Preserve the historical tolerant primitive behavior for unquoted values. Nested structural
+        // syntax, in contrast, is fail-closed above rather than silently converted to a string.
+        guard !value.contains("{") && !value.contains("}")
+                && !value.contains("[") && !value.contains("]")
+        else { return nil }
+        return value
+    }
+
+    private static func gemmaUnquote(_ value: String) -> String? {
+        guard value.hasPrefix("<|\"|>"), value.hasSuffix("<|\"|>"), value.count >= 10 else {
+            return nil
+        }
+        return String(value.dropFirst(5).dropLast(5))
     }
 
     /// Split on commas that are outside `<|"|>` quotes and outside nested braces/brackets.
-    private static func splitTopLevel(_ s: String) -> [String] {
+    private static func splitTopLevel(_ s: String) -> [String]? {
         var fields: [String] = []
         var current = ""
         var depth = 0
@@ -129,7 +194,10 @@ enum ToolCallSyntax {
             let c = s[i]
             if !inQuote {
                 if c == "{" || c == "[" { depth += 1 }
-                if c == "}" || c == "]" { depth -= 1 }
+                if c == "}" || c == "]" {
+                    guard depth > 0 else { return nil }
+                    depth -= 1
+                }
                 if c == ",", depth == 0 {
                     fields.append(current); current = ""; i = s.index(after: i); continue
                 }
@@ -137,8 +205,33 @@ enum ToolCallSyntax {
             current.append(c)
             i = s.index(after: i)
         }
+        guard depth == 0, !inQuote else { return nil }
         if !current.trimmingCharacters(in: .whitespaces).isEmpty { fields.append(current) }
         return fields
+    }
+
+    private static func firstTopLevelColon(in value: String) -> String.Index? {
+        var depth = 0
+        var inQuote = false
+        var index = value.startIndex
+        while index < value.endIndex {
+            if value[index...].hasPrefix("<|\"|>") {
+                inQuote.toggle()
+                index = value.index(index, offsetBy: 5)
+                continue
+            }
+            let character = value[index]
+            if !inQuote {
+                if character == "{" || character == "[" { depth += 1 }
+                if character == "}" || character == "]" {
+                    guard depth > 0 else { return nil }
+                    depth -= 1
+                }
+                if character == ":", depth == 0 { return index }
+            }
+            index = value.index(after: index)
+        }
+        return nil
     }
 
     /// DeepSeek: `function<｜tool▁sep｜>NAME\n```json\n{…}\n``` ` (the type precedes the separator).

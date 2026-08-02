@@ -220,6 +220,29 @@ final class ToolCallSyntaxTests: XCTestCase {
         XCTAssertEqual(a?["c"] as? Bool, true)
     }
 
+    func testGemmaNestedObjectsAndArraysPreserveCompleteArguments() {
+        let raw = "<|tool_call>call:x{options:{tags:[<|\"|>swift<|\"|>,<|\"|>ios<|\"|>],limit:2},enabled:false,nothing:null}<tool_call|>"
+        let decoded = args(raw)
+        let options = decoded?["options"] as? [String: Any]
+        XCTAssertEqual(options?["tags"] as? [String], ["swift", "ios"])
+        XCTAssertEqual(options?["limit"] as? Double, 2)
+        XCTAssertEqual(decoded?["enabled"] as? Bool, false)
+        XCTAssertTrue(decoded?["nothing"] is NSNull)
+    }
+
+    func testGemmaNestedParserBoundsAndMalformedStructuresFailClosed() {
+        let oversized = String(repeating: "a", count: 32 * 1_024 + 1)
+        XCTAssertNil(call("<|tool_call>call:x{value:<|\"|>\(oversized)<|\"|>}<tool_call|>"))
+
+        var nested = "value"
+        for _ in 0..<9 { nested = "{x:\(nested)}" }
+        XCTAssertNil(call("<|tool_call>call:x{root:\(nested)}<tool_call|>"))
+
+        let tooMany = (0..<257).map { "k\($0):\($0)" }.joined(separator: ",")
+        XCTAssertNil(call("<|tool_call>call:x{\(tooMany)}<tool_call|>"))
+        XCTAssertNil(call("<|tool_call>call:x{broken:[1,2}<tool_call|>"))
+    }
+
     /// Text around a call still streams; the markup never leaks in any dialect.
     func testSurroundingTextSurvivesAndMarkupNeverLeaks() {
         for raw in [#"Sure. <tool_call>{"name":"x","arguments":{}}</tool_call>"#,
