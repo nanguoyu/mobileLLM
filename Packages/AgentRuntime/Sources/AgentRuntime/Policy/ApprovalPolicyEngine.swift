@@ -47,10 +47,15 @@ public protocol ApprovalPolicyEngine: AgentAuthorizationPolicyValidating, Sendab
 /// operation; it only classifies and constructs non-serializable authorization-bound requests.
 public struct DefaultApprovalPolicyEngine: ApprovalPolicyEngine, Sendable {
     public let policyVersion: UInt32
+    private let sanitizationValidator: any SanitizationAttestationValidating
 
-    public init(policyVersion: UInt32 = 1) throws {
+    public init(
+        policyVersion: UInt32 = 1,
+        sanitizationValidator: any SanitizationAttestationValidating
+    ) throws {
         guard policyVersion > 0 else { throw ApprovalPolicyEngineError.invalidPolicyVersion }
         self.policyVersion = policyVersion
+        self.sanitizationValidator = sanitizationValidator
     }
 
     public func evaluate(
@@ -162,6 +167,11 @@ public struct DefaultApprovalPolicyEngine: ApprovalPolicyEngine, Sendable {
               receipt.isUsable(at: timestamp),
               trustedRunAuthority.validates(runID: prepared.runID, grant: prepared.capabilityGrant)
         else { throw AgentContractError.authorizationDenied }
+        do {
+            try validateSanitizationAttestations(prepared)
+        } catch {
+            throw AgentContractError.authorizationDenied
+        }
         _ = try AuthorizedExternalOperationRequest(
             prepared: prepared,
             authorization: receipt,
@@ -185,7 +195,19 @@ public struct DefaultApprovalPolicyEngine: ApprovalPolicyEngine, Sendable {
             grant: prepared.capabilityGrant
         ), prepared.plan.isWithin(prepared.capabilityGrant.authority)
         else { return .planOutsideStepGrant }
+        guard (try? validateSanitizationAttestations(prepared)) != nil else {
+            return .policyRevokedOrUnavailable
+        }
         return .valid
+    }
+
+    private func validateSanitizationAttestations(
+        _ prepared: PreparedExternalOperationRequest
+    ) throws {
+        try sanitizationValidator.validate(prepared.payload)
+        if let arguments = prepared.plan.canonicalArguments {
+            try sanitizationValidator.validate(arguments)
+        }
     }
 
     private func classifyReceipts(

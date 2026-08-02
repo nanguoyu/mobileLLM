@@ -8,7 +8,7 @@ import XCTest
 final class ApprovalPolicyEngineTests: XCTestCase {
     func testLocalPolicyAuthorizesWithoutUserPresentation() async throws {
         let fixture = try Fixture(effect: .localPure)
-        let engine = try DefaultApprovalPolicyEngine(policyVersion: 1)
+        let engine = try makeApprovalEngine()
         let evaluation = engine.evaluate(
             prepared: fixture.prepared,
             trustedRunAuthority: fixture.trustedAuthority,
@@ -33,7 +33,7 @@ final class ApprovalPolicyEngineTests: XCTestCase {
 
     func testExternalReadRequiresApprovalThenReusesBoundConversationReceipt() async throws {
         let first = try Fixture(effect: .networkRead)
-        let engine = try DefaultApprovalPolicyEngine(policyVersion: 1)
+        let engine = try makeApprovalEngine()
         let initial = engine.evaluate(
             prepared: first.prepared,
             trustedRunAuthority: first.trustedAuthority,
@@ -83,7 +83,7 @@ final class ApprovalPolicyEngineTests: XCTestCase {
 
     func testExactWriteReceiptCannotAuthorizeAnotherInvocationOrChangedPlan() throws {
         let fixture = try Fixture(effect: .externalWrite)
-        let engine = try DefaultApprovalPolicyEngine(policyVersion: 1)
+        let engine = try makeApprovalEngine()
         let receipt = try ApprovalReceipt(
             id: fixture.approvalID,
             prepared: fixture.prepared,
@@ -114,7 +114,7 @@ final class ApprovalPolicyEngineTests: XCTestCase {
     func testDeniedAndCancelledCurrentRequestFailClosed() throws {
         for decision in [ApprovalDecision.denied, .cancelled] {
             let fixture = try Fixture(effect: .networkRead)
-            let engine = try DefaultApprovalPolicyEngine(policyVersion: 1)
+            let engine = try makeApprovalEngine()
             let receipt = try ApprovalReceipt(
                 id: fixture.approvalID,
                 prepared: fixture.prepared,
@@ -141,7 +141,7 @@ final class ApprovalPolicyEngineTests: XCTestCase {
 
     func testExpiredWrongPolicyAndMissingTrustNeverAuthorize() throws {
         let fixture = try Fixture(effect: .networkRead)
-        let engine = try DefaultApprovalPolicyEngine(policyVersion: 1)
+        let engine = try makeApprovalEngine()
         let expired = try ApprovalReceipt(
             id: fixture.approvalID,
             prepared: fixture.prepared,
@@ -192,7 +192,7 @@ final class ApprovalPolicyEngineTests: XCTestCase {
 
     func testFeatureGatePrecedesReceipts() throws {
         let fixture = try Fixture(effect: .localWrite)
-        let engine = try DefaultApprovalPolicyEngine(policyVersion: 1)
+        let engine = try makeApprovalEngine()
         let evaluation = engine.evaluate(
             prepared: fixture.prepared,
             trustedRunAuthority: fixture.trustedAuthority,
@@ -207,7 +207,7 @@ final class ApprovalPolicyEngineTests: XCTestCase {
 
     func testBindRejectsExpiredReceiptAndExternalLocalPolicyBypass() async throws {
         let external = try Fixture(effect: .networkRead)
-        let engine = try DefaultApprovalPolicyEngine(policyVersion: 1)
+        let engine = try makeApprovalEngine()
         let expired = try ApprovalReceipt(
             id: external.approvalID,
             prepared: external.prepared,
@@ -233,12 +233,17 @@ final class ApprovalPolicyEngineTests: XCTestCase {
                 at: external.now
             )
         }
-        XCTAssertThrowsError(try DefaultApprovalPolicyEngine(policyVersion: 0))
+        XCTAssertThrowsError(
+            try DefaultApprovalPolicyEngine(
+                policyVersion: 0,
+                sanitizationValidator: testSanitizationAttestor
+            )
+        )
     }
 
     func testSystemPermissionAndAgentApprovalRemainIndependent() throws {
         let fixture = try Fixture(effect: .privateDataRead)
-        let engine = try DefaultApprovalPolicyEngine(policyVersion: 1)
+        let engine = try makeApprovalEngine()
         let appApproval = engine.evaluate(
             prepared: fixture.prepared,
             trustedRunAuthority: fixture.trustedAuthority,
@@ -297,11 +302,9 @@ private struct Fixture {
         let invocationID = id(6, as: ToolInvocationIDDomain.self)
         let payloadValue = try CanonicalJSON(.object(["query": .string("example")]))
         let redaction = try RedactionMetadata(classification: .sensitive, policyVersion: 1)
-        let payload = try SanitizedCanonicalJSON(
+        let payload = try testSanitizationAttestor.attest(
             value: payloadValue,
-            redaction: redaction,
-            policyRevision: 1,
-            attestationDigest: StableDigest.sha256(Data("attested".utf8))
+            redaction: redaction
         )
         let destination: ExternalDestination? = effect == .localPure
             ? nil
@@ -353,6 +356,18 @@ private struct Fixture {
             policyRevision: 1
         )
     }
+}
+
+private let testSanitizationAttestor = try! LocalSanitizationAttestor(
+    key: Data(repeating: 0xa7, count: 32),
+    policyRevision: 1
+)
+
+private func makeApprovalEngine() throws -> DefaultApprovalPolicyEngine {
+    try DefaultApprovalPolicyEngine(
+        policyVersion: 1,
+        sanitizationValidator: testSanitizationAttestor
+    )
 }
 
 private func XCTAssertThrowsErrorAsync(

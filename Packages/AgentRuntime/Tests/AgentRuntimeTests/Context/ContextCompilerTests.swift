@@ -251,7 +251,7 @@ final class ContextCompilerTests: XCTestCase {
     }
 
     func testImageOnlyCurrentTurnRemainsMandatoryWithoutSyntheticWebContent() throws {
-        let artifact = try artifact(20, semanticType: nil)
+        let artifact = try artifact(20, semanticType: nil, providerID: nil)
         let snapshot = try minimalSnapshot(user: "", currentAttachments: [artifact])
         let compiled = try ContextCompiler().compile(snapshot, budget: wideBudget())
         let current = try XCTUnwrap(
@@ -534,6 +534,7 @@ final class ContextCompilerTests: XCTestCase {
             ]),
             "required": .array([.string("query")]),
             "type": .string("object"),
+            "x-mobilellm-test": .string("preserved-unenforced-keyword"),
         ]))
         let output = withOutput ? try JSONSchemaDocument(root: .object([
             "properties": .object(["value": .object(["type": .string("string")])]),
@@ -561,14 +562,18 @@ final class ContextCompilerTests: XCTestCase {
         )
     }
 
-    private func artifact(_ seed: UInt8, semanticType: String? = "user-image") throws -> ArtifactReference {
+    private func artifact(
+        _ seed: UInt8,
+        semanticType: String? = "user-image",
+        providerID: String? = "fixture"
+    ) throws -> ArtifactReference {
         try ArtifactReference(
             id: ArtifactID(rawValue: uuid(seed)),
             contentDigest: digest("artifact-\(seed)"),
             byteCount: 123,
             mimeType: "image/jpeg",
             semanticType: semanticType,
-            provenance: ArtifactProvenance(providerID: "fixture"),
+            provenance: ArtifactProvenance(providerID: providerID),
             createdAt: AgentTimestamp(rawValue: 1_000),
             retentionPolicy: .run,
             locator: ArtifactLocator(kind: .managedRelativePath, value: "artifacts/\(seed).jpg"),

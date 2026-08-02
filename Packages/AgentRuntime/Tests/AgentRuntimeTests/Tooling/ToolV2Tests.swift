@@ -481,11 +481,9 @@ private struct ToolFixture {
         )
         descriptor = suppliedDescriptor ?? madeDescriptor
         arguments = try CanonicalJSON(.object(["q": .string(query)]))
-        sanitized = try SanitizedCanonicalJSON(
+        sanitized = try toolTestSanitizationAttestor.attest(
             value: arguments,
-            redaction: RedactionMetadata(classification: .sensitive, policyVersion: 1),
-            policyRevision: 1,
-            attestationDigest: StableDigest.sha256(Data("attested".utf8))
+            redaction: RedactionMetadata(classification: .sensitive, policyVersion: 1)
         )
         call = ProposedToolCall(
             invocationID: invocationID,
@@ -560,7 +558,10 @@ private struct ToolFixture {
     }
 
     func authorized() async throws -> AuthorizedExternalOperationRequest {
-        try await DefaultApprovalPolicyEngine(policyVersion: 1).bindLocalPolicy(
+        try await DefaultApprovalPolicyEngine(
+            policyVersion: 1,
+            sanitizationValidator: toolTestSanitizationAttestor
+        ).bindLocalPolicy(
             prepared: prepared.externalOperation,
             approvalID: ApprovalID(),
             trustedRunAuthority: trustedAuthority,
@@ -590,6 +591,11 @@ private struct ToolFixture {
         )
     }
 }
+
+private let toolTestSanitizationAttestor = try! LocalSanitizationAttestor(
+    key: Data(repeating: 0x5c, count: 32),
+    policyRevision: 1
+)
 
 private struct ScriptedTool: ToolV2 {
     let descriptor: AgentToolDescriptor
