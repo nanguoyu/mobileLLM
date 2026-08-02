@@ -75,6 +75,34 @@ final class ApprovalDecisionTableTests: XCTestCase {
         )
     }
 
+    func testHighestRiskRanksLocalEffectClassesWithoutUnknownFallback() {
+        XCTAssertEqual(
+            ApprovalEffectClass.highestRisk(in: [AgentEffect.localPure]),
+            .localPure
+        )
+        XCTAssertEqual(
+            ApprovalEffectClass.highestRisk(in: [AgentEffect.localRead]),
+            .appLocalRead
+        )
+        XCTAssertEqual(
+            ApprovalEffectClass.highestRisk(in: [AgentEffect.localWrite]),
+            .appLocalWrite
+        )
+        XCTAssertEqual(
+            ApprovalEffectClass.highestRisk(in: [AgentEffect.localPure, .localRead]),
+            .appLocalRead
+        )
+        XCTAssertEqual(
+            ApprovalEffectClass.highestRisk(in: [AgentEffect.localRead, .localWrite]),
+            .appLocalWrite
+        )
+        XCTAssertEqual(
+            ApprovalEffectClass.highestRisk(in: [AgentEffect.localPure, .localWrite, .localRead]),
+            .appLocalWrite
+        )
+        XCTAssertNil(ApprovalEffectClass.highestRisk(in: []))
+    }
+
     func testApprovalPresentationEnumeratesSixCellsAndFourRules() {
         var cells = 0
         var winners: Set<String> = []

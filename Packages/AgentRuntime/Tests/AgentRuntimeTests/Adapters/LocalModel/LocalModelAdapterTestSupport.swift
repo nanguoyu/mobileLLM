@@ -6,7 +6,13 @@ import Foundation
 import LLMCore
 
 struct LocalEngineScript: Sendable {
-    enum Ending: Sendable { case finish, fail, waitForCancellation }
+    enum Ending: Sendable {
+        case finish
+        case fail
+        case failCancellation
+        case failContract
+        case waitForCancellation
+    }
     let deltas: [EngineDelta]
     let ending: Ending
 
@@ -29,6 +35,10 @@ actor LocalAdapterScriptedEngine: LLMEngine {
     private var loads: [(LLMModel, LLMVariant, URL)] = []
     private var unloadCount = 0
     private var shouldFailLoad: Bool
+    private var shouldBlockLoad = false
+    private var loadEntered = false
+    private var loadWaiters: [CheckedContinuation<Void, Never>] = []
+    private var loadReleasers: [CheckedContinuation<Void, Never>] = []
 
     init(scripts: [LocalEngineScript] = [], shouldFailLoad: Bool = false) {
         self.scripts = scripts
@@ -43,6 +53,13 @@ actor LocalAdapterScriptedEngine: LLMEngine {
     ) async throws {
         loads.append((model, variant, weightsDir))
         progress(0.5)
+        if shouldBlockLoad {
+            shouldBlockLoad = false
+            loadEntered = true
+            for waiter in loadWaiters { waiter.resume() }
+            loadWaiters.removeAll()
+            await withCheckedContinuation { loadReleasers.append($0) }
+        }
         if shouldFailLoad {
             shouldFailLoad = false
             throw LocalEngineFixtureError()
@@ -69,6 +86,12 @@ actor LocalAdapterScriptedEngine: LLMEngine {
                         continuation.finish()
                     case .fail:
                         continuation.finish(throwing: LocalEngineFixtureError())
+                    case .failCancellation:
+                        continuation.finish(throwing: CancellationError())
+                    case .failContract:
+                        continuation.finish(
+                            throwing: AgentContractError.invalidEventSequence("scripted contract failure")
+                        )
                     case .waitForCancellation:
                         while true { try await Task.sleep(nanoseconds: 50_000_000) }
                     }
@@ -89,6 +112,18 @@ actor LocalAdapterScriptedEngine: LLMEngine {
     func recordedCaptures() -> [LocalEngineCapture] { captures }
     func recordedLoadCount() -> Int { loads.count }
     func recordedUnloadCount() -> Int { unloadCount }
+    func blockNextLoad() { shouldBlockLoad = true }
+
+    func waitForBlockedLoad() async {
+        if loadEntered { return }
+        await withCheckedContinuation { loadWaiters.append($0) }
+    }
+
+    func releaseBlockedLoad() {
+        let releasers = loadReleasers
+        loadReleasers.removeAll()
+        for releaser in releasers { releaser.resume() }
+    }
 }
 
 struct LocalAdapterHarness {

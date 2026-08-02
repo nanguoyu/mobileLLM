@@ -645,6 +645,18 @@ final class ToolBatchValidatorTests: XCTestCase {
             )
         )
     }
+
+    func testBatchValidationTreatsPartiallyEnforcedSchemasAsConservative() throws {
+        let fixture = try ToolFixture(partialInputSchema: true)
+        XCTAssertEqual(fixture.descriptor.inputSchema.enforcement, .partiallyEnforced)
+        let batch = try ToolBatchValidator().validate(
+            proposedCalls: [fixture.call],
+            advertisedDescriptors: [fixture.descriptor],
+            maximumCalls: 1
+        )
+        XCTAssertEqual(batch.count, 1)
+        XCTAssertEqual(batch[0].argumentValidation, .partiallyValidatedConservative)
+    }
 }
 
 private struct ToolFixture {

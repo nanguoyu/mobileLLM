@@ -569,6 +569,113 @@ final class AgentModelExecutorTests: XCTestCase {
             )
         }
     }
+
+    func testProvisionalAnswerAfterActionAndMultipleActionsFailClosed() async throws {
+        let descriptor = try ModelFixture.tool()
+        let toolFixture = try ModelFixture(
+            features: AgentModelCapabilitySet([.textToolDialect]),
+            toolCallingMode: .textDialect,
+            advertisedTools: [descriptor]
+        )
+        let call = ProposedToolCall(
+            invocationID: ToolInvocationID(rawValue: ModelFixture.uuid(90)),
+            toolID: descriptor.id.logicalID,
+            arguments: try CanonicalJSON(.object(["q": .string("x")]))
+        )
+        let usage = try modelUsage()
+
+        // A streamed answer after a tool action is provisional-answer invalid.
+        let answerAfterAction = ScriptedModelProvider(
+            descriptor: toolFixture.descriptor,
+            capabilities: toolFixture.capabilities,
+            emissions: [
+                ScriptedEmission(.toolCalls([call])),
+                ScriptedEmission(.answerDelta("late prose")),
+            ],
+            termination: .completion(
+                AgentModelBoundaryCompletion(outcome: .interrupted(nil))
+            )
+        )
+        await assertExecutionError {
+            _ = try await AgentModelExecutor().execute(
+                provider: answerAfterAction,
+                authorized: try await toolFixture.authorized(provider: answerAfterAction)
+            )
+        }
+
+        // A second distinct action after a tool action is invalid.
+        let interaction = try UserInputRequest(
+            id: InteractionRequestID(rawValue: ModelFixture.uuid(91)),
+            runID: toolFixture.request.runID,
+            prompt: "clarify",
+            creationStateVersion: 1
+        )
+        let secondAction = ScriptedModelProvider(
+            descriptor: toolFixture.descriptor,
+            capabilities: toolFixture.capabilities,
+            emissions: [
+                ScriptedEmission(.toolCalls([call])),
+                ScriptedEmission(.requestUserInput(interaction)),
+            ],
+            termination: .completion(
+                AgentModelBoundaryCompletion(outcome: .interrupted(nil))
+            )
+        )
+        await assertExecutionError {
+            _ = try await AgentModelExecutor().execute(
+                provider: secondAction,
+                authorized: try await toolFixture.authorized(provider: secondAction)
+            )
+        }
+
+        // A terminal tool batch larger than the advertised capability is rejected.
+        let secondCall = ProposedToolCall(
+            invocationID: ToolInvocationID(rawValue: ModelFixture.uuid(92)),
+            toolID: descriptor.id.logicalID,
+            arguments: try CanonicalJSON(.object(["q": .string("y")]))
+        )
+        let doubleCompletion = try AgentModelCompletion(
+            action: .callTools([call, secondCall]),
+            usage: usage
+        )
+        let oversized = ScriptedModelProvider(
+            descriptor: toolFixture.descriptor,
+            capabilities: toolFixture.capabilities,
+            emissions: [ScriptedEmission(.completed(doubleCompletion))],
+            termination: .completion(
+                AgentModelBoundaryCompletion(outcome: .completed(doubleCompletion))
+            )
+        )
+        await assertExecutionError {
+            _ = try await AgentModelExecutor().execute(
+                provider: oversized,
+                authorized: try await toolFixture.authorized(provider: oversized)
+            )
+        }
+    }
+
+    func testMonotonicUsageRejectsMissingCostTransition() async throws {
+        let fixture = try ModelFixture(reportsCost: true)
+        let withoutCost = try modelUsage()
+        let withCost = try modelUsage(cost: 1, currency: "USD")
+        let provider = ScriptedModelProvider(
+            descriptor: fixture.descriptor,
+            capabilities: fixture.capabilities,
+            emissions: [
+                ScriptedEmission(.usage(withCost)),
+                ScriptedEmission(.usage(withoutCost)),
+            ],
+            termination: .completion(
+                AgentModelBoundaryCompletion(outcome: .interrupted(withoutCost))
+            )
+        )
+        await assertExecutionError {
+            _ = try await AgentModelExecutor().execute(
+                provider: provider,
+                authorized: try await fixture.authorized(provider: provider)
+            )
+        }
+    }
 }
 
 private func assertExecutionError(operation: () async throws -> Void) async {

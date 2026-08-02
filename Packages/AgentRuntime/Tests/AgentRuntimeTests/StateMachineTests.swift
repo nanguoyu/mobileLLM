@@ -282,4 +282,106 @@ final class StateMachineTests: XCTestCase {
         )
         XCTAssertEqual(decodedSnapshot, snapshot)
     }
+
+    func testCancelledSnapshotRejectsEveryOtherTerminalReason() {
+        for reason in AgentTerminalReason.allCases where reason != .cancelledByUser {
+            XCTAssertThrowsError(
+                try AgentRunStateSnapshot(
+                    state: .cancelled,
+                    stateVersion: 1,
+                    terminalReason: reason
+                )
+            )
+        }
+    }
+
+    func testAllowsRejectsInputsWhoseSourceStateDiffers() {
+        let input = AgentRunDecisionInput.pauseCancel(
+            AgentPauseCancelInput(
+                state: .pausing,
+                command: .cancel,
+                guardCondition: .safeBoundary
+            )
+        )
+        XCTAssertFalse(AgentRunStateMachine.allows(input, from: .waitingForModel, to: .pausing))
+    }
+
+    func testApprovalCommandRejectsExpiredAndScopeFailures() {
+        let expectations: [AgentApprovalCommandGuard: AgentRunDecisionDiagnostic] = [
+            .expired: .approvalExpired,
+            .invalidScope: .approvalScopeInvalid,
+            .planChanged: .preparedPlanChanged,
+            .systemPermissionDenied: .systemPermissionDenied,
+        ]
+        for (guardCondition, diagnostic) in expectations {
+            let decision = AgentRunStateMachine.decide(
+                .approvalCommand(
+                    AgentApprovalCommandInput(
+                        state: .waitingForApproval,
+                        guardCondition: guardCondition
+                    )
+                )
+            )
+            XCTAssertEqual(decision.disposition, .rejected)
+            XCTAssertEqual(decision.diagnostic, diagnostic)
+        }
+    }
+
+    func testDecisionInitializerEnforcesTerminalReasonConsistency() throws {
+        XCTAssertThrowsError(
+            try AgentRunDecision(
+                disposition: .accepted,
+                nextState: .completed,
+                terminalReason: .cancelledByUser
+            )
+        )
+        XCTAssertThrowsError(
+            try AgentRunDecision(
+                disposition: .accepted,
+                nextState: .cancelled,
+                terminalReason: .completed
+            )
+        )
+        XCTAssertThrowsError(
+            try AgentRunDecision(disposition: .accepted, nextState: .failed)
+        )
+        XCTAssertThrowsError(
+            try AgentRunDecision(
+                disposition: .accepted,
+                nextState: .failed,
+                terminalReason: .completed
+            )
+        )
+        XCTAssertThrowsError(
+            try AgentRunDecision(
+                disposition: .accepted,
+                nextState: .waitingForModel,
+                terminalReason: .completed
+            )
+        )
+        XCTAssertNoThrow(
+            try AgentRunDecision(
+                disposition: .accepted,
+                nextState: .failed,
+                terminalReason: .externalResultUncertain
+            )
+        )
+        XCTAssertNoThrow(
+            try AgentRunDecision(
+                disposition: .accepted,
+                nextState: .completed,
+                terminalReason: .completed
+            )
+        )
+        XCTAssertNoThrow(
+            try AgentRunDecision(
+                disposition: .accepted,
+                nextState: .cancelled,
+                terminalReason: .cancelledByUser
+            )
+        )
+        XCTAssertNoThrow(
+            try AgentRunDecision(disposition: .accepted, nextState: .synthesizing)
+        )
+    }
 }

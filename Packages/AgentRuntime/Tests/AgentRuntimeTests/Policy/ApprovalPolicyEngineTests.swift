@@ -393,6 +393,169 @@ final class ApprovalPolicyEngineTests: XCTestCase {
         XCTAssertTrue(evaluation.authorization.uncertainOnTransportLoss)
         XCTAssertEqual(evaluation.authorization.matchedRuleID, "AH-APPROVAL-AUTHORITY-021")
     }
+
+    func testAuthorityValidityDistinguishesRunCeilingAndStepGrantFailures() throws {
+        let first = try Fixture(effect: .networkRead)
+        let otherRun = try Fixture(effect: .networkRead, runOffset: 500)
+        let engine = try makeApprovalEngine()
+
+        // Trusted authority belongs to another run.
+        let crossRun = engine.evaluate(
+            prepared: first.prepared,
+            trustedRunAuthority: otherRun.trustedAuthority,
+            feature: .enabled,
+            interaction: .foregroundInteractive,
+            candidateReceipts: [],
+            at: first.now
+        )
+        XCTAssertEqual(crossRun.authorization.decision, .deny)
+        XCTAssertEqual(crossRun.authorization.diagnostic, .outsideRunCeiling)
+    }
+
+    func testBindRejectsForgedSanitizationAttestations() async throws {
+        let fixture = try Fixture(effect: .networkRead)
+        let engine = try makeApprovalEngine()
+        let receipt = try ApprovalReceipt(
+            id: fixture.approvalID,
+            prepared: fixture.prepared,
+            decision: .approved,
+            scope: .exactInvocation,
+            policyVersion: 1,
+            decidedAt: fixture.now
+        )
+        let forged = try SanitizedCanonicalJSON(
+            value: fixture.prepared.payload.value,
+            referencedSecretIDs: fixture.prepared.payload.referencedSecretIDs,
+            redaction: fixture.prepared.payload.redaction,
+            policyRevision: 1,
+            attestationDigest: StableDigest.sha256(Data("forged".utf8))
+        )
+        let forgedPrepared = try PreparedExternalOperationRequest(
+            requestID: fixture.prepared.requestID,
+            runID: fixture.prepared.runID,
+            conversationID: fixture.prepared.conversationID,
+            stepID: fixture.prepared.stepID,
+            invocationID: fixture.prepared.invocationID,
+            plan: fixture.prepared.plan,
+            payload: forged,
+            capabilityGrant: fixture.prepared.capabilityGrant
+        )
+        do {
+            _ = try await engine.bind(
+                prepared: forgedPrepared,
+                receipt: receipt,
+                trustedRunAuthority: fixture.trustedAuthority,
+                at: fixture.now
+            )
+            XCTFail("Expected forged attestation to be rejected")
+        } catch let error as AgentContractError {
+            XCTAssertEqual(error, .authorizationDenied)
+        }
+    }
+
+    func testReceiptClassificationFallbacksRetainFirstMismatchAcrossCandidates() throws {
+        let fixture = try Fixture(effect: .networkRead)
+        let engine = try makeApprovalEngine()
+        let receipt = try ApprovalReceipt(
+            id: fixture.approvalID,
+            prepared: fixture.prepared,
+            decision: .approved,
+            scope: .exactInvocation,
+            policyVersion: 1,
+            decidedAt: fixture.now
+        )
+        let future = AgentTimestamp(rawValue: fixture.now.rawValue + 1)
+        let past = AgentTimestamp(rawValue: fixture.now.rawValue - 1)
+        let otherConversation = try receiptByReplacing(
+            "conversationID",
+            with: encodedJSONValue(ConversationID(rawValue: RuntimeTestFixtures.uuid(6_000))),
+            in: receipt
+        )
+        let otherConversation2 = try receiptByReplacing(
+            "conversationID",
+            with: encodedJSONValue(ConversationID(rawValue: RuntimeTestFixtures.uuid(6_001))),
+            in: receipt
+        )
+        let wrongPolicy = try receiptByReplacing("policyVersion", with: 2, in: receipt)
+        let wrongPolicy2 = try receiptByReplacing("policyVersion", with: 3, in: receipt)
+        let notYetValid = try receiptByReplacing(
+            "decidedAt",
+            with: encodedJSONValue(future),
+            in: receipt
+        )
+        let notYetValid2 = try receiptByReplacing(
+            "decidedAt",
+            with: encodedJSONValue(AgentTimestamp(rawValue: future.rawValue + 1)),
+            in: receipt
+        )
+        let expired = try ApprovalReceipt(
+            id: fixture.approvalID,
+            prepared: fixture.prepared,
+            decision: .approved,
+            scope: .exactInvocation,
+            policyVersion: 1,
+            decidedAt: past,
+            expiresAt: past
+        )
+        let wrongRequest = try receiptByReplacing(
+            "requestID",
+            with: encodedJSONValue(AgentRequestID(rawValue: RuntimeTestFixtures.uuid(6_010))),
+            in: receipt
+        )
+        let wrongRequest2 = try receiptByReplacing(
+            "requestID",
+            with: encodedJSONValue(AgentRequestID(rawValue: RuntimeTestFixtures.uuid(6_011))),
+            in: receipt
+        )
+
+        let scenarios: [[ApprovalReceipt]] = [
+            [otherConversation, otherConversation2],
+            [wrongPolicy, wrongPolicy2],
+            [notYetValid, notYetValid2],
+            [expired, expired],
+            [wrongRequest, wrongRequest2],
+        ]
+        for candidates in scenarios {
+            let evaluation = engine.evaluate(
+                prepared: fixture.prepared,
+                trustedRunAuthority: fixture.trustedAuthority,
+                feature: .enabled,
+                interaction: .foregroundInteractive,
+                candidateReceipts: candidates,
+                at: fixture.now
+            )
+            XCTAssertEqual(evaluation.authorization.decision, .requireApproval)
+            XCTAssertNil(evaluation.matchingReceipt)
+        }
+    }
+
+    func testNonApprovedReceiptForAnotherRequestNeverAuthorizes() throws {
+        let fixture = try Fixture(effect: .networkRead)
+        let otherRequest = try Fixture(
+            effect: .networkRead,
+            runOffset: 700,
+            conversationID: fixture.conversationID
+        )
+        let engine = try makeApprovalEngine()
+        let denied = try ApprovalReceipt(
+            id: ApprovalID(rawValue: RuntimeTestFixtures.uuid(6_100)),
+            prepared: otherRequest.prepared,
+            decision: .denied,
+            scope: .exactInvocation,
+            policyVersion: 1,
+            decidedAt: fixture.now
+        )
+        let evaluation = engine.evaluate(
+            prepared: fixture.prepared,
+            trustedRunAuthority: fixture.trustedAuthority,
+            feature: .enabled,
+            interaction: .foregroundInteractive,
+            candidateReceipts: [denied],
+            at: fixture.now
+        )
+        XCTAssertEqual(evaluation.authorization.decision, .requireApproval)
+        XCTAssertNil(evaluation.matchingReceipt)
+    }
 }
 
 private struct Fixture {

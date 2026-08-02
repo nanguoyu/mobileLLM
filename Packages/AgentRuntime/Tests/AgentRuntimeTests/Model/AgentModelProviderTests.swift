@@ -252,6 +252,14 @@ final class AgentModelProviderTests: XCTestCase {
             _ = try await inconsistent.prepared()
         }
 
+        let nativeInconsistent = try ModelFixture(
+            features: AgentModelCapabilitySet([]),
+            toolCallingMode: .nativeStructured
+        )
+        await assertModelError(.inconsistentCapabilities) {
+            _ = try await nativeInconsistent.prepared()
+        }
+
         let tool = try ModelFixture.tool()
         let noTools = try ModelFixture(advertisedTools: [tool])
         await assertModelError(.toolCallingUnavailable) {

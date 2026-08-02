@@ -246,6 +246,97 @@ final class AgentExecutorCoverageClosureIntegrationTests: XCTestCase {
         }
     }
 
+    func testRetryDelayClampAndUnlistedContractErrorClassification() async throws {
+        do {
+            // Base delay equal to the maximum exercises the exponential clamp break.
+            let offset = 966
+            let model = try ExecutorTestModelDefinition(offset: offset)
+            let retry = try ExternalRetryPolicy(
+                kind: .boundedExponential,
+                maximumAttempts: 3,
+                baseDelayMilliseconds: 12,
+                maximumDelayMilliseconds: 12,
+                allowsJitter: false
+            )
+            let definition = try ExecutorTestToolDefinition(
+                name: "clamped-retry",
+                retryPolicy: retry
+            )
+            let call = try definition.call(offset: offset)
+            let provider = try ToolSequenceModelProvider(
+                model: model,
+                call: call,
+                answer: "clamped retry completed"
+            )
+            let tool = ExecutorTestTool(
+                definition: definition,
+                behavior: .throwAttemptsThenComplete(2, "eventual")
+            )
+            let clock = RecordingExecutorClock()
+            let harness = try ExecutorTestHarness(
+                offset: offset,
+                provider: provider,
+                model: model,
+                toolDescriptors: [definition.descriptor],
+                tools: SingleExecutorTestToolCatalog(tool: tool),
+                explicitlyRequestedToolIDs: [definition.descriptor.id.logicalID],
+                clock: clock
+            )
+            let handleID = try await harness.executor.submit(
+                harness.request,
+                commandID: ExecutorTestID.command(30_000 + offset)
+            )
+            let handle = try await harness.executor.attach(to: handleID)
+            _ = try await collectTerminalEvents(from: handle)
+            let loaded = try await handle.result()
+            let result = try XCTUnwrap(loaded)
+            XCTAssertEqual(result.status.state, .completed)
+            let delays = await clock.recordedDelays()
+            XCTAssertEqual(delays, [12, 12])
+        }
+
+        do {
+            // A contract error outside the typed budget/authorization families stays permanent.
+            let offset = 967
+            let model = try ExecutorTestModelDefinition(offset: offset)
+            let definition = try ExecutorTestToolDefinition(name: "unlisted-contract")
+            let call = try definition.call(offset: offset)
+            let provider = try ToolSequenceModelProvider(
+                model: model,
+                call: call,
+                answer: "unlisted contract synthesized"
+            )
+            let tool = ExecutorTestTool(
+                definition: definition,
+                behavior: .throwContractBeforeBoundary(
+                    AgentContractError.wireLimitExceeded("unlisted contract failure")
+                )
+            )
+            let harness = try ExecutorTestHarness(
+                offset: offset,
+                provider: provider,
+                model: model,
+                toolDescriptors: [definition.descriptor],
+                tools: SingleExecutorTestToolCatalog(tool: tool),
+                explicitlyRequestedToolIDs: [definition.descriptor.id.logicalID]
+            )
+            let handleID = try await harness.executor.submit(
+                harness.request,
+                commandID: ExecutorTestID.command(30_000 + offset)
+            )
+            let handle = try await harness.executor.attach(to: handleID)
+            let events = try await collectTerminalEvents(from: handle)
+            let recorded = try XCTUnwrap(events.compactMap { event -> AgentFailure? in
+                guard case .toolOutcomeRecorded(_, .failed(let failure)) = event.payload.event else {
+                    return nil
+                }
+                return failure
+            }.last)
+            XCTAssertEqual(recorded.classification, .permanent)
+            XCTAssertEqual(recorded.externalEffect, .confirmedNone)
+        }
+    }
+
     func testToolInternalCancellationDoesNotStrandTheRunAsRuntimeCancellation() async throws {
         let offset = 979
         let model = try ExecutorTestModelDefinition(offset: offset)

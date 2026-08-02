@@ -365,6 +365,45 @@ final class LocalModelGenerationTests: XCTestCase {
             offset: 32
         )
         assertFailureCode(try await artifactOnly.execute(), "model.local.artifact-output-unsupported")
+
+        let unclosedFence = try LocalAdapterHarness.make(
+            output: .structured(schema),
+            scripts: [LocalEngineScript([
+                .answer("```json\n{\"answer\":\"yes\"}"),
+                .done(localStats()),
+            ])],
+            offset: 33
+        )
+        assertFailureCode(try await unclosedFence.execute(), "model.local.structured-output-invalid")
+    }
+
+    func testDoubleDoneDeltaAndBackwardsClockAreClassifiedSafely() async throws {
+        let doubleDone = try LocalAdapterHarness.make(
+            scripts: [LocalEngineScript([
+                .done(localStats()),
+                .done(localStats()),
+            ])],
+            offset: 66
+        )
+        assertFailureCode(try await doubleDone.execute(), "model.local.protocol-violation")
+
+        let backwards = BackwardsClock()
+        let configuration = try LocalModelAdapterConfiguration(
+            nowMilliseconds: { backwards.now() }
+        )
+        let harness = try LocalAdapterHarness.make(
+            configuration: configuration,
+            scripts: [LocalEngineScript([
+                .answer("answer"),
+                .done(localStats(prompt: 2, generated: 1)),
+            ])],
+            offset: 67
+        )
+        let result = try await harness.execute()
+        guard case .completed(let completion) = result.outcome else {
+            return XCTFail("expected completed outcome")
+        }
+        XCTAssertEqual(completion.usage.activeMilliseconds, 0)
     }
 
     func testEngineProtocolFailuresAreSingleTerminalOutcomes() async throws {
@@ -413,11 +452,127 @@ final class LocalModelGenerationTests: XCTestCase {
         XCTAssertEqual(result.interruption?.reason, .providerRequested)
         XCTAssertEqual(result.provisionalAnswer, .discarded("partial"))
     }
+
+    func testExplicitThinkingEnabledPropagatesToSampling() async throws {
+        let harness = try LocalAdapterHarness.make(
+            thinking: .enabled,
+            scripts: [LocalEngineScript([
+                .reasoning("thought"),
+                .answer("answer"),
+                .done(localStats(prompt: 4, generated: 1)),
+            ])],
+            offset: 60
+        )
+        _ = try await harness.execute()
+        let captures = await harness.engine.recordedCaptures()
+        XCTAssertEqual(try XCTUnwrap(captures.first).sampling.thinking, true)
+    }
+
+    func testEngineStreamCancellationAndContractErrorsPassThrough() async throws {
+        let cancelled = try LocalAdapterHarness.make(
+            scripts: [LocalEngineScript([.answer("x")], ending: .failCancellation)],
+            offset: 61
+        )
+        let interrupted = try await cancelled.execute()
+        XCTAssertEqual(interrupted.outcome, .interrupted(nil))
+        XCTAssertEqual(interrupted.interruption?.reason, .cancelled)
+
+        let contract = try LocalAdapterHarness.make(
+            scripts: [LocalEngineScript([.answer("x")], ending: .failContract)],
+            offset: 62
+        )
+        do {
+            _ = try await contract.execute()
+            XCTFail("Expected a scripted contract failure")
+        } catch let error as AgentModelRuntimeError {
+            guard case .providerContractViolation(let contractError) = error else {
+                return XCTFail("Unexpected runtime error: \(error)")
+            }
+            XCTAssertEqual(
+                contractError,
+                .invalidEventSequence("scripted contract failure")
+            )
+        }
+    }
+
+    func testArtifactResolutionContractFailurePassesThroughWithoutEngineFailure() async throws {
+        let reference = try ModelFixture.imageArtifact()
+        let harness = try LocalAdapterHarness.make(
+            model: LLMCatalog.gemma4E2B,
+            messages: [
+                try AgentModelMessage(
+                    role: .user,
+                    content: "image",
+                    isUntrustedData: false,
+                    artifacts: [reference]
+                ),
+            ],
+            resolver: ContractThrowingArtifactResolver(),
+            scripts: [LocalEngineScript([.done(localStats())])],
+            offset: 63
+        )
+        do {
+            _ = try await harness.execute()
+            XCTFail("Expected artifact contract failure")
+        } catch let error as AgentModelRuntimeError {
+            guard case .providerContractViolation(let contractError) = error else {
+                return XCTFail("Unexpected runtime error: \(error)")
+            }
+            XCTAssertEqual(contractError, .wireLimitExceeded("scripted artifact"))
+        }
+    }
+
+    func testArtifactResolutionCancellationBecomesAttemptInterruption() async throws {
+        let reference = try ModelFixture.imageArtifact()
+        let harness = try LocalAdapterHarness.make(
+            model: LLMCatalog.gemma4E2B,
+            messages: [
+                try AgentModelMessage(
+                    role: .user,
+                    content: "image",
+                    isUntrustedData: false,
+                    artifacts: [reference]
+                ),
+            ],
+            resolver: CancellationThrowingArtifactResolver(),
+            scripts: [LocalEngineScript([.done(localStats())])],
+            offset: 64
+        )
+        let result = try await harness.execute()
+        guard case .interrupted = result.outcome else {
+            return XCTFail("expected an interrupted attempt")
+        }
+        XCTAssertEqual(result.interruption?.reason, .cancelled)
+    }
 }
 
 private struct WrongBytesResolver: LocalModelArtifactBytesResolving {
     func preauthorizedBytes(for reference: ArtifactReference) async throws -> Data {
         Data("wrong".utf8)
+    }
+}
+
+private struct ContractThrowingArtifactResolver: LocalModelArtifactBytesResolving {
+    func preauthorizedBytes(for reference: ArtifactReference) async throws -> Data {
+        throw AgentContractError.wireLimitExceeded("scripted artifact")
+    }
+}
+
+private struct CancellationThrowingArtifactResolver: LocalModelArtifactBytesResolving {
+    func preauthorizedBytes(for reference: ArtifactReference) async throws -> Data {
+        throw CancellationError()
+    }
+}
+
+private final class BackwardsClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values = [100, 50]
+
+    func now() -> UInt64 {
+        lock.withLock {
+            guard values.count > 1 else { return 0 }
+            return UInt64(values.removeFirst())
+        }
     }
 }
 

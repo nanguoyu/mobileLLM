@@ -534,6 +534,61 @@ final class AuthorityAndAuthorizationTests: XCTestCase {
             try await escaped.consumeResponseBytes(1)
         }
     }
+
+    func testConstraintValidationSortingAndScopeDuplicateKeysFailClosed() throws {
+        XCTAssertThrowsError(
+            try AgentAuthorityConstraint(key: "Not Lowercase", allowedValues: ["x"])
+        )
+        XCTAssertThrowsError(
+            try AgentAuthorityConstraint(key: "valid.key", allowedValues: [])
+        )
+        XCTAssertThrowsError(
+            try AgentAuthorityConstraint(
+                key: "valid.key",
+                allowedValues: ["bad\u{01}value"]
+            )
+        )
+
+        let first = try AgentAuthorityConstraint(key: "a.key", allowedValues: ["z"])
+        let second = try AgentAuthorityConstraint(key: "b.key", allowedValues: ["a"])
+        XCTAssertEqual([second, first].sorted().map(\.key), ["a.key", "b.key"])
+
+        XCTAssertThrowsError(
+            try AgentAuthorityScope(
+                capabilities: AgentCapabilitySet([]),
+                constraints: [
+                    try AgentAuthorityConstraint(key: "same.key", allowedValues: ["one"]),
+                    try AgentAuthorityConstraint(key: "same.key", allowedValues: ["two"]),
+                ]
+            )
+        )
+    }
+
+    func testScopeSubsetRequiresEveryParentConstraintAndTrustRevisionIsPositive() throws {
+        let parent = try AgentAuthorityScope(
+            capabilities: AgentCapabilitySet([.networkRead]),
+            constraints: [
+                try AgentAuthorityConstraint(key: "filesystem.paths", allowedValues: ["docs"]),
+            ]
+        )
+        let childWithUnknownConstraint = try AgentAuthorityScope(
+            capabilities: AgentCapabilitySet([.networkRead]),
+            constraints: [
+                try AgentAuthorityConstraint(key: "unrelated.key", allowedValues: ["value"]),
+            ]
+        )
+        XCTAssertFalse(childWithUnknownConstraint.isSubset(of: parent))
+
+        XCTAssertThrowsError(
+            try TrustedRunAuthority(
+                runID: AgentRunID(),
+                ceiling: RunCapabilityCeiling(authority: parent),
+                policyRevision: 0
+            )
+        ) {
+            XCTAssertEqual($0 as? AgentContractError, .authorizationDenied)
+        }
+    }
 }
 
 private func trustedAuthority(

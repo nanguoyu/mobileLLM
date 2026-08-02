@@ -305,6 +305,35 @@ final class RunJournalContractTests: XCTestCase {
         ) { XCTAssertEqual($0 as? RunJournalContractError, .eventAfterTerminal) }
     }
 
+    func testSelfTransitionVersionBumpOutsideApprovalOrPauseIsIllegal() throws {
+        let e1 = try RuntimeTestFixtures.envelope(
+            eventNumber: 150,
+            sequence: 1,
+            stateVersion: 1,
+            state: .created,
+            timestamp: 10,
+            usage: .zero,
+            previousDigest: nil
+        )
+        let bumped = try RuntimeTestFixtures.envelope(
+            eventNumber: 151,
+            sequence: 2,
+            stateVersion: 2,
+            state: .created,
+            timestamp: 11,
+            usage: .zero,
+            previousDigest: e1.payload.recordDigest
+        )
+        XCTAssertThrowsError(
+            try RunJournalAppendRequest(
+                mutationIdentity: .command(RuntimeTestFixtures.commandID(150)),
+                runID: e1.payload.runID,
+                expectedRunStateVersion: 1,
+                events: [e1, bumped]
+            )
+        ) { XCTAssertEqual($0 as? RunJournalContractError, .illegalEventTransition) }
+    }
+
     func testAppendReceiptEnforcesDispositionShape() throws {
         let event = try RuntimeTestFixtures.envelope(
             eventNumber: 90,

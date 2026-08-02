@@ -234,6 +234,7 @@ final class LocalModelRegistrationAndPromptTests: XCTestCase {
             dialect: .gemma
         )
         XCTAssertTrue(gemma.contains("x-null:null"), gemma)
+        XCTAssertTrue(gemma.contains("x-true:true"), gemma)
         XCTAssertTrue(gemma.contains("x-false:false"), gemma)
         XCTAssertTrue(gemma.contains("x-unsigned:7"), gemma)
         XCTAssertTrue(gemma.contains("x-number:1.5"), gemma)
@@ -302,6 +303,7 @@ private func nestedTool(provider: String, name: String) throws -> AgentToolDescr
         "required": .array([.string("options")]),
         "additionalProperties": .bool(false),
         "x-null": .null,
+        "x-true": .bool(true),
         "x-false": .bool(false),
         "x-unsigned": .unsignedInteger(7),
         "x-number": .number(1.5),

@@ -138,6 +138,79 @@ final class IdentifiersVersioningAndWireTests: XCTestCase {
             )
         )
     }
+
+    func testSemanticVersionComparisonCoversEveryPrereleaseBranch() throws {
+        func version(_ value: String) throws -> SemanticVersion {
+            try XCTUnwrap(SemanticVersion(value))
+        }
+        // No-prerelease versus prerelease.
+        XCTAssertGreaterThan(try version("1.0.0"), try version("1.0.0-alpha"))
+        XCTAssertLessThan(try version("1.0.0-alpha"), try version("1.0.0"))
+        // Numeric versus alphanumeric.
+        XCTAssertLessThan(try version("1.0.0-1"), try version("1.0.0-alpha"))
+        XCTAssertGreaterThan(try version("1.0.0-alpha"), try version("1.0.0-1"))
+        // Equal-length numeric comparison.
+        XCTAssertLessThan(try version("1.0.0-1"), try version("1.0.0-2"))
+        // Numeric-length precedence (1 < 10 even though "1" > "10" lexically).
+        XCTAssertLessThan(try version("1.0.0-1"), try version("1.0.0-10"))
+        XCTAssertGreaterThan(try version("1.0.0-10"), try version("1.0.0-2"))
+        // Lexical alphanumeric comparison and identifier-count tiebreak.
+        XCTAssertLessThan(try version("1.0.0-alpha"), try version("1.0.0-beta"))
+        XCTAssertLessThan(try version("1.0.0-alpha"), try version("1.0.0-alpha.1"))
+        // Major/minor/patch precedence.
+        XCTAssertLessThan(try version("1.2.3"), try version("2.0.0"))
+        XCTAssertLessThan(try version("1.2.3"), try version("1.3.0"))
+        // Build metadata participates only in total ordering, not precedence.
+        XCTAssertLessThan(try version("1.0.0+build.1"), try version("1.0.0+build.2"))
+        XCTAssertEqual(try version("1.0.0+build"), try version("1.0.0+build"))
+    }
+
+    func testSemanticVersionDescriptionIncludesBuildMetadataAndRejectsInvalidDecode() throws {
+        let version = try XCTUnwrap(SemanticVersion("1.2.3-beta.1+build.7"))
+        XCTAssertEqual(version.description, "1.2.3-beta.1+build.7")
+        XCTAssertNil(SemanticVersion("1.2.3-01"))
+        XCTAssertNotNil(SemanticVersion("1.2.3+build.01"), "build metadata permits numeric leading zeros")
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(SemanticVersion.self, from: Data(#""not-a-version""#.utf8))
+        )
+        XCTAssertThrowsError(
+            try AgentContractVersion.validate(
+                protocolVersion: try XCTUnwrap(SemanticVersion("2.0.0")),
+                payloadVersion: AgentContractVersion.currentPayload
+            )
+        )
+        XCTAssertThrowsError(
+            try AgentContractVersion.validate(
+                protocolVersion: AgentContractVersion.currentProtocol,
+                payloadVersion: 99
+            )
+        )
+        XCTAssertNoThrow(
+            try AgentContractVersion.validate(
+                protocolVersion: AgentContractVersion.currentProtocol,
+                payloadVersion: AgentContractVersion.currentPayload
+            )
+        )
+    }
+
+    func testMalformedIdentifierAndEnvelopeVersionsFailClosed() throws {
+        XCTAssertNil(AgentRunID("not-a-uuid"))
+        XCTAssertNil(AgentRunID(""))
+        let envelope = try AgentEnvelope(payload: SamplePayload(value: "x"))
+        let bytes = try encodedJSON(envelope)
+        var replaced = try replacingJSONField(
+            in: bytes,
+            path: ["protocolVersion"],
+            with: "2.0.0"
+        )
+        XCTAssertThrowsError(try AgentEnvelope<SamplePayload>.decodeUntrusted(from: replaced))
+        replaced = try replacingJSONField(
+            in: bytes,
+            path: ["payloadVersion"],
+            with: 7
+        )
+        XCTAssertThrowsError(try AgentEnvelope<SamplePayload>.decodeUntrusted(from: replaced))
+    }
 }
 
 private extension JSONValue {

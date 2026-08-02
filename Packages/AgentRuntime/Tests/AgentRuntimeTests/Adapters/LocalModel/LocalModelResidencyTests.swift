@@ -146,6 +146,81 @@ final class LocalModelResidencyTests: XCTestCase {
         _ = try await first.value
     }
 
+    func testLoadIsRejectedWhileDecodeLaneIsOccupied() async throws {
+        let harness = try LocalAdapterHarness.make(
+            scripts: [LocalEngineScript([.answer("x")], ending: .waitForCancellation)],
+            offset: 65
+        )
+        let task = Task { try await harness.execute() }
+        try await waitForGeneration(harness.engine)
+
+        do {
+            try await harness.provider.residencyDriver.load(
+                selection: harness.request.selection
+            )
+            XCTFail("Expected an active-generation rejection")
+        } catch LocalModelAdapterError.generationAlreadyActive {
+            // Expected: residency cannot change while a decode lane is occupied.
+        }
+
+        try await harness.provider.residencyDriver.cancelAndDrain(
+            selection: harness.request.selection
+        )
+        _ = try await task.value
+    }
+
+    func testConcurrentResidencyOperationsRejectTransitionsInProgress() async throws {
+        let harness = try LocalAdapterHarness.make(
+            scripts: [LocalEngineScript([.answer("x"), .done(localStats())])],
+            offset: 66
+        )
+        await harness.engine.blockNextLoad()
+        let loadTask = Task {
+            try await harness.provider.residencyDriver.load(
+                selection: harness.request.selection
+            )
+        }
+        await harness.engine.waitForBlockedLoad()
+
+        do {
+            try await harness.provider.residencyDriver.load(
+                selection: harness.request.selection
+            )
+            XCTFail("Expected a transition-in-progress rejection")
+        } catch LocalModelAdapterError.residencyTransitionInProgress {
+            // Expected.
+        }
+        do {
+            try await harness.provider.residencyDriver.cancelAndDrain(
+                selection: harness.request.selection
+            )
+            XCTFail("Expected a transition-in-progress rejection")
+        } catch LocalModelAdapterError.residencyTransitionInProgress {
+            // Expected.
+        }
+        do {
+            try await harness.provider.residencyDriver.unload(
+                selection: harness.request.selection
+            )
+            XCTFail("Expected a transition-in-progress rejection")
+        } catch LocalModelAdapterError.residencyTransitionInProgress {
+            // Expected.
+        }
+        do {
+            _ = try await harness.provider.residencyDriver.runGeneration(
+                selection: harness.request.selection
+            ) { _ in
+                throw LocalEngineFixtureError()
+            }
+            XCTFail("Expected a transition-in-progress rejection")
+        } catch LocalModelAdapterError.residencyTransitionInProgress {
+            // Expected.
+        }
+
+        await harness.engine.releaseBlockedLoad()
+        _ = try await loadTask.value
+    }
+
     func testCancellingCallerPropagatesToDecodeAndReleasesGenerationLane() async throws {
         let harness = try LocalAdapterHarness.make(
             scripts: [LocalEngineScript([

@@ -310,6 +310,89 @@ final class ToolSelectorTests: XCTestCase {
         XCTAssertEqual(decoded.attachmentMIMETypes, ["image/jpeg", "text/plain"])
     }
 
+    func testSelectionSkipsZeroScoreLocalToolsAndEmptyRequests() throws {
+        let clock = try descriptor(provider: "builtin", name: "clock", effects: [.localPure])
+        let input = try ToolSelectionInput(
+            policy: policy(allowed: [clock.id.logicalID]),
+            catalog: ToolCatalogSnapshot(revision: 1, descriptors: [clock]),
+            availableCapabilities: AgentCapabilitySet([]),
+            latestUserRequest: "hello there"
+        )
+        let result = try DeterministicToolSelector().select(input)
+        XCTAssertTrue(result.descriptors.isEmpty)
+        XCTAssertTrue(result.snapshot.decisions.isEmpty)
+
+        let emptyRequest = try ToolSelectionInput(
+            policy: policy(allowed: [clock.id.logicalID]),
+            catalog: ToolCatalogSnapshot(revision: 1, descriptors: [clock]),
+            availableCapabilities: AgentCapabilitySet([]),
+            latestUserRequest: ""
+        )
+        let emptyResult = try DeterministicToolSelector().select(emptyRequest)
+        XCTAssertTrue(emptyResult.descriptors.isEmpty)
+        XCTAssertTrue(emptyResult.snapshot.decisions.isEmpty)
+    }
+
+    func testSelectionInputDecodeRejectsNoncanonicalCollections() throws {
+        let clock = try descriptor(provider: "builtin", name: "clock", effects: [.localPure])
+        let calc = try descriptor(provider: "builtin", name: "calculator", effects: [.localPure])
+        let input = try ToolSelectionInput(
+            policy: policy(
+                allowed: [clock.id.logicalID, calc.id.logicalID],
+                pinned: [clock.id.logicalID, calc.id.logicalID]
+            ),
+            catalog: ToolCatalogSnapshot(revision: 3, descriptors: [clock, calc]),
+            availableCapabilities: AgentCapabilitySet([]),
+            latestUserRequest: "clock",
+            attachmentMIMETypes: ["image/jpeg", "text/plain"],
+            activeSkillToolHints: [clock.id.logicalID, calc.id.logicalID],
+            explicitlyRequestedToolIDs: [clock.id.logicalID, calc.id.logicalID],
+            maximumAdvertisedTools: 4
+        )
+
+        var object = try jsonObject(input)
+        object["attachmentMIMETypes"] = ["text/plain", "image/jpeg"]
+        XCTAssertThrowsError(try decode(ToolSelectionInput.self, object: object))
+        object["attachmentMIMETypes"] = ["image/jpeg", "image/jpeg"]
+        XCTAssertThrowsError(try decode(ToolSelectionInput.self, object: object))
+
+        object["attachmentMIMETypes"] = ["image/jpeg", "text/plain"]
+        object["activeSkillToolHints"] = [
+            calc.id.logicalID.description,
+            clock.id.logicalID.description,
+        ]
+        XCTAssertThrowsError(try decode(ToolSelectionInput.self, object: object))
+
+        object["activeSkillToolHints"] = [
+            clock.id.logicalID.description,
+            calc.id.logicalID.description,
+        ]
+        object["explicitlyRequestedToolIDs"] = [
+            calc.id.logicalID.description,
+            clock.id.logicalID.description,
+        ]
+        XCTAssertThrowsError(try decode(ToolSelectionInput.self, object: object))
+    }
+
+    func testUnavailableToolSortingComparesLogicalIdentityThenReason() throws {
+        let clock = try logical("builtin", "clock")
+        let calc = try logical("builtin", "calculator")
+        let differentLogical = [
+            UnavailableTool(logicalID: clock, reason: .descriptorMissing),
+            UnavailableTool(logicalID: calc, reason: .providerUnavailable),
+        ]
+        XCTAssertEqual(differentLogical.sorted().map(\.logicalID), [calc, clock])
+
+        let sameLogical = [
+            UnavailableTool(logicalID: clock, reason: .capabilityUnavailable),
+            UnavailableTool(logicalID: clock, reason: .descriptorMissing),
+        ]
+        XCTAssertEqual(
+            sameLogical.sorted().map(\.reason),
+            [.capabilityUnavailable, .descriptorMissing]
+        )
+    }
+
     // MARK: - Fixtures
 
     private func policy(

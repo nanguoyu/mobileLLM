@@ -6,6 +6,77 @@ import Foundation
 import XCTest
 
 final class ContextModelInvariantTests: XCTestCase {
+    func testCompiledRequestManifestRejectsEmptyAndInconsistentShapes() throws {
+        let estimator = try ContextTokenEstimatorIdentity(
+            identifier: "test.estimator.v1",
+            version: 1,
+            utf8BytesPerToken: 4,
+            safetyMarginBasisPoints: 500,
+            messageOverheadTokens: 1,
+            toolSchemaOverheadTokens: 1
+        )
+        let budget = try ContextTokenBudget(
+            maximumContextTokens: 4_096,
+            reservedOutputTokens: 1_024,
+            maximumToolSchemaTokens: 1_024
+        )
+        func makeManifest(
+            sourceRecords: [CompiledContextSourceRecord],
+            toolSchemaRecords: [CompiledToolSchemaRecord],
+            promptEstimatedTokens: UInt64,
+            toolSchemaEstimatedTokens: UInt64,
+            totalEstimatedInputTokens: UInt64
+        ) throws -> CompiledRequestManifest {
+            try CompiledRequestManifest(
+                runID: AgentRunID(),
+                requestID: AgentRequestID(),
+                stepID: AgentStepID(),
+                frozenSnapshotDigest: StableDigest.sha256(Data()),
+                estimator: estimator,
+                budget: budget,
+                sourceRecords: sourceRecords,
+                toolSchemaRecords: toolSchemaRecords,
+                selectorID: "mobilellm.selector-v1",
+                selectorPolicyVersion: 1,
+                contextPolicyVersion: 1,
+                approvalPolicyVersion: 1,
+                renderedPromptDigest: StableDigest.sha256(Data()),
+                promptEstimatedTokens: promptEstimatedTokens,
+                toolSchemaEstimatedTokens: toolSchemaEstimatedTokens,
+                totalEstimatedInputTokens: totalEstimatedInputTokens
+            )
+        }
+
+        XCTAssertThrowsError(
+            try makeManifest(
+                sourceRecords: [],
+                toolSchemaRecords: [],
+                promptEstimatedTokens: 0,
+                toolSchemaEstimatedTokens: 0,
+                totalEstimatedInputTokens: 0
+            )
+        ) {
+            XCTAssertEqual(
+                $0 as? ContextCompilationError,
+                .invalidInput("compiled request manifest")
+            )
+        }
+        XCTAssertThrowsError(
+            try makeManifest(
+                sourceRecords: [],
+                toolSchemaRecords: [],
+                promptEstimatedTokens: 1,
+                toolSchemaEstimatedTokens: 0,
+                totalEstimatedInputTokens: 1
+            )
+        ) {
+            XCTAssertEqual(
+                $0 as? ContextCompilationError,
+                .invalidInput("compiled request manifest")
+            )
+        }
+    }
+
     func testPersistedNumericBoundsAreRevalidatedDuringDecoding() throws {
         var estimator = try jsonObject(ContextTokenEstimatorIdentity.mobileLLMConservativeV1)
         estimator["version"] = 0

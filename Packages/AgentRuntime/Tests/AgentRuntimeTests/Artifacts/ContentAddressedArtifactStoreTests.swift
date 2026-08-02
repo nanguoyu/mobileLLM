@@ -7,6 +7,122 @@ import Foundation
 import XCTest
 
 final class ContentAddressedArtifactStoreTests: XCTestCase, @unchecked Sendable {
+    func testCoverageClosureOwnerIdentityRetentionAndLastOwnerRemoval() async throws {
+        let root = uniqueRoot("owner-identity-coverage")
+        let runID = id(AgentRunIDDomain.self, 900)
+        let artifactID = id(ArtifactIDDomain.self, 901)
+        let store = try makeStore(
+            root: root,
+            sequence: DeterministicNames(ids: [artifactID])
+        )
+        let data = Data("owner identity coverage".utf8)
+        let committed = try await store.commit(
+            ArtifactCommitRequest(
+                data: data,
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: runID),
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+
+        // A foreign owner is a no-op, not an error.
+        let foreignOwner = try ArtifactOwner(kind: .durableRecord, identifier: "foreign")
+        let removedNothing = try await store.removeReference(
+            from: committed.id,
+            owner: foreignOwner
+        )
+        XCTAssertFalse(removedNothing)
+
+        // Deleting by an owner with no references yields an empty report.
+        let emptyReport = try await store.deleteArtifactsOwned(by: foreignOwner)
+        XCTAssertEqual(emptyReport.removedArtifactIDs, [])
+        XCTAssertEqual(emptyReport.removedObjectDigests, [])
+
+        // Removing the last durable owner removes both metadata and the object.
+        let removed = try await store.removeReference(from: committed.id, owner: .run(runID))
+        XCTAssertTrue(removed)
+        await XCTAssertThrowsArtifactError(
+            .artifactNotFound(committed.id),
+            try await store.data(for: committed.id)
+        )
+    }
+
+    func testCoverageClosureRetentionOwnerMismatchForEveryPolicy() async throws {
+        let root = uniqueRoot("retention-owner-mismatch")
+        let runID = id(AgentRunIDDomain.self, 910)
+        let conversationID = id(ConversationIDDomain.self, 911)
+        let store = try makeStore(
+            root: root,
+            sequence: DeterministicNames()
+        )
+        let provenance = try ArtifactProvenance(runID: runID)
+        let scenarios: [(ArtifactRetentionPolicy, ArtifactOwner)] = [
+            (.run, try ArtifactOwner(kind: .transient, identifier: "wrong")),
+            (.userManaged, try ArtifactOwner(kind: .run, identifier: runID.description)),
+            (.transient, try ArtifactOwner(kind: .conversation, identifier: conversationID.description)),
+        ]
+        for (retentionPolicy, initialOwner) in scenarios {
+            await XCTAssertThrowsArtifactError(
+                .retentionOwnerMismatch,
+                try await store.commit(
+                    ArtifactCommitRequest(
+                        data: Data("mismatch".utf8),
+                        mimeType: "text/plain",
+                        provenance: provenance,
+                        retentionPolicy: retentionPolicy,
+                        sensitivity: .internalMetadata,
+                        initialOwner: initialOwner
+                    )
+                )
+            )
+        }
+    }
+
+    func testDeleteArtifactKeepsSharedObjectBytesWhileAnotherRecordReferencesThem() async throws {
+        let root = uniqueRoot("shared-digest-deletion")
+        let runID = id(AgentRunIDDomain.self, 920)
+        let firstID = id(ArtifactIDDomain.self, 921)
+        let secondID = id(ArtifactIDDomain.self, 922)
+        let store = try makeStore(
+            root: root,
+            sequence: DeterministicNames(ids: [firstID, secondID])
+        )
+        let data = Data("shared object bytes".utf8)
+        let first = try await store.commit(
+            ArtifactCommitRequest(
+                data: data,
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(runID: runID),
+                retentionPolicy: .userManaged,
+                sensitivity: .internalMetadata,
+                initialOwner: try ArtifactOwner(kind: .userManaged, identifier: "user-1")
+            )
+        )
+        let second = try await store.commit(
+            ArtifactCommitRequest(
+                data: data,
+                mimeType: "text/plain",
+                provenance: try ArtifactProvenance(
+                    runID: runID,
+                    stepID: id(AgentStepIDDomain.self, 923)
+                ),
+                retentionPolicy: .run,
+                sensitivity: .internalMetadata,
+                initialOwner: .run(runID)
+            )
+        )
+        XCTAssertEqual(first.contentDigest, second.contentDigest)
+        XCTAssertNotEqual(first.id, second.id)
+
+        let report = try await store.deleteArtifact(first.id, reason: .explicitUserRequest)
+        XCTAssertEqual(report.removedArtifactIDs, [first.id])
+        XCTAssertEqual(report.removedObjectDigests, [])
+        let remaining = try await store.data(for: second.id)
+        XCTAssertEqual(remaining, data)
+    }
+
     func testCommitPersistsExactMetadataAndVerifiedBytesAcrossReopen() async throws {
         let root = uniqueRoot("round-trip")
         let runID = id(AgentRunIDDomain.self, 1)
