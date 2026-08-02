@@ -4,6 +4,7 @@ import Foundation
 import XCTest
 @testable import AgentHarnessVerificationCore
 
+// TEST-ID: AHT-INFRA-007
 final class RepositoryDocumentVerifierTests: XCTestCase {
     // TEST-ID: AHT-INFRA-001
     func testOfflineJSONSchemaValidatorCoversRepositoryDialect() {

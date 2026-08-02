@@ -5,6 +5,9 @@
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-RECONCILE-001
+// TEST-ID: AHT-SECURITY-002
+// TEST-ID: AHT-TEST-002
 final class AgentExecutorToolIntegrationTests: XCTestCase {
     func testRetryablePureReadUsesBoundedDelayAndFreshAuthorizedAttempt() async throws {
         let model = try ExecutorTestModelDefinition(offset: 299)

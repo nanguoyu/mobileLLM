@@ -5,6 +5,8 @@ import XCTest
 import AgentContracts
 import AgentSandboxAPI
 
+// TEST-ID: AHT-SANDBOX-001
+// TEST-ID: AHT-SANDBOX-002
 final class ProviderBehaviorTests: XCTestCase {
     func testStartIsIdempotentAndConflictingReuseFails() async throws {
         let fixture = try makeFixture()

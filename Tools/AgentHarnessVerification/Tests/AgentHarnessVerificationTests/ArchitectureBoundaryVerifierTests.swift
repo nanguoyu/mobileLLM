@@ -4,6 +4,8 @@ import Foundation
 import XCTest
 @testable import AgentHarnessVerificationCore
 
+// TEST-ID: AHT-ARCH-001
+// TEST-ID: AHT-ARCH-002
 final class ArchitectureBoundaryVerifierTests: XCTestCase {
     // TEST-ID: AHT-ARCH-001
     func testPackageBoundariesAcceptOnlyApprovedDependenciesAndImports() throws {

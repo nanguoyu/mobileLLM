@@ -33,6 +33,9 @@ public struct AgentRunRequestSnapshot: Sendable {
     public let repetitionPenalty: Double
     public let toolsEnabled: Bool
     public let localToolNames: [String]
+    /// The conversation-persistent tool policy (spec §14). App assembly snapshots the conversation's
+    /// materialized policy; the runtime freezes it with the run.
+    public let toolPolicy: ConversationToolPolicy?
 
     public init(
         conversationID: UUID,
@@ -54,7 +57,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         topK: Int,
         repetitionPenalty: Double,
         toolsEnabled: Bool,
-        localToolNames: [String]
+        localToolNames: [String],
+        toolPolicy: ConversationToolPolicy?
     ) {
         self.conversationID = conversationID
         self.userTurnID = userTurnID
@@ -76,6 +80,7 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.repetitionPenalty = repetitionPenalty
         self.toolsEnabled = toolsEnabled
         self.localToolNames = localToolNames
+        self.toolPolicy = toolPolicy
     }
 }
 
@@ -166,7 +171,7 @@ struct AppFrozenInputBuilder: Sendable {
         let toolCatalog = try AppToolCatalog.catalog(
             enabledLocalToolNames: snapshot.toolsEnabled ? localTools : []
         )
-        let policy = try ConversationToolPolicy(
+        let policy = try snapshot.toolPolicy ?? ConversationToolPolicy(
             masterEnabled: snapshot.toolsEnabled,
             allowedToolIDs: toolCatalog.descriptors.map(\.id.logicalID),
             pinnedToolIDs: toolCatalog.descriptors.map(\.id.logicalID),
@@ -254,7 +259,7 @@ actor AppAttachmentResolver: LocalModelArtifactBytesResolving {
 /// tool (web, Wikipedia, MCP, calendar, location, …) is listed as unavailable so the runtime never
 /// advertises a capability it cannot safely execute, exactly as spec §14 requires.
 struct AppToolCatalog: ExecutableToolCatalog, Sendable {
-    static let localToolNames = ["calculator", "datetime"]
+    static let localToolNames = AppLocalToolIDs.names
 
     let snapshot: ToolCatalogSnapshot
     let adapters: [AgentToolDescriptorID: LegacyLocalToolAdapter]

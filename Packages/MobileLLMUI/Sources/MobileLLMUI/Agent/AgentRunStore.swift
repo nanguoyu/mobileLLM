@@ -188,6 +188,27 @@ public final class AgentRunStore {
         }
     }
 
+    /// iOS 17 background quiescence (spec §19.1): every actively progressing run receives one
+    /// idempotent foreground-lost pause at its next safe boundary. Recovery never assumes the OS
+    /// granted enough time; the run durably lands in a waiting state and resumes only through an
+    /// explicit user Resume.
+    public func quiesceForBackground() async {
+        let activeConversations = runs.compactMap { conversationID, run -> UUID? in
+            run.isActive ? conversationID : nil
+        }
+        for conversationID in activeConversations {
+            await send(conversationID: conversationID) { status, runID in
+                try AgentCommand(
+                    commandID: AgentCommandID(rawValue: UUID()),
+                    runID: runID,
+                    expectedRunStateVersion: status.stateVersion,
+                    action: .pause(reason: .foregroundLost),
+                    issuedAt: try AgentTimestamp(Date())
+                )
+            }
+        }
+    }
+
     public func decideApproval(conversationID: UUID, approvalID: ApprovalID, approved: Bool) async {
         await send(conversationID: conversationID) { status, runID in
             try AgentCommand(

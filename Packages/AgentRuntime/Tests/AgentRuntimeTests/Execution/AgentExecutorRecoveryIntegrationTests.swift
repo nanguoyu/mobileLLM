@@ -5,6 +5,8 @@
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-RECOVERY-001
+// TEST-ID: AHT-LOOP-001
 final class AgentExecutorRecoveryIntegrationTests: XCTestCase {
     func testExhaustedModelAttemptBudgetFailsBeforeProviderAndLeavesNoLeaseOrReservation() async throws {
         let model = try ExecutorTestModelDefinition(offset: 99)

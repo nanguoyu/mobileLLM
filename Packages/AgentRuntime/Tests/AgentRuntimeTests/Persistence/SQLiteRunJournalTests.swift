@@ -6,6 +6,10 @@ import SQLite3
 @testable import AgentRuntime
 import XCTest
 
+// TEST-ID: AHT-JOURNAL-001
+// TEST-ID: AHT-OUTBOX-001
+// TEST-ID: AHT-DELETE-001
+// TEST-ID: AHT-DELETE-002
 final class SQLiteRunJournalTests: XCTestCase {
     func testLaunchProbeIsLazyAndPragmasAndSchemaAreHardened() async throws {
         let url = temporaryDatabaseURL()

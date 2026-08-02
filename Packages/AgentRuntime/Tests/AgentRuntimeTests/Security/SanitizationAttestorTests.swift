@@ -5,6 +5,7 @@
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-SECURITY-003
 final class SanitizationAttestorTests: XCTestCase {
     func testAttestationMatchesIndependentHMACVectorAndValidates() throws {
         let attestor = try LocalSanitizationAttestor(

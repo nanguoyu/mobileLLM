@@ -4,6 +4,7 @@ import AgentContracts
 @testable import AgentRuntime
 import XCTest
 
+// TEST-ID: AHT-RESOURCE-001
 final class ResourceArbiterTests: XCTestCase {
     func testRootAdmissionsUseDurableFIFOWithoutPreemption() async throws {
         let arbiter = ResourceArbiter(driver: ScriptedModelResidencyDriver())

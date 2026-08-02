@@ -5,6 +5,7 @@ import AgentContracts
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-RUN-001
 final class StateMachineTests: XCTestCase {
     func testOnlyRegisteredSelfTransitionsAreAcceptedAndAdvanceVersion() throws {
         for guardCondition in [

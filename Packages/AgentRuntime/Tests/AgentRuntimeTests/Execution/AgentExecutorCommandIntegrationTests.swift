@@ -5,6 +5,8 @@
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-RUN-003
+// TEST-ID: AHT-LIFECYCLE-001
 final class AgentExecutorCommandIntegrationTests: XCTestCase {
     func testUserInputResponseIsSchemaCheckedCASBoundDurableAndIdempotent() async throws {
         let offset = 199

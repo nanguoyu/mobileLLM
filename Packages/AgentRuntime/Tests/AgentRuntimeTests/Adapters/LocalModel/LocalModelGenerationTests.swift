@@ -6,6 +6,7 @@ import Foundation
 import LLMCore
 import XCTest
 
+// TEST-ID: AHT-MODEL-001
 final class LocalModelGenerationTests: XCTestCase {
     func testTextGenerationMapsReasoningSamplingUsageAndCommitsOneAnswer() async throws {
         let script = LocalEngineScript([

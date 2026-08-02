@@ -5,6 +5,9 @@ import XCTest
 @_spi(AgentRuntime) @testable import AgentContracts
 @testable import AgentRuntime
 
+// TEST-ID: AHT-JOURNAL-002
+// TEST-ID: AHT-BUDGET-001
+// TEST-ID: AHT-MIGRATION-001
 final class RuntimeRepositorySQLiteTests: XCTestCase {
     func testListRunsEnumeratesSubmissionsNewestFirst() async throws {
         let url = temporaryDatabaseURL()

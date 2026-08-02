@@ -279,7 +279,12 @@ struct MobileLLMApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     // Free the resident model when the app leaves the foreground: it stops a 5 GB model
                     // hogging memory while unused and stops iOS jetsam-killing the app in the background.
-                    if phase == .background { container.suspendModel() }
+                    if phase == .background {
+                        container.suspendModel()
+                        // Durable agent quiescence (spec §19.1): every active run pauses at its next
+                        // safe boundary; recovery is explicit user Resume, never automatic.
+                        Task { await container.chat.agentRuns?.quiesceForBackground() }
+                    }
                 }
         }
         // A postfix `#if` may contain ONLY member-expression continuations (SE-0308), so the Settings
@@ -329,7 +334,8 @@ private func makeAgentSnapshot(
         topK: container.settings.topK,
         repetitionPenalty: container.settings.repetitionPenalty,
         toolsEnabled: container.settings.toolsEnabled,
-        localToolNames: AppToolCatalog.localToolNames
+        localToolNames: AppToolCatalog.localToolNames,
+        toolPolicy: container.chat.activeConversation?.toolPolicy
     )
 }
 

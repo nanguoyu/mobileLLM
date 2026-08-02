@@ -5,6 +5,7 @@
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-MODEL-002
 final class AgentModelExecutorTests: XCTestCase {
     func testAuthorizedExecutionCommitsMatchingStreamedAnswerAndUsage() async throws {
         let fixture = try ModelFixture()

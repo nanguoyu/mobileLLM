@@ -337,11 +337,13 @@ public final class ChatStore {
                 conversations[i].variantID = m.variant.id
                 persist(conversations[i])
             }
+            materializeToolPolicyIfNeeded(at: i)
             activeID = existing.id
             return conversations[i]
         }
         let convo = Conversation(modelID: activeModel?.model.id ?? settings.defaultModelID,
-                                 variantID: activeModel?.variant.id ?? "")
+                                 variantID: activeModel?.variant.id ?? "",
+                                 toolPolicy: globalToolTemplate())
         conversations.insert(convo, at: 0)
         activeID = convo.id
         // Persisted immediately (not on first send) so an empty draft remains available in the list after
@@ -349,6 +351,31 @@ public final class ChatStore {
         // exists (the reuse branch above), so this never litters the list.
         persist(convo)
         return convo
+    }
+
+    /// The current global tool template copied into a NEW conversation (spec §14: new conversations
+    /// copy the template once at creation; later global changes affect new conversations only).
+    private func globalToolTemplate() -> ConversationToolPolicy? {
+        guard agentRuns != nil else { return nil }
+        let allowed = AppLocalToolIDs.current
+        return try? ConversationToolPolicy(
+            masterEnabled: settings.toolsEnabled,
+            allowedToolIDs: allowed,
+            pinnedToolIDs: allowed,
+            selectionPolicyVersion: 1,
+            materializedFromGlobalTemplate: true
+        )
+    }
+
+    /// One-time materialization for a legacy conversation on its first agent-runtime edit/run
+    /// (spec §14). Later global changes never silently expand an existing policy.
+    private func materializeToolPolicyIfNeeded(at index: Int) {
+        guard agentRuns != nil,
+              conversations[index].toolPolicy == nil,
+              let template = globalToolTemplate()
+        else { return }
+        conversations[index].toolPolicy = template
+        persist(conversations[index])
     }
 
     /// Set by the app shell: activate the given (modelID, variantID) if installed. Called when the user
@@ -601,6 +628,9 @@ public final class ChatStore {
             conversation: conversations[idx]
         )
         if let agentRuns {
+            // Legacy conversations materialize the global tool template exactly once on their first
+            // agent-runtime run (spec §14).
+            materializeToolPolicyIfNeeded(at: idx)
             startAgentRun(
                 conversationID: conversations[idx].id,
                 user: user,

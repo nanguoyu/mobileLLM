@@ -9,516 +9,1995 @@
   },
   "requirements": [
     {
-      "id": "AH-INFRA-001", "area": "infrastructure", "title": "Specification identity is pinned",
+      "id": "AH-INFRA-001",
+      "area": "infrastructure",
+      "title": "Specification identity is pinned",
       "statement": "Every verification document identifies the exact spec.md content by path, SHA-256, and source anchor so stale evidence cannot silently satisfy a changed specification.",
-      "status": "active", "riskTier": "P0",
-      "specAnchors": [{ "section": "27", "heading": "Test strategy", "lineStart": 1064, "lineEnd": 1074 }],
-      "platforms": ["all"], "verificationTiers": ["every-change", "pull-request", "nightly", "release-candidate"],
-      "testIDs": ["AHT-INFRA-001"], "requiredEvidence": ["Verifier output containing the matched spec SHA-256"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "27",
+          "heading": "Test strategy",
+          "lineStart": 1064,
+          "lineEnd": 1074
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-INFRA-001"
+      ],
+      "requiredEvidence": [
+        "Verifier output containing the matched spec SHA-256"
+      ]
     },
     {
-      "id": "AH-INFRA-002", "area": "infrastructure", "title": "Verification JSON is schema-valid",
+      "id": "AH-INFRA-002",
+      "area": "infrastructure",
+      "title": "Verification JSON is schema-valid",
       "statement": "Requirements, tests, quarantine, semantic registries, scripted model fixtures, app-container fixtures, and coverage documents validate against their checked-in Draft 2020-12 schemas.",
-      "status": "active", "riskTier": "P0",
-      "specAnchors": [{ "section": "27.5", "heading": "Coverage and release gates", "lineStart": 1182, "lineEnd": 1234 }],
-      "platforms": ["all"], "verificationTiers": ["every-change", "pull-request", "nightly", "release-candidate"],
-      "testIDs": ["AHT-INFRA-001"], "requiredEvidence": ["Per-document schema validation report"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "27.5",
+          "heading": "Coverage and release gates",
+          "lineStart": 1182,
+          "lineEnd": 1234
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-INFRA-001"
+      ],
+      "requiredEvidence": [
+        "Per-document schema validation report"
+      ]
     },
     {
-      "id": "AH-INFRA-003", "area": "infrastructure", "title": "Traceability is bidirectional",
+      "id": "AH-INFRA-003",
+      "area": "infrastructure",
+      "title": "Traceability is bidirectional",
       "statement": "Every requirement references known tests, every test references known requirements, identifiers are unique, and retired or unknown links fail verification.",
-      "status": "active", "riskTier": "P0",
-      "specAnchors": [{ "section": "27", "heading": "Test strategy", "lineStart": 1064, "lineEnd": 1074 }],
-      "platforms": ["all"], "verificationTiers": ["every-change", "pull-request", "nightly", "release-candidate"],
-      "testIDs": ["AHT-INFRA-002"], "requiredEvidence": ["Zero unknown, duplicate, stale, or unmapped IDs"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "27",
+          "heading": "Test strategy",
+          "lineStart": 1064,
+          "lineEnd": 1074
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-INFRA-002"
+      ],
+      "requiredEvidence": [
+        "Zero unknown, duplicate, stale, or unmapped IDs"
+      ]
     },
     {
-      "id": "AH-INFRA-004", "area": "infrastructure", "title": "Semantic registries are complete and enumerable",
+      "id": "AH-INFRA-004",
+      "area": "infrastructure",
+      "title": "Semantic registries are complete and enumerable",
       "statement": "The run-state, transition, approval-decision, and stable-boundary registries are machine-enumerable and their declared completeness is verified.",
-      "status": "active", "riskTier": "P0",
-      "specAnchors": [{ "section": "27.1", "heading": "Deterministic unit and property tests", "lineStart": 1075, "lineEnd": 1112 }],
-      "platforms": ["all"], "verificationTiers": ["every-change", "pull-request", "nightly", "release-candidate"],
-      "testIDs": ["AHT-INFRA-003"], "requiredEvidence": ["Finite cell, rule, unique-winner, dead-rule, security-invariant, and cross-document registry report"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "27.1",
+          "heading": "Deterministic unit and property tests",
+          "lineStart": 1075,
+          "lineEnd": 1112
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-INFRA-003"
+      ],
+      "requiredEvidence": [
+        "Finite cell, rule, unique-winner, dead-rule, security-invariant, and cross-document registry report"
+      ]
     },
     {
-      "id": "AH-INFRA-005", "area": "infrastructure", "title": "Deterministic fixtures are valid",
+      "id": "AH-INFRA-005",
+      "area": "infrastructure",
+      "title": "Deterministic fixtures are valid",
       "statement": "Scripted model and app-container fixtures have fixed identities, deterministic inputs, explicit behavioral oracles, and no dependency on prior test ordering.",
-      "status": "active", "riskTier": "P1",
-      "specAnchors": [{ "section": "27.1", "heading": "Deterministic unit and property tests", "lineStart": 1106, "lineEnd": 1112 }, { "section": "27.3", "heading": "Real-device matrix", "lineStart": 1153, "lineEnd": 1163 }],
-      "platforms": ["all"], "verificationTiers": ["every-change", "pull-request", "release-candidate"],
-      "testIDs": ["AHT-INFRA-004"], "requiredEvidence": ["Fixture schema report and unique fixed seeds"]
+      "status": "active",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "27.1",
+          "heading": "Deterministic unit and property tests",
+          "lineStart": 1106,
+          "lineEnd": 1112
+        },
+        {
+          "section": "27.3",
+          "heading": "Real-device matrix",
+          "lineStart": 1153,
+          "lineEnd": 1163
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-INFRA-004"
+      ],
+      "requiredEvidence": [
+        "Fixture schema report and unique fixed seeds"
+      ]
     },
     {
-      "id": "AH-INFRA-006", "area": "infrastructure", "title": "Coverage policy is enforceable",
+      "id": "AH-INFRA-006",
+      "area": "infrastructure",
+      "title": "Coverage policy is enforceable",
       "statement": "Coverage floors, semantic completeness gates, mutation gates, pending baselines, and exclusions are represented without claiming unavailable evidence.",
-      "status": "active", "riskTier": "P0",
-      "specAnchors": [{ "section": "27.5", "heading": "Coverage and release gates", "lineStart": 1182, "lineEnd": 1246 }],
-      "platforms": ["all"], "verificationTiers": ["every-change", "pull-request", "nightly", "release-candidate"],
-      "testIDs": ["AHT-INFRA-005"], "requiredEvidence": ["Coverage policy, baseline, and exclusion validation"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "27.5",
+          "heading": "Coverage and release gates",
+          "lineStart": 1182,
+          "lineEnd": 1246
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-INFRA-005"
+      ],
+      "requiredEvidence": [
+        "Coverage policy, baseline, and exclusion validation"
+      ]
     },
     {
-      "id": "AH-INFRA-007", "area": "infrastructure", "title": "Quarantine cannot hide critical failures",
+      "id": "AH-INFRA-007",
+      "area": "infrastructure",
+      "title": "Quarantine cannot hide critical failures",
       "statement": "P0 and security, persistence, approval, deletion, recovery, lifecycle, and required device tests cannot be quarantined; other entries expire within seven days.",
-      "status": "active", "riskTier": "P0",
-      "specAnchors": [{ "section": "27.5", "heading": "Coverage and release gates", "lineStart": 1236, "lineEnd": 1246 }],
-      "platforms": ["all"], "verificationTiers": ["every-change", "pull-request", "nightly", "release-candidate"],
-      "testIDs": ["AHT-INFRA-006"], "requiredEvidence": ["Quarantine policy report with expiry evaluation"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "27.5",
+          "heading": "Coverage and release gates",
+          "lineStart": 1236,
+          "lineEnd": 1246
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-INFRA-006"
+      ],
+      "requiredEvidence": [
+        "Quarantine policy report with expiry evaluation"
+      ]
     },
     {
-      "id": "AH-INFRA-008", "area": "infrastructure", "title": "Missing verification evidence fails",
+      "id": "AH-INFRA-008",
+      "area": "infrastructure",
+      "title": "Missing verification evidence fails",
       "statement": "Empty test discovery, unexpected skips, crashes, timeouts, missing result bundles, or missing coverage reports fail their gate.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "27.5", "heading": "Coverage and release gates", "lineStart": 1213, "lineEnd": 1234 }],
-      "platforms": ["all"], "verificationTiers": ["pull-request", "nightly", "release-candidate"],
-      "testIDs": ["AHT-INFRA-007"], "requiredEvidence": ["Negative verifier fixtures for missing discovery and result evidence"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "27.5",
+          "heading": "Coverage and release gates",
+          "lineStart": 1213,
+          "lineEnd": 1234
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-INFRA-007"
+      ],
+      "requiredEvidence": [
+        "Negative verifier fixtures for missing discovery and result evidence"
+      ]
     },
     {
-      "id": "AH-ARCH-001", "area": "architecture", "title": "MLX-free dependency boundaries",
+      "id": "AH-ARCH-001",
+      "area": "architecture",
+      "title": "MLX-free dependency boundaries",
       "statement": "AgentContracts is dependency-light, AgentSandboxAPI depends only on AgentContracts, and AgentRuntime contains no SwiftUI, MLX, llama.cpp, EventKit, CoreLocation, or private sandbox dependency.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "6", "heading": "Target package boundaries", "lineStart": 139, "lineEnd": 187 }],
-      "platforms": ["swiftpm", "ios", "macos"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-ARCH-001"], "requiredEvidence": ["Package graph assertion and MLX-free builds"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "6",
+          "heading": "Target package boundaries",
+          "lineStart": 139,
+          "lineEnd": 187
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-ARCH-001"
+      ],
+      "requiredEvidence": [
+        "Package graph assertion and MLX-free builds"
+      ]
     },
     {
-      "id": "AH-ARCH-002", "area": "architecture", "title": "Deferred runtimes remain absent",
+      "id": "AH-ARCH-002",
+      "area": "architecture",
+      "title": "Deferred runtimes remain absent",
       "statement": "The first release contains no workflow interpreter, DAG scheduler, child-agent spawner, production sandbox substitute, arbitrary shell, or online model client.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "4", "heading": "Non-goals", "lineStart": 95, "lineEnd": 109 }, { "section": "23", "heading": "Dynamic Workflows compatibility seam", "lineStart": 997, "lineEnd": 1015 }],
-      "platforms": ["swiftpm", "ios", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "testIDs": ["AHT-ARCH-002"], "requiredEvidence": ["Forbidden dependency and symbol scan"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "4",
+          "heading": "Non-goals",
+          "lineStart": 95,
+          "lineEnd": 109
+        },
+        {
+          "section": "23",
+          "heading": "Dynamic Workflows compatibility seam",
+          "lineStart": 997,
+          "lineEnd": 1015
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-ARCH-002"
+      ],
+      "requiredEvidence": [
+        "Forbidden dependency and symbol scan"
+      ]
     },
     {
-      "id": "AH-IDENTITY-001", "area": "identity", "title": "Durable identities are strongly typed",
+      "id": "AH-IDENTITY-001",
+      "area": "identity",
+      "title": "Durable identities are strongly typed",
       "statement": "Runs, steps, requests, invocations, approvals, artifacts, events, handles, commands, messages, and conversations use non-interchangeable stable identifiers.",
-      "status": "active", "riskTier": "P0",
-      "specAnchors": [{ "section": "7", "heading": "Core terminology and identity", "lineStart": 189, "lineEnd": 213 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-CONTRACT-001"], "requiredEvidence": ["ID round-trip, malformed input, and compile-time signature coverage"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "7",
+          "heading": "Core terminology and identity",
+          "lineStart": 189,
+          "lineEnd": 213
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-CONTRACT-001"
+      ],
+      "requiredEvidence": [
+        "ID round-trip, malformed input, and compile-time signature coverage"
+      ]
     },
     {
-      "id": "AH-IDENTITY-002", "area": "identity", "title": "Public envelopes are versioned",
+      "id": "AH-IDENTITY-002",
+      "area": "identity",
+      "title": "Public envelopes are versioned",
       "statement": "Requests, commands, receipts, events, results, sandbox messages, and persisted payloads carry semantic protocol and payload versions and fail closed on unsupported major versions.",
-      "status": "active", "riskTier": "P0",
-      "specAnchors": [{ "section": "6.1", "heading": "AgentContracts", "lineStart": 143, "lineEnd": 155 }, { "section": "9.2", "heading": "Minimum records", "lineStart": 346, "lineEnd": 361 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-CONTRACT-002"], "requiredEvidence": ["Golden wire fixtures and unsupported-version failures"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "6.1",
+          "heading": "AgentContracts",
+          "lineStart": 143,
+          "lineEnd": 155
+        },
+        {
+          "section": "9.2",
+          "heading": "Minimum records",
+          "lineStart": 346,
+          "lineEnd": 361
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-CONTRACT-002"
+      ],
+      "requiredEvidence": [
+        "Golden wire fixtures and unsupported-version failures"
+      ]
     },
     {
-      "id": "AH-RUN-001", "area": "run-lifecycle", "title": "Run-state reducer is pure and exhaustive",
+      "id": "AH-RUN-001",
+      "area": "run-lifecycle",
+      "title": "Run-state reducer is pure and exhaustive",
       "statement": "All sixteen specified states and every registered legal or illegal transition are handled by a pure reducer; invalid transitions fail closed and emit diagnostics.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "8", "heading": "Run lifecycle and state machine", "lineStart": 215, "lineEnd": 272 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-RUN-001"], "requiredEvidence": ["100% semantic transition registry coverage"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "8",
+          "heading": "Run lifecycle and state machine",
+          "lineStart": 215,
+          "lineEnd": 272
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ],
+      "requiredEvidence": [
+        "100% semantic transition registry coverage"
+      ]
     },
     {
-      "id": "AH-RUN-002", "area": "run-lifecycle", "title": "Stable boundaries govern recovery",
+      "id": "AH-RUN-002",
+      "area": "run-lifecycle",
+      "title": "Stable boundaries govern recovery",
       "statement": "Only committed stable boundaries are authoritative; transient token output is provisional and an interrupted model attempt restarts from its preceding stable boundary.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "8.1", "heading": "Stable boundaries", "lineStart": 274, "lineEnd": 291 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-RECOVERY-001"], "requiredEvidence": ["Before/after crash result for every registered boundary"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "8.1",
+          "heading": "Stable boundaries",
+          "lineStart": 274,
+          "lineEnd": 291
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-RECOVERY-001"
+      ],
+      "requiredEvidence": [
+        "Before/after crash result for every registered boundary"
+      ]
     },
     {
-      "id": "AH-RUN-003", "area": "run-lifecycle", "title": "Terminal outcome is unique",
+      "id": "AH-RUN-003",
+      "area": "run-lifecycle",
+      "title": "Terminal outcome is unique",
       "statement": "Each run commits exactly one terminal event and one terminal reason; nonterminal waits remain resumable and background expiration is not misreported as terminal failure.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "8.2", "heading": "Terminal semantics", "lineStart": 293, "lineEnd": 312 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-RUN-002"], "requiredEvidence": ["Terminal uniqueness race and reason enumeration results"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "8.2",
+          "heading": "Terminal semantics",
+          "lineStart": 293,
+          "lineEnd": 312
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-RUN-002"
+      ],
+      "requiredEvidence": [
+        "Terminal uniqueness race and reason enumeration results"
+      ]
     },
     {
-      "id": "AH-RUN-004", "area": "run-lifecycle", "title": "User interaction remains in the same run",
+      "id": "AH-RUN-004",
+      "area": "run-lifecycle",
+      "title": "User interaction remains in the same run",
       "statement": "A request for user input is durable, responses target its request and expected run version, duplicates are idempotent, and stale responses cannot create a new root run.",
-      "status": "planned", "riskTier": "P1",
-      "specAnchors": [{ "section": "8", "heading": "Run lifecycle and state machine", "lineStart": 249, "lineEnd": 254 }, { "section": "20", "heading": "Unified UI and interaction model", "lineStart": 863, "lineEnd": 885 }],
-      "platforms": ["swiftpm", "ios-simulator"], "verificationTiers": ["pull-request"],
-      "testIDs": ["AHT-RUN-003"], "requiredEvidence": ["Scripted user-input fixture and journal identity assertions"]
+      "status": "active",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "8",
+          "heading": "Run lifecycle and state machine",
+          "lineStart": 249,
+          "lineEnd": 254
+        },
+        {
+          "section": "20",
+          "heading": "Unified UI and interaction model",
+          "lineStart": 863,
+          "lineEnd": 885
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-simulator"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-RUN-003"
+      ],
+      "requiredEvidence": [
+        "Scripted user-input fixture and journal identity assertions"
+      ]
     },
     {
-      "id": "AH-RUN-005", "area": "retry-reconciliation", "title": "Uncertain external outcomes block progress",
+      "id": "AH-RUN-005",
+      "area": "retry-reconciliation",
+      "title": "Uncertain external outcomes block progress",
       "statement": "Unknown boundary-crossing outcomes enter waitingForReconciliation and cannot replay or continue until a targeted succeeded, failed, or abandoned resolution is committed.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "8", "heading": "Run lifecycle and state machine", "lineStart": 255, "lineEnd": 263 }, { "section": "18", "heading": "Retry, idempotency, and uncertainty", "lineStart": 805, "lineEnd": 817 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-RECONCILE-001"], "requiredEvidence": ["Uncertain write crash and no-replay journal evidence"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "8",
+          "heading": "Run lifecycle and state machine",
+          "lineStart": 255,
+          "lineEnd": 263
+        },
+        {
+          "section": "18",
+          "heading": "Retry, idempotency, and uncertainty",
+          "lineStart": 805,
+          "lineEnd": 817
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-RECONCILE-001"
+      ],
+      "requiredEvidence": [
+        "Uncertain write crash and no-replay journal evidence"
+      ]
     },
     {
-      "id": "AH-PERSIST-001", "area": "persistence", "title": "SQLite journal is canonical",
+      "id": "AH-PERSIST-001",
+      "area": "persistence",
+      "title": "SQLite journal is canonical",
       "statement": "The transactional SQLite/WAL journal is canonical for accepted user turns, lifecycle, and committed answers; Conversation JSON is only an idempotent compatibility projection.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "9.1", "heading": "Source of truth", "lineStart": 316, "lineEnd": 344 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-JOURNAL-001"], "requiredEvidence": ["Transactional ordering and canonical-source assertions"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "9.1",
+          "heading": "Source of truth",
+          "lineStart": 316,
+          "lineEnd": 344
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-JOURNAL-001"
+      ],
+      "requiredEvidence": [
+        "Transactional ordering and canonical-source assertions"
+      ]
     },
     {
-      "id": "AH-PERSIST-002", "area": "persistence", "title": "Projection outbox is durable and idempotent",
+      "id": "AH-PERSIST-002",
+      "area": "persistence",
+      "title": "Projection outbox is durable and idempotent",
       "statement": "Canonical message and run events commit with an outbox command keyed by stable MessageID and RunID; replay cannot create ghost or duplicate messages.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "9.1", "heading": "Source of truth", "lineStart": 326, "lineEnd": 344 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-OUTBOX-001"], "requiredEvidence": ["Crash matrix around user-send and final-answer projection"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "9.1",
+          "heading": "Source of truth",
+          "lineStart": 326,
+          "lineEnd": 344
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-OUTBOX-001"
+      ],
+      "requiredEvidence": [
+        "Crash matrix around user-send and final-answer projection"
+      ]
     },
     {
-      "id": "AH-PERSIST-003", "area": "persistence", "title": "State mutation uses CAS and idempotency",
+      "id": "AH-PERSIST-003",
+      "area": "persistence",
+      "title": "State mutation uses CAS and idempotency",
       "statement": "All state-changing commands carry stable IDs and expected run versions; duplicate outcomes return original receipts and competing callbacks cannot both advance one version.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "9.3", "heading": "Concurrency and command consistency", "lineStart": 363, "lineEnd": 373 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "testIDs": ["AHT-JOURNAL-002"], "requiredEvidence": ["CAS race and duplicate-command receipts"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "9.3",
+          "heading": "Concurrency and command consistency",
+          "lineStart": 363,
+          "lineEnd": 373
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-JOURNAL-002"
+      ],
+      "requiredEvidence": [
+        "CAS race and duplicate-command receipts"
+      ]
     },
     {
-      "id": "AH-PERSIST-004", "area": "persistence", "title": "Explicit recovery is deterministic",
+      "id": "AH-PERSIST-004",
+      "area": "persistence",
+      "title": "Explicit recovery is deterministic",
       "statement": "Resume replays committed events, verifies pinned dependencies, reuses completed results, restarts only interrupted model work, and never silently migrates incompatible authority.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "9.4", "heading": "Recovery algorithm", "lineStart": 375, "lineEnd": 388 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-RECOVERY-001"], "requiredEvidence": ["Replay equivalence and incompatible-dependency outcomes"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "9.4",
+          "heading": "Recovery algorithm",
+          "lineStart": 375,
+          "lineEnd": 388
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-RECOVERY-001"
+      ],
+      "requiredEvidence": [
+        "Replay equivalence and incompatible-dependency outcomes"
+      ]
     },
     {
-      "id": "AH-PERSIST-005", "area": "persistence", "title": "Conversation deletion cascades across owned data",
+      "id": "AH-PERSIST-005",
+      "area": "persistence",
+      "title": "Conversation deletion cascades across owned data",
       "statement": "Deletion quiesces active work and removes projections, journal records, receipts, bookmarks, unshared artifacts, outbox entries, backups, and diagnostics through a replayable intent.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "9.5", "heading": "Deletion coordination", "lineStart": 390, "lineEnd": 406 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-DELETE-001"], "requiredEvidence": ["Cascade inventory before and after every injected failure"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "9.5",
+          "heading": "Deletion coordination",
+          "lineStart": 390,
+          "lineEnd": 406
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-DELETE-001"
+      ],
+      "requiredEvidence": [
+        "Cascade inventory before and after every injected failure"
+      ]
     },
     {
-      "id": "AH-PERSIST-006", "area": "persistence", "title": "Delete All marker prevents resurrection",
+      "id": "AH-PERSIST-006",
+      "area": "persistence",
+      "title": "Delete All marker prevents resurrection",
       "statement": "A protected marker outside deleted roots blocks store opening until database sidecars, projections, artifacts, bookmarks, backups, and diagnostics are removed and clean stores exist.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "9.5", "heading": "Deletion coordination", "lineStart": 396, "lineEnd": 406 }],
-      "platforms": ["ios"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-DELETE-002"], "requiredEvidence": ["Crash-at-each-delete-step recovery evidence"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "9.5",
+          "heading": "Deletion coordination",
+          "lineStart": 396,
+          "lineEnd": 406
+        }
+      ],
+      "platforms": [
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-DELETE-002"
+      ],
+      "requiredEvidence": [
+        "Crash-at-each-delete-step recovery evidence"
+      ]
     },
     {
-      "id": "AH-MODEL-001", "area": "model-provider", "title": "Local engines adapt behind a provider-neutral contract",
+      "id": "AH-MODEL-001",
+      "area": "model-provider",
+      "title": "Local engines adapt behind a provider-neutral contract",
       "statement": "The first implementation wraps existing local engines behind capability, prepare, and generate semantics without model-family conditionals in the run state machine.",
-      "status": "planned", "riskTier": "P1",
-      "specAnchors": [{ "section": "10", "heading": "Model-provider abstraction", "lineStart": 408, "lineEnd": 474 }],
-      "platforms": ["swiftpm", "ios-device", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "testIDs": ["AHT-MODEL-001"], "requiredEvidence": ["Scripted provider contracts and real-engine adapter matrix"]
+      "status": "active",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "10",
+          "heading": "Model-provider abstraction",
+          "lineStart": 408,
+          "lineEnd": 474
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-device",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-MODEL-001"
+      ],
+      "requiredEvidence": [
+        "Scripted provider contracts and real-engine adapter matrix"
+      ]
     },
     {
-      "id": "AH-MODEL-002", "area": "model-provider", "title": "Model event stream has one normalized terminal",
+      "id": "AH-MODEL-002",
+      "area": "model-provider",
+      "title": "Model event stream has one normalized terminal",
       "statement": "Provider streams emit normalized reasoning, answer, action, usage, completion, or failure events, exactly one terminal completion on success, and nothing after terminal.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "10", "heading": "Model-provider abstraction", "lineStart": 441, "lineEnd": 464 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-MODEL-002"], "requiredEvidence": ["Provider stream terminal and cancellation contract results"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "10",
+          "heading": "Model-provider abstraction",
+          "lineStart": 441,
+          "lineEnd": 464
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-MODEL-002"
+      ],
+      "requiredEvidence": [
+        "Provider stream terminal and cancellation contract results"
+      ]
     },
     {
-      "id": "AH-MODEL-003", "area": "model-provider", "title": "Ordinary chat stays one-pass and local",
+      "id": "AH-MODEL-003",
+      "area": "model-provider",
+      "title": "Ordinary chat stays one-pass and local",
       "statement": "A zero-tool answer uses exactly one model attempt, no planner inference, and no local-to-online fallback.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "3.1", "heading": "Complete iOS agent behavior", "lineStart": 61, "lineEnd": 80 }, { "section": "12", "heading": "Agent action protocol and loop policy", "lineStart": 505, "lineEnd": 553 }],
-      "platforms": ["swiftpm", "ios-device"], "verificationTiers": ["pull-request", "release-candidate"],
-      "testIDs": ["AHT-CHAT-001"], "requiredEvidence": ["Pure-chat fixture with exactly one provider invocation"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "3.1",
+          "heading": "Complete iOS agent behavior",
+          "lineStart": 61,
+          "lineEnd": 80
+        },
+        {
+          "section": "12",
+          "heading": "Agent action protocol and loop policy",
+          "lineStart": 505,
+          "lineEnd": 553
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-CHAT-001"
+      ],
+      "requiredEvidence": [
+        "Pure-chat fixture with exactly one provider invocation"
+      ]
     },
     {
-      "id": "AH-RESOURCE-001", "area": "resource-arbitration", "title": "Only one root run and decode lane progress",
+      "id": "AH-RESOURCE-001",
+      "area": "resource-arbitration",
+      "title": "Only one root run and decode lane progress",
       "statement": "Across the app one root run owns active progress and one local engine is resident; waiting runs own no model lease and cannot silently preempt the current owner.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "11", "heading": "Single-model resource arbitration", "lineStart": 476, "lineEnd": 503 }],
-      "platforms": ["swiftpm", "ios-device"], "verificationTiers": ["pull-request", "nightly", "release-candidate"],
-      "testIDs": ["AHT-RESOURCE-001"], "requiredEvidence": ["Competing-run lease and residency trace"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "11",
+          "heading": "Single-model resource arbitration",
+          "lineStart": 476,
+          "lineEnd": 503
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-RESOURCE-001"
+      ],
+      "requiredEvidence": [
+        "Competing-run lease and residency trace"
+      ]
     },
     {
-      "id": "AH-RESOURCE-002", "area": "resource-arbitration", "title": "Pause is durable quiescence",
+      "id": "AH-RESOURCE-002",
+      "area": "resource-arbitration",
+      "title": "Pause is durable quiescence",
       "statement": "Pause records interrupted work at a stable boundary, drains native generation, releases its lease, and does not strand resident model state or abandon uncertain writes.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "11", "heading": "Single-model resource arbitration", "lineStart": 495, "lineEnd": 503 }],
-      "platforms": ["swiftpm", "ios-device"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-LIFECYCLE-001"], "requiredEvidence": ["Lease drain, journal, and reconciliation assertions"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "11",
+          "heading": "Single-model resource arbitration",
+          "lineStart": 495,
+          "lineEnd": 503
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-LIFECYCLE-001"
+      ],
+      "requiredEvidence": [
+        "Lease drain, journal, and reconciliation assertions"
+      ]
     },
     {
-      "id": "AH-LOOP-001", "area": "agent-loop", "title": "Each model pass yields one normalized action",
+      "id": "AH-LOOP-001",
+      "area": "agent-loop",
+      "title": "Each model pass yields one normalized action",
       "statement": "A pass resolves to callTools, requestUserInput, or finalAnswer; mixed prose preceding tools stays provisional and malformed structured output receives at most one bounded repair.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "12", "heading": "Agent action protocol and loop policy", "lineStart": 505, "lineEnd": 530 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-LOOP-001"], "requiredEvidence": ["Pure, malformed, mixed-prose, and user-input scripted fixtures"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "12",
+          "heading": "Agent action protocol and loop policy",
+          "lineStart": 505,
+          "lineEnd": 530
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-LOOP-001"
+      ],
+      "requiredEvidence": [
+        "Pure, malformed, mixed-prose, and user-input scripted fixtures"
+      ]
     },
     {
-      "id": "AH-LOOP-002", "area": "agent-loop", "title": "Run budgets are reserved before work",
+      "id": "AH-LOOP-002",
+      "area": "agent-loop",
+      "title": "Run budgets are reserved before work",
       "statement": "Model, tool, repair, repetition, time, token, byte, artifact, thermal, and memory limits are immutable, atomically reserved, and cannot be increased by the model or through resume.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "12", "heading": "Agent action protocol and loop policy", "lineStart": 530, "lineEnd": 553 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "testIDs": ["AHT-BUDGET-001"], "requiredEvidence": ["Every budget dimension at below/equal/above boundary"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "12",
+          "heading": "Agent action protocol and loop policy",
+          "lineStart": 530,
+          "lineEnd": 553
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-BUDGET-001"
+      ],
+      "requiredEvidence": [
+        "Every budget dimension at below/equal/above boundary"
+      ]
     },
     {
-      "id": "AH-LOOP-003", "area": "agent-loop", "title": "Tool batches are serial and ordered",
+      "id": "AH-LOOP-003",
+      "area": "agent-loop",
+      "title": "Tool batches are serial and ordered",
       "statement": "All proposed calls validate before execution, then run serially in model order; denial, failure, or uncertainty stops unsafe remaining calls and result order is deterministic.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "8", "heading": "Run lifecycle and state machine", "lineStart": 264, "lineEnd": 272 }, { "section": "12", "heading": "Agent action protocol and loop policy", "lineStart": 522, "lineEnd": 529 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["pull-request"],
-      "testIDs": ["AHT-LOOP-002"], "requiredEvidence": ["Mixed multi-call batch outcome matrix"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "8",
+          "heading": "Run lifecycle and state machine",
+          "lineStart": 264,
+          "lineEnd": 272
+        },
+        {
+          "section": "12",
+          "heading": "Agent action protocol and loop policy",
+          "lineStart": 522,
+          "lineEnd": 529
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-LOOP-002"
+      ],
+      "requiredEvidence": [
+        "Mixed multi-call batch outcome matrix"
+      ]
     },
     {
-      "id": "AH-TOOLS-001", "area": "tools", "title": "Tool V2 separates prepare and execute",
+      "id": "AH-TOOLS-001",
+      "area": "tools",
+      "title": "Tool V2 separates prepare and execute",
       "statement": "Tool preparation is side-effect-free and returns an immutable plan; execution receives only an authorization-bound invocation and emits one typed terminal outcome.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "13.2", "heading": "Execution", "lineStart": 600, "lineEnd": 643 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-TOOL-001"], "requiredEvidence": ["Fake tool boundary-crossing spies and terminal stream tests"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "13.2",
+          "heading": "Execution",
+          "lineStart": 600,
+          "lineEnd": 643
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-TOOL-001"
+      ],
+      "requiredEvidence": [
+        "Fake tool boundary-crossing spies and terminal stream tests"
+      ]
     },
     {
-      "id": "AH-TOOLS-002", "area": "tools", "title": "Full bounded JSON Schema and canonical arguments",
+      "id": "AH-TOOLS-002",
+      "area": "tools",
+      "title": "Full bounded JSON Schema and canonical arguments",
       "statement": "Tool schemas preserve supported and unknown Draft 2020-12 structure within specified limits; validated arguments use RFC 8785 canonicalization before fingerprinting.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "13.1", "heading": "Descriptor", "lineStart": 557, "lineEnd": 598 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "testIDs": ["AHT-SCHEMA-001"], "requiredEvidence": ["Official canonicalization vectors and schema complexity fuzz corpus"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "13.1",
+          "heading": "Descriptor",
+          "lineStart": 557,
+          "lineEnd": 598
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-SCHEMA-001"
+      ],
+      "requiredEvidence": [
+        "Official canonicalization vectors and schema complexity fuzz corpus"
+      ]
     },
     {
-      "id": "AH-TOOLS-003", "area": "approval", "title": "Execution cannot widen an authorized plan",
+      "id": "AH-TOOLS-003",
+      "area": "approval",
+      "title": "Execution cannot widen an authorized plan",
       "statement": "Changed arguments, destinations, redirects, fallbacks, payload, effects, schema, or trust revision invalidate authorization before external I/O.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "13.2", "heading": "Execution", "lineStart": 614, "lineEnd": 632 }, { "section": "15.2", "heading": "Approval defaults", "lineStart": 719, "lineEnd": 746 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "testIDs": ["AHT-AUTH-001"], "requiredEvidence": ["TOCTOU and every plan-field widening rejection"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "13.2",
+          "heading": "Execution",
+          "lineStart": 614,
+          "lineEnd": 632
+        },
+        {
+          "section": "15.2",
+          "heading": "Approval defaults",
+          "lineStart": 719,
+          "lineEnd": 746
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-AUTH-001"
+      ],
+      "requiredEvidence": [
+        "TOCTOU and every plan-field widening rejection"
+      ]
     },
     {
-      "id": "AH-TOOLS-004", "area": "tools", "title": "MCP remains conservatively untrusted",
+      "id": "AH-TOOLS-004",
+      "area": "tools",
+      "title": "MCP remains conservatively untrusted",
       "statement": "Unknown MCP tools remain unknownExternal with exact approval, no automatic retry, uncertain transport-loss handling, stable server identity, and approved discovery only.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "13.2", "heading": "Execution", "lineStart": 633, "lineEnd": 643 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-MCP-001"], "requiredEvidence": ["Malicious descriptor downgrade and discovery-without-approval failures"]
+      "status": "planned",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "13.2",
+          "heading": "Execution",
+          "lineStart": 633,
+          "lineEnd": 643
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-MCP-001"
+      ],
+      "requiredEvidence": [
+        "Malicious descriptor downgrade and discovery-without-approval failures"
+      ]
     },
     {
-      "id": "AH-SELECT-001", "area": "tool-selection", "title": "Tool policy persists per conversation",
+      "id": "AH-SELECT-001",
+      "area": "tool-selection",
+      "title": "Tool policy persists per conversation",
       "statement": "Each conversation materializes its tool policy once; later global changes do not silently mutate it, logical IDs survive compatible upgrades, and runs freeze exact descriptor IDs.",
-      "status": "planned", "riskTier": "P1",
-      "specAnchors": [{ "section": "14", "heading": "Conversation-persistent intelligent tool selection", "lineStart": 645, "lineEnd": 688 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request"],
-      "testIDs": ["AHT-SELECT-001"], "requiredEvidence": ["New, legacy, upgrade, and global-change persistence fixtures"]
+      "status": "active",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "14",
+          "heading": "Conversation-persistent intelligent tool selection",
+          "lineStart": 645,
+          "lineEnd": 688
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-SELECT-001"
+      ],
+      "requiredEvidence": [
+        "New, legacy, upgrade, and global-change persistence fixtures"
+      ]
     },
     {
-      "id": "AH-SELECT-002", "area": "tool-selection", "title": "Selection is deterministic and cannot expand authority",
+      "id": "AH-SELECT-002",
+      "area": "tool-selection",
+      "title": "Selection is deterministic and cannot expand authority",
       "statement": "The selector ranks without model inference, stays inside the allowed set, honors pinned and explicitly named tools, records rationale, and cannot invoke or approve anything.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "14", "heading": "Conversation-persistent intelligent tool selection", "lineStart": 672, "lineEnd": 688 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-SELECT-002"], "requiredEvidence": ["Allowed-set property tests and zero provider calls"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "14",
+          "heading": "Conversation-persistent intelligent tool selection",
+          "lineStart": 672,
+          "lineEnd": 688
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-SELECT-002"
+      ],
+      "requiredEvidence": [
+        "Allowed-set property tests and zero provider calls"
+      ]
     },
     {
-      "id": "AH-APPROVAL-001", "area": "approval", "title": "Every external boundary uses prepare-authorize-execute",
+      "id": "AH-APPROVAL-001",
+      "area": "approval",
+      "title": "Every external boundary uses prepare-authorize-execute",
       "statement": "Tools, MCP discovery, future provider egress, private files/data, artifact export, bookmark creation, and sandbox operations share one enforceable operation-plan transaction.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "15.2", "heading": "Approval defaults", "lineStart": 719, "lineEnd": 746 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "testIDs": ["AHT-AUTH-001"], "requiredEvidence": ["Boundary inventory with no direct external execute path"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "15.2",
+          "heading": "Approval defaults",
+          "lineStart": 719,
+          "lineEnd": 746
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-AUTH-001"
+      ],
+      "requiredEvidence": [
+        "Boundary inventory with no direct external execute path"
+      ]
     },
     {
-      "id": "AH-APPROVAL-002", "area": "approval", "title": "Approval defaults follow effect strength",
+      "id": "AH-APPROVAL-002",
+      "area": "approval",
+      "title": "Approval defaults follow effect strength",
       "statement": "Reads require first-use bounded approval, writes are exact by default, explicit reversible grants are bounded, and destructive, financial, publication, and third-party communication remain exact every time.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "15.1", "heading": "Effect classes", "lineStart": 692, "lineEnd": 717 }, { "section": "15.2", "heading": "Approval defaults", "lineStart": 727, "lineEnd": 741 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-AUTH-002"], "requiredEvidence": ["100% approval decision-table row coverage"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "15.1",
+          "heading": "Effect classes",
+          "lineStart": 692,
+          "lineEnd": 717
+        },
+        {
+          "section": "15.2",
+          "heading": "Approval defaults",
+          "lineStart": 727,
+          "lineEnd": 741
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-AUTH-002"
+      ],
+      "requiredEvidence": [
+        "100% approval decision-table row coverage"
+      ]
     },
     {
-      "id": "AH-APPROVAL-003", "area": "approval", "title": "TCC and app approval are independent",
+      "id": "AH-APPROVAL-003",
+      "area": "approval",
+      "title": "TCC and app approval are independent",
       "statement": "Both system permission and agent approval must succeed; background work waits without presenting permission UI and automation never manipulates unrelated system UI.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "15.2", "heading": "Approval defaults", "lineStart": 735, "lineEnd": 746 }, { "section": "24", "heading": "Security and privacy requirements", "lineStart": 1017, "lineEnd": 1031 }],
-      "platforms": ["ios-simulator", "ios-device"], "verificationTiers": ["pull-request", "release-candidate"],
-      "testIDs": ["AHT-AUTH-003"], "requiredEvidence": ["Permission/approval Cartesian matrix and unexpected-system-UI failure capture"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "15.2",
+          "heading": "Approval defaults",
+          "lineStart": 735,
+          "lineEnd": 746
+        },
+        {
+          "section": "24",
+          "heading": "Security and privacy requirements",
+          "lineStart": 1017,
+          "lineEnd": 1031
+        }
+      ],
+      "platforms": [
+        "ios-simulator",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-AUTH-003"
+      ],
+      "requiredEvidence": [
+        "Permission/approval Cartesian matrix and unexpected-system-UI failure capture"
+      ]
     },
     {
-      "id": "AH-CONTEXT-001", "area": "context", "title": "Compiled context is deterministic and frozen",
+      "id": "AH-CONTEXT-001",
+      "area": "context",
+      "title": "Compiled context is deterministic and frozen",
       "statement": "Every model attempt commits a manifest of exact revisions, hashes, truncations, schemas, excerpts, tokenizer identity, and policy versions and reuses it during recovery.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "8", "heading": "Run lifecycle and state machine", "lineStart": 221, "lineEnd": 239 }, { "section": "16", "heading": "Context compiler, Memory, and Skills", "lineStart": 748, "lineEnd": 767 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-CONTEXT-001"], "requiredEvidence": ["Byte-stable manifests under frozen inputs and mutation-after-snapshot tests"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "8",
+          "heading": "Run lifecycle and state machine",
+          "lineStart": 221,
+          "lineEnd": 239
+        },
+        {
+          "section": "16",
+          "heading": "Context compiler, Memory, and Skills",
+          "lineStart": 748,
+          "lineEnd": 767
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-CONTEXT-001"
+      ],
+      "requiredEvidence": [
+        "Byte-stable manifests under frozen inputs and mutation-after-snapshot tests"
+      ]
     },
     {
-      "id": "AH-CONTEXT-002", "area": "context", "title": "Memory and Skills retain their semantics",
+      "id": "AH-CONTEXT-002",
+      "area": "context",
+      "title": "Memory and Skills retain their semantics",
       "statement": "Canonical-English Memory, active Skills, current request, attachments, tool schemas, run state, and untrusted results are budgeted without treating Memory as a checkpoint or external content as control.",
-      "status": "planned", "riskTier": "P1",
-      "specAnchors": [{ "section": "16", "heading": "Context compiler, Memory, and Skills", "lineStart": 748, "lineEnd": 767 }],
-      "platforms": ["swiftpm", "ios-device"], "verificationTiers": ["pull-request", "release-candidate"],
-      "testIDs": ["AHT-CONTEXT-002"], "requiredEvidence": ["Memory recall, Skill version, budget, and injection isolation assertions"]
+      "status": "active",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "16",
+          "heading": "Context compiler, Memory, and Skills",
+          "lineStart": 748,
+          "lineEnd": 767
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-CONTEXT-002"
+      ],
+      "requiredEvidence": [
+        "Memory recall, Skill version, budget, and injection isolation assertions"
+      ]
     },
     {
-      "id": "AH-ARTIFACT-001", "area": "artifacts", "title": "Artifacts are content-addressed and atomically committed",
+      "id": "AH-ARTIFACT-001",
+      "area": "artifacts",
+      "title": "Artifacts are content-addressed and atomically committed",
       "statement": "Artifact metadata records hash, size, MIME, provenance, retention, sensitivity, and integrity; bytes commit before references and cleanup is deterministic and root-confined.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "17", "heading": "Artifact system", "lineStart": 769, "lineEnd": 788 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-ARTIFACT-001"], "requiredEvidence": ["Integrity, traversal, symlink, orphan, and reference-count tests"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "17",
+          "heading": "Artifact system",
+          "lineStart": 769,
+          "lineEnd": 788
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-ARTIFACT-001"
+      ],
+      "requiredEvidence": [
+        "Integrity, traversal, symlink, orphan, and reference-count tests"
+      ]
     },
     {
-      "id": "AH-ARTIFACT-002", "area": "security-privacy", "title": "Runtime data protection and backup policy are enforced",
+      "id": "AH-ARTIFACT-002",
+      "area": "security-privacy",
+      "title": "Runtime data protection and backup policy are enforced",
       "statement": "Database sidecars, artifacts, bookmarks, backups, diagnostics, and Keychain references use the specified protection and backup classes and locked data is never copied to weaker storage.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "17.1", "heading": "Data protection and backup", "lineStart": 790, "lineEnd": 803 }],
-      "platforms": ["ios-device"], "verificationTiers": ["nightly", "release-candidate"],
-      "testIDs": ["AHT-SECURITY-001"], "requiredEvidence": ["Effective file attributes, lock-state behavior, and backup exclusion evidence"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "17.1",
+          "heading": "Data protection and backup",
+          "lineStart": 790,
+          "lineEnd": 803
+        }
+      ],
+      "platforms": [
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-SECURITY-001"
+      ],
+      "requiredEvidence": [
+        "Effective file attributes, lock-state behavior, and backup exclusion evidence"
+      ]
     },
     {
-      "id": "AH-RETRY-001", "area": "retry-reconciliation", "title": "Retries honor typed failure and idempotency",
+      "id": "AH-RETRY-001",
+      "area": "retry-reconciliation",
+      "title": "Retries honor typed failure and idempotency",
       "statement": "Pure reads retry only within bounded policy, writes retry only with honored idempotency or reliable reconciliation, and duplicate suppression uses descriptor, canonical arguments, and effect scope.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "18", "heading": "Retry, idempotency, and uncertainty", "lineStart": 805, "lineEnd": 817 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "testIDs": ["AHT-RETRY-001"], "requiredEvidence": ["Failure-class and idempotency-key retry matrix"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "18",
+          "heading": "Retry, idempotency, and uncertainty",
+          "lineStart": 805,
+          "lineEnd": 817
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-RETRY-001"
+      ],
+      "requiredEvidence": [
+        "Failure-class and idempotency-key retry matrix"
+      ]
     },
     {
-      "id": "AH-IOS-001", "area": "ios-lifecycle", "title": "iOS 17 backgrounding quiesces safely",
+      "id": "AH-IOS-001",
+      "area": "ios-lifecycle",
+      "title": "iOS 17 backgrounding quiesces safely",
       "statement": "Multi-scene lifecycle aggregation stops admission, reaches a safe boundary within finite background time, drains generation, unloads as needed, and records waitingForForeground.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "19.1", "heading": "iOS 17 baseline", "lineStart": 821, "lineEnd": 838 }],
-      "platforms": ["ios-simulator", "ios-device"], "verificationTiers": ["pull-request", "nightly", "release-candidate"],
-      "testIDs": ["AHT-LIFECYCLE-001"], "requiredEvidence": ["Scene aggregation, expiration, journal, and lease-drain results"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "19.1",
+          "heading": "iOS 17 baseline",
+          "lineStart": 821,
+          "lineEnd": 838
+        }
+      ],
+      "platforms": [
+        "ios-simulator",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-LIFECYCLE-001"
+      ],
+      "requiredEvidence": [
+        "Scene aggregation, expiration, journal, and lease-drain results"
+      ]
     },
     {
-      "id": "AH-IOS-002", "area": "ios-lifecycle", "title": "Launch remains neutral",
+      "id": "AH-IOS-002",
+      "area": "ios-lifecycle",
+      "title": "Launch remains neutral",
       "statement": "App launch does not select the last conversation, load any model, resume a run, or initiate an external action; pending work is discoverable only.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "2", "heading": "Frozen product decisions", "lineStart": 30, "lineEnd": 57 }, { "section": "19.1", "heading": "iOS 17 baseline", "lineStart": 835, "lineEnd": 838 }],
-      "platforms": ["ios-simulator", "ios-device", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "testIDs": ["AHT-LAUNCH-001"], "requiredEvidence": ["Clean and upgrade launch assertions with zero model/external calls"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "2",
+          "heading": "Frozen product decisions",
+          "lineStart": 30,
+          "lineEnd": 57
+        },
+        {
+          "section": "19.1",
+          "heading": "iOS 17 baseline",
+          "lineStart": 835,
+          "lineEnd": 838
+        }
+      ],
+      "platforms": [
+        "ios-simulator",
+        "ios-device",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-LAUNCH-001"
+      ],
+      "requiredEvidence": [
+        "Clean and upgrade launch assertions with zero model/external calls"
+      ]
     },
     {
-      "id": "AH-IOS-003", "area": "ios-lifecycle", "title": "iOS 26 continued processing is explicit and bounded",
+      "id": "AH-IOS-003",
+      "area": "ios-lifecycle",
+      "title": "iOS 26 continued processing is explicit and bounded",
       "statement": "Only explicitly requested finite eligible work uses continued processing, truthful progress, fail-if-not-immediate scheduling, shared journal semantics, and safe rejection, expiration, or cancellation handling.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "19.2", "heading": "iOS 26 continued processing", "lineStart": 840, "lineEnd": 861 }],
-      "platforms": ["ios-device"], "verificationTiers": ["nightly", "release-candidate"],
-      "testIDs": ["AHT-LIFECYCLE-002"], "requiredEvidence": ["Submit, reject, expire, system cancel, and user cancel device scenarios"]
+      "status": "planned",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "19.2",
+          "heading": "iOS 26 continued processing",
+          "lineStart": 840,
+          "lineEnd": 861
+        }
+      ],
+      "platforms": [
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-LIFECYCLE-002"
+      ],
+      "requiredEvidence": [
+        "Submit, reject, expire, system cancel, and user cancel device scenarios"
+      ]
     },
     {
-      "id": "AH-UI-001", "area": "ui-accessibility", "title": "One chat UI progressively exposes agent work",
+      "id": "AH-UI-001",
+      "area": "ui-accessibility",
+      "title": "One chat UI progressively exposes agent work",
       "statement": "Ordinary answers remain simple while tools, approvals, budgets, waits, incomplete drafts, failures, and Pause/Resume/Stop are shown through runtime projections rather than UI-owned orchestration.",
-      "status": "planned", "riskTier": "P1",
-      "specAnchors": [{ "section": "20", "heading": "Unified UI and interaction model", "lineStart": 863, "lineEnd": 885 }],
-      "platforms": ["ios-simulator", "ios-device", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "testIDs": ["AHT-UI-001"], "requiredEvidence": ["Projection-driven UI scenarios for every waiting and terminal state"]
+      "status": "active",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "20",
+          "heading": "Unified UI and interaction model",
+          "lineStart": 863,
+          "lineEnd": 885
+        }
+      ],
+      "platforms": [
+        "ios-simulator",
+        "ios-device",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-UI-001"
+      ],
+      "requiredEvidence": [
+        "Projection-driven UI scenarios for every waiting and terminal state"
+      ]
     },
     {
-      "id": "AH-UI-002", "area": "ui-accessibility", "title": "Approval UI is fully accessible",
+      "id": "AH-UI-002",
+      "area": "ui-accessibility",
+      "title": "Approval UI is fully accessible",
       "statement": "VoiceOver and maximum Dynamic Type expose untruncated destination, data, scope, and warning text with stable focus, distinct actions, and double-activation protection.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "20", "heading": "Unified UI and interaction model", "lineStart": 880, "lineEnd": 885 }],
-      "platforms": ["ios-simulator", "ios-device"], "verificationTiers": ["pull-request", "release-candidate"],
-      "testIDs": ["AHT-UI-002"], "requiredEvidence": ["Accessibility tree, largest-size layout, focus, and double-tap assertions"]
+      "status": "planned",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "20",
+          "heading": "Unified UI and interaction model",
+          "lineStart": 880,
+          "lineEnd": 885
+        }
+      ],
+      "platforms": [
+        "ios-simulator",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-UI-002"
+      ],
+      "requiredEvidence": [
+        "Accessibility tree, largest-size layout, focus, and double-tap assertions"
+      ]
     },
     {
-      "id": "AH-SANDBOX-001", "area": "sandbox", "title": "Sandbox provider is optional",
+      "id": "AH-SANDBOX-001",
+      "area": "sandbox",
+      "title": "Sandbox provider is optional",
       "statement": "The open-source build compiles and works with no sandbox provider, advertises no sandbox-required tools, and contains no private runtime dependency or broken control.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "21.1", "heading": "Isolation from the private implementation", "lineStart": 889, "lineEnd": 899 }],
-      "platforms": ["swiftpm", "ios", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "testIDs": ["AHT-SANDBOX-001"], "requiredEvidence": ["Nil-provider build and availability projection"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "21.1",
+          "heading": "Isolation from the private implementation",
+          "lineStart": 889,
+          "lineEnd": 899
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-SANDBOX-001"
+      ],
+      "requiredEvidence": [
+        "Nil-provider build and availability projection"
+      ]
     },
     {
-      "id": "AH-SANDBOX-002", "area": "sandbox", "title": "Sandbox handles are durable and reconnectable",
+      "id": "AH-SANDBOX-002",
+      "area": "sandbox",
+      "title": "Sandbox handles are durable and reconnectable",
       "statement": "Sandbox start and commands are idempotent, cursors support detach and reattach, ending observation never cancels execution, and explicit targeted cancellation has one terminal result.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "21.2", "heading": "Two-level integration", "lineStart": 901, "lineEnd": 950 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "testIDs": ["AHT-SANDBOX-002"], "requiredEvidence": ["Protocol fake start, command, cursor, detach, reattach, and terminal matrix"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "21.2",
+          "heading": "Two-level integration",
+          "lineStart": 901,
+          "lineEnd": 950
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-SANDBOX-002"
+      ],
+      "requiredEvidence": [
+        "Protocol fake start, command, cursor, detach, reattach, and terminal matrix"
+      ]
     },
     {
-      "id": "AH-SANDBOX-003", "area": "sandbox", "title": "Sandbox authority can only attenuate",
+      "id": "AH-SANDBOX-003",
+      "area": "sandbox",
+      "title": "Sandbox authority can only attenuate",
       "statement": "Sandbox requirements, secrets, artifacts, destinations, resources, and self-described capabilities remain within the immutable step grant and authorized operation plan.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "21.2", "heading": "Two-level integration", "lineStart": 929, "lineEnd": 950 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "testIDs": ["AHT-SANDBOX-003"], "requiredEvidence": ["Every authority dimension widening rejected by fake provider"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "21.2",
+          "heading": "Two-level integration",
+          "lineStart": 929,
+          "lineEnd": 950
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-SANDBOX-003"
+      ],
+      "requiredEvidence": [
+        "Every authority dimension widening rejected by fake provider"
+      ]
     },
     {
-      "id": "AH-FUTURE-001", "area": "subagents-workflows", "title": "AgentExecutor reserves bounded child semantics",
+      "id": "AH-FUTURE-001",
+      "area": "subagents-workflows",
+      "title": "AgentExecutor reserves bounded child semantics",
       "statement": "Execution handles are durable and future children can only inherit strict capability subsets, independent budgets and contexts, structured results, and no ability to approve themselves.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "22", "heading": "Subagent compatibility seam", "lineStart": 952, "lineEnd": 995 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["pull-request"],
-      "testIDs": ["AHT-SUBAGENT-001"], "requiredEvidence": ["Executor fake and child-authority attenuation contracts"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "22",
+          "heading": "Subagent compatibility seam",
+          "lineStart": 952,
+          "lineEnd": 995
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-SUBAGENT-001"
+      ],
+      "requiredEvidence": [
+        "Executor fake and child-authority attenuation contracts"
+      ]
     },
     {
-      "id": "AH-SECURITY-001", "area": "security-privacy", "title": "Prompt and external content cannot grant authority",
+      "id": "AH-SECURITY-001",
+      "area": "security-privacy",
+      "title": "Prompt and external content cannot grant authority",
       "statement": "Prompt injection and untrusted tool or MCP content cannot enable tools, expand capabilities, change budgets, approve operations, or alter the state machine.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "24", "heading": "Security and privacy requirements", "lineStart": 1017, "lineEnd": 1031 }],
-      "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-SECURITY-002"], "requiredEvidence": ["Injection corpus with unchanged policy, budget, and journal authority"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "24",
+          "heading": "Security and privacy requirements",
+          "lineStart": 1017,
+          "lineEnd": 1031
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-SECURITY-002"
+      ],
+      "requiredEvidence": [
+        "Injection corpus with unchanged policy, budget, and journal authority"
+      ]
     },
     {
-      "id": "AH-SECURITY-002", "area": "security-privacy", "title": "Secrets and diagnostics are safely represented",
+      "id": "AH-SECURITY-002",
+      "area": "security-privacy",
+      "title": "Secrets and diagnostics are safely represented",
       "statement": "Credentials use this-device-only Keychain references, envelopes contain no plaintext secrets, and logs are redacted before first write with bounded retention.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "17.1", "heading": "Data protection and backup", "lineStart": 790, "lineEnd": 803 }, { "section": "24", "heading": "Security and privacy requirements", "lineStart": 1017, "lineEnd": 1031 }],
-      "platforms": ["swiftpm", "ios-device"], "verificationTiers": ["pull-request", "nightly"],
-      "testIDs": ["AHT-SECURITY-003"], "requiredEvidence": ["Serialized-envelope secret scan and diagnostic retention tests"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "17.1",
+          "heading": "Data protection and backup",
+          "lineStart": 790,
+          "lineEnd": 803
+        },
+        {
+          "section": "24",
+          "heading": "Security and privacy requirements",
+          "lineStart": 1017,
+          "lineEnd": 1031
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-SECURITY-003"
+      ],
+      "requiredEvidence": [
+        "Serialized-envelope secret scan and diagnostic retention tests"
+      ]
     },
     {
-      "id": "AH-OBS-001", "area": "observability", "title": "Operational events explain progress without hidden thought",
+      "id": "AH-OBS-001",
+      "area": "observability",
+      "title": "Operational events explain progress without hidden thought",
       "statement": "Redacted events expose model, tools, approvals, destinations, usage, blocking state, retries, uncertainty, and termination while never requesting or persisting hidden chain-of-thought.",
-      "status": "planned", "riskTier": "P1",
-      "specAnchors": [{ "section": "25", "heading": "Observability", "lineStart": 1033, "lineEnd": 1048 }],
-      "platforms": ["swiftpm", "ios", "macos"], "verificationTiers": ["pull-request"],
-      "testIDs": ["AHT-OBS-001"], "requiredEvidence": ["Event projection completeness and hidden-thought absence assertions"]
+      "status": "active",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "25",
+          "heading": "Observability",
+          "lineStart": 1033,
+          "lineEnd": 1048
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-OBS-001"
+      ],
+      "requiredEvidence": [
+        "Event projection completeness and hidden-thought absence assertions"
+      ]
     },
     {
-      "id": "AH-COMPAT-001", "area": "compatibility-rollout", "title": "Legacy user data remains readable",
+      "id": "AH-COMPAT-001",
+      "area": "compatibility-rollout",
+      "title": "Legacy user data remains readable",
       "statement": "Existing conversations, Memory, Skills, models, MCP settings, and tool choices survive upgrade; legacy ToolRun remains displayable but is never fabricated into an agent journal.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "26", "heading": "Backward compatibility and rollout", "lineStart": 1050, "lineEnd": 1062 }],
-      "platforms": ["swiftpm", "ios", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "testIDs": ["AHT-MIGRATION-001"], "requiredEvidence": ["Legacy-upgrade container fixture and record-by-record assertions"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "26",
+          "heading": "Backward compatibility and rollout",
+          "lineStart": 1050,
+          "lineEnd": 1062
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-MIGRATION-001"
+      ],
+      "requiredEvidence": [
+        "Legacy-upgrade container fixture and record-by-record assertions"
+      ]
     },
     {
-      "id": "AH-COMPAT-002", "area": "compatibility-rollout", "title": "Rollout and rollback preserve readable data",
+      "id": "AH-COMPAT-002",
+      "area": "compatibility-rollout",
+      "title": "Rollout and rollback preserve readable data",
       "statement": "AgentRuntime remains internally gated until critical suites pass and rollback keeps conversations and settings readable even if resumable runs become unavailable.",
-      "status": "planned", "riskTier": "P1",
-      "specAnchors": [{ "section": "26", "heading": "Backward compatibility and rollout", "lineStart": 1058, "lineEnd": 1062 }],
-      "platforms": ["ios", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "testIDs": ["AHT-ROLLBACK-001"], "requiredEvidence": ["Feature-off upgrade/rollback data readability scenario"]
+      "status": "active",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "26",
+          "heading": "Backward compatibility and rollout",
+          "lineStart": 1058,
+          "lineEnd": 1062
+        }
+      ],
+      "platforms": [
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-ROLLBACK-001"
+      ],
+      "requiredEvidence": [
+        "Feature-off upgrade/rollback data readability scenario"
+      ]
     },
     {
-      "id": "AH-TEST-001", "area": "testing", "title": "Deterministic unit and property coverage is exhaustive",
+      "id": "AH-TEST-001",
+      "area": "testing",
+      "title": "Deterministic unit and property coverage is exhaustive",
       "statement": "State, CAS, schema, approval, budgets, recovery, artifacts, deletion, lifecycle, attenuation, fuzz, and negative paths use deterministic clocks, IDs, fakes, and seeds.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "27.1", "heading": "Deterministic unit and property tests", "lineStart": 1075, "lineEnd": 1112 }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "testIDs": ["AHT-TEST-001"], "requiredEvidence": ["Unit/property test inventory and semantic registry coverage"]
+      "status": "planned",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "27.1",
+          "heading": "Deterministic unit and property tests",
+          "lineStart": 1075,
+          "lineEnd": 1112
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-TEST-001"
+      ],
+      "requiredEvidence": [
+        "Unit/property test inventory and semantic registry coverage"
+      ]
     },
     {
-      "id": "AH-TEST-002", "area": "testing", "title": "Integrated behaviors assert outcomes and forbidden actions",
+      "id": "AH-TEST-002",
+      "area": "testing",
+      "title": "Integrated behaviors assert outcomes and forbidden actions",
       "statement": "Integration tests verify requested output, journal state, tool and approval history, side effects, and absence of forbidden actions rather than accepting completion or a final token.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "27.2", "heading": "Integration tests", "lineStart": 1113, "lineEnd": 1132 }],
-      "platforms": ["swiftpm", "ios-simulator"], "verificationTiers": ["pull-request"],
-      "testIDs": ["AHT-TEST-002"], "requiredEvidence": ["Scenario-level semantic assertions and forbidden-action log"]
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "27.2",
+          "heading": "Integration tests",
+          "lineStart": 1113,
+          "lineEnd": 1132
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-simulator"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "testIDs": [
+        "AHT-TEST-002"
+      ],
+      "requiredEvidence": [
+        "Scenario-level semantic assertions and forbidden-action log"
+      ]
     },
     {
-      "id": "AH-TEST-003", "area": "testing", "title": "Required physical-device model matrix is complete",
+      "id": "AH-TEST-003",
+      "area": "testing",
+      "title": "Required physical-device model matrix is complete",
       "statement": "Bonsai 8B 1-bit, Gemma 4 E2B, Apple Intelligence where available, a vision GGUF, iOS 17 baseline, and iOS 26 continued processing run isolated clean and upgrade scenarios with semantic oracles.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "27.3", "heading": "Real-device matrix", "lineStart": 1134, "lineEnd": 1163 }],
-      "platforms": ["ios-device"], "verificationTiers": ["release-candidate"],
-      "testIDs": ["AHT-DEVICE-001"], "requiredEvidence": ["Signed device evidence records and xcresult bundles for every matrix cell"]
+      "status": "planned",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "27.3",
+          "heading": "Real-device matrix",
+          "lineStart": 1134,
+          "lineEnd": 1163
+        }
+      ],
+      "platforms": [
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-DEVICE-001"
+      ],
+      "requiredEvidence": [
+        "Signed device evidence records and xcresult bundles for every matrix cell"
+      ]
     },
     {
-      "id": "AH-PERF-001", "area": "performance", "title": "Latency and resource regressions are quantitatively gated",
+      "id": "AH-PERF-001",
+      "area": "performance",
+      "title": "Latency and resource regressions are quantitatively gated",
       "statement": "Ordinary chat adds no model pass, median TTFO regresses at most 10%, p95 at most 15%, journal writes are not per-token, storage is bounded, and hard budgets remain effective.",
-      "status": "planned", "riskTier": "P1",
-      "specAnchors": [{ "section": "27.4", "heading": "Performance and resource gates", "lineStart": 1165, "lineEnd": 1180 }],
-      "platforms": ["ios-device", "macos"], "verificationTiers": ["nightly", "release-candidate"],
-      "testIDs": ["AHT-PERF-001"], "requiredEvidence": ["Matched baseline and candidate latency/resource distributions"]
+      "status": "planned",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "27.4",
+          "heading": "Performance and resource gates",
+          "lineStart": 1165,
+          "lineEnd": 1180
+        }
+      ],
+      "platforms": [
+        "ios-device",
+        "macos"
+      ],
+      "verificationTiers": [
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-PERF-001"
+      ],
+      "requiredEvidence": [
+        "Matched baseline and candidate latency/resource distributions"
+      ]
     },
     {
-      "id": "AH-AUDIT-001", "area": "audit", "title": "One consolidated independent audit closes the release",
+      "id": "AH-AUDIT-001",
+      "area": "audit",
+      "title": "One consolidated independent audit closes the release",
       "statement": "Formal independent review begins only after the full implementation wave and evidence, produces one findings set, and permits one bounded remediation and closure check rather than an audit loop.",
-      "status": "planned", "riskTier": "P0",
-      "specAnchors": [{ "section": "29.1", "heading": "Audit cadence and stop rule", "lineStart": 1299, "lineEnd": 1319 }],
-      "platforms": ["all"], "verificationTiers": ["release-candidate"],
-      "testIDs": ["AHT-AUDIT-001"], "requiredEvidence": ["Consolidated audit report, remediation set, full rerun, and bounded closure report"]
+      "status": "planned",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "29.1",
+          "heading": "Audit cadence and stop rule",
+          "lineStart": 1299,
+          "lineEnd": 1319
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-AUDIT-001"
+      ],
+      "requiredEvidence": [
+        "Consolidated audit report, remediation set, full rerun, and bounded closure report"
+      ]
     }
   ]
 }

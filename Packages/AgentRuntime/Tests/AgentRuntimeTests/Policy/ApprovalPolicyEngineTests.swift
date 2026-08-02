@@ -5,6 +5,9 @@
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-AUTH-001
+// TEST-ID: AHT-AUTH-003
+// TEST-ID: AHT-TEST-002
 final class ApprovalPolicyEngineTests: XCTestCase {
     func testLocalPolicyAuthorizesWithoutUserPresentation() async throws {
         let fixture = try Fixture(effect: .localPure)

@@ -5,6 +5,8 @@ import AgentContracts
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-CONTEXT-001
+// TEST-ID: AHT-CONTEXT-002
 final class ContextCompilerTests: XCTestCase {
     func testCompilesEveryTypedSourceWithExactEvidenceAndUntrustedFraming() throws {
         let snapshot = try completeSnapshot()

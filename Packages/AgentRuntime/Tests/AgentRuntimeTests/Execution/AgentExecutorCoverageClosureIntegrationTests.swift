@@ -8,6 +8,10 @@ import XCTest
 /// End-to-end coverage for recovery branches whose correctness depends on durable state rather
 /// than on an isolated helper. These tests deliberately exercise the public command/handle API
 /// except where a restarted worker is the behavior under test.
+// TEST-ID: AHT-LOOP-002
+// TEST-ID: AHT-RETRY-001
+// TEST-ID: AHT-OBS-001
+// TEST-ID: AHT-SECURITY-003
 final class AgentExecutorCoverageClosureIntegrationTests: XCTestCase {
     func testWorkerLogRedactsEveryExecutionErrorCaseWithoutDroppingInvariantDetail() async throws {
         let tool = try ExecutorTestToolDefinition(name: "worker-log-tool")
@@ -335,6 +339,42 @@ final class AgentExecutorCoverageClosureIntegrationTests: XCTestCase {
             XCTAssertEqual(recorded.classification, .permanent)
             XCTAssertEqual(recorded.externalEffect, .confirmedNone)
         }
+    }
+
+    func testToolElapsedTimeFallsBackToTimeoutWhenClockRegresses() async throws {
+        let offset = 969
+        let model = try ExecutorTestModelDefinition(offset: offset)
+        let definition = try ExecutorTestToolDefinition(name: "regressing-clock")
+        let call = try definition.call(offset: offset)
+        let provider = try ToolSequenceModelProvider(
+            model: model,
+            call: call,
+            answer: "clock regression tolerated"
+        )
+        let tool = ExecutorTestTool(
+            definition: definition,
+            behavior: .complete("local result")
+        )
+        let clock = RegressingExecutorClock(first: 2_000, later: 1_000)
+        let harness = try ExecutorTestHarness(
+            offset: offset,
+            provider: provider,
+            model: model,
+            toolDescriptors: [definition.descriptor],
+            tools: SingleExecutorTestToolCatalog(tool: tool),
+            explicitlyRequestedToolIDs: [definition.descriptor.id.logicalID],
+            clock: clock
+        )
+        let handleID = try await harness.executor.submit(
+            harness.request,
+            commandID: ExecutorTestID.command(30_000 + offset)
+        )
+        let handle = try await harness.executor.attach(to: handleID)
+        _ = try await collectTerminalEvents(from: handle)
+        let loaded = try await handle.result()
+        let result = try XCTUnwrap(loaded)
+        XCTAssertEqual(result.status.state, .completed)
+        XCTAssertEqual(result.answer?.text, "clock regression tolerated")
     }
 
     func testToolInternalCancellationDoesNotStrandTheRunAsRuntimeCancellation() async throws {

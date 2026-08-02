@@ -6,6 +6,8 @@ import Darwin
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-ARTIFACT-001
+// TEST-ID: AHT-SECURITY-001
 final class ContentAddressedArtifactStoreTests: XCTestCase, @unchecked Sendable {
     func testCoverageClosureOwnerIdentityRetentionAndLastOwnerRemoval() async throws {
         let root = uniqueRoot("owner-identity-coverage")

@@ -5,6 +5,8 @@
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-TOOL-001
+// TEST-ID: AHT-SCHEMA-001
 final class ToolV2Tests: XCTestCase {
     func testPreparedInvocationAllowsDescriptorRetryPolicyToBeNarrowedToNever() throws {
         let boundedRetry = try ExternalRetryPolicy(

@@ -2,6 +2,8 @@
 
 import Foundation
 import LLMCore
+import AgentContracts
+import AgentRuntime
 
 /// One message in a conversation (DESIGN §2.4). Reasoning + answer are stored split so the thinking
 /// disclosure can re-render a completed turn exactly as it streamed. `parentID` is plumbed for the
@@ -141,11 +143,15 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
     /// nil, and a skill-less thread re-encodes byte-identically (the synthesized Codable omits a nil key,
     /// exactly like `Message.attachments`).
     public var skillID: UUID?
+    /// The conversation-persistent tool policy (spec §14). Optional so pre-agent records decode as
+    /// nil; a legacy conversation materializes the current global template exactly once on its first
+    /// agent-runtime run, then persists the marker.
+    public var toolPolicy: ConversationToolPolicy?
 
     public init(id: UUID = UUID(), title: String = "New Chat", createdAt: Date = Date(),
                 updatedAt: Date = Date(), systemPromptID: String? = nil, modelID: String,
                 variantID: String, messages: [Message] = [], pinned: Bool = false,
-                skillID: UUID? = nil) {
+                skillID: UUID? = nil, toolPolicy: ConversationToolPolicy? = nil) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
@@ -156,6 +162,7 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
         self.messages = messages
         self.pinned = pinned
         self.skillID = skillID
+        self.toolPolicy = toolPolicy
     }
 
     /// A one-line preview for the conversation list (last user or assistant text).

@@ -97,6 +97,28 @@ struct FixedExecutorClock: AgentExecutionClock, Sendable {
     }
 }
 
+/// A wall clock whose first `now()` read is ahead of every later read — exercising the runtime's
+/// elapsed-time overflow/regression fallbacks without a real monotonic clock.
+actor RegressingExecutorClock: AgentExecutionClock {
+    private let first: Int64
+    private let later: Int64
+    private var reads = 0
+
+    init(first: Int64, later: Int64) {
+        self.first = first
+        self.later = later
+    }
+
+    func now() async throws -> AgentTimestamp {
+        reads += 1
+        return AgentTimestamp(rawValue: reads == 1 ? first : later)
+    }
+
+    func sleep(milliseconds: UInt64) async throws {
+        try await Task.sleep(nanoseconds: milliseconds * 1_000_000)
+    }
+}
+
 final class DeterministicExecutorArtifactNames: @unchecked Sendable {
     private let lock = NSLock()
     private var counter = 0

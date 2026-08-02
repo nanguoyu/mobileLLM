@@ -3,6 +3,7 @@
 import XCTest
 @_spi(AgentRuntime) @testable import AgentContracts
 
+// TEST-ID: AHT-SUBAGENT-001
 final class AuthorityAndAuthorizationTests: XCTestCase {
     func testEveryAuthorityDimensionAttenuatesAndFingerprints() throws {
         let destination = TestValues.destination()

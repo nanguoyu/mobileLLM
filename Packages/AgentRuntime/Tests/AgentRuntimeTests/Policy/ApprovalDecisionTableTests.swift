@@ -5,6 +5,7 @@ import AgentContracts
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-AUTH-002
 final class ApprovalDecisionTableTests: XCTestCase {
     func testAuthorizationTableEnumeratesEveryCellAndEveryRegisteredWinner() {
         var cells = 0

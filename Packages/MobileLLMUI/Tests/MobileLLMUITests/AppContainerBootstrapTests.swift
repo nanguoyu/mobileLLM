@@ -9,6 +9,7 @@ import AppRuntime
 /// honored when the app restores the default model selection on bootstrap — never silently overridden by
 /// the MLX-first default or a platform tie-break. This is the durable half of "the user freely chooses".
 @MainActor
+// TEST-ID: AHT-LAUNCH-001
 final class AppContainerBootstrapTests: XCTestCase {
 
     private let phone = DeviceTier(physicalMemoryBytes: 8_000_000_000,  isPhone: true)

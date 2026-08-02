@@ -3,10 +3,14 @@
 import XCTest
 @testable import MobileLLMUI
 @testable import LLMCore
+import AgentContracts
+import AgentRuntime
 
 /// `ChatStore` streaming flow (DESIGN §2.3): send → think block then answer → commit; Stop commits
 /// the partial; history-trim keeps the system turn and honors `contextTokenCap`.
 @MainActor
+// TEST-ID: AHT-SELECT-001
+// TEST-ID: AHT-ROLLBACK-001
 final class ChatStoreTests: XCTestCase {
 
     private func tempStore() -> (ConversationStore, URL) {
@@ -62,6 +66,47 @@ final class ChatStoreTests: XCTestCase {
         chat.send()
         try await waitUntilIdle(chat)
         XCTAssertEqual(chat.activeConversation?.title, "What is the capital of France?")
+    }
+
+    func testLegacyLoopRemainsTheRolloutOffPathUntilAgentRuntimeAttaches() async throws {
+        let (chat, dir) = makeStore(script: .init())
+        defer { try? FileManager.default.removeItem(at: dir) }
+        XCTAssertFalse(chat.agentRuntimeEnabled)
+        chat.draft = "hello"
+        chat.send()
+        try await waitUntilIdle(chat)
+        XCTAssertEqual(
+            chat.activeConversation?.messages.last?.answer,
+            "Here is the answer: everything is working end to end.",
+            "the legacy in-process loop must still answer"
+        )
+        XCTAssertFalse(chat.agentRuntimeEnabled, "attachment is explicit, never implicit")
+
+        chat.attachAgentRuntime(AgentRunStore(
+            executor: UnavailableAgentExecutor(),
+            requestBuilder: UnavailableAgentRunRequestBuilder()
+        ))
+        XCTAssertTrue(chat.agentRuntimeEnabled)
+    }
+
+    func testNewConversationMaterializesToolPolicyOnlyAfterAttachment() throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "chat-policy-\(UUID().uuidString)")!)
+        let chat = ChatStore(engine: MockLLMEngine(script: .init()), store: store, settings: settings,
+                             activeModel: mockModel)
+        let legacy = try XCTUnwrap(chat.newConversation())
+        XCTAssertNil(legacy.toolPolicy, "pre-agent conversations stay nil until materialized")
+
+        chat.attachAgentRuntime(AgentRunStore(
+            executor: UnavailableAgentExecutor(),
+            requestBuilder: UnavailableAgentRunRequestBuilder()
+        ))
+        let fresh = try XCTUnwrap(chat.newConversation())
+        XCTAssertEqual(fresh.toolPolicy?.allowedToolIDs, AppLocalToolIDs.current)
+        XCTAssertEqual(fresh.toolPolicy?.pinnedToolIDs, AppLocalToolIDs.current)
+        XCTAssertEqual(fresh.toolPolicy?.masterEnabled, settings.toolsEnabled)
+        XCTAssertTrue(fresh.toolPolicy?.materializedFromGlobalTemplate == true)
     }
 
     func testStopCommitsPartialAnswer() async throws {
@@ -428,6 +473,30 @@ final class ChatStoreTests: XCTestCase {
         XCTAssertEqual(dictation.state, .idle)
         XCTAssertFalse(dictation.isRecording)
         XCTAssertTrue(dictation.transcript.isEmpty)
+    }
+}
+
+private struct UnavailableAgentExecutor: AgentExecutor {
+    func submit(
+        _ request: AgentRequest,
+        commandID: AgentCommandID
+    ) async throws -> AgentExecutionHandleID {
+        throw AgentExecutionError.internalInvariant("test executor unavailable")
+    }
+
+    func attach(to id: AgentExecutionHandleID) async throws -> any AgentExecutionHandle {
+        throw AgentExecutionError.executionNotFound(id)
+    }
+}
+
+private struct UnavailableAgentRunRequestBuilder: AgentRunRequestBuilding {
+    func buildSubmission(
+        conversationID: UUID,
+        userTurnID: UUID,
+        text: String,
+        imageRefs: [ImageRef]
+    ) async throws -> AgentRunSubmission {
+        throw AgentExecutionError.internalInvariant("test builder unavailable")
     }
 }
 

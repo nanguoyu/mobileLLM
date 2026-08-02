@@ -48,3 +48,14 @@ public struct AgentAttachmentReference: Sendable, Equatable {
 public protocol AgentAttachmentBytesResolving: Sendable {
     func bytes(for attachment: AgentAttachmentReference) async throws -> Data
 }
+
+/// The local-pure tool identities the first-release agent catalog adapts (spec §14: tools the
+/// runtime cannot safely execute are never advertised, and the conversation policy is the only
+/// authority that decides which of the adapted tools are allowed).
+public enum AppLocalToolIDs {
+    public static let names = ["calculator", "datetime"]
+
+    public static var current: [AgentToolLogicalID] {
+        names.compactMap { try? AgentToolLogicalID(providerID: "builtin", name: $0) }
+    }
+}

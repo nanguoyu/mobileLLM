@@ -2,8 +2,11 @@
 
 import XCTest
 @testable import MobileLLMUI
+import AgentContracts
+import AgentRuntime
 
 /// `ConversationStore` round-trip + index consistency + soft-delete + search (DESIGN §2.4).
+// TEST-ID: AHT-SELECT-001
 final class ConversationStoreTests: XCTestCase {
 
     private func tempStore() -> (ConversationStore, URL) {
@@ -33,6 +36,35 @@ final class ConversationStoreTests: XCTestCase {
         let live = await store.loadAllLive()
         XCTAssertEqual(live.count, 1)
         XCTAssertEqual(live.first?.id, convo.id)
+    }
+
+    func testConversationToolPolicyPersistsAcrossReload() async throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let calculator = try AgentToolLogicalID(providerID: "builtin", name: "calculator")
+        let policy = try ConversationToolPolicy(
+            masterEnabled: true,
+            allowedToolIDs: [calculator],
+            pinnedToolIDs: [calculator],
+            selectionPolicyVersion: 1,
+            materializedFromGlobalTemplate: true
+        )
+        var convo = makeConversation(title: "Policy", body: "tools")
+        convo.toolPolicy = policy
+        try await store.save(convo)
+
+        let loadedValue = await store.load(convo.id)
+        let loaded = try XCTUnwrap(loadedValue)
+        XCTAssertEqual(loaded.toolPolicy, policy)
+        XCTAssertTrue(loaded.toolPolicy?.materializedFromGlobalTemplate == true)
+
+        // Legacy records without the key decode as nil and stay readable (spec §26).
+        var legacy = makeConversation(title: "Legacy", body: "pre-agent")
+        legacy.toolPolicy = nil
+        try await store.save(legacy)
+        let legacyValue = await store.load(legacy.id)
+        let legacyLoaded = try XCTUnwrap(legacyValue)
+        XCTAssertNil(legacyLoaded.toolPolicy)
     }
 
     func testIndexConsistency() async throws {

@@ -5,6 +5,8 @@
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-RUN-002
+// TEST-ID: AHT-CHAT-001
 final class AgentExecutorCoreIntegrationTests: XCTestCase {
     func testCompletedExecutionReattachesAfterRepositoryReopenWithoutRestartingWork() async throws {
         let model = try ExecutorTestModelDefinition(offset: 0)

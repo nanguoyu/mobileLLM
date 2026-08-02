@@ -5,6 +5,7 @@ import AgentContracts
 import Foundation
 import XCTest
 
+// TEST-ID: AHT-SELECT-002
 final class ToolSelectorTests: XCTestCase {
     func testConversationPolicyCanonicalizesAndRejectsPinnedExpansion() throws {
         let web = try logical("builtin", "web_search")

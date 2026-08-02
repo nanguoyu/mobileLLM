@@ -6,6 +6,8 @@ import AgentRuntime
 @testable import MobileLLMUI
 
 @MainActor
+// TEST-ID: AHT-UI-001
+// TEST-ID: AHT-LIFECYCLE-001
 final class AgentRunStoreTests: XCTestCase {
     func testStartProjectsEventsAndDeliversCommittedAnswer() async throws {
         let executor = MockAgentExecutor()
@@ -113,6 +115,39 @@ final class AgentRunStoreTests: XCTestCase {
         XCTAssertEqual(response.requestID, interaction.id)
         XCTAssertEqual(response.value, .string("Option B"))
         XCTAssertEqual(executor.submitCount, 1, "responding must not create a new root run")
+    }
+
+    func testQuiesceForBackgroundPausesEveryActiveRunWithForegroundLost() async throws {
+        let executor = MockAgentExecutor()
+        let builder = MockAgentRunRequestBuilder(submission: try makeSubmission())
+        let store = AgentRunStore(executor: executor, requestBuilder: builder)
+        let first = UUID()
+        let second = UUID()
+        _ = try await store.start(
+            conversationID: first,
+            userMessageID: UUID(),
+            assistantMessageID: UUID(),
+            text: "one",
+            imageRefs: []
+        )
+        _ = try await store.start(
+            conversationID: second,
+            userMessageID: UUID(),
+            assistantMessageID: UUID(),
+            text: "two",
+            imageRefs: []
+        )
+        let handle = try XCTUnwrap(executor.handle)
+        handle.currentStatus = try AgentRunStatus(state: .generating, stateVersion: 4)
+
+        await store.quiesceForBackground()
+
+        let pauses = handle.receivedCommands.compactMap { envelope -> AgentQuiescenceReason? in
+            guard case .pause(let reason) = envelope.payload.action else { return nil }
+            return reason
+        }
+        XCTAssertEqual(pauses, [.foregroundLost, .foregroundLost])
+        XCTAssertEqual(handle.receivedCommands.count, 2)
     }
 }
 

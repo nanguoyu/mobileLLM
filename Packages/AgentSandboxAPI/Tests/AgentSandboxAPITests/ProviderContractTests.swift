@@ -5,6 +5,7 @@ import XCTest
 import AgentContracts
 @testable import AgentSandboxAPI
 
+// TEST-ID: AHT-SANDBOX-003
 final class ProviderContractTests: XCTestCase {
     func testProviderValuesRoundTripAndUseNamespacedSchemas() throws {
         let values = try SandboxTestValues.negotiated()

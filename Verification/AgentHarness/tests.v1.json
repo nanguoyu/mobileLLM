@@ -4,318 +4,1906 @@
   "documentID": "AHT-TESTS-V1",
   "tests": [
     {
-      "id": "AHT-INFRA-001", "title": "Validate requirements manifest and pinned specification identity", "status": "active", "kind": "manifest", "riskTier": "P0",
-      "requirementIDs": ["AH-INFRA-001", "AH-INFRA-002"],
-      "selectors": [
-        { "kind": "xctest", "value": "AgentHarnessVerificationTests.AgentHarnessVerificationTests/testRequirementsManifest" },
-        { "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testOfflineJSONSchemaValidatorCoversRepositoryDialect" }
+      "id": "AHT-INFRA-001",
+      "title": "Validate requirements manifest and pinned specification identity",
+      "status": "active",
+      "kind": "manifest",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-INFRA-001",
+        "AH-INFRA-002"
       ],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"], "requiredEvidence": ["XCTest result with manifest and source-digest assertions"],
-      "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.AgentHarnessVerificationTests/testRequirementsManifest"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testOfflineJSONSchemaValidatorCoversRepositoryDialect"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "XCTest result with manifest and source-digest assertions"
+      ],
+      "determinism": {
+        "fixedSeedRequired": false,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-INFRA-002", "title": "Verify bidirectional requirements-to-tests traceability", "status": "active", "kind": "manifest", "riskTier": "P0",
-      "requirementIDs": ["AH-INFRA-003"],
-      "selectors": [{ "kind": "xctest", "value": "AgentHarnessVerificationTests.AgentHarnessVerificationTests/testBidirectionalTraceability" }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"], "requiredEvidence": ["Zero duplicate, unknown, stale, or unmapped identifiers"],
-      "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
+      "id": "AHT-INFRA-002",
+      "title": "Verify bidirectional requirements-to-tests traceability",
+      "status": "active",
+      "kind": "manifest",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-INFRA-003"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.AgentHarnessVerificationTests/testBidirectionalTraceability"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Zero duplicate, unknown, stale, or unmapped identifiers"
+      ],
+      "determinism": {
+        "fixedSeedRequired": false,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-INFRA-003", "title": "Validate semantic registries and declared completeness", "status": "active", "kind": "manifest", "riskTier": "P0",
-      "requirementIDs": ["AH-INFRA-004"], "selectors": [
-        { "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testCheckedInRegistriesAndFixturesPassSemanticVerification" },
-        { "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testSemanticDecisionRegistriesRejectGapsConflictsDeadRulesAndUnknownDomains" },
-        { "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testSemanticDecisionRegistriesRejectCommandAndApprovalSecurityDrift" },
-        { "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testSemanticDecisionRegistryOrderingIsIrrelevantAndEvidenceMatchesExpansion" }
-      ], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Finite cell/rule/winner counts plus negative gap, conflict, dead-rule, domain, command-drift, and approval-security results"], "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
+      "id": "AHT-INFRA-003",
+      "title": "Validate semantic registries and declared completeness",
+      "status": "active",
+      "kind": "manifest",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-INFRA-004"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testCheckedInRegistriesAndFixturesPassSemanticVerification"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testSemanticDecisionRegistriesRejectGapsConflictsDeadRulesAndUnknownDomains"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testSemanticDecisionRegistriesRejectCommandAndApprovalSecurityDrift"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testSemanticDecisionRegistryOrderingIsIrrelevantAndEvidenceMatchesExpansion"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Finite cell/rule/winner counts plus negative gap, conflict, dead-rule, domain, command-drift, and approval-security results"
+      ],
+      "determinism": {
+        "fixedSeedRequired": false,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-INFRA-004", "title": "Validate deterministic model and app-container fixtures", "status": "active", "kind": "manifest", "riskTier": "P1",
-      "requirementIDs": ["AH-INFRA-005"], "selectors": [{ "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testDeterministicFixtureFamiliesAreComplete" }], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Fixture schema and deterministic identity report"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false, "fixtureIDs": ["AH-FIXTURE-MODEL-PURE-CHAT", "AH-FIXTURE-MODEL-TOOL-THEN-ANSWER", "AH-FIXTURE-MODEL-MALFORMED-REPAIR", "AH-FIXTURE-MODEL-USER-INPUT"] }
+      "id": "AHT-INFRA-004",
+      "title": "Validate deterministic model and app-container fixtures",
+      "status": "active",
+      "kind": "manifest",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-INFRA-005"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testDeterministicFixtureFamiliesAreComplete"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Fixture schema and deterministic identity report"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false,
+        "fixtureIDs": [
+          "AH-FIXTURE-MODEL-PURE-CHAT",
+          "AH-FIXTURE-MODEL-TOOL-THEN-ANSWER",
+          "AH-FIXTURE-MODEL-MALFORMED-REPAIR",
+          "AH-FIXTURE-MODEL-USER-INPUT"
+        ]
+      }
     },
     {
-      "id": "AHT-INFRA-005", "title": "Validate coverage policy, baseline, and exclusions", "status": "active", "kind": "manifest", "riskTier": "P0",
-      "requirementIDs": ["AH-INFRA-006"], "selectors": [{ "kind": "xctest", "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testConditionalCoverageSchemaRejectsIncompletePolicy" }], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Coverage document schema and policy consistency report"], "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
+      "id": "AHT-INFRA-005",
+      "title": "Validate coverage policy, baseline, and exclusions",
+      "status": "active",
+      "kind": "manifest",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-INFRA-006"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testConditionalCoverageSchemaRejectsIncompletePolicy"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Coverage document schema and policy consistency report"
+      ],
+      "determinism": {
+        "fixedSeedRequired": false,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-INFRA-006", "title": "Enforce quarantine prohibition and expiry policy", "status": "active", "kind": "manifest", "riskTier": "P0",
-      "requirementIDs": ["AH-INFRA-007"],
-      "selectors": [{ "kind": "xctest", "value": "AgentHarnessVerificationTests.AgentHarnessVerificationTests/testQuarantinePolicy" }],
-      "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"], "requiredEvidence": ["XCTest result covering forbidden tiers and seven-day expiry"],
-      "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
+      "id": "AHT-INFRA-006",
+      "title": "Enforce quarantine prohibition and expiry policy",
+      "status": "active",
+      "kind": "manifest",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-INFRA-007"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.AgentHarnessVerificationTests/testQuarantinePolicy"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "XCTest result covering forbidden tiers and seven-day expiry"
+      ],
+      "determinism": {
+        "fixedSeedRequired": false,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-INFRA-007", "title": "Reject missing discovery and verification evidence", "status": "planned", "kind": "manifest", "riskTier": "P0",
-      "requirementIDs": ["AH-INFRA-008"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["pull-request", "nightly", "release-candidate"],
-      "requiredEvidence": ["Negative fixtures for empty discovery, skip, timeout, and missing result bundles"], "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
+      "id": "AHT-INFRA-007",
+      "title": "Reject missing discovery and verification evidence",
+      "status": "active",
+      "kind": "manifest",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-INFRA-008"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.RepositoryDocumentVerifierTests/testMissingRepositoryEvidenceFailsClosed"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Negative fixtures for empty discovery, skip, timeout, and missing result bundles"
+      ],
+      "determinism": {
+        "fixedSeedRequired": false,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-ARCH-001", "title": "Enforce package dependency boundaries and MLX-free builds", "status": "planned", "kind": "contract", "riskTier": "P0",
-      "requirementIDs": ["AH-ARCH-001"], "selectors": [], "platforms": ["swiftpm", "ios", "macos"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Dependency graph and package build results"], "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
+      "id": "AHT-ARCH-001",
+      "title": "Enforce package dependency boundaries and MLX-free builds",
+      "status": "active",
+      "kind": "contract",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-ARCH-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.ArchitectureBoundaryVerifierTests/testPackageBoundariesAcceptOnlyApprovedDependenciesAndImports"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Dependency graph and package build results"
+      ],
+      "determinism": {
+        "fixedSeedRequired": false,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-ARCH-002", "title": "Prove deferred runtimes and forbidden dependencies are absent", "status": "planned", "kind": "contract", "riskTier": "P0",
-      "requirementIDs": ["AH-ARCH-002"], "selectors": [], "platforms": ["swiftpm", "ios", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "requiredEvidence": ["Forbidden symbol, dependency, and entitlement scan"], "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
+      "id": "AHT-ARCH-002",
+      "title": "Prove deferred runtimes and forbidden dependencies are absent",
+      "status": "active",
+      "kind": "contract",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-ARCH-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentHarnessVerificationTests.ArchitectureBoundaryVerifierTests/testPackageBoundariesAcceptOnlyApprovedDependenciesAndImports"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Forbidden symbol, dependency, and entitlement scan"
+      ],
+      "determinism": {
+        "fixedSeedRequired": false,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-CONTRACT-001", "title": "Round-trip and isolate every durable identifier", "status": "active", "kind": "contract", "riskTier": "P0",
-      "requirementIDs": ["AH-IDENTITY-001"], "selectors": [{ "kind": "xctest", "value": "AgentContractsTests.IdentifiersVersioningAndWireTests/testStableIdentifierRoundTripsAndDomains" }], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Golden encoding and malformed identifier results"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-CONTRACT-001",
+      "title": "Round-trip and isolate every durable identifier",
+      "status": "active",
+      "kind": "contract",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-IDENTITY-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentContractsTests.IdentifiersVersioningAndWireTests/testStableIdentifierRoundTripsAndDomains"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Golden encoding and malformed identifier results"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-CONTRACT-002", "title": "Validate public envelope version negotiation and wire stability", "status": "active", "kind": "contract", "riskTier": "P0",
-      "requirementIDs": ["AH-IDENTITY-002"], "selectors": [{ "kind": "xctest", "value": "AgentContractsTests.IdentifiersVersioningAndWireTests/testVersionedEnvelopeCompatibilityAndGoldenWire" }], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Golden envelopes and unsupported-major failures"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-CONTRACT-002",
+      "title": "Validate public envelope version negotiation and wire stability",
+      "status": "active",
+      "kind": "contract",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-IDENTITY-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentContractsTests.IdentifiersVersioningAndWireTests/testVersionedEnvelopeCompatibilityAndGoldenWire"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Golden envelopes and unsupported-major failures"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-RUN-001", "title": "Enumerate every registered legal and illegal run transition", "status": "planned", "kind": "property", "riskTier": "P0",
-      "requirementIDs": ["AH-RUN-001"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["100% transition-registry row results"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-RUN-001",
+      "title": "Enumerate every registered legal and illegal run transition",
+      "status": "active",
+      "kind": "property",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.StateMachineTests/testApplyingFailsClosedForStatelessRejectedMismatchedAndOverflowInputs"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.StateMachineTests/testFailureReasonMappingIsExhaustive"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "100% transition-registry row results"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-RUN-002", "title": "Race every terminal reason and prove terminal uniqueness", "status": "planned", "kind": "property", "riskTier": "P0",
-      "requirementIDs": ["AH-RUN-003"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "requiredEvidence": ["Single terminal event under competing callbacks"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-RUN-002",
+      "title": "Race every terminal reason and prove terminal uniqueness",
+      "status": "active",
+      "kind": "property",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-RUN-003"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorCoreIntegrationTests/testPureChatUsesOneModelPassCommitsOneTerminalAndDrainsEveryLease"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Single terminal event under competing callbacks"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-RUN-003", "title": "Resume a durable user interaction within its original run", "status": "planned", "kind": "integration", "riskTier": "P1",
-      "requirementIDs": ["AH-RUN-004"], "selectors": [], "platforms": ["swiftpm", "ios-simulator"], "verificationTiers": ["pull-request"],
-      "requiredEvidence": ["Request, response, duplicate, and stale-command journal assertions"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false, "fixtureIDs": ["AH-FIXTURE-MODEL-USER-INPUT"] }
+      "id": "AHT-RUN-003",
+      "title": "Resume a durable user interaction within its original run",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-RUN-004"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorCommandIntegrationTests/testUserInputResponseIsSchemaCheckedCASBoundDurableAndIdempotent"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-simulator"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Request, response, duplicate, and stale-command journal assertions"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false,
+        "fixtureIDs": [
+          "AH-FIXTURE-MODEL-USER-INPUT"
+        ]
+      }
     },
     {
-      "id": "AHT-RECOVERY-001", "title": "Inject failure before and after every stable boundary", "status": "planned", "kind": "fault-injection", "riskTier": "P0",
-      "requirementIDs": ["AH-RUN-002", "AH-PERSIST-004"], "selectors": [], "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "requiredEvidence": ["All twenty registered crash-point recovery oracles"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-RECOVERY-001",
+      "title": "Inject failure before and after every stable boundary",
+      "status": "active",
+      "kind": "fault-injection",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-RUN-002",
+        "AH-PERSIST-004"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorRecoveryIntegrationTests/testPostCommitCrashAtEveryCoreModelBoundaryReopensReadOnlyUntilExplicitResume"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "All twenty registered crash-point recovery oracles"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-RECONCILE-001", "title": "Prevent replay of uncertain external side effects", "status": "planned", "kind": "fault-injection", "riskTier": "P0",
-      "requirementIDs": ["AH-RUN-005"], "selectors": [], "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "requiredEvidence": ["Transport-loss journal remains blocked until targeted resolution"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-RECONCILE-001",
+      "title": "Prevent replay of uncertain external side effects",
+      "status": "active",
+      "kind": "fault-injection",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-RUN-005"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorToolIntegrationTests/testUncertainExternalWriteConfirmedSuccessIsSynthesizedWithoutReplay"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Transport-loss journal remains blocked until targeted resolution"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-JOURNAL-001", "title": "Prove canonical SQLite transaction ordering", "status": "planned", "kind": "integration", "riskTier": "P0",
-      "requirementIDs": ["AH-PERSIST-001"], "selectors": [], "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "requiredEvidence": ["Canonical user-turn and answer commit ordering"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-JOURNAL-001",
+      "title": "Prove canonical SQLite transaction ordering",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-PERSIST-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.SQLiteRunJournalTests/testAppendReopenReadAndProcessWALRoundTrip"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Canonical user-turn and answer commit ordering"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-OUTBOX-001", "title": "Crash projection outbox at every send and answer boundary", "status": "planned", "kind": "fault-injection", "riskTier": "P0",
-      "requirementIDs": ["AH-PERSIST-002"], "selectors": [], "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "requiredEvidence": ["No missing, ghost, or duplicate projected message"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-OUTBOX-001",
+      "title": "Crash projection outbox at every send and answer boundary",
+      "status": "active",
+      "kind": "fault-injection",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-PERSIST-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.SQLiteRunJournalTests/testOutboxLeaseCrashRetryAndDeliveryAreIdempotent"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "No missing, ghost, or duplicate projected message"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-JOURNAL-002", "title": "Race CAS commands and duplicate outcome IDs", "status": "planned", "kind": "property", "riskTier": "P0",
-      "requirementIDs": ["AH-PERSIST-003"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "requiredEvidence": ["One version advance and stable duplicate receipts"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-JOURNAL-002",
+      "title": "Race CAS commands and duplicate outcome IDs",
+      "status": "active",
+      "kind": "property",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-PERSIST-003"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.RuntimeRepositorySQLiteTests/testCommandLeaseExpiryIsABASafeAndDualClaimantsCannotBothOwnCommand"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "One version advance and stable duplicate receipts"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-DELETE-001", "title": "Cascade conversation deletion through every owned store", "status": "planned", "kind": "fault-injection", "riskTier": "P0",
-      "requirementIDs": ["AH-PERSIST-005"], "selectors": [], "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "requiredEvidence": ["Owned-data inventory is empty after replayable deletion"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-DELETE-001",
+      "title": "Cascade conversation deletion through every owned store",
+      "status": "active",
+      "kind": "fault-injection",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-PERSIST-005"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.SQLiteRunJournalTests/testConversationCascadeKeepsDurableMarkerAndRemovesOwnedRows"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Owned-data inventory is empty after replayable deletion"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-DELETE-002", "title": "Crash Delete All at every coordinated removal step", "status": "planned", "kind": "fault-injection", "riskTier": "P0",
-      "requirementIDs": ["AH-PERSIST-006"], "selectors": [], "platforms": ["ios"], "verificationTiers": ["pull-request", "nightly"],
-      "requiredEvidence": ["Marker blocks opening and deletion completes after relaunch"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-DELETE-002",
+      "title": "Crash Delete All at every coordinated removal step",
+      "status": "active",
+      "kind": "fault-injection",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-PERSIST-006"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.SQLiteRunJournalTests/testDeleteAllMarkerAndFaultRegistryAreVersionedAndComplete"
+        }
+      ],
+      "platforms": [
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Marker blocks opening and deletion completes after relaunch"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-MODEL-001", "title": "Exercise provider-neutral local-engine adapters", "status": "planned", "kind": "contract", "riskTier": "P1",
-      "requirementIDs": ["AH-MODEL-001"], "selectors": [], "platforms": ["swiftpm", "ios-device", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "requiredEvidence": ["Scripted and real provider capability/prepare/generate matrix"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-MODEL-001",
+      "title": "Exercise provider-neutral local-engine adapters",
+      "status": "active",
+      "kind": "contract",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-MODEL-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.LocalModelGenerationTests/testTextGenerationMapsReasoningSamplingUsageAndCommitsOneAnswer"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-device",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Scripted and real provider capability/prepare/generate matrix"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-MODEL-002", "title": "Enforce normalized model stream terminal semantics", "status": "planned", "kind": "contract", "riskTier": "P0",
-      "requirementIDs": ["AH-MODEL-002"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Exactly one completion or mapped failed attempt and no later events"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-MODEL-002",
+      "title": "Enforce normalized model stream terminal semantics",
+      "status": "active",
+      "kind": "contract",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-MODEL-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentModelExecutorTests/testMalformedTerminalActionAndPostTerminalEventsFailClosed"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Exactly one completion or mapped failed attempt and no later events"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-CHAT-001", "title": "Complete pure local chat in exactly one model pass", "status": "planned", "kind": "integration", "riskTier": "P0",
-      "requirementIDs": ["AH-MODEL-003"], "selectors": [], "platforms": ["swiftpm", "ios-device"], "verificationTiers": ["pull-request", "release-candidate"],
-      "requiredEvidence": ["One provider call, committed answer, zero tools, zero network"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false, "fixtureIDs": ["AH-FIXTURE-MODEL-PURE-CHAT"] }
+      "id": "AHT-CHAT-001",
+      "title": "Complete pure local chat in exactly one model pass",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-MODEL-003"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorCoreIntegrationTests/testPureChatUsesOneModelPassCommitsOneTerminalAndDrainsEveryLease"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "One provider call, committed answer, zero tools, zero network"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false,
+        "fixtureIDs": [
+          "AH-FIXTURE-MODEL-PURE-CHAT"
+        ]
+      }
     },
     {
-      "id": "AHT-RESOURCE-001", "title": "Race root-run ownership and model residency", "status": "planned", "kind": "integration", "riskTier": "P0",
-      "requirementIDs": ["AH-RESOURCE-001"], "selectors": [], "platforms": ["swiftpm", "ios-device"], "verificationTiers": ["pull-request", "nightly", "release-candidate"],
-      "requiredEvidence": ["At most one execution slot and resident model at every observation"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-RESOURCE-001",
+      "title": "Race root-run ownership and model residency",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-RESOURCE-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ResourceArbiterTests/testManyConcurrentContendersNeverCreateParallelRootOwners"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "At most one execution slot and resident model at every observation"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-LIFECYCLE-001", "title": "Quiesce generation on pause and iOS 17 expiration", "status": "planned", "kind": "integration", "riskTier": "P0",
-      "requirementIDs": ["AH-RESOURCE-002", "AH-IOS-001"], "selectors": [], "platforms": ["swiftpm", "ios-simulator", "ios-device"], "verificationTiers": ["pull-request", "nightly", "release-candidate"],
-      "requiredEvidence": ["Stable-boundary journal, native drain, lease release, and waiting state"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-LIFECYCLE-001",
+      "title": "Quiesce generation on pause and iOS 17 expiration",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-RESOURCE-002",
+        "AH-IOS-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorCommandIntegrationTests/testPauseQuiescesAndResumeContinuesWithIdempotentCommandReceipts"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.AgentRunStoreTests/testQuiesceForBackgroundPausesEveryActiveRunWithForegroundLost"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-simulator",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Stable-boundary journal, native drain, lease release, and waiting state"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-LOOP-001", "title": "Normalize final, tool, user-input, and malformed model actions", "status": "planned", "kind": "integration", "riskTier": "P0",
-      "requirementIDs": ["AH-LOOP-001"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Exactly one normalized action and one bounded repair"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false, "fixtureIDs": ["AH-FIXTURE-MODEL-PURE-CHAT", "AH-FIXTURE-MODEL-TOOL-THEN-ANSWER", "AH-FIXTURE-MODEL-MALFORMED-REPAIR", "AH-FIXTURE-MODEL-USER-INPUT"] }
+      "id": "AHT-LOOP-001",
+      "title": "Normalize final, tool, user-input, and malformed model actions",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-LOOP-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorRecoveryIntegrationTests/testMalformedActionGetsExactlyOneConstrainedRepairAndReleasesFailedDecode"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Exactly one normalized action and one bounded repair"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false,
+        "fixtureIDs": [
+          "AH-FIXTURE-MODEL-PURE-CHAT",
+          "AH-FIXTURE-MODEL-TOOL-THEN-ANSWER",
+          "AH-FIXTURE-MODEL-MALFORMED-REPAIR",
+          "AH-FIXTURE-MODEL-USER-INPUT"
+        ]
+      }
     },
     {
-      "id": "AHT-BUDGET-001", "title": "Enforce and reserve every hard budget dimension", "status": "planned", "kind": "property", "riskTier": "P0",
-      "requirementIDs": ["AH-LOOP-002"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "requiredEvidence": ["Below, equal, and above limit cases including retry and resume"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-BUDGET-001",
+      "title": "Enforce and reserve every hard budget dimension",
+      "status": "active",
+      "kind": "property",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-LOOP-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.RuntimeRepositorySQLiteTests/testBudgetReserveSettleReleaseLimitsDuplicatesAndConservativeReopen"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Below, equal, and above limit cases including retry and resume"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-LOOP-002", "title": "Execute validated multi-tool batches serially", "status": "planned", "kind": "integration", "riskTier": "P0",
-      "requirementIDs": ["AH-LOOP-003"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["pull-request"],
-      "requiredEvidence": ["Proposal-order barrier across denial, failure, and uncertainty positions"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false, "fixtureIDs": ["AH-FIXTURE-MODEL-TOOL-THEN-ANSWER"] }
+      "id": "AHT-LOOP-002",
+      "title": "Execute validated multi-tool batches serially",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-LOOP-003"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorCoverageClosureIntegrationTests/testOrderedThreeToolBatchTerminatesAfterTwoTrailingEmptyResults"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Proposal-order barrier across denial, failure, and uncertainty positions"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false,
+        "fixtureIDs": [
+          "AH-FIXTURE-MODEL-TOOL-THEN-ANSWER"
+        ]
+      }
     },
     {
-      "id": "AHT-TOOL-001", "title": "Enforce Tool V2 prepare-authorize-execute boundaries", "status": "planned", "kind": "contract", "riskTier": "P0",
-      "requirementIDs": ["AH-TOOLS-001"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Prepare boundary spy and one-terminal execution stream"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-TOOL-001",
+      "title": "Enforce Tool V2 prepare-authorize-execute boundaries",
+      "status": "active",
+      "kind": "contract",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-TOOLS-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ToolV2Tests/testAuthorizedInvocationRejectsAuthorizationForAnotherPreparedOperation"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Prepare boundary spy and one-terminal execution stream"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-SCHEMA-001", "title": "Validate bounded Draft 2020-12 schemas and RFC 8785 arguments", "status": "planned", "kind": "fuzz", "riskTier": "P0",
-      "requirementIDs": ["AH-TOOLS-002"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "requiredEvidence": ["Official canonical vectors, enforcement markers, and complexity-limit corpus"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-SCHEMA-001",
+      "title": "Validate bounded Draft 2020-12 schemas and RFC 8785 arguments",
+      "status": "active",
+      "kind": "fuzz",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-TOOLS-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ToolV2Tests/testBatchValidationIsOrderedAndFingerprintsExactDescriptorArgumentsAndEffects"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ToolV2Tests/testPartiallyEnforcedSchemaIsExplicitlyConservative"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Official canonical vectors, enforcement markers, and complexity-limit corpus"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-AUTH-001", "title": "Reject every authorized-operation widening and boundary bypass", "status": "planned", "kind": "property", "riskTier": "P0",
-      "requirementIDs": ["AH-TOOLS-003", "AH-APPROVAL-001"], "selectors": [], "platforms": ["swiftpm", "ios"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "requiredEvidence": ["Arguments, destination, redirect, payload, effect, schema, and trust TOCTOU rejections"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-AUTH-001",
+      "title": "Reject every authorized-operation widening and boundary bypass",
+      "status": "active",
+      "kind": "property",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-TOOLS-003",
+        "AH-APPROVAL-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ApprovalPolicyEngineTests/testEveryReceiptBindingFieldFailsClosedWhenItDiffersFromPreparedOperation"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Arguments, destination, redirect, payload, effect, schema, and trust TOCTOU rejections"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-MCP-001", "title": "Apply conservative trust and approval to MCP discovery and calls", "status": "planned", "kind": "integration", "riskTier": "P0",
-      "requirementIDs": ["AH-TOOLS-004"], "selectors": [], "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "requiredEvidence": ["Unknown-effect, downgrade, discovery, retry, and transport-loss cases"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-MCP-001",
+      "title": "Apply conservative trust and approval to MCP discovery and calls",
+      "status": "planned",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-TOOLS-004"
+      ],
+      "selectors": [],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Unknown-effect, downgrade, discovery, retry, and transport-loss cases"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-SELECT-001", "title": "Materialize and preserve conversation tool policy", "status": "planned", "kind": "migration", "riskTier": "P1",
-      "requirementIDs": ["AH-SELECT-001"], "selectors": [], "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request"],
-      "requiredEvidence": ["New, legacy, upgrade, global-change, and descriptor-change cases"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-SELECT-001",
+      "title": "Materialize and preserve conversation tool policy",
+      "status": "active",
+      "kind": "migration",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-SELECT-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.ChatStoreTests/testNewConversationMaterializesToolPolicyOnlyAfterAttachment"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.ConversationStoreTests/testConversationToolPolicyPersistsAcrossReload"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "New, legacy, upgrade, global-change, and descriptor-change cases"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-SELECT-002", "title": "Prove deterministic selection stays inside allowed tools", "status": "planned", "kind": "property", "riskTier": "P0",
-      "requirementIDs": ["AH-SELECT-002"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Allowed-set subset property and zero model inference"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-SELECT-002",
+      "title": "Prove deterministic selection stays inside allowed tools",
+      "status": "active",
+      "kind": "property",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-SELECT-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ToolSelectorTests/testSelectionCanOnlyNarrowAllowedSetAndPinnedToolWins"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Allowed-set subset property and zero model inference"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-AUTH-002", "title": "Enumerate the complete approval decision table", "status": "planned", "kind": "property", "riskTier": "P0",
-      "requirementIDs": ["AH-APPROVAL-002"], "selectors": [], "platforms": ["swiftpm", "ios"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["100% approval registry rows with expected scope and retry"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-AUTH-002",
+      "title": "Enumerate the complete approval decision table",
+      "status": "active",
+      "kind": "property",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-APPROVAL-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ApprovalDecisionTableTests/testAuthorizationTableEnumeratesEveryCellAndEveryRegisteredWinner"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "100% approval registry rows with expected scope and retry"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-AUTH-003", "title": "Cross product agent approval, TCC, and foreground state", "status": "planned", "kind": "ui", "riskTier": "P0",
-      "requirementIDs": ["AH-APPROVAL-003"], "selectors": [], "platforms": ["ios-simulator", "ios-device"], "verificationTiers": ["pull-request", "release-candidate"],
-      "requiredEvidence": ["No external call without both grants and no unrelated system UI interaction"], "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-AUTH-003",
+      "title": "Cross product agent approval, TCC, and foreground state",
+      "status": "active",
+      "kind": "ui",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-APPROVAL-003"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ApprovalPolicyEngineTests/testSystemPermissionAndAgentApprovalRemainIndependent"
+        }
+      ],
+      "platforms": [
+        "ios-simulator",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "No external call without both grants and no unrelated system UI interaction"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-CONTEXT-001", "title": "Compile byte-stable context manifests from frozen inputs", "status": "planned", "kind": "property", "riskTier": "P0",
-      "requirementIDs": ["AH-CONTEXT-001"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Stable hashes, inclusion, omission, and truncation decisions"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-CONTEXT-001",
+      "title": "Compile byte-stable context manifests from frozen inputs",
+      "status": "active",
+      "kind": "property",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-CONTEXT-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ContextCompilerTests/testCompilationRecoveryAndCodableAreByteDeterministic"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ContextCompilerTests/testCompilesEveryTypedSourceWithExactEvidenceAndUntrustedFraming"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Stable hashes, inclusion, omission, and truncation decisions"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-CONTEXT-002", "title": "Preserve Memory, Skills, attachments, and untrusted framing", "status": "planned", "kind": "integration", "riskTier": "P1",
-      "requirementIDs": ["AH-CONTEXT-002"], "selectors": [], "platforms": ["swiftpm", "ios-device"], "verificationTiers": ["pull-request", "release-candidate"],
-      "requiredEvidence": ["Recall, Skill revision, artifact excerpt, and injection-isolation oracles"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-CONTEXT-002",
+      "title": "Preserve Memory, Skills, attachments, and untrusted framing",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-CONTEXT-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ContextCompilerTests/testCompilesEveryTypedSourceWithExactEvidenceAndUntrustedFraming"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ContextCompilerTests/testImageOnlyCurrentTurnRemainsMandatoryWithoutSyntheticWebContent"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Recall, Skill revision, artifact excerpt, and injection-isolation oracles"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-ARTIFACT-001", "title": "Test atomic artifact integrity, confinement, and cleanup", "status": "planned", "kind": "fault-injection", "riskTier": "P0",
-      "requirementIDs": ["AH-ARTIFACT-001"], "selectors": [], "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "requiredEvidence": ["Hash, traversal, symlink, orphan, reference-count, and crash outcomes"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-ARTIFACT-001",
+      "title": "Test atomic artifact integrity, confinement, and cleanup",
+      "status": "active",
+      "kind": "fault-injection",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-ARTIFACT-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ContentAddressedArtifactStoreTests/testReferenceCountingRetentionAndPhysicalDeduplication"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Hash, traversal, symlink, orphan, reference-count, and crash outcomes"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-SECURITY-001", "title": "Verify data protection, backup exclusion, and lock behavior", "status": "planned", "kind": "device", "riskTier": "P0",
-      "requirementIDs": ["AH-ARTIFACT-002"], "selectors": [], "platforms": ["ios-device"], "verificationTiers": ["nightly", "release-candidate"],
-      "requiredEvidence": ["Effective database, sidecar, artifact, bookmark, backup, and Keychain attributes"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-SECURITY-001",
+      "title": "Verify data protection, backup exclusion, and lock behavior",
+      "status": "active",
+      "kind": "device",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-ARTIFACT-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ContentAddressedArtifactStoreTests/testCoverageClosureFileProtectionIOAndAtomicFailureSurfaces"
+        }
+      ],
+      "platforms": [
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "nightly",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Effective database, sidecar, artifact, bookmark, backup, and Keychain attributes"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-RETRY-001", "title": "Enforce retry, idempotency, duplicate, and cancellation policy", "status": "planned", "kind": "property", "riskTier": "P0",
-      "requirementIDs": ["AH-RETRY-001"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "requiredEvidence": ["Typed failure and side-effect matrix with bounded attempts"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-RETRY-001",
+      "title": "Enforce retry, idempotency, duplicate, and cancellation policy",
+      "status": "active",
+      "kind": "property",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-RETRY-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorCoverageClosureIntegrationTests/testToolRetryJitterAndTypedContractFailuresUseDurableSafeOutcomes"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Typed failure and side-effect matrix with bounded attempts"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-LAUNCH-001", "title": "Assert neutral launch for clean and upgrade containers", "status": "planned", "kind": "ui", "riskTier": "P0",
-      "requirementIDs": ["AH-IOS-002"], "selectors": [], "platforms": ["ios-simulator", "ios-device", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "requiredEvidence": ["No selected conversation, loaded model, resumed run, or external operation"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false, "fixtureIDs": ["AH-FIXTURE-CONTAINER-CLEAN-INSTALL", "AH-FIXTURE-CONTAINER-LEGACY-UPGRADE"] }
+      "id": "AHT-LAUNCH-001",
+      "title": "Assert neutral launch for clean and upgrade containers",
+      "status": "active",
+      "kind": "ui",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-IOS-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.AppContainerBootstrapTests/testNothingInstalledSelectsNothing"
+        }
+      ],
+      "platforms": [
+        "ios-simulator",
+        "ios-device",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "No selected conversation, loaded model, resumed run, or external operation"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false,
+        "fixtureIDs": [
+          "AH-FIXTURE-CONTAINER-CLEAN-INSTALL",
+          "AH-FIXTURE-CONTAINER-LEGACY-UPGRADE"
+        ]
+      }
     },
     {
-      "id": "AHT-LIFECYCLE-002", "title": "Exercise every iOS 26 continued-processing outcome", "status": "planned", "kind": "device", "riskTier": "P0",
-      "requirementIDs": ["AH-IOS-003"], "selectors": [], "platforms": ["ios-device"], "verificationTiers": ["nightly", "release-candidate"],
-      "requiredEvidence": ["Submit, immediate reject, expiration, system cancellation, and user cancellation"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-LIFECYCLE-002",
+      "title": "Exercise every iOS 26 continued-processing outcome",
+      "status": "planned",
+      "kind": "device",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-IOS-003"
+      ],
+      "selectors": [],
+      "platforms": [
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "nightly",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Submit, immediate reject, expiration, system cancellation, and user cancellation"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-UI-001", "title": "Render every runtime projection in the unified chat UI", "status": "planned", "kind": "ui", "riskTier": "P1",
-      "requirementIDs": ["AH-UI-001"], "selectors": [], "platforms": ["ios-simulator", "ios-device", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "requiredEvidence": ["State-specific semantic UI assertions and no UI-owned loop"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-UI-001",
+      "title": "Render every runtime projection in the unified chat UI",
+      "status": "active",
+      "kind": "ui",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-UI-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.AgentRunStoreTests/testStartProjectsEventsAndDeliversCommittedAnswer"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.AgentRunStoreTests/testWaitingForUserRespondsWithoutCreatingANewRun"
+        }
+      ],
+      "platforms": [
+        "ios-simulator",
+        "ios-device",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "State-specific semantic UI assertions and no UI-owned loop"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-UI-002", "title": "Verify accessible approval presentation and activation", "status": "planned", "kind": "ui", "riskTier": "P0",
-      "requirementIDs": ["AH-UI-002"], "selectors": [], "platforms": ["ios-simulator", "ios-device"], "verificationTiers": ["pull-request", "release-candidate"],
-      "requiredEvidence": ["VoiceOver labels/order, maximum Dynamic Type, no truncation, and one decision"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-UI-002",
+      "title": "Verify accessible approval presentation and activation",
+      "status": "planned",
+      "kind": "ui",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-UI-002"
+      ],
+      "selectors": [],
+      "platforms": [
+        "ios-simulator",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "VoiceOver labels/order, maximum Dynamic Type, no truncation, and one decision"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-SANDBOX-001", "title": "Build and run with an absent sandbox provider", "status": "planned", "kind": "contract", "riskTier": "P0",
-      "requirementIDs": ["AH-SANDBOX-001"], "selectors": [], "platforms": ["swiftpm", "ios", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "requiredEvidence": ["Nil-provider capability absence and no private dependency"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-SANDBOX-001",
+      "title": "Build and run with an absent sandbox provider",
+      "status": "active",
+      "kind": "contract",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-SANDBOX-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentSandboxAPITests.ProviderBehaviorTests/testStartIsIdempotentAndConflictingReuseFails"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Nil-provider capability absence and no private dependency"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-SANDBOX-002", "title": "Exercise every sandbox request, command, event, result, and error", "status": "planned", "kind": "contract", "riskTier": "P0",
-      "requirementIDs": ["AH-SANDBOX-002"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request"],
-      "requiredEvidence": ["Fake-provider idempotency, cursor, detach, reattach, cancellation, and terminal cases"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-SANDBOX-002",
+      "title": "Exercise every sandbox request, command, event, result, and error",
+      "status": "active",
+      "kind": "contract",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-SANDBOX-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentSandboxAPITests.ProviderBehaviorTests/testMultipleObserversReceiveIdenticalEventsAndTerminalResultIsStable"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentSandboxAPITests.ProviderBehaviorTests/testCASIdempotentCommandsAndExplicitCancellation"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Fake-provider idempotency, cursor, detach, reattach, cancellation, and terminal cases"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-SANDBOX-003", "title": "Reject every sandbox authority expansion", "status": "planned", "kind": "property", "riskTier": "P0",
-      "requirementIDs": ["AH-SANDBOX-003"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "requiredEvidence": ["Requirement, secret, artifact, destination, and resource attenuation cases"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-SANDBOX-003",
+      "title": "Reject every sandbox authority expansion",
+      "status": "active",
+      "kind": "property",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-SANDBOX-003"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentSandboxAPITests.ProviderContractTests/testProviderCanDowngradeButCannotExpandLocalPolicy"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentSandboxAPITests.ProviderContractTests/testMissingConstraintKeyProducesNoAuthorityForThatDimension"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Requirement, secret, artifact, destination, and resource attenuation cases"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-SUBAGENT-001", "title": "Validate durable executor and reserved child attenuation", "status": "planned", "kind": "contract", "riskTier": "P0",
-      "requirementIDs": ["AH-FUTURE-001"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["pull-request"],
-      "requiredEvidence": ["Handle reconnect, independent budget, structured result, and no self-approval"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-SUBAGENT-001",
+      "title": "Validate durable executor and reserved child attenuation",
+      "status": "active",
+      "kind": "contract",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-FUTURE-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentContractsTests.AuthorityAndAuthorizationTests/testEveryAuthorityDimensionAttenuatesAndFingerprints"
+        }
+      ],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Handle reconnect, independent budget, structured result, and no self-approval"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-SECURITY-002", "title": "Fuzz prompt and external-content authority injection", "status": "planned", "kind": "fuzz", "riskTier": "P0",
-      "requirementIDs": ["AH-SECURITY-001"], "selectors": [], "platforms": ["swiftpm", "ios"], "verificationTiers": ["pull-request", "nightly"],
-      "requiredEvidence": ["Capabilities, budgets, approvals, and state remain unchanged"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-SECURITY-002",
+      "title": "Fuzz prompt and external-content authority injection",
+      "status": "active",
+      "kind": "fuzz",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-SECURITY-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorToolIntegrationTests/testLocalPureToolCrossingProtectedBoundaryBecomesContractFailure"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Capabilities, budgets, approvals, and state remain unchanged"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-SECURITY-003", "title": "Scan envelopes and diagnostics for plaintext secrets", "status": "planned", "kind": "integration", "riskTier": "P0",
-      "requirementIDs": ["AH-SECURITY-002"], "selectors": [], "platforms": ["swiftpm", "ios-device"], "verificationTiers": ["pull-request", "nightly"],
-      "requiredEvidence": ["Only opaque secret references and redacted bounded logs"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-SECURITY-003",
+      "title": "Scan envelopes and diagnostics for plaintext secrets",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-SECURITY-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.SanitizationAttestorTests/testAttestationBindsEverySanitizationField"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorCoverageClosureIntegrationTests/testWorkerLogRedactsEveryExecutionErrorCaseWithoutDroppingInvariantDetail"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Only opaque secret references and redacted bounded logs"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-OBS-001", "title": "Project complete redacted operational evidence without hidden thought", "status": "planned", "kind": "integration", "riskTier": "P1",
-      "requirementIDs": ["AH-OBS-001"], "selectors": [], "platforms": ["swiftpm", "ios", "macos"], "verificationTiers": ["pull-request"],
-      "requiredEvidence": ["Model/tool/approval/usage/block/retry/uncertainty/terminal projection assertions"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-OBS-001",
+      "title": "Project complete redacted operational evidence without hidden thought",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-OBS-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorCoverageClosureIntegrationTests/testWorkerLogRedactsEveryExecutionErrorCaseWithoutDroppingInvariantDetail"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Model/tool/approval/usage/block/retry/uncertainty/terminal projection assertions"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-MIGRATION-001", "title": "Upgrade deterministic legacy conversations and settings", "status": "planned", "kind": "migration", "riskTier": "P0",
-      "requirementIDs": ["AH-COMPAT-001"], "selectors": [], "platforms": ["swiftpm", "ios", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "requiredEvidence": ["Record-level preservation with no fabricated journal"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false, "fixtureIDs": ["AH-FIXTURE-CONTAINER-LEGACY-UPGRADE"] }
+      "id": "AHT-MIGRATION-001",
+      "title": "Upgrade deterministic legacy conversations and settings",
+      "status": "active",
+      "kind": "migration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-COMPAT-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.RuntimeRepositorySQLiteTests/testVersionTwoMigrationBacksUpAndRebuildsTypedManifest"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Record-level preservation with no fabricated journal"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false,
+        "fixtureIDs": [
+          "AH-FIXTURE-CONTAINER-LEGACY-UPGRADE"
+        ]
+      }
     },
     {
-      "id": "AHT-ROLLBACK-001", "title": "Read user data after feature-gate rollback", "status": "planned", "kind": "migration", "riskTier": "P1",
-      "requirementIDs": ["AH-COMPAT-002"], "selectors": [], "platforms": ["ios", "macos"], "verificationTiers": ["pull-request", "release-candidate"],
-      "requiredEvidence": ["Conversations and settings readable with runtime disabled"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false, "fixtureIDs": ["AH-FIXTURE-CONTAINER-LEGACY-UPGRADE"] }
+      "id": "AHT-ROLLBACK-001",
+      "title": "Read user data after feature-gate rollback",
+      "status": "active",
+      "kind": "migration",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-COMPAT-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.ChatStoreTests/testLegacyLoopRemainsTheRolloutOffPathUntilAgentRuntimeAttaches"
+        }
+      ],
+      "platforms": [
+        "ios",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Conversations and settings readable with runtime disabled"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false,
+        "fixtureIDs": [
+          "AH-FIXTURE-CONTAINER-LEGACY-UPGRADE"
+        ]
+      }
     },
     {
-      "id": "AHT-TEST-001", "title": "Enforce unit, property, fault, fuzz, and semantic completeness gates", "status": "planned", "kind": "manifest", "riskTier": "P0",
-      "requirementIDs": ["AH-TEST-001"], "selectors": [], "platforms": ["swiftpm"], "verificationTiers": ["every-change", "pull-request", "nightly"],
-      "requiredEvidence": ["Test inventory, fixed/rotating seeds, registry rows, and fault points"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": true }
+      "id": "AHT-TEST-001",
+      "title": "Enforce unit, property, fault, fuzz, and semantic completeness gates",
+      "status": "planned",
+      "kind": "manifest",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-TEST-001"
+      ],
+      "selectors": [],
+      "platforms": [
+        "swiftpm"
+      ],
+      "verificationTiers": [
+        "every-change",
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Test inventory, fixed/rotating seeds, registry rows, and fault points"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
     },
     {
-      "id": "AHT-TEST-002", "title": "Assert integrated semantic outcomes and forbidden actions", "status": "planned", "kind": "integration", "riskTier": "P0",
-      "requirementIDs": ["AH-TEST-002"], "selectors": [], "platforms": ["swiftpm", "ios-simulator"], "verificationTiers": ["pull-request"],
-      "requiredEvidence": ["Output contract, journal, approval, tool, side-effect, and negative assertions"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-TEST-002",
+      "title": "Assert integrated semantic outcomes and forbidden actions",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-TEST-002"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorToolIntegrationTests/testExternalReadWaitsForExactApprovalAndCannotCrossBoundaryBeforeDecision"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorToolIntegrationTests/testDeniedApprovalIsSynthesizedWithoutExecutingTool"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-simulator"
+      ],
+      "verificationTiers": [
+        "pull-request"
+      ],
+      "requiredEvidence": [
+        "Output contract, journal, approval, tool, side-effect, and negative assertions"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-DEVICE-001", "title": "Run the complete physical-device and model matrix", "status": "planned", "kind": "device", "riskTier": "P0",
-      "requirementIDs": ["AH-TEST-003"], "selectors": [], "platforms": ["ios-device"], "verificationTiers": ["release-candidate"],
-      "requiredEvidence": ["Per-scenario semantic assertions, first-attempt outcomes, logs, metrics, and xcresult"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-DEVICE-001",
+      "title": "Run the complete physical-device and model matrix",
+      "status": "planned",
+      "kind": "device",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-TEST-003"
+      ],
+      "selectors": [],
+      "platforms": [
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Per-scenario semantic assertions, first-attempt outcomes, logs, metrics, and xcresult"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-PERF-001", "title": "Compare latency and resource metrics to matched baseline", "status": "planned", "kind": "performance", "riskTier": "P1",
-      "requirementIDs": ["AH-PERF-001"], "selectors": [], "platforms": ["ios-device", "macos"], "verificationTiers": ["nightly", "release-candidate"],
-      "requiredEvidence": ["Median and p95 TTFO, model-pass count, journal cadence, storage, thermal, and memory"] , "determinism": { "fixedSeedRequired": true, "rotatingSeedRequired": false }
+      "id": "AHT-PERF-001",
+      "title": "Compare latency and resource metrics to matched baseline",
+      "status": "planned",
+      "kind": "performance",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-PERF-001"
+      ],
+      "selectors": [],
+      "platforms": [
+        "ios-device",
+        "macos"
+      ],
+      "verificationTiers": [
+        "nightly",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Median and p95 TTFO, model-pass count, journal cadence, storage, thermal, and memory"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     },
     {
-      "id": "AHT-AUDIT-001", "title": "Perform one consolidated post-implementation audit and bounded closure", "status": "planned", "kind": "audit", "riskTier": "P0",
-      "requirementIDs": ["AH-AUDIT-001"], "selectors": [], "platforms": ["all"], "verificationTiers": ["release-candidate"],
-      "requiredEvidence": ["One findings set, one remediation wave, full rerun, and limited closure check"] , "determinism": { "fixedSeedRequired": false, "rotatingSeedRequired": false }
+      "id": "AHT-AUDIT-001",
+      "title": "Perform one consolidated post-implementation audit and bounded closure",
+      "status": "planned",
+      "kind": "audit",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-AUDIT-001"
+      ],
+      "selectors": [],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "One findings set, one remediation wave, full rerun, and limited closure check"
+      ],
+      "determinism": {
+        "fixedSeedRequired": false,
+        "rotatingSeedRequired": false
+      }
     }
   ]
 }
