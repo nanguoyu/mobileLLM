@@ -171,6 +171,10 @@ public enum AgentRunReducer {
             return .accepted(.preparing)
         case (.preparing, .contextCommitted, .valid):
             return .accepted(.waitingForModel)
+        case (.preparing, .recoveredToolBatchPending, .valid):
+            return .accepted(.executingTools)
+        case (.preparing, .recoveredToolBatchFailed, .valid):
+            return .accepted(.synthesizing)
         case (.waitingForModel, .modelLeaseGranted, .valid),
              (.synthesizing, .modelLeaseGranted, .valid):
             return .accepted(.generating)

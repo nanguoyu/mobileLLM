@@ -9,8 +9,8 @@ final class ExecutionContractMatrixTests: XCTestCase {
         let expected: [AgentRunState: Set<AgentRunState>] = [
             .created: [.created, .preparing, .failed, .cancelled],
             .preparing: [
-                .preparing, .waitingForModel, .waitingForForeground, .waitingForReconciliation,
-                .pausing, .failed,
+                .preparing, .waitingForModel, .executingTools, .synthesizing,
+                .waitingForForeground, .waitingForReconciliation, .pausing, .failed,
             ],
             .waitingForModel: [
                 .waitingForModel, .generating, .waitingForForeground, .waitingForReconciliation,
@@ -245,6 +245,14 @@ final class ExecutionContractMatrixTests: XCTestCase {
             with: String(repeating: "x", count: CanonicalJSON.maximumBytes + 1)
         )
         XCTAssertThrowsError(try JSONDecoder().decode(UserInputResponse.self, from: forged))
+    }
+
+    func testFinalAnswerRejectsEmptyAndAmbiguousPayloads() throws {
+        XCTAssertThrowsError(try AgentAnswer())
+        XCTAssertThrowsError(try AgentAnswer(text: ""))
+
+        let artifact = TestValues.artifact()
+        XCTAssertThrowsError(try AgentAnswer(artifacts: [artifact, artifact]))
     }
 }
 

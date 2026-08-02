@@ -251,6 +251,52 @@ public protocol ToolExecutionEventSink: Sendable {
     func receive(_ event: ToolExecutionEvent) async
 }
 
+/// One exact, immutable accounting scope for a real boundary hop.
+///
+/// Runtime accounting observes the concrete request bytes before the operation may start and the
+/// gate-verified response bytes only after its one-shot accumulator closes. A missing close is
+/// intentionally conservative: observers retain the declared response limit for that scope.
+public struct ToolBoundaryUsageScope: Hashable, Sendable {
+    public let runID: AgentRunID
+    public let invocationID: ToolInvocationID
+    public let attemptNumber: UInt16
+    public let hopFingerprint: StableDigest
+    public let requestBytes: UInt64
+    public let maximumResponseBytes: UInt64
+
+    public init(
+        runID: AgentRunID,
+        invocationID: ToolInvocationID,
+        attemptNumber: UInt16,
+        hopFingerprint: StableDigest,
+        requestBytes: UInt64,
+        maximumResponseBytes: UInt64
+    ) {
+        self.runID = runID
+        self.invocationID = invocationID
+        self.attemptNumber = attemptNumber
+        self.hopFingerprint = hopFingerprint
+        self.requestBytes = requestBytes
+        self.maximumResponseBytes = maximumResponseBytes
+    }
+}
+
+/// Runtime-owned observer for exact boundary byte accounting.
+///
+/// `willExecute` runs before authorization can invoke the operation and may fail closed. Once it
+/// succeeds, the scope is charged conservatively until `didClose` supplies the gate-verified byte
+/// count. This protocol is reusable by local, MCP, provider, and future sandbox adapters.
+public protocol ToolBoundaryUsageObserving: Sendable {
+    func willExecute(_ scope: ToolBoundaryUsageScope) async throws
+    func didClose(_ scope: ToolBoundaryUsageScope, responseBytes: UInt64) async throws
+}
+
+public struct NoOpToolBoundaryUsageObserver: ToolBoundaryUsageObserving, Sendable {
+    public init() {}
+    public func willExecute(_: ToolBoundaryUsageScope) async throws {}
+    public func didClose(_: ToolBoundaryUsageScope, responseBytes _: UInt64) async throws {}
+}
+
 /// Explicit execution dependencies. It exposes no unrestricted filesystem, network, or secret API.
 public struct ToolExecutionContext: Sendable {
     public let runID: AgentRunID
@@ -265,6 +311,7 @@ public struct ToolExecutionContext: Sendable {
     private let preparedOperation: PreparedExternalOperationRequest
     private let attempt: ExternalOperationAttempt
     private let authorizationGate: ExternalExecutionAuthorizationGate
+    private let boundaryUsageObserver: any ToolBoundaryUsageObserving
 
     public init(
         authorized: AuthorizedToolInvocation,
@@ -276,7 +323,8 @@ public struct ToolExecutionContext: Sendable {
         logger: any ToolRedactedLogging,
         authorizationClock: any AgentAuthorizationClock,
         authorizationPolicyValidator: any AgentAuthorizationPolicyValidating,
-        attemptLedger: any ExternalOperationAttemptClaiming
+        attemptLedger: any ExternalOperationAttemptClaiming,
+        boundaryUsageObserver: any ToolBoundaryUsageObserving = NoOpToolBoundaryUsageObserver()
     ) throws {
         guard deadline.rawValue > 0 else { throw ToolV2ContractError.invalidExecutionContext }
         let operation = authorized.prepared.externalOperation
@@ -295,6 +343,7 @@ public struct ToolExecutionContext: Sendable {
         self.logger = logger
         preparedOperation = operation
         self.attempt = attempt
+        self.boundaryUsageObserver = boundaryUsageObserver
         authorizationGate = authorized.authorization.executionGate(
             clock: DeadlineAuthorizationClock(
                 underlying: authorizationClock,
@@ -322,12 +371,31 @@ public struct ToolExecutionContext: Sendable {
             attempt: attempt,
             destination: observation.destination
         )
-        return try await authorizationGate.perform(
+        let usageScope = ToolBoundaryUsageScope(
+            runID: runID,
+            invocationID: invocationID,
+            attemptNumber: attemptNumber,
+            hopFingerprint: hop.fingerprint,
+            requestBytes: observation.requestBytes,
+            maximumResponseBytes: observation.responseBytesLimit
+        )
+        let result = try await authorizationGate.perform(
             observation: observation,
             attempt: attempt,
             hop: hop,
-            operation: operation
+            operation: { control in
+                if await cancellation.isCancelled() { throw CancellationError() }
+                // The gate has revalidated and durably claimed this hop. Charge the conservative
+                // response allowance immediately before the adapter may begin real I/O.
+                try await boundaryUsageObserver.willExecute(usageScope)
+                return try await operation(control)
+            }
         )
+        try await boundaryUsageObserver.didClose(
+            usageScope,
+            responseBytes: result.responseBytes
+        )
+        return result
     }
 }
 
@@ -374,6 +442,8 @@ public enum ToolV2ContractError: Error, Hashable, Sendable {
     case eventAfterTerminal
     case invalidOutputSchema
     case providerThrewBeforeTerminal
+    case boundaryRequired
+    case boundaryForbidden
 }
 
 /// Consumes the provider stream internally so raw asynchronous execution never escapes the
@@ -424,6 +494,10 @@ public struct ToolExecutor: Sendable {
             }
         } catch let error as ToolV2ContractError {
             throw error
+        } catch let error as AgentContractError {
+            throw error
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             if terminal != nil { throw ToolV2ContractError.eventAfterTerminal }
             throw ToolV2ContractError.providerThrewBeforeTerminal

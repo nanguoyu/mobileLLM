@@ -267,6 +267,132 @@ final class ApprovalPolicyEngineTests: XCTestCase {
             .deny
         )
     }
+
+    func testEveryReceiptBindingFieldFailsClosedWhenItDiffersFromPreparedOperation() throws {
+        let fixture = try Fixture(effect: .networkRead)
+        let engine = try makeApprovalEngine()
+        let receipt = try ApprovalReceipt(
+            id: fixture.approvalID,
+            prepared: fixture.prepared,
+            decision: .approved,
+            scope: .exactInvocation,
+            policyVersion: 1,
+            decidedAt: fixture.now
+        )
+        let otherDestination = try ExternalDestination(
+            kind: .networkEndpoint,
+            normalizedIdentity: "https://different.example:443"
+        )
+        let otherDigest = StableDigest.sha256(Data("different".utf8))
+        let mismatches: [(String, Any)] = [
+            // Run identity is enforced by the authorization contract even though the detailed
+            // classifier deliberately reports the conservative plan-fingerprint fallback.
+            ("runID", try encodedJSONValue(AgentRunID())),
+            ("requestID", try encodedJSONValue(AgentRequestID())),
+            ("invocationID", try encodedJSONValue(ToolInvocationID())),
+            ("previewDigest", try encodedJSONValue(otherDigest)),
+            ("argumentsDigest", try encodedJSONValue(otherDigest)),
+            ("destination", try encodedJSONValue(otherDestination)),
+            ("allowedRedirects", try encodedJSONValue([otherDestination])),
+            ("allowedFallbacks", try encodedJSONValue([otherDestination])),
+            ("dataCategories", try encodedJSONValue([
+                AgentDataCategory(rawValue: "different.data")
+            ])),
+            ("artifactIDs", try encodedJSONValue([ArtifactID()])),
+            ("workspaceID", try encodedJSONValue(SandboxWorkspaceHandleID())),
+            ("authorityConstraints", try encodedJSONValue([
+                AgentAuthorityConstraint(key: "different.constraint", allowedValues: ["value"])
+            ])),
+            ("effects", try encodedJSONValue([AgentEffect.externalWrite])),
+            ("payloadDigest", try encodedJSONValue(otherDigest)),
+            ("executionConstraintDigest", try encodedJSONValue(otherDigest)),
+            ("descriptorID", "different.descriptor@1"),
+            ("schemaDigest", try encodedJSONValue(otherDigest)),
+            ("trustRevision", "different-trust"),
+            ("idempotencyKey", try encodedJSONValue(
+                ExternalIdempotencyKey.derive(components: [Data("different-key".utf8)])
+            )),
+            ("credentialReference", try encodedJSONValue(SecretReference(
+                id: SecretReferenceID(),
+                purpose: "different credential",
+                providerID: "test"
+            ))),
+            ("planFingerprint", try encodedJSONValue(otherDigest)),
+            ("preparedRequestFingerprint", try encodedJSONValue(otherDigest)),
+            ("stepCapabilityGrantFingerprint", try encodedJSONValue(otherDigest)),
+            ("runCapabilityCeilingFingerprint", try encodedJSONValue(otherDigest)),
+        ]
+
+        for (field, value) in mismatches {
+            let candidate = try receiptByReplacing(field, with: value, in: receipt)
+            let evaluation = engine.evaluate(
+                prepared: fixture.prepared,
+                trustedRunAuthority: fixture.trustedAuthority,
+                feature: .enabled,
+                interaction: .foregroundInteractive,
+                candidateReceipts: [candidate],
+                at: fixture.now
+            )
+            XCTAssertEqual(
+                evaluation.authorization.decision,
+                .requireApproval,
+                "A receipt with mismatched \(field) must not authorize"
+            )
+            XCTAssertNil(evaluation.matchingReceipt, "Mismatched field: \(field)")
+        }
+    }
+
+    func testReceiptClassificationRejectsConversationPolicyAndFutureDecisionMismatches() throws {
+        let fixture = try Fixture(effect: .networkRead)
+        let engine = try makeApprovalEngine()
+        let receipt = try ApprovalReceipt(
+            id: fixture.approvalID,
+            prepared: fixture.prepared,
+            decision: .approved,
+            scope: .exactInvocation,
+            policyVersion: 1,
+            decidedAt: fixture.now
+        )
+        let candidates = try [
+            receiptByReplacing("conversationID", with: encodedJSONValue(ConversationID()), in: receipt),
+            receiptByReplacing("policyVersion", with: 2, in: receipt),
+            receiptByReplacing(
+                "decidedAt",
+                with: encodedJSONValue(AgentTimestamp(rawValue: fixture.now.rawValue + 1)),
+                in: receipt
+            ),
+        ]
+
+        for candidate in candidates {
+            let evaluation = engine.evaluate(
+                prepared: fixture.prepared,
+                trustedRunAuthority: fixture.trustedAuthority,
+                feature: .enabled,
+                interaction: .foregroundInteractive,
+                candidateReceipts: [candidate],
+                at: fixture.now
+            )
+            XCTAssertEqual(evaluation.authorization.decision, .requireApproval)
+            XCTAssertNil(evaluation.matchingReceipt)
+        }
+    }
+
+    func testUnknownExternalEffectUsesMostConservativeApprovalRule() throws {
+        let fixture = try Fixture(effect: .unknownExternal)
+        let evaluation = try makeApprovalEngine().evaluate(
+            prepared: fixture.prepared,
+            trustedRunAuthority: fixture.trustedAuthority,
+            feature: .enabled,
+            interaction: .foregroundInteractive,
+            candidateReceipts: [],
+            at: fixture.now
+        )
+
+        XCTAssertEqual(evaluation.authorization.decision, .requireApproval)
+        XCTAssertEqual(evaluation.authorization.grantScope, .exactInvocation)
+        XCTAssertTrue(evaluation.authorization.uncertainOnTransportLoss)
+        XCTAssertEqual(evaluation.authorization.matchedRuleID, "AH-APPROVAL-AUTHORITY-021")
+    }
 }
 
 private struct Fixture {
@@ -324,7 +450,7 @@ private struct Fixture {
             maximumResponseBytes: 4_096,
             timeoutMilliseconds: 5_000,
             retryPolicy: .never,
-            idempotency: effect == .externalWrite || effect == .localWrite
+            idempotency: effect == .externalWrite || effect == .localWrite || effect == .unknownExternal
                 ? .nonIdempotent
                 : .pureRead,
             userPreview: effect == .localPure ? "" : "Access example"
@@ -367,6 +493,26 @@ private func makeApprovalEngine() throws -> DefaultApprovalPolicyEngine {
     try DefaultApprovalPolicyEngine(
         policyVersion: 1,
         sanitizationValidator: testSanitizationAttestor
+    )
+}
+
+private func encodedJSONValue<Value: Encodable>(_ value: Value) throws -> Any {
+    try JSONSerialization.jsonObject(with: JSONEncoder().encode(value), options: [.fragmentsAllowed])
+}
+
+private func receiptByReplacing(
+    _ field: String,
+    with value: Any,
+    in receipt: ApprovalReceipt
+) throws -> ApprovalReceipt {
+    let encoded = try JSONEncoder().encode(receipt)
+    var object = try XCTUnwrap(
+        JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+    )
+    object[field] = value
+    return try JSONDecoder().decode(
+        ApprovalReceipt.self,
+        from: JSONSerialization.data(withJSONObject: object)
     )
 }
 

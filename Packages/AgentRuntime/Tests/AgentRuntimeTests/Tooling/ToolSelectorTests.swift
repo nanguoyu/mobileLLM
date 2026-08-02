@@ -159,6 +159,27 @@ final class ToolSelectorTests: XCTestCase {
         XCTAssertTrue(result.snapshot.decisions[0].rationaleCodes.contains("request.explicit"))
     }
 
+    func testSemanticNetworkIntentSelectsWithoutAnExplicitToolName() throws {
+        let index = try descriptor(
+            provider: "remote",
+            name: "knowledge_index",
+            title: "Knowledge Index",
+            summary: "Retrieve latest indexed documents",
+            effects: [.networkRead]
+        )
+        let input = try ToolSelectionInput(
+            policy: policy(allowed: [index.id.logicalID]),
+            catalog: ToolCatalogSnapshot(revision: 1, descriptors: [index]),
+            availableCapabilities: AgentCapabilitySet([.networkRead]),
+            latestUserRequest: "Show the latest documents"
+        )
+
+        let result = try DeterministicToolSelector().select(input)
+
+        XCTAssertEqual(result.descriptors, [index])
+        XCTAssertEqual(result.snapshot.decisions[0].rationaleCodes, ["request.semantic"])
+    }
+
     func testCapabilityAndCatalogAvailabilityFailuresAreVisible() throws {
         let web = try descriptor(provider: "builtin", name: "web_search", effects: [.networkRead])
         let remote = try logical("mcp.server-7", "remote")
@@ -266,6 +287,27 @@ final class ToolSelectorTests: XCTestCase {
                 unavailable: []
             )
         )
+    }
+
+    func testSelectionInputRoundTripPreservesCanonicalCollections() throws {
+        let clock = try descriptor(provider: "builtin", name: "clock", effects: [.localPure])
+        let input = try ToolSelectionInput(
+            policy: policy(allowed: [clock.id.logicalID], pinned: [clock.id.logicalID]),
+            catalog: ToolCatalogSnapshot(revision: 3, descriptors: [clock]),
+            availableCapabilities: AgentCapabilitySet([]),
+            latestUserRequest: "clock",
+            attachmentMIMETypes: ["text/plain", "image/jpeg"],
+            activeSkillToolHints: [clock.id.logicalID],
+            recentSuccessfulToolChain: [clock.id.logicalID],
+            explicitlyRequestedToolIDs: [clock.id.logicalID],
+            maximumAdvertisedTools: 4
+        )
+
+        let encoded = try JSONEncoder().encode(input)
+        let decoded = try JSONDecoder().decode(ToolSelectionInput.self, from: encoded)
+
+        XCTAssertEqual(decoded, input)
+        XCTAssertEqual(decoded.attachmentMIMETypes, ["image/jpeg", "text/plain"])
     }
 
     // MARK: - Fixtures

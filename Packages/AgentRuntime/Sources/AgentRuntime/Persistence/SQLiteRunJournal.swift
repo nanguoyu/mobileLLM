@@ -7,7 +7,7 @@ import SQLite3
 /// Single-actor, single-connection canonical journal. Construction is side-effect free; the file is
 /// created only by `openForWrite` or a mutation.
 public actor SQLiteRunJournal: RuntimeRepository {
-    public static let schemaVersion: Int32 = 3
+    public static let schemaVersion: Int32 = 5
     public static let maximumCommandPayloadBytes = 256 * 1_024
 
     private let databaseURL: URL
@@ -126,7 +126,44 @@ public actor SQLiteRunJournal: RuntimeRepository {
         let result = try mutate(
             request: mutation.append,
             projectionCommit: nil,
-            budgetOperations: mutation.budgetOperations
+            budgetOperations: mutation.budgetOperations,
+            requiresExistingLedger: true
+        )
+        let ledger = if let committed = result.ledger {
+            committed
+        } else {
+            try loadBudgetLedgerFromConnection(for: mutation.append.runID)
+        }
+        guard let ledger else {
+            throw RuntimeRepositoryError.budgetLedgerNotFound(mutation.append.runID)
+        }
+        return RuntimeJournalMutationReceipt(appendReceipt: result.receipt, budgetLedger: ledger)
+    }
+
+    /// Atomically commits the one terminal answer, its canonical assistant-message pointer,
+    /// projection outbox command, and the final causal budget operation.
+    public func commitFinalization(
+        _ finalization: RuntimeFinalizationCommit
+    ) async throws -> RuntimeJournalMutationReceipt {
+        let message = finalization.message
+        let outbox = finalization.outbox
+        let mutation = finalization.mutation
+        guard message.role == .assistant,
+              message.runID == mutation.append.runID,
+              mutation.append.events.last?.payload.event.isRunTerminal == true,
+              outbox.kind == .finalAnswer,
+              outbox.runID == message.runID,
+              outbox.messageID == message.messageID,
+              outbox.conversationID == message.conversationID,
+              outbox.payloadDigest == message.bodyDigest,
+              outbox.payloadArtifactID == message.bodyArtifactID
+        else { throw RuntimeRepositoryError.invalidSubmission("invalid finalization bindings") }
+
+        let result = try mutate(
+            request: mutation.append,
+            projectionCommit: MessageProjectionCommit(message: message, outbox: outbox),
+            budgetOperations: mutation.budgetOperations,
+            requiresExistingLedger: true
         )
         let ledger = if let committed = result.ledger {
             committed
@@ -491,6 +528,237 @@ public actor SQLiteRunJournal: RuntimeRepository {
         return try runFacts(for: runID, db: db)
     }
 
+    public func loadRunFacts(
+        for executionHandleID: AgentExecutionHandleID
+    ) async throws -> RuntimeRunFacts? {
+        guard let db = try existingConnection() else { return nil }
+        guard let rawRunID = try db.scalarText(
+            "SELECT run_id FROM runs WHERE execution_handle_id = ?",
+            [.text(executionHandleID.description)]
+        ) else { return nil }
+        guard let runID = AgentRunID(rawRunID) else {
+            throw RuntimeRepositoryError.durableFactCorrupt(
+                "execution handle resolves to an invalid run identity"
+            )
+        }
+        return try runFacts(for: runID, db: db)
+    }
+
+    public func loadRunSnapshot(for runID: AgentRunID) async throws -> RuntimeRunSnapshot? {
+        guard let db = try existingConnection() else { return nil }
+        return try readSnapshot(db: db) { runID }
+    }
+
+    public func loadRunSnapshot(
+        for executionHandleID: AgentExecutionHandleID
+    ) async throws -> RuntimeRunSnapshot? {
+        guard let db = try existingConnection() else { return nil }
+        return try readSnapshot(db: db) {
+            guard let rawRunID = try db.scalarText(
+                "SELECT run_id FROM runs WHERE execution_handle_id = ?",
+                [.text(executionHandleID.description)]
+            ) else { return nil }
+            guard let runID = AgentRunID(rawRunID) else {
+                throw RuntimeRepositoryError.durableFactCorrupt(
+                    "execution handle resolves to an invalid run identity"
+                )
+            }
+            return runID
+        }
+    }
+
+    private func readSnapshot(
+        db: SQLiteConnection,
+        resolveRunID: () throws -> AgentRunID?
+    ) throws -> RuntimeRunSnapshot? {
+        // A SQLite read transaction pins one WAL snapshot across the materialized facts and the
+        // canonical event stream, even when another repository actor writes through another
+        // connection concurrently.
+        try db.execute("BEGIN DEFERRED")
+        var completed = false
+        defer { if !completed { try? db.execute("ROLLBACK") } }
+        guard let runID = try resolveRunID() else {
+            try db.execute("COMMIT")
+            completed = true
+            return nil
+        }
+        guard let facts = try runFacts(for: runID, db: db) else {
+            throw RuntimeRepositoryError.durableFactCorrupt("snapshot run facts disappeared")
+        }
+        let snapshot = RuntimeRunSnapshot(facts: facts, events: try events(for: runID, db: db))
+        try db.execute("COMMIT")
+        completed = true
+        return snapshot
+    }
+
+    /// Atomically consumes one authorization-gate boundary hop. Exact replays return `false`;
+    /// conflicting durable rows fail closed rather than being treated as an idempotent replay.
+    public func claimBoundaryHop(
+        scope: RuntimeBoundaryClaimScope,
+        approvalID: ApprovalID,
+        preparedRequestFingerprint: StableDigest,
+        attempt: ExternalOperationAttempt,
+        hop: ExternalOperationBoundaryHop
+    ) async throws -> Bool {
+        guard hop.attemptFingerprint == attempt.fingerprint else {
+            throw RuntimeRepositoryError.durableFactCorrupt("boundary hop differs from attempt")
+        }
+        let claimDigest = Self.boundaryClaimDigest(
+            approvalID: approvalID,
+            preparedRequestFingerprint: preparedRequestFingerprint,
+            attempt: attempt,
+            hop: hop
+        )
+        let claimID = Self.boundaryClaimID(hop)
+        let db = try writableConnection()
+        try inject(.beforeTransaction)
+        try db.execute("BEGIN IMMEDIATE")
+        var committed = false
+        defer { if !committed { try? db.execute("ROLLBACK") } }
+        try inject(.afterTransactionBegin)
+
+        guard let runRow = try db.rows(
+            "SELECT state, state_version FROM runs WHERE run_id = ?",
+            [.text(scope.runID.description)]
+        ).first,
+            runRow[0].text == scope.expectedState.rawValue,
+            runRow[1].integer == Int64(clamping: scope.expectedStateVersion)
+        else {
+            throw RuntimeRepositoryError.boundaryClaimStateMismatch(scope.runID)
+        }
+
+        if let row = try db.rows(
+            "SELECT run_id, claim_kind, payload_digest, approval_id, prepared_fingerprint, attempt_fingerprint, hop_fingerprint FROM external_claims WHERE claim_id = ?",
+            [.text(claimID)]
+        ).first {
+            guard row[1].text == "authorization-boundary-hop",
+                  row[2].text == claimDigest.rawValue,
+                  row[3].text == approvalID.description,
+                  row[4].text == preparedRequestFingerprint.rawValue,
+                  row[5].text == attempt.fingerprint.rawValue,
+                  row[6].text == hop.fingerprint.rawValue
+            else {
+                throw RuntimeRepositoryError.durableFactCorrupt(
+                    "authorization boundary claim identity was reused"
+                )
+            }
+            try inject(.beforeCommit)
+            try db.execute("COMMIT")
+            committed = true
+            try inject(.afterCommit)
+            return false
+        }
+
+        guard let rawRunID = try db.scalarText(
+            "SELECT run_id FROM run_submissions WHERE request_id = ?",
+            [.text(attempt.requestID.description)]
+        ), let runID = AgentRunID(rawRunID), runID == scope.runID else {
+            throw RuntimeRepositoryError.durableFactCorrupt(
+                "authorization claim request has no submitted run"
+            )
+        }
+        try db.execute(
+            "INSERT INTO external_claims(claim_id, run_id, invocation_id, claim_kind, payload_digest, payload_version, approval_id, prepared_fingerprint, attempt_fingerprint, hop_fingerprint) VALUES(?, ?, NULL, ?, ?, 1, ?, ?, ?, ?)",
+            [
+                .text(claimID), .text(runID.description),
+                .text("authorization-boundary-hop"), .text(claimDigest.rawValue),
+                .text(approvalID.description), .text(preparedRequestFingerprint.rawValue),
+                .text(attempt.fingerprint.rawValue), .text(hop.fingerprint.rawValue),
+            ]
+        )
+        try inject(.beforeCommit)
+        try db.execute("COMMIT")
+        committed = true
+        try inject(.afterCommit)
+        return true
+    }
+
+    /// Answers whether any exact itinerary hop for this prepared attempt was durably consumed.
+    /// This is intentionally separate from the mutating claim API so recovery cannot create the
+    /// evidence it is trying to inspect.
+    public func boundaryClaimEvidence(
+        approvalID: ApprovalID,
+        prepared: PreparedExternalOperationRequest,
+        attempt: ExternalOperationAttempt
+    ) async throws -> RuntimeBoundaryClaimEvidence {
+        let destinations = [prepared.plan.destination]
+            + prepared.plan.allowedRedirects.map(Optional.some)
+            + prepared.plan.allowedFallbacks.map(Optional.some)
+        let hops = try destinations.map {
+            try ExternalOperationBoundaryHop(
+                prepared: prepared,
+                attempt: attempt,
+                destination: $0
+            )
+        }
+        guard let db = try existingConnection() else { return .none }
+        for hop in hops {
+            let rows = try db.rows(
+                "SELECT run_id, claim_kind, payload_digest, approval_id, prepared_fingerprint, attempt_fingerprint, hop_fingerprint FROM external_claims WHERE claim_id = ?",
+                [.text(Self.boundaryClaimID(hop))]
+            )
+            guard let row = rows.first else { continue }
+            let exactMetadata = [row[3].text, row[4].text, row[5].text, row[6].text]
+            if exactMetadata.allSatisfy({ $0 == nil }) {
+                guard row[0].text == prepared.runID.description,
+                      row[1].text == "authorization-boundary-hop",
+                      row[2].text?.isEmpty == false
+                else {
+                    throw RuntimeRepositoryError.durableFactCorrupt(
+                        "legacy authorization boundary claim is corrupt"
+                    )
+                }
+                return .legacyConservative
+            }
+            guard exactMetadata.allSatisfy({ $0 != nil }) else {
+                throw RuntimeRepositoryError.durableFactCorrupt(
+                    "authorization boundary claim has partial exact metadata"
+                )
+            }
+            let expectedDigest = Self.boundaryClaimDigest(
+                approvalID: approvalID,
+                preparedRequestFingerprint: prepared.fingerprint,
+                attempt: attempt,
+                hop: hop
+            )
+            guard row[0].text == prepared.runID.description,
+                  row[1].text == "authorization-boundary-hop",
+                  row[2].text == expectedDigest.rawValue,
+                  row[3].text == approvalID.description,
+                  row[4].text == prepared.fingerprint.rawValue,
+                  row[5].text == attempt.fingerprint.rawValue,
+                  row[6].text == hop.fingerprint.rawValue
+            else {
+                throw RuntimeRepositoryError.durableFactCorrupt(
+                    "authorization boundary claim differs from recovery query"
+                )
+            }
+            return .exact
+        }
+        return .none
+    }
+
+    private static func boundaryClaimID(_ hop: ExternalOperationBoundaryHop) -> String {
+        "boundary-hop:\(hop.fingerprint.rawValue)"
+    }
+
+    private static func boundaryClaimDigest(
+        approvalID: ApprovalID,
+        preparedRequestFingerprint: StableDigest,
+        attempt: ExternalOperationAttempt,
+        hop: ExternalOperationBoundaryHop
+    ) -> StableDigest {
+        StableDigest.fingerprint(
+            domain: "external-boundary-hop-claim.v1",
+            components: [
+                Data(approvalID.description.utf8),
+                Data(preparedRequestFingerprint.rawValue.utf8),
+                Data(attempt.fingerprint.rawValue.utf8),
+                Data(hop.fingerprint.rawValue.utf8),
+            ]
+        )
+    }
+
     public func loadCompiledManifests(for runID: AgentRunID) async throws -> [DurableCompiledManifest] {
         guard let db = try existingConnection() else { return [] }
         return try compiledManifests(for: runID, db: db)
@@ -660,7 +928,8 @@ public actor SQLiteRunJournal: RuntimeRepository {
         projectionCommit: MessageProjectionCommit?,
         budgetOperations: [BudgetLedgerOperation] = [],
         initialLedger: BudgetLedgerSnapshot? = nil,
-        submission: RuntimeSubmissionCommit? = nil
+        submission: RuntimeSubmissionCommit? = nil,
+        requiresExistingLedger: Bool = false
     ) throws -> MutationResult {
         guard initialLedger == nil || budgetOperations.isEmpty else {
             throw SQLiteStoreError.invariantViolation("initial ledger cannot also be mutated")
@@ -679,6 +948,16 @@ public actor SQLiteRunJournal: RuntimeRepository {
         var committed = false
         defer { if !committed { try? db.execute("ROLLBACK") } }
         try inject(.afterTransactionBegin)
+
+        let requiredLedger: BudgetLedgerSnapshot?
+        if requiresExistingLedger {
+            guard let ledger = try budgetLedger(for: request.runID, db: db) else {
+                throw RuntimeRepositoryError.budgetLedgerNotFound(request.runID)
+            }
+            requiredLedger = ledger
+        } else {
+            requiredLedger = nil
+        }
 
         if let existing = try db.rows(
             "SELECT fingerprint, event_ids, run_id, ledger_payload FROM mutation_receipts WHERE identity_kind = ? AND identity_id = ?",
@@ -770,7 +1049,7 @@ public actor SQLiteRunJournal: RuntimeRepository {
         if hasStableBoundary { try inject(.afterStableBoundaryProjection) }
         try inject(.afterEventInsert)
 
-        var resultingLedger: BudgetLedgerSnapshot?
+        var resultingLedger = requiredLedger
         if let initialLedger {
             try inject(.beforeBudgetMutation)
             try insertInitialLedger(initialLedger, runID: request.runID, db: db)
@@ -842,15 +1121,17 @@ public actor SQLiteRunJournal: RuntimeRepository {
     }
 
     private func projection(for runID: AgentRunID, db: SQLiteConnection) throws -> AgentRunProjection? {
-        let rows = try db.rows(
+        try AgentRunProjection.replay(events(for: runID, db: db))
+    }
+
+    private func events(for runID: AgentRunID, db: SQLiteConnection) throws -> [AgentEventEnvelope] {
+        try db.rows(
             "SELECT payload FROM events WHERE run_id = ? ORDER BY sequence",
             [.text(runID.description)]
-        )
-        let events = try rows.map { row -> AgentEventEnvelope in
+        ).map { row -> AgentEventEnvelope in
             guard let data = row[0].blob else { throw SQLiteStoreError.corrupt }
             return try AgentEventEnvelope.decodeUntrusted(from: data)
         }
-        return try AgentRunProjection.replay(events)
     }
 
     private func insert(_ envelope: AgentEventEnvelope, db: SQLiteConnection) throws {
@@ -1155,6 +1436,10 @@ public actor SQLiteRunJournal: RuntimeRepository {
                 .text(fingerprint.rawValue),
             ]
         )
+        try db.execute(
+            "INSERT INTO run_admissions(run_id) VALUES(?)",
+            [.text(submission.request.payload.runID.description)]
+        )
     }
 
     private func insertInitialLedger(
@@ -1452,17 +1737,21 @@ public actor SQLiteRunJournal: RuntimeRepository {
     private func submission(for runID: AgentRunID, db: SQLiteConnection) throws -> RuntimeSubmissionRecord? {
         guard let row = try db.rows(
             """
-            SELECT submission_command_id, request_payload, execution_handle_id,
-                   input_snapshot_payload, fingerprint
-            FROM run_submissions WHERE run_id = ?
+            SELECT admission.admission_sequence, submission.submission_command_id,
+                   submission.request_payload, submission.execution_handle_id,
+                   submission.input_snapshot_payload, submission.fingerprint
+            FROM run_submissions AS submission
+            JOIN run_admissions AS admission ON admission.run_id = submission.run_id
+            WHERE submission.run_id = ?
             """,
             [.text(runID.description)]
         ).first else { return nil }
-        guard let commandID = row[0].text.flatMap(AgentCommandID.init),
-              let requestPayload = row[1].blob,
-              let handleID = row[2].text.flatMap(AgentExecutionHandleID.init),
-              let inputPayload = row[3].blob,
-              let rawFingerprint = row[4].text,
+        guard let rawAdmissionSequence = row[0].integer, rawAdmissionSequence > 0,
+              let commandID = row[1].text.flatMap(AgentCommandID.init),
+              let requestPayload = row[2].blob,
+              let handleID = row[3].text.flatMap(AgentExecutionHandleID.init),
+              let inputPayload = row[4].blob,
+              let rawFingerprint = row[5].text,
               let fingerprint = try? StableDigest(rawValue: rawFingerprint)
         else { throw RuntimeRepositoryError.durableFactCorrupt("invalid submission row") }
         let request = try AgentRequestEnvelope.decodeUntrusted(from: requestPayload)
@@ -1471,6 +1760,7 @@ public actor SQLiteRunJournal: RuntimeRepository {
             throw RuntimeRepositoryError.durableFactCorrupt("submission request owns another run")
         }
         return RuntimeSubmissionRecord(
+            admissionSequence: UInt64(rawAdmissionSequence),
             commandID: commandID,
             request: request,
             executionHandleID: handleID,
@@ -1743,7 +2033,9 @@ public actor SQLiteRunJournal: RuntimeRepository {
         do {
             for sql in Self.schemaStatements { try db.execute(sql) }
             try addVersionThreeColumnsIfNeeded(db)
+            try addVersionFiveColumnsIfNeeded(db)
             try backfillVersionThreeTypedFacts(db)
+            try backfillRunAdmissions(db)
             guard try db.rows("PRAGMA foreign_key_check").isEmpty,
                   try db.scalarText("PRAGMA quick_check") == "ok"
             else { throw SQLiteStoreError.corrupt }
@@ -1777,10 +2069,44 @@ public actor SQLiteRunJournal: RuntimeRepository {
         }
     }
 
+    private func addVersionFiveColumnsIfNeeded(_ db: SQLiteConnection) throws {
+        let additions: [(column: String, declaration: String)] = [
+            ("approval_id", "TEXT"),
+            ("prepared_fingerprint", "TEXT"),
+            ("attempt_fingerprint", "TEXT"),
+            ("hop_fingerprint", "TEXT"),
+        ]
+        for addition in additions where try !hasColumn(
+            addition.column,
+            in: "external_claims",
+            db: db
+        ) {
+            try db.execute(
+                "ALTER TABLE external_claims ADD COLUMN \(addition.column) \(addition.declaration)"
+            )
+        }
+    }
+
     private func hasColumn(_ column: String, in table: String, db: SQLiteConnection) throws -> Bool {
         try db.rows("PRAGMA table_info(\(table))").contains { row in
             row.count > 1 && row[1].text == column
         }
+    }
+
+    private func backfillRunAdmissions(_ db: SQLiteConnection) throws {
+        try db.execute(
+            """
+            INSERT INTO run_admissions(run_id)
+            SELECT submission.run_id
+            FROM run_submissions AS submission
+            JOIN runs AS run ON run.run_id = submission.run_id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM run_admissions AS admission
+                WHERE admission.run_id = submission.run_id
+            )
+            ORDER BY run.created_at, submission.run_id
+            """
+        )
     }
 
     /// Version two already contains canonical event envelopes, so typed current-state columns can
@@ -1876,7 +2202,7 @@ public actor SQLiteRunJournal: RuntimeRepository {
         "budget_reservations", "usage_ledger", "external_claims", "external_intents",
         "external_outcomes", "artifact_metadata", "artifact_refs", "artifact_deletion_intents",
         "deletion_intents", "run_submissions", "run_input_snapshots", "budget_ledgers",
-        "agent_commands",
+        "run_admissions", "agent_commands",
     ]
 
     private static let schemaStatements: [String] = [
@@ -1894,7 +2220,7 @@ public actor SQLiteRunJournal: RuntimeRepository {
         "CREATE TABLE IF NOT EXISTS interactions(interaction_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, state TEXT NOT NULL CHECK(state IN ('requested','responded')), creation_state_version INTEGER NOT NULL, payload_version INTEGER NOT NULL, payload BLOB NOT NULL, request_payload BLOB, response_payload BLOB) STRICT",
         "CREATE TABLE IF NOT EXISTS budget_reservations(reservation_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE, state TEXT NOT NULL CHECK(state IN ('reserved','settled','released')), maximum_digest TEXT NOT NULL, payload_version INTEGER NOT NULL, payload BLOB, actual_usage BLOB) STRICT",
         "CREATE TABLE IF NOT EXISTS usage_ledger(entry_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, event_id TEXT NOT NULL UNIQUE, payload_version INTEGER NOT NULL, payload BLOB NOT NULL) STRICT",
-        "CREATE TABLE IF NOT EXISTS external_claims(claim_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE, invocation_id TEXT, claim_kind TEXT NOT NULL, payload_digest TEXT NOT NULL, payload_version INTEGER NOT NULL) STRICT",
+        "CREATE TABLE IF NOT EXISTS external_claims(claim_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE, invocation_id TEXT, claim_kind TEXT NOT NULL, payload_digest TEXT NOT NULL, payload_version INTEGER NOT NULL, approval_id TEXT, prepared_fingerprint TEXT, attempt_fingerprint TEXT, hop_fingerprint TEXT) STRICT",
         "CREATE TABLE IF NOT EXISTS external_intents(intent_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, invocation_id TEXT, idempotency TEXT NOT NULL, payload_version INTEGER NOT NULL, payload BLOB NOT NULL) STRICT",
         "CREATE TABLE IF NOT EXISTS external_outcomes(outcome_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, invocation_id TEXT NOT NULL, payload_version INTEGER NOT NULL, payload BLOB NOT NULL) STRICT",
         "CREATE TABLE IF NOT EXISTS artifact_metadata(artifact_id TEXT PRIMARY KEY, run_id TEXT REFERENCES runs(run_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, content_digest TEXT NOT NULL, byte_count INTEGER NOT NULL CHECK(byte_count >= 0), mime_type TEXT NOT NULL, locator TEXT NOT NULL, retention TEXT NOT NULL, payload_version INTEGER NOT NULL, payload BLOB NOT NULL) STRICT",
@@ -1902,6 +2228,7 @@ public actor SQLiteRunJournal: RuntimeRepository {
         "CREATE TABLE IF NOT EXISTS artifact_deletion_intents(intent_id TEXT PRIMARY KEY, artifact_id TEXT NOT NULL, created_at INTEGER NOT NULL, completed_at INTEGER) STRICT",
         "CREATE TABLE IF NOT EXISTS deletion_intents(intent_id TEXT PRIMARY KEY, scope TEXT NOT NULL, conversation_id TEXT, created_at INTEGER NOT NULL, completed_at INTEGER) STRICT",
         "CREATE TABLE IF NOT EXISTS run_submissions(run_id TEXT PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, submission_command_id TEXT NOT NULL UNIQUE, request_id TEXT NOT NULL UNIQUE, execution_handle_id TEXT NOT NULL UNIQUE, request_payload_version INTEGER NOT NULL CHECK(request_payload_version > 0), request_payload BLOB NOT NULL, input_snapshot_payload_version INTEGER NOT NULL CHECK(input_snapshot_payload_version > 0), input_snapshot_payload BLOB NOT NULL, fingerprint TEXT NOT NULL) STRICT",
+        "CREATE TABLE IF NOT EXISTS run_admissions(admission_sequence INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL UNIQUE REFERENCES runs(run_id) ON DELETE CASCADE) STRICT",
         "CREATE TABLE IF NOT EXISTS run_input_snapshots(run_id TEXT PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, format_version INTEGER NOT NULL CHECK(format_version > 0), digest TEXT NOT NULL, artifact_id TEXT, payload_version INTEGER NOT NULL CHECK(payload_version > 0), payload BLOB NOT NULL) STRICT",
         "CREATE TABLE IF NOT EXISTS budget_ledgers(run_id TEXT PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, revision INTEGER NOT NULL CHECK(revision > 0), payload_version INTEGER NOT NULL CHECK(payload_version > 0), payload BLOB NOT NULL) STRICT",
         "CREATE TABLE IF NOT EXISTS agent_commands(admission_sequence INTEGER PRIMARY KEY AUTOINCREMENT, command_id TEXT NOT NULL UNIQUE, run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE, fingerprint TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('pending','claimed','completed')), payload_version INTEGER NOT NULL CHECK(payload_version > 0), payload BLOB NOT NULL CHECK(length(payload) <= 262144), admitted_at INTEGER NOT NULL, claim_owner TEXT, claim_expires_at INTEGER, lease_token TEXT, lease_generation INTEGER NOT NULL DEFAULT 0 CHECK(lease_generation >= 0), attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0), receipt_payload_version INTEGER, receipt BLOB CHECK(receipt IS NULL OR length(receipt) <= 262144), completed_at INTEGER, CHECK((state = 'pending' AND claim_owner IS NULL AND claim_expires_at IS NULL AND lease_token IS NULL AND receipt IS NULL AND completed_at IS NULL) OR (state = 'claimed' AND claim_owner IS NOT NULL AND claim_expires_at IS NOT NULL AND lease_token IS NOT NULL AND lease_generation > 0 AND receipt IS NULL AND completed_at IS NULL) OR (state = 'completed' AND claim_owner IS NULL AND claim_expires_at IS NULL AND lease_token IS NULL AND lease_generation > 0 AND receipt IS NOT NULL AND receipt_payload_version IS NOT NULL AND completed_at IS NOT NULL))) STRICT",

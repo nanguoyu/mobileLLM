@@ -69,11 +69,20 @@ public enum ApprovalEffectClass: String, CaseIterable, Hashable, Codable, Sendab
             case .unknownExternal: .unknownExternal
             }
         }
-        let rank: [Self: Int] = [
-            .localPure: 1, .appLocalRead: 2, .appLocalWrite: 3, .externalRead: 4,
-            .externalWrite: 5, .codeExecution: 6, .strongExact: 7, .unknownExternal: 8,
-        ]
-        return classes.max { rank[$0, default: 0] < rank[$1, default: 0] }
+        return classes.max { riskRank($0) < riskRank($1) }
+    }
+
+    private static func riskRank(_ effectClass: Self) -> Int {
+        switch effectClass {
+        case .localPure: 1
+        case .appLocalRead: 2
+        case .appLocalWrite: 3
+        case .externalRead: 4
+        case .externalWrite: 5
+        case .codeExecution: 6
+        case .strongExact: 7
+        case .unknownExternal: 8
+        }
     }
 }
 

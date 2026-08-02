@@ -6,7 +6,7 @@ import Foundation
 import XCTest
 
 final class RegistryOracleTests: XCTestCase {
-    func testCompiledReducerMatchesAllFiveThousandFourHundredEightyRegistryCells() throws {
+    func testCompiledReducerMatchesAllFiveThousandNineHundredTwentyEightRegistryCells() throws {
         let registry: DecisionRegistry = try loadRegistry(named: "run-transitions.v1.json")
         XCTAssertEqual(registry.completeness, "complete")
 
@@ -17,7 +17,7 @@ final class RegistryOracleTests: XCTestCase {
             "approvalCommandRouting": 176,
             "responseCommandRouting": 48,
             "reconciliationCommandRouting": 80,
-            "trustedProgressRouting": 3_808,
+            "trustedProgressRouting": 4_256,
             "quiescenceRouting": 560,
             "terminalFailureRouting": 560,
         ]
@@ -78,9 +78,9 @@ final class RegistryOracleTests: XCTestCase {
                 XCTAssertEqual(winningRuleIDs, Set(rules.map(\.id)), "dead rule in \(table)")
             }
 
-            XCTAssertEqual(totalCells, 5_480)
+            XCTAssertEqual(totalCells, 5_928)
             XCTAssertEqual(allWinningRuleIDs, Set(registry.entries.map(\.id)))
-            XCTAssertEqual(allWinningRuleIDs.count, 123)
+            XCTAssertEqual(allWinningRuleIDs.count, 125)
             XCTAssertEqual(acceptedSelfTransitions, 4)
         }
     }

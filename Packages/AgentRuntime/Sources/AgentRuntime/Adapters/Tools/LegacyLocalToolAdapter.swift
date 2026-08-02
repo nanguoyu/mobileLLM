@@ -95,42 +95,20 @@ public struct LegacyLocalToolAdapter: ToolV2, Sendable {
                     else { throw ToolV2ContractError.executingWrongDescriptor }
                     if await context.cancellation.isCancelled() { throw CancellationError() }
 
-                    let plan = prepared.prepared.externalOperation.plan
-                    let observation = try ExternalOperationObservation(
-                        destination: nil,
-                        dataCategories: [],
-                        effects: [AgentEffect.localPure],
-                        requestBytes: UInt64(
-                            prepared.prepared.request.sanitizedArguments.data.count
-                        ),
-                        responseBytesLimit: plan.maximumResponseBytes,
-                        payloadDigest: plan.payloadDigest,
-                        descriptorID: descriptor.id.description,
-                        schemaDigest: descriptor.id.schemaDigest,
-                        trustRevision: descriptor.id.trustRevision,
-                        resolvedSecretReferenceIDs: []
+                    // `localPure` is the one Tool V2 class that intentionally crosses no
+                    // authorization gate. The executor rejects a boundary for this class, so the
+                    // adapter enforces its frozen response bound locally and closes directly.
+                    let text = await tool.execute(
+                        argumentsJSON: prepared.prepared.request.sanitizedArguments.string
                     )
-                    let boundary = try await context.performBoundary(
-                        observation: observation
-                    ) { control in
-                        let text = await tool.execute(
-                            argumentsJSON: prepared.prepared.request.sanitizedArguments.string
-                        )
-                        try Task.checkCancellation()
-                        if await context.cancellation.isCancelled() { throw CancellationError() }
-                        let byteCount = UInt64(text.utf8.count)
-                        try await control.consumeResponseBytes(byteCount)
-                        let results = try ToolResultCollection([
-                            .text(try ToolTextResult(text)),
-                        ])
-                        return ExternalOperationBoundaryCompletion(
-                            value: .toolOutcome(.completed(results)),
-                            responseDigest: StableDigest.sha256(Data(text.utf8))
-                        )
-                    }
-                    guard case .toolOutcome(.completed(let results)) = boundary.value else {
+                    try Task.checkCancellation()
+                    if await context.cancellation.isCancelled() { throw CancellationError() }
+                    guard UInt64(text.utf8.count) <= maximumResponseBytes else {
                         throw LegacyLocalToolAdapterError.invalidBoundaryResult
                     }
+                    let results = try ToolResultCollection([
+                        .text(try ToolTextResult(text)),
+                    ])
                     continuation.yield(.completed(results))
                     continuation.finish()
                 } catch is CancellationError {

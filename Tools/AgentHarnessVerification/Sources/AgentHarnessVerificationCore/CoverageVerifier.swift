@@ -834,20 +834,30 @@ private func loadDiff(
     }
     var result = ChangedDiff(sha256: AgentHarnessManifestVerifier.sha256Hex(of: data))
     var currentPath: String?
+    var hasCurrentFileHeader = false
+    var currentFileIsDeleted = false
     let expression = try? NSRegularExpression(
         pattern: #"^@@ -[0-9]+(?:,[0-9]+)? \+([0-9]+)(?:,([0-9]+))? @@"#
     )
     for (index, line) in text.components(separatedBy: .newlines).enumerated() {
+        if line.hasPrefix("diff --git ") {
+            currentPath = nil
+            hasCurrentFileHeader = false
+            currentFileIsDeleted = false
+            continue
+        }
         if line.hasPrefix("+++ ") {
             var path = String(line.dropFirst(4))
             if let tab = path.firstIndex(of: "\t") { path = String(path[..<tab]) }
-            if path == "/dev/null" { currentPath = nil }
+            hasCurrentFileHeader = true
+            currentFileIsDeleted = path == "/dev/null"
+            if currentFileIsDeleted { currentPath = nil }
             else if path.hasPrefix("b/") { currentPath = String(path.dropFirst(2)) }
             else { currentPath = path }
             continue
         }
         guard line.hasPrefix("@@") else { continue }
-        guard let expression, let currentPath else {
+        guard let expression, hasCurrentFileHeader else {
             add(&diagnostics, "AHV-COVERAGE-DIFF", "\(url.path):\(index + 1)",
                 "diff hunk has no valid current-file header")
             continue
@@ -867,6 +877,22 @@ private func loadDiff(
         guard start >= 0, count >= 0, count <= 1_000_000 else {
             add(&diagnostics, "AHV-COVERAGE-DIFF", "\(url.path):\(index + 1)",
                 "diff hunk range is invalid or unreasonably large")
+            continue
+        }
+        if currentFileIsDeleted {
+            guard start == 0, count == 0 else {
+                add(&diagnostics, "AHV-COVERAGE-DIFF", "\(url.path):\(index + 1)",
+                    "deleted-file diff hunk must add zero current-file lines")
+                continue
+            }
+            // A deleted source has no executable lines in the current tree. Its old-file removals
+            // therefore contribute nothing to changed-current-line coverage, but remain valid diff
+            // evidence and must not make a legitimate refactor fail collection.
+            continue
+        }
+        guard let currentPath else {
+            add(&diagnostics, "AHV-COVERAGE-DIFF", "\(url.path):\(index + 1)",
+                "diff hunk has no valid current-file path")
             continue
         }
         guard count > 0 else { continue }

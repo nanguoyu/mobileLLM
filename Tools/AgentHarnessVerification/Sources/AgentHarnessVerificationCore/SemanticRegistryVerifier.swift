@@ -97,8 +97,9 @@ enum SemanticRegistryVerifier {
         "trustedProgressRouting": [
             "state": Set(runStates),
             "trigger": [
-                "beginPreparation", "contextCommitted", "modelLeaseGranted",
-                "modelAttemptCompleted", "modelRetryScheduled", "finalAnswerCommitted",
+                "beginPreparation", "contextCommitted", "recoveredToolBatchPending",
+                "recoveredToolBatchFailed", "modelLeaseGranted", "modelAttemptCompleted",
+                "modelRetryScheduled", "finalAnswerCommitted",
                 "toolBatchNeedsApproval", "toolBatchAuthorized", "userInputRequested",
                 "repairScheduled", "repairExhausted", "nextToolNeedsApproval",
                 "toolBatchCompleted", "toolBatchStopped", "externalOutcomeUnknown",
@@ -661,6 +662,8 @@ enum SemanticRegistryVerifier {
         }
         add("created", "beginPreparation", "valid", to: "preparing")
         add("preparing", "contextCommitted", "valid", to: "waitingForModel")
+        add("preparing", "recoveredToolBatchPending", "valid", to: "executingTools")
+        add("preparing", "recoveredToolBatchFailed", "valid", to: "synthesizing")
         add("waitingForModel", "modelLeaseGranted", "valid", to: "generating")
         add("synthesizing", "modelLeaseGranted", "valid", to: "generating")
         add("generating", "modelAttemptCompleted", "valid", to: "validatingAction")

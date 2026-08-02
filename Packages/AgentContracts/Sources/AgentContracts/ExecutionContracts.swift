@@ -49,7 +49,8 @@ public enum AgentRunTransitionMatrix {
         let allowed: Set<AgentRunState> = switch from {
         case .created: [.preparing, .failed, .cancelled]
         case .preparing:
-            [.waitingForModel, .waitingForForeground, .waitingForReconciliation, .pausing, .failed]
+            [.waitingForModel, .executingTools, .synthesizing, .waitingForForeground,
+             .waitingForReconciliation, .pausing, .failed]
         case .waitingForModel:
             [.generating, .waitingForForeground, .waitingForReconciliation, .pausing, .failed]
         case .generating:

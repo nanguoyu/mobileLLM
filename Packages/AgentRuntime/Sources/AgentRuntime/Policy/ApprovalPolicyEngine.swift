@@ -76,7 +76,15 @@ public struct DefaultApprovalPolicyEngine: ApprovalPolicyEngine, Sendable {
             trustedRunAuthority: trustedRunAuthority,
             at: timestamp
         )
-        let effectClass = ApprovalEffectClass.highestRisk(in: prepared.plan.effects) ?? .unknownExternal
+        // ExternalOperationPlan validation guarantees at least one effect. Keep a conservative
+        // fallback here as defense in depth so future decoding/migration mistakes cannot crash the
+        // policy boundary or accidentally lower risk.
+        let effectClass: ApprovalEffectClass
+        if let classified = ApprovalEffectClass.highestRisk(in: prepared.plan.effects) {
+            effectClass = classified
+        } else {
+            effectClass = .unknownExternal
+        }
         let authorization = ApprovalDecisionTables.authorize(
             ApprovalAuthorizationInput(
                 authority: authority,

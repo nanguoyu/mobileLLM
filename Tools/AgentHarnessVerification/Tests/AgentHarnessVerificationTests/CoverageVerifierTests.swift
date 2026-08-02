@@ -143,6 +143,43 @@ final class CoverageVerifierTests: XCTestCase {
         XCTAssertFalse(diagnostic?.message.contains("(error.localizedDescription)") == true)
     }
 
+    func testChangedDiffAcceptsDeletedSourcesAndRejectsImpossibleDeletedFileAdditions() throws {
+        let fixture = try CoverageFixture()
+        let deletedPath = fixture.sourceRoot + "/Deleted.swift"
+        try Data("""
+        diff --git a/\(deletedPath) b/\(deletedPath)
+        deleted file mode 100644
+        --- a/\(deletedPath)
+        +++ /dev/null
+        @@ -1,2 +0,0 @@
+        -func removedOne() {}
+        -func removedTwo() {}
+
+        """.utf8).write(to: fixture.diffURL)
+
+        var report = AgentHarnessCoverageVerifier.verify(fixture.configuration())
+        XCTAssertTrue(report.succeeded, report.diagnostics.map(\.message).joined(separator: "\n"))
+        XCTAssertEqual(report.metrics.changedExecutableLines.lines.count, 0)
+        XCTAssertEqual(report.metrics.changedExecutableLines.functions.count, 0)
+
+        try Data("""
+        diff --git a/\(deletedPath) b/\(deletedPath)
+        deleted file mode 100644
+        --- a/\(deletedPath)
+        +++ /dev/null
+        @@ -1,2 +1,1 @@
+        +impossible-current-line
+
+        """.utf8).write(to: fixture.diffURL)
+
+        report = AgentHarnessCoverageVerifier.verify(fixture.configuration())
+        XCTAssertFalse(report.succeeded)
+        XCTAssertTrue(report.diagnostics.contains {
+            $0.code == "AHV-COVERAGE-DIFF"
+                && $0.message == "deleted-file diff hunk must add zero current-file lines"
+        })
+    }
+
     func testPendingFirstBaselineDoesNotInventAComparison() throws {
         let fixture = try CoverageFixture()
         try fixture.writeBaseline(line: nil, function: nil)

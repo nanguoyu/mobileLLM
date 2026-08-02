@@ -174,6 +174,8 @@ public struct AgentReconciliationCommandInput: Hashable, Codable, Sendable {
 public enum AgentTrustedProgressTrigger: String, CaseIterable, Hashable, Codable, Sendable {
     case beginPreparation
     case contextCommitted
+    case recoveredToolBatchPending
+    case recoveredToolBatchFailed
     case modelLeaseGranted
     case modelAttemptCompleted
     case modelRetryScheduled

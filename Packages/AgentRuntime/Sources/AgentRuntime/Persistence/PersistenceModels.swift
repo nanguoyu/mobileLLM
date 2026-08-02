@@ -136,7 +136,39 @@ public enum RuntimeRepositoryError: Error, Hashable, Sendable {
     case commandReceiptConflict(AgentCommandID)
     case budgetLedgerNotFound(AgentRunID)
     case budgetOperationConflict(BudgetReservationID)
+    case boundaryClaimStateMismatch(AgentRunID)
     case durableFactCorrupt(String)
+}
+
+/// Exact durable state in which one external boundary hop is allowed to be claimed.
+public struct RuntimeBoundaryClaimScope: Hashable, Sendable {
+    public let runID: AgentRunID
+    public let expectedState: AgentRunState
+    public let expectedStateVersion: UInt64
+
+    public init(
+        runID: AgentRunID,
+        expectedState: AgentRunState,
+        expectedStateVersion: UInt64
+    ) throws {
+        guard expectedState == .generating || expectedState == .executingTools,
+              expectedStateVersion > 0
+        else {
+            throw RuntimeRepositoryError.durableFactCorrupt("invalid boundary claim scope")
+        }
+        self.runID = runID
+        self.expectedState = expectedState
+        self.expectedStateVersion = expectedStateVersion
+    }
+}
+
+/// Read-only recovery evidence for one exact prepared boundary attempt.
+public enum RuntimeBoundaryClaimEvidence: Hashable, Sendable {
+    case none
+    case exact
+    /// A pre-v5 claim proves a hop identity was consumed but cannot prove its full authorization
+    /// binding. It must route to reconciliation and must never be replayed automatically.
+    case legacyConservative
 }
 
 /// Durable lifecycle of one admitted state-changing command.
@@ -233,6 +265,24 @@ public struct RuntimeJournalMutationReceipt: Sendable {
     public let budgetLedger: BudgetLedgerSnapshot
 }
 
+/// Canonical terminal transaction. The final assistant message pointer, projection outbox,
+/// terminal event batch, and causal budget settlement commit or roll back together.
+public struct RuntimeFinalizationCommit: Sendable {
+    public let message: JournalMessageReference
+    public let outbox: ProjectionOutboxItem
+    public let mutation: RuntimeJournalMutation
+
+    public init(
+        message: JournalMessageReference,
+        outbox: ProjectionOutboxItem,
+        mutation: RuntimeJournalMutation
+    ) {
+        self.message = message
+        self.outbox = outbox
+        self.mutation = mutation
+    }
+}
+
 /// Complete first durable transaction for an agent execution.
 public struct RuntimeSubmissionCommit: Sendable {
     public let commandID: AgentCommandID
@@ -273,6 +323,8 @@ public struct RuntimeSubmissionReceipt: Sendable {
 
 /// Exact durable submission binding, decoded through the bounded contract entry point.
 public struct RuntimeSubmissionRecord: Hashable, Sendable {
+    /// Database-assigned, process-independent FIFO position for root-resource admission.
+    public let admissionSequence: UInt64
     public let commandID: AgentCommandID
     public let request: AgentRequestEnvelope
     public let executionHandleID: AgentExecutionHandleID
@@ -286,6 +338,12 @@ public struct RuntimeRunFacts: Sendable {
     public let conversationID: ConversationID?
     public let submission: RuntimeSubmissionRecord?
     public let budgetLedger: BudgetLedgerSnapshot?
+}
+
+/// One transactionally consistent view of a run's typed facts and canonical event stream.
+public struct RuntimeRunSnapshot: Sendable {
+    public let facts: RuntimeRunFacts
+    public let events: [AgentEventEnvelope]
 }
 
 public struct DurableCompiledManifest: Hashable, Sendable {
@@ -347,6 +405,9 @@ public struct RuntimeRecoveryFacts: Sendable {
 public protocol RuntimeRepository: RunJournal {
     func commitSubmission(_ submission: RuntimeSubmissionCommit) async throws -> RuntimeSubmissionReceipt
     func commit(_ mutation: RuntimeJournalMutation) async throws -> RuntimeJournalMutationReceipt
+    func commitFinalization(
+        _ finalization: RuntimeFinalizationCommit
+    ) async throws -> RuntimeJournalMutationReceipt
 
     func enqueueCommand(_ envelope: AgentCommandEnvelope) async throws -> AgentCommandAdmission
     func claimCommands(
@@ -364,6 +425,27 @@ public protocol RuntimeRepository: RunJournal {
     func loadCommand(_ commandID: AgentCommandID) async throws -> DurableAgentCommand?
 
     func loadRunFacts(for runID: AgentRunID) async throws -> RuntimeRunFacts?
+    func loadRunFacts(
+        for executionHandleID: AgentExecutionHandleID
+    ) async throws -> RuntimeRunFacts?
+    func loadRunSnapshot(for runID: AgentRunID) async throws -> RuntimeRunSnapshot?
+    func loadRunSnapshot(
+        for executionHandleID: AgentExecutionHandleID
+    ) async throws -> RuntimeRunSnapshot?
+    /// Read-only exact recovery probe. Unlike `claimBoundaryHop`, this never consumes authority.
+    func boundaryClaimEvidence(
+        approvalID: ApprovalID,
+        prepared: PreparedExternalOperationRequest,
+        attempt: ExternalOperationAttempt
+    ) async throws -> RuntimeBoundaryClaimEvidence
+    /// Atomically validates the owning run state/version and consumes one boundary hop.
+    func claimBoundaryHop(
+        scope: RuntimeBoundaryClaimScope,
+        approvalID: ApprovalID,
+        preparedRequestFingerprint: StableDigest,
+        attempt: ExternalOperationAttempt,
+        hop: ExternalOperationBoundaryHop
+    ) async throws -> Bool
     func loadBudgetLedger(for runID: AgentRunID) async throws -> BudgetLedgerSnapshot?
     func loadCompiledManifests(for runID: AgentRunID) async throws -> [DurableCompiledManifest]
     func loadApprovals(for runID: AgentRunID) async throws -> [DurableApproval]

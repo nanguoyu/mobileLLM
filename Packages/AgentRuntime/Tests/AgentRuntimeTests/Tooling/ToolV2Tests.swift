@@ -6,6 +6,31 @@ import Foundation
 import XCTest
 
 final class ToolV2Tests: XCTestCase {
+    func testPreparedInvocationAllowsDescriptorRetryPolicyToBeNarrowedToNever() throws {
+        let boundedRetry = try ExternalRetryPolicy(
+            kind: .boundedExponential,
+            maximumAttempts: 3,
+            baseDelayMilliseconds: 25,
+            maximumDelayMilliseconds: 100,
+            allowsJitter: true
+        )
+        let fixture = try ToolFixture(retryPolicy: boundedRetry)
+        let narrowed = try PreparedToolInvocation(
+            request: fixture.request,
+            context: fixture.preparationContext,
+            plan: fixture.makePlan(retryPolicy: .never)
+        )
+
+        XCTAssertEqual(narrowed.externalOperation.plan.retryPolicy, .never)
+        XCTAssertEqual(
+            try JSONDecoder().decode(
+                PreparedToolInvocation.self,
+                from: JSONEncoder().encode(narrowed)
+            ),
+            narrowed
+        )
+    }
+
     func testExecutionRequestValidatesIdentitySchemaSanitizationAndByteLimit() throws {
         let fixture = try ToolFixture()
         XCTAssertEqual(fixture.request.argumentValidation, .fullyValidated)
@@ -49,6 +74,44 @@ final class ToolV2Tests: XCTestCase {
                 maximumArgumentBytes: UInt64(CanonicalJSON.maximumBytes + 1)
             )
         )
+    }
+
+    func testExecutionRequestDecodeRejectsForgedValidationAndSchemaInvalidArguments() throws {
+        let fixture = try ToolFixture()
+
+        let schemaInvalidArguments = try CanonicalJSON(.object(["q": .integer(3)]))
+        let schemaInvalidSanitized = try toolTestSanitizationAttestor.attest(
+            value: schemaInvalidArguments,
+            redaction: RedactionMetadata(classification: .sensitive, policyVersion: 1)
+        )
+        let schemaInvalidCall = ProposedToolCall(
+            invocationID: fixture.invocationID,
+            toolID: fixture.descriptor.id.logicalID,
+            arguments: schemaInvalidArguments
+        )
+        XCTAssertThrowsError(
+            try ToolExecutionRequest(
+                proposedCall: schemaInvalidCall,
+                descriptor: fixture.descriptor,
+                sanitizedArguments: schemaInvalidSanitized
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolV2ContractError, .schemaValidationFailed)
+        }
+
+        let encoded = try JSONEncoder().encode(fixture.request)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object["argumentValidation"] = ToolArgumentValidation.partiallyValidatedConservative.rawValue
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                ToolExecutionRequest.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        ) { error in
+            guard case DecodingError.dataCorrupted = error else {
+                return XCTFail("expected a data-corruption error, got \(error)")
+            }
+        }
     }
 
     func testPartiallyEnforcedSchemaIsExplicitlyConservative() throws {
@@ -107,6 +170,42 @@ final class ToolV2Tests: XCTestCase {
                 from: JSONSerialization.data(withJSONObject: requestObject)
             )
         )
+    }
+
+    func testPreparedInvocationDecodeRejectsCrossInvocationSplicing() throws {
+        let fixture = try ToolFixture()
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(fixture.prepared))
+                as? [String: Any]
+        )
+        var request = try XCTUnwrap(object["request"] as? [String: Any])
+        var proposedCall = try XCTUnwrap(request["proposedCall"] as? [String: Any])
+        proposedCall["invocationID"] = ToolInvocationID().description
+        request["proposedCall"] = proposedCall
+        object["request"] = request
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                PreparedToolInvocation.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        ) { error in
+            guard case DecodingError.dataCorrupted = error else {
+                return XCTFail("expected a data-corruption error, got \(error)")
+            }
+        }
+    }
+
+    func testAuthorizedInvocationRejectsAuthorizationForAnotherPreparedOperation() async throws {
+        let fixture = try ToolFixture()
+        let other = try ToolFixture(name: "other-authorization", runOffset: 100)
+
+        await XCTAssertThrowsToolError(.authorizationMismatch) {
+            _ = try AuthorizedToolInvocation(
+                prepared: fixture.prepared,
+                authorization: try await other.authorized()
+            )
+        }
     }
 
     func testLocalAuthorizationProducesOpaqueToolExecutionContext() async throws {
@@ -354,6 +453,31 @@ final class ToolV2Tests: XCTestCase {
         XCTAssertEqual(published, [])
     }
 
+    func testExecutorPreservesProviderCancellation() async throws {
+        let fixture = try ToolFixture()
+        let values = try await fixture.authorizedToolAndContext()
+        let tool = ScriptedTool(
+            descriptor: fixture.descriptor,
+            prepared: fixture.prepared,
+            events: [],
+            throwsCancellationAtEnd: true
+        )
+
+        do {
+            _ = try await ToolExecutor().execute(
+                tool: tool,
+                authorized: values.authorized,
+                context: values.context
+            )
+            XCTFail("expected cancellation")
+        } catch is CancellationError {
+            // Cancellation must keep its identity so the owning runtime can apply pause/cancel
+            // semantics instead of misclassifying it as a provider contract failure.
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
     func testExecutorPreservesKnownAndUncertainTypedFailures() async throws {
         let fixture = try ToolFixture()
         let values = try await fixture.authorizedToolAndContext()
@@ -546,7 +670,8 @@ private struct ToolFixture {
         runOffset: Int = 0,
         descriptor suppliedDescriptor: AgentToolDescriptor? = nil,
         partialInputSchema: Bool = false,
-        supportsProgress: Bool = false
+        supportsProgress: Bool = false,
+        retryPolicy: ExternalRetryPolicy = .never
     ) throws {
         func uuid(_ value: Int) -> UUID {
             UUID(uuidString: String(format: "00000000-0000-0000-0000-%012x", value + runOffset))!
@@ -586,7 +711,7 @@ private struct ToolFixture {
             effects: [AgentEffect.localPure],
             requiredCapabilities: AgentCapabilitySet([]),
             timeoutPolicy: ToolTimeoutPolicy(maximumMilliseconds: 5_000),
-            retryPolicy: .never,
+            retryPolicy: retryPolicy,
             idempotency: .pureRead,
             supportsProgress: supportsProgress,
             supportsCancellation: true
@@ -648,7 +773,8 @@ private struct ToolFixture {
     func makePlan(
         timeoutMilliseconds: UInt64? = nil,
         descriptorID: String? = nil,
-        trustRevision: String? = nil
+        trustRevision: String? = nil,
+        retryPolicy: ExternalRetryPolicy? = nil
     ) throws -> ExternalOperationPlan {
         try ExternalOperationPlan(
             kind: .localPure,
@@ -660,7 +786,7 @@ private struct ToolFixture {
             maximumRequestBytes: UInt64(arguments.data.count),
             maximumResponseBytes: 2 * 1_024 * 1_024,
             timeoutMilliseconds: timeoutMilliseconds ?? descriptor.timeoutPolicy.maximumMilliseconds,
-            retryPolicy: descriptor.retryPolicy,
+            retryPolicy: retryPolicy ?? descriptor.retryPolicy,
             idempotency: descriptor.idempotency,
             userPreview: "",
             descriptorID: descriptorID ?? descriptor.id.description,
@@ -751,6 +877,7 @@ private struct ScriptedTool: ToolV2 {
     let prepared: PreparedToolInvocation
     let events: [ToolExecutionEvent]
     var throwsAtEnd = false
+    var throwsCancellationAtEnd = false
 
     func prepare(
         request: ToolExecutionRequest,
@@ -769,7 +896,9 @@ private struct ScriptedTool: ToolV2 {
     ) -> AsyncThrowingStream<ToolExecutionEvent, Error> {
         AsyncThrowingStream { continuation in
             for event in events { continuation.yield(event) }
-            if throwsAtEnd {
+            if throwsCancellationAtEnd {
+                continuation.finish(throwing: CancellationError())
+            } else if throwsAtEnd {
                 continuation.finish(throwing: ScriptedFailure())
             } else {
                 continuation.finish()

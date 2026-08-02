@@ -125,7 +125,7 @@ final class LegacyLocalToolAdapterTests: XCTestCase {
         }
     }
 
-    func testExecutorRunsExactCanonicalArgumentsOnceInsideAuthorizedBoundary() async throws {
+    func testExecutorRunsExactCanonicalArgumentsWithoutInventingExternalBoundary() async throws {
         let recorder = LegacyToolRecorder()
         let tool = MutableLegacyTool.fixture(response: "42", recorder: recorder)
         let fixture = try LegacyAdapterFixture(tool: tool)
@@ -146,21 +146,19 @@ final class LegacyLocalToolAdapterTests: XCTestCase {
         let events = await sink.events()
         XCTAssertEqual(events, [.completed(expected)])
 
-        do {
-            _ = try await ToolExecutor().execute(
-                tool: fixture.adapter,
-                authorized: execution.authorized,
-                context: execution.context
-            )
-            XCTFail("The authorization boundary must be one-shot")
-        } catch {
-            XCTAssertEqual(
-                error as? ToolV2ContractError,
-                .providerThrewBeforeTerminal
-            )
-        }
+        let repeatedOutcome = try await ToolExecutor().execute(
+            tool: fixture.adapter,
+            authorized: execution.authorized,
+            context: execution.context
+        )
+        XCTAssertEqual(repeatedOutcome, .completed(expected))
         let finalArguments = await recorder.arguments()
-        XCTAssertEqual(finalArguments, [fixture.arguments.string])
+        XCTAssertEqual(
+            finalArguments,
+            [fixture.arguments.string, fixture.arguments.string],
+            "A localPure adapter crosses no external-operation boundary; durable invocation "
+                + "deduplication belongs to the run executor, not the boundary gate"
+        )
     }
 
     func testCancellationIsTypedAndNeverInvokesLegacyTool() async throws {
