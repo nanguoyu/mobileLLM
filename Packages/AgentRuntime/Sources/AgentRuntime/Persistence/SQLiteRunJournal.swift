@@ -53,14 +53,24 @@ public actor SQLiteRunJournal: RunJournal {
 
     public func pragmaReport() throws -> JournalPragmaReport? {
         guard let db = try existingConnection() else { return nil }
+        guard let journalMode = try db.scalarText("PRAGMA journal_mode"),
+              let synchronous = try db.scalarInt("PRAGMA synchronous"),
+              let foreignKeys = try db.scalarInt("PRAGMA foreign_keys"),
+              let secureDelete = try db.scalarInt("PRAGMA secure_delete"),
+              let trustedSchema = try db.scalarInt("PRAGMA trusted_schema"),
+              let busyTimeoutMilliseconds = try db.scalarInt("PRAGMA busy_timeout"),
+              let writableSchema = try db.scalarInt("PRAGMA writable_schema")
+        else {
+            throw SQLiteStoreError.corrupt
+        }
         return JournalPragmaReport(
-            journalMode: try db.scalarText("PRAGMA journal_mode") ?? "",
-            synchronous: try db.scalarInt("PRAGMA synchronous") ?? -1,
-            foreignKeys: try db.scalarInt("PRAGMA foreign_keys") == 1,
-            secureDelete: try db.scalarInt("PRAGMA secure_delete") == 1,
-            trustedSchema: try db.scalarInt("PRAGMA trusted_schema") == 1,
-            busyTimeoutMilliseconds: try db.scalarInt("PRAGMA busy_timeout") ?? 0,
-            defensive: try db.scalarInt("PRAGMA writable_schema") == 0
+            journalMode: journalMode,
+            synchronous: synchronous,
+            foreignKeys: foreignKeys == 1,
+            secureDelete: secureDelete == 1,
+            trustedSchema: trustedSchema == 1,
+            busyTimeoutMilliseconds: busyTimeoutMilliseconds,
+            defensive: writableSchema == 0
         )
     }
 
@@ -100,7 +110,7 @@ public actor SQLiteRunJournal: RunJournal {
     }
 
     public func append(_ request: RunJournalAppendRequest) async throws -> RunJournalAppendReceipt {
-        try mutate(request: request, message: nil, outbox: nil)
+        try mutate(request: request, projectionCommit: nil)
     }
 
     /// Canonical send acceptance: message pointer, initial run events, and projection outbox commit together.
@@ -115,7 +125,10 @@ public actor SQLiteRunJournal: RunJournal {
               outbox.payloadDigest == message.bodyDigest,
               outbox.payloadArtifactID == message.bodyArtifactID
         else { throw SQLiteStoreError.invariantViolation("invalid accepted-message transaction") }
-        return try mutate(request: initialAppend, message: message, outbox: outbox)
+        return try mutate(
+            request: initialAppend,
+            projectionCommit: MessageProjectionCommit(message: message, outbox: outbox)
+        )
     }
 
     /// Canonical finalization: final answer event, terminal state, assistant pointer, and outbox commit together.
@@ -131,7 +144,10 @@ public actor SQLiteRunJournal: RunJournal {
               outbox.payloadDigest == message.bodyDigest,
               outbox.payloadArtifactID == message.bodyArtifactID
         else { throw SQLiteStoreError.invariantViolation("invalid final-answer transaction") }
-        return try mutate(request: terminalAppend, message: message, outbox: outbox)
+        return try mutate(
+            request: terminalAppend,
+            projectionCommit: MessageProjectionCommit(message: message, outbox: outbox)
+        )
     }
 
     public func claimOutbox(
@@ -237,7 +253,7 @@ public actor SQLiteRunJournal: RunJournal {
         do {
             try db.execute(
                 "INSERT OR IGNORE INTO deletion_intents(intent_id, scope, conversation_id, created_at, completed_at) VALUES(?, ?, ?, ?, NULL)",
-                [.text(intent.id), .text(intent.scope.rawValue), intent.conversationID.map { .text($0.description) } ?? .null, .integer(intent.createdAt.rawValue)]
+                [.text(intent.id), .text(intent.scope.rawValue), sqliteText(intent.conversationID?.description), .integer(intent.createdAt.rawValue)]
             )
             try inject(.afterDeletionIntent)
             try db.execute("COMMIT")
@@ -311,7 +327,7 @@ public actor SQLiteRunJournal: RunJournal {
         let db = try writableConnection()
         try db.execute(
             "INSERT INTO external_claims(claim_id, run_id, invocation_id, claim_kind, payload_digest, payload_version) VALUES(?, ?, ?, ?, ?, 1)",
-            [.text(claim.id), .text(claim.runID.description), claim.invocationID.map { .text($0.description) } ?? .null, .text(claim.kind), .text(claim.payloadDigest.rawValue)]
+            [.text(claim.id), .text(claim.runID.description), sqliteText(claim.invocationID?.description), .text(claim.kind), .text(claim.payloadDigest.rawValue)]
         )
     }
 
@@ -327,17 +343,16 @@ public actor SQLiteRunJournal: RunJournal {
     public func rowCount(table: String) throws -> Int {
         let allowed = Set(Self.schemaTables)
         guard allowed.contains(table), let db = try existingConnection() else { return 0 }
-        return Int(try db.scalarInt("SELECT COUNT(*) FROM \(table)") ?? 0)
+        guard let count = try db.scalarInt("SELECT COUNT(*) FROM \(table)") else {
+            throw SQLiteStoreError.corrupt
+        }
+        return Int(count)
     }
 
     private func mutate(
         request: RunJournalAppendRequest,
-        message: JournalMessageReference?,
-        outbox: ProjectionOutboxItem?
+        projectionCommit: MessageProjectionCommit?
     ) throws -> RunJournalAppendReceipt {
-        guard let lastEvent = request.events.last else {
-            throw SQLiteStoreError.invariantViolation("journal mutation has no event")
-        }
         let db = try writableConnection()
         let fingerprint = try mutationFingerprint(request)
         let identity = mutationKey(request.mutationIdentity)
@@ -408,14 +423,17 @@ public actor SQLiteRunJournal: RunJournal {
             projected = created
         }
 
+        // Materialize the parent row before auxiliary event projections. Not every auxiliary
+        // schema consumer can rely on deferred foreign-key enforcement.
+        try inject(.beforeRunUpdate)
+        try upsertRun(projected, conversationID: projectionCommit?.message.conversationID, db: db)
+        try inject(.afterRunUpdate)
         try inject(.beforeEventInsert)
         for envelope in request.events { try insert(envelope, db: db) }
         try inject(.afterEventInsert)
-        try inject(.beforeRunUpdate)
-        try upsertRun(projected, conversationID: message?.conversationID, db: db)
-        try inject(.afterRunUpdate)
 
-        if let message {
+        if let projectionCommit {
+            let message = projectionCommit.message
             try db.execute(
                 "INSERT INTO messages(message_id, conversation_id, run_id, role, body_digest, body_artifact_id, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
                 [.text(message.messageID.description), .text(message.conversationID.description), .text(message.runID.description), .text(message.role.rawValue), .text(message.bodyDigest.rawValue), .text(message.bodyArtifactID.description), .integer(message.createdAt.rawValue)]
@@ -424,10 +442,8 @@ public actor SQLiteRunJournal: RunJournal {
                 "INSERT OR IGNORE INTO artifact_refs(artifact_id, owner_kind, owner_id) VALUES(?, 'message', ?)",
                 [.text(message.bodyArtifactID.description), .text(message.messageID.description)]
             )
-        }
-        if let outbox {
             try inject(.beforeOutboxInsert)
-            try insertOutbox(outbox, createdAt: message?.createdAt ?? lastEvent.payload.timestamp, db: db)
+            try insertOutbox(projectionCommit.outbox, createdAt: message.createdAt, db: db)
             try inject(.afterOutboxInsert)
         }
         let eventIDs = request.events.map(\.payload.eventID)
@@ -469,7 +485,7 @@ public actor SQLiteRunJournal: RunJournal {
             """,
             [.text(record.eventID.description), .text(record.runID.description), .integer(Int64(record.sequence)),
              .integer(Int64(record.runStateVersion)), .integer(record.timestamp.rawValue),
-             .text(record.recordDigest.rawValue), record.previousRecordDigest.map { .text($0.rawValue) } ?? .null,
+             .text(record.recordDigest.rawValue), sqliteText(record.previousRecordDigest?.rawValue),
              .integer(Int64(envelope.payloadVersion)), .blob(try encoder.encode(envelope)),
              .integer(record.event.isRunTerminal ? 1 : 0)]
         )
@@ -477,13 +493,13 @@ public actor SQLiteRunJournal: RunJournal {
         switch record.event {
         case .compiledManifestCommitted(let stepID, let reference):
             try db.execute("INSERT OR IGNORE INTO steps(step_id, run_id, payload_version, payload) VALUES(?, ?, 1, ?)", [.text(stepID.description), .text(record.runID.description), .blob(payload)])
-            try db.execute("INSERT OR IGNORE INTO compiled_manifests(manifest_id, run_id, step_id, digest, artifact_id, payload_version) VALUES(?, ?, ?, ?, ?, 1)", [.text(record.eventID.description), .text(record.runID.description), .text(stepID.description), .text(reference.digest.rawValue), reference.artifactID.map { .text($0.description) } ?? .null])
+            try db.execute("INSERT OR IGNORE INTO compiled_manifests(manifest_id, run_id, step_id, digest, artifact_id, payload_version) VALUES(?, ?, ?, ?, ?, 1)", [.text(record.eventID.description), .text(record.runID.description), .text(stepID.description), .text(reference.digest.rawValue), sqliteText(reference.artifactID?.description)])
         case .validatedActionCommitted(let stepID, _):
             try db.execute("INSERT OR IGNORE INTO steps(step_id, run_id, payload_version, payload) VALUES(?, ?, 1, ?)", [.text(stepID.description), .text(record.runID.description), .blob(payload)])
         case .modelAttemptOutcome:
             try db.execute("INSERT INTO model_attempts(attempt_id, run_id, event_id, payload_version, payload) VALUES(?, ?, ?, 1, ?)", [.text(record.eventID.description), .text(record.runID.description), .text(record.eventID.description), .blob(payload)])
         case .toolIntentRecorded(let request):
-            try db.execute("INSERT INTO external_intents(intent_id, run_id, invocation_id, idempotency, payload_version, payload) VALUES(?, ?, ?, ?, 1, ?)", [.text(record.eventID.description), .text(record.runID.description), request.invocationID.map { .text($0.description) } ?? .null, .text(request.plan.idempotency.rawValue), .blob(payload)])
+            try db.execute("INSERT INTO external_intents(intent_id, run_id, invocation_id, idempotency, payload_version, payload) VALUES(?, ?, ?, ?, 1, ?)", [.text(record.eventID.description), .text(record.runID.description), sqliteText(request.invocationID?.description), .text(request.plan.idempotency.rawValue), .blob(payload)])
             if let invocationID = request.invocationID {
                 try db.execute("INSERT OR REPLACE INTO tool_invocations(invocation_id, run_id, state, payload_version, payload) VALUES(?, ?, 'prepared', 1, ?)", [.text(invocationID.description), .text(record.runID.description), .blob(payload)])
             }
@@ -520,7 +536,7 @@ public actor SQLiteRunJournal: RunJournal {
                 terminal_event_id = excluded.terminal_event_id, last_digest = excluded.last_digest,
                 updated_at = excluded.updated_at
             """,
-            [.text(projection.runID.description), conversationID.map { .text($0.description) } ?? .null,
+            [.text(projection.runID.description), sqliteText(conversationID?.description),
              .text(projection.requestID.description), .text(projection.executionHandleID.description),
              .text(projection.state.rawValue), .integer(Int64(projection.stateVersion)),
              .integer(Int64(projection.eventCount + 1)), projection.isTerminal ? .text(last.eventID.description) : .null,
@@ -535,9 +551,9 @@ public actor SQLiteRunJournal: RunJournal {
                                           payload_digest, payload_artifact_id, created_at, attempt_count)
             VALUES(?, ?, ?, ?, ?, ?, ?, ?, 0)
             """,
-            [.text(item.idempotencyKey), .text(item.conversationID.description), item.runID.map { .text($0.description) } ?? .null,
-             item.messageID.map { .text($0.description) } ?? .null, .text(item.kind.rawValue),
-             .text(item.payloadDigest.rawValue), item.payloadArtifactID.map { .text($0.description) } ?? .null,
+            [.text(item.idempotencyKey), .text(item.conversationID.description), sqliteText(item.runID?.description),
+             sqliteText(item.messageID?.description), .text(item.kind.rawValue),
+             .text(item.payloadDigest.rawValue), sqliteText(item.payloadArtifactID?.description),
              .integer(createdAt.rawValue)]
         )
     }
@@ -609,7 +625,10 @@ public actor SQLiteRunJournal: RunJournal {
         let existed = FileManager.default.fileExists(atPath: databaseURL.path)
         let db = try SQLiteConnection(url: databaseURL, create: true)
         do {
-            let version = Int32(try db.scalarInt("PRAGMA user_version") ?? 0)
+            guard let rawVersion = try db.scalarInt("PRAGMA user_version") else {
+                throw SQLiteStoreError.corrupt
+            }
+            let version = Int32(rawVersion)
             if version > Self.schemaVersion { throw SQLiteStoreError.unsupportedSchema(version) }
             if existed, version > 0, version < Self.schemaVersion {
                 let backup = databaseURL.deletingPathExtension().appendingPathExtension("migration-v\(version).sqlite3")
@@ -675,7 +694,10 @@ public actor SQLiteRunJournal: RunJournal {
     }
 
     private func validateSchema(_ db: SQLiteConnection) throws {
-        let version = Int32(try db.scalarInt("PRAGMA user_version") ?? 0)
+        guard let rawVersion = try db.scalarInt("PRAGMA user_version") else {
+            throw SQLiteStoreError.corrupt
+        }
+        let version = Int32(rawVersion)
         guard version == Self.schemaVersion else { throw SQLiteStoreError.unsupportedSchema(version) }
     }
 
@@ -696,6 +718,16 @@ public actor SQLiteRunJournal: RunJournal {
         do { try faultInjector?(point) }
         catch let error as SQLiteStoreError { throw error }
         catch { throw SQLiteStoreError.injected(point) }
+    }
+
+    private func sqliteText(_ value: String?) -> SQLiteValue {
+        guard let value else { return .null }
+        return .text(value)
+    }
+
+    private struct MessageProjectionCommit {
+        let message: JournalMessageReference
+        let outbox: ProjectionOutboxItem
     }
 
     private static let schemaTables = [

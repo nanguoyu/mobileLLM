@@ -34,7 +34,12 @@ final class SQLiteConnection: @unchecked Sendable {
         let filename = immutable ? url.absoluteString + "?immutable=1" : url.path
         let result = sqlite3_open_v2(filename, &database, flags, nil)
         guard result == SQLITE_OK, let database else {
-            let message = database.map { String(cString: sqlite3_errmsg($0)) } ?? "sqlite open failed"
+            let message: String
+            if let database {
+                message = String(cString: sqlite3_errmsg(database))
+            } else {
+                message = "sqlite open failed"
+            }
             if let database { sqlite3_close_v2(database) }
             throw SQLiteStoreError.unavailable(message)
         }
@@ -164,7 +169,12 @@ final class SQLiteConnection: @unchecked Sendable {
         case SQLITE_FULL: return .diskFull
         case SQLITE_CORRUPT, SQLITE_NOTADB: return .corrupt
         default:
-            let message = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "SQLite error \(result)"
+            let message: String
+            if let handle {
+                message = String(cString: sqlite3_errmsg(handle))
+            } else {
+                message = "SQLite error \(result)"
+            }
             return .unavailable(message)
         }
     }
