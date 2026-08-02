@@ -57,6 +57,7 @@ jobs:
       matrix:
         package:
           - AgentContracts
+          - AgentRuntime
           - AgentSandboxAPI
     steps:
       - name: Checkout full history
