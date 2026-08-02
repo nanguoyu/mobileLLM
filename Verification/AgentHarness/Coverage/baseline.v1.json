@@ -3,13 +3,13 @@
   "schemaVersion": 1,
   "documentID": "AH-COVERAGE-BASELINE-V1",
   "documentType": "baseline",
-  "baselineCapturedAtCommit": "5bf8b9f5e1852da2b312805fb36895ac38f71fb6",
+  "baselineCapturedAtCommit": "26610a83112bdf08392960009842fd6741ec3193",
   "baselineStatus": "pending-first-measurement",
   "releaseGate": "blocked-until-established",
   "entries": [
     { "scope": "AgentContracts", "status": "measured", "linePercent": 93.50737413120868, "functionPercent": 95.67164179104478, "reason": "Formal SwiftPM/LLVM evidence from the first committed AgentContracts implementation." },
     { "scope": "AgentRuntime", "status": "target-not-yet-present", "linePercent": null, "functionPercent": null, "reason": "The target does not exist at the pre-implementation baseline commit." },
-    { "scope": "AgentSandboxAPI", "status": "target-not-yet-present", "linePercent": null, "functionPercent": null, "reason": "The target does not exist at the pre-implementation baseline commit; public contract coverage remains a semantic gate." },
-    { "scope": "changed-agent-harness-lines-and-adapters", "status": "measured", "linePercent": 94.52465779111195, "functionPercent": 95.45454545454545, "reason": "Formal changed-source evidence against the pre-implementation merge base for the first AgentContracts implementation." }
+    { "scope": "AgentSandboxAPI", "status": "measured", "linePercent": 98.9938080495356, "functionPercent": 100, "reason": "Formal SwiftPM/LLVM evidence from the first committed AgentSandboxAPI implementation." },
+    { "scope": "changed-agent-harness-lines-and-adapters", "status": "measured", "linePercent": 98.96421845574388, "functionPercent": 100, "reason": "Formal changed-source evidence for the most recent Agent Harness production implementation checkpoint." }
   ]
 }
