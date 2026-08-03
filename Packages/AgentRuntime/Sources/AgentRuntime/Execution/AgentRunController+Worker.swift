@@ -861,10 +861,26 @@ extension AgentRunController {
             reported,
             structuredRepair: reservation.maximumUsage.quantities[.structuredRepairs] > 0
         )
-        let ledger = try facts.budgetLedger!.settling(
-            reservationID: reservation.id,
-            actualUsage: actual
-        )
+        let ledger: BudgetLedgerSnapshot
+        do {
+            ledger = try facts.budgetLedger!.settling(
+                reservationID: reservation.id,
+                actualUsage: actual
+            )
+        } catch {
+            // The contract error identifies only the reservation; record which dimensions actually
+            // exceeded their reserved ceilings so device diagnostics show the real budget story.
+            let over = BudgetDimension.allCases.compactMap { dimension -> String? in
+                guard actual.quantities[dimension] > reservation.maximumUsage.quantities[dimension]
+                else { return nil }
+                return "\(dimension.rawValue):\(reservation.maximumUsage.quantities[dimension])<\(actual.quantities[dimension])"
+            }
+            await logger.record(
+                code: "execution.model-settle-failed",
+                metadata: ["over": over.joined(separator: ",")]
+            )
+            throw error
+        }
         let outcomeID = ExecutionStableID.event(
             runID: runID,
             key: "model-outcome-\(stepID.description)"

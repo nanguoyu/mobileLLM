@@ -218,7 +218,11 @@ struct AppFrozenInputBuilder: Sendable {
         let budget = try AgentBudget.firstReleaseDefaults(
             contextTokensPerAttempt: effectiveContext,
             outputTokens: UInt64(snapshot.maxTokens),
-            peakMemoryBytes: 1_073_741_824
+            // Observed on device: the Gemma 4 E2B vision path peaks at ~1.30 GB (weights + mmproj +
+            // KV + image encode), so a 1 GiB run ceiling fails settlement even though the model
+            // answered correctly. 2 GiB covers every first-release curated model; it is a hard
+            // per-run ceiling, not a residency admission check.
+            peakMemoryBytes: 2_147_483_648
         )
         return try AgentRequest(
             id: AgentRequestID(rawValue: UUID()),
