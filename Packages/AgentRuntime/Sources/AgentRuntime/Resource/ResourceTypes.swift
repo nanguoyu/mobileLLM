@@ -68,10 +68,18 @@ public protocol ModelResidencyDriver: Sendable {
 public struct ModelResidencyFailure: Error, Hashable, Sendable {
     public let operation: ModelResidencyOperation
     public let selection: AgentModelSelection
+    /// Redacted underlying driver error text (diagnostics only; stable identities and file paths,
+    /// never prompts or external content).
+    public let detail: String?
 
-    public init(operation: ModelResidencyOperation, selection: AgentModelSelection) {
+    public init(
+        operation: ModelResidencyOperation,
+        selection: AgentModelSelection,
+        detail: String? = nil
+    ) {
         self.operation = operation
         self.selection = selection
+        self.detail = detail
     }
 }
 

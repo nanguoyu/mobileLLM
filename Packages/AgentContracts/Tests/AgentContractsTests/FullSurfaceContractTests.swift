@@ -5,6 +5,33 @@ import XCTest
 @_spi(AgentRuntime) @testable import AgentContracts
 
 final class FullSurfaceContractTests: XCTestCase {
+    func testRequestInstructionAllowsMultilineContentButRejectsOtherControls() throws {
+        let fixture = try sandboxFixture()
+        func makeRequest(instruction: String) throws -> AgentRequest {
+            try AgentRequest(
+                id: TestValues.id(AgentRequestIDDomain.self, 601),
+                runID: TestValues.id(AgentRunIDDomain.self, 602),
+                conversationID: TestValues.id(ConversationIDDomain.self, 603),
+                userTurnID: TestValues.id(UserTurnIDDomain.self, 604),
+                role: "primary",
+                instruction: instruction,
+                outputRequirement: .text,
+                modelPolicy: try modelPolicy(),
+                capabilityCeiling: RunCapabilityCeiling(authority: fixture.authority),
+                budget: fixture.parentBudget,
+                provenance: AgentRequestProvenance(source: .user)
+            )
+        }
+
+        let multiline = "line one\nline two\ttabbed\r\nlast"
+        XCTAssertEqual(try makeRequest(instruction: multiline).instruction, multiline)
+        XCTAssertThrowsError(try makeRequest(instruction: "bad\u{01}control"))
+        XCTAssertThrowsError(try makeRequest(instruction: "   \n  "))
+        XCTAssertThrowsError(
+            try makeRequest(instruction: String(repeating: "x", count: 256 * 1_024 + 1))
+        )
+    }
+
     func testCompleteAgentRequestAndResultSurfacesRoundTrip() throws {
         let fixture = try sandboxFixture()
         let schema = try JSONSchemaDocument(root: .object([

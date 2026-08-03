@@ -108,6 +108,9 @@ class DeviceE2ETestCase: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["MOBILELLM_DEVICE_E2E"] = "1"
         app.launchEnvironment["MOBILELLM_DEVICE_E2E_FIXTURE"] = visionFixture ? "1" : "0"
+        // Long-form device tests measure engine behavior, not the cooling duty cycle: the harness
+        // opts out of cooperative thermal pacing (production is unaffected).
+        app.launchEnvironment["MOBILELLM_DISABLE_THERMAL"] = "1"
         activeApp = app
         app.launch()
 
@@ -305,6 +308,21 @@ class DeviceE2ETestCase: XCTestCase {
                 attachDiagnostics(app, name: "generation-failed-\(model.modelID)")
                 throw DeviceE2EHarnessError.precondition("\(model.displayName) committed a failed/empty reply")
             }
+            // The agent runtime surfaces failures in its own projection panel; detect that state
+            // directly so a failed run fails fast with full diagnostics instead of waiting out the
+            // generation deadline.
+            let agentDiagnostics = diagnosticValue("device-e2e.agent", in: app)
+            if agentDiagnostics.contains("run=failed")
+                || agentDiagnostics.contains("run=cancelled")
+            {
+                // Let the diagnostics overlay's 1s poll pick up the worker log before reading.
+                Thread.sleep(forTimeInterval: 3)
+                let finalDiagnostics = diagnosticValue("device-e2e.agent", in: app)
+                attachDiagnostics(app, name: "agent-run-failed-\(model.modelID)")
+                throw DeviceE2EHarnessError.precondition(
+                    "\(model.displayName) agent run failed; diagnostics: \(finalDiagnostics)"
+                )
+            }
             if app.buttons.matching(identifier: "Copy answer").count > copyCount,
                statsQuery.count > statsCount,
                !app.buttons["Stop"].exists {
@@ -416,8 +434,23 @@ class DeviceE2ETestCase: XCTestCase {
                             "Couldn't generate a reply", "The model didn't reply")
             ).firstMatch
             if failure.exists {
+                Thread.sleep(forTimeInterval: 3)
+                let finalDiagnostics = diagnosticValue("device-e2e.agent", in: app)
                 attachDiagnostics(app, name: "manual-generation-failed")
-                throw DeviceE2EHarnessError.precondition("Model committed an empty/failed reply")
+                throw DeviceE2EHarnessError.precondition(
+                    "Model committed an empty/failed reply; diagnostics: \(finalDiagnostics)"
+                )
+            }
+            let agentDiagnostics = diagnosticValue("device-e2e.agent", in: app)
+            if agentDiagnostics.contains("run=failed")
+                || agentDiagnostics.contains("run=cancelled")
+            {
+                Thread.sleep(forTimeInterval: 3)
+                let finalDiagnostics = diagnosticValue("device-e2e.agent", in: app)
+                attachDiagnostics(app, name: "manual-agent-run-failed")
+                throw DeviceE2EHarnessError.precondition(
+                    "agent run failed during manual generation; diagnostics: \(finalDiagnostics)"
+                )
             }
             Thread.sleep(forTimeInterval: 0.5)
         }

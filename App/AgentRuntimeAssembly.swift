@@ -89,14 +89,22 @@ public struct AgentRunRequestSnapshot: Sendable {
 /// Shared builder used by both the request builder (submission) and the input freezer (recovery).
 /// Both paths produce the exact same immutable snapshot for one request.
 struct AppFrozenInputBuilder: Sendable {
-    let providerID: AgentModelProviderID
     let capabilityVersion: SemanticVersion
+
+    /// Stable provider identity for one exact (model, variant) registration. The request builder and
+    /// the app assembly MUST derive it the same way or the runtime cannot resolve the pinned provider.
+    static func providerID(model: LLMModel, variant: LLMVariant) throws -> AgentModelProviderID {
+        try AgentModelProviderID(
+            "local.mobilellm.\(model.id).\(variant.id.sanitizedProviderComponent)"
+                .prefix(120).description
+        )
+    }
 
     func registration(
         snapshot: AgentRunRequestSnapshot
     ) throws -> LocalModelRegistration {
         try LocalModelRegistration(
-            providerID: providerID,
+            providerID: try Self.providerID(model: snapshot.model, variant: snapshot.variant),
             capabilityVersion: capabilityVersion,
             model: snapshot.model,
             variant: snapshot.variant,
@@ -448,6 +456,8 @@ public final class AgentRuntimeAssembly {
     public let repository: SQLiteRunJournal
     public let artifactStore: ContentAddressedArtifactStore
     public let executor: DurableAgentExecutor
+    /// Bounded redacted operational log (diagnostics only; never persisted as user history).
+    public let diagnosticLogger: AgentDiagnosticLogger
 
     /// Debug-only assembly diagnostics; never part of the product's user history.
     nonisolated public static func logger(_ message: String) {
@@ -490,20 +500,18 @@ public final class AgentRuntimeAssembly {
             policyVersion: 1,
             sanitizationValidator: sanitizer
         )
+        let diagnosticLogger = AgentDiagnosticLogger()
 
         let capabilityVersion = SemanticVersion("1.0.0")!
         let registrations = try LLMCatalog.all.flatMap { model -> [LocalModelRegistration] in
             try model.variants.map { variant in
                 try LocalModelRegistration(
-                    providerID: try AgentModelProviderID(
-                        "local.mobilellm.\(model.id).\(variant.id.sanitizedProviderComponent)"
-                            .prefix(120).description
-                    ),
+                    providerID: try AppFrozenInputBuilder.providerID(model: model, variant: variant),
                     capabilityVersion: capabilityVersion,
                     model: model,
                     variant: variant,
                     weightsDirectory: ModelDownloader(downloadBase: downloadBase)
-                        .localURL(repoId: variant.id)
+                        .localURL(repoId: variant.source.huggingFaceRepo)
                 )
             }
         }
@@ -524,7 +532,6 @@ public final class AgentRuntimeAssembly {
         let providerCatalog = try StaticAgentModelProviderCatalog(providers: providers)
         let toolCatalog = try AppToolCatalog(enabledLocalToolNames: AppToolCatalog.localToolNames)
         let frozenBuilder = AppFrozenInputBuilder(
-            providerID: try AgentModelProviderID("local.mobilellm"),
             capabilityVersion: capabilityVersion
         )
         let attachmentDirectory = conversationDirectory
@@ -551,8 +558,10 @@ public final class AgentRuntimeAssembly {
             tools: toolCatalog,
             policyEngine: policyEngine,
             sanitizer: sanitizer,
-            residencyDriver: residencyDriver
+            residencyDriver: residencyDriver,
+            logger: diagnosticLogger
         )
+        self.diagnosticLogger = diagnosticLogger
         runStore = AgentRunStore(
             executor: executor,
             requestBuilder: builder,
@@ -561,24 +570,40 @@ public final class AgentRuntimeAssembly {
     }
 }
 
-private final class AppArtifactNames: @unchecked Sendable {
-    private let lock = NSLock()
-    private var counter = 0
+/// Bounded in-memory operational log for device diagnostics. Codes and metadata are redacted by the
+/// runtime before recording; nothing here is user history.
+public struct AgentDiagnosticEntry: Sendable {
+    public let code: String
+    public let metadata: [String: String]
 
+    public init(code: String, metadata: [String: String]) {
+        self.code = code
+        self.metadata = metadata
+    }
+}
+
+public actor AgentDiagnosticLogger: AgentExecutionLogging {
+    private var entries: [AgentDiagnosticEntry] = []
+
+    public func record(code: String, metadata: [String: String]) async {
+        entries.append(AgentDiagnosticEntry(code: code, metadata: metadata))
+        if entries.count > 24 { entries.removeFirst(entries.count - 24) }
+    }
+
+    public func snapshot() -> [AgentDiagnosticEntry] {
+        entries
+    }
+}
+
+private final class AppArtifactNames: @unchecked Sendable {
     func nextID() -> ArtifactID {
-        lock.withLock {
-            counter += 1
-            return ArtifactID(rawValue: UUID(
-                uuidString: String(format: "00000000-0000-4000-8000-%012x", counter)
-            )!)
-        }
+        // Random identities: a process-lifetime counter would collide with durable artifact records
+        // after a relaunch (the content-addressed store persists ids in its index).
+        ArtifactID(rawValue: UUID())
     }
 
     func nextName() -> String {
-        lock.withLock {
-            counter += 1
-            return "agent-artifact-\(counter)"
-        }
+        "agent-artifact-\(UUID().uuidString)"
     }
 }
 

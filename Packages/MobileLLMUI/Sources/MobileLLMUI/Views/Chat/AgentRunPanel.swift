@@ -75,9 +75,6 @@ struct AgentRunPanel: View {
                 if run.state == .waitingForReconciliation, let invocation = run.blockingReason {
                     reconciliationCard(invocation, run: run)
                 }
-                if !run.provisionalText.isEmpty || run.state == .generating || run.state == .synthesizing {
-                    provisionalOutput(run)
-                }
                 controls(run)
             }
             .padding(Theme.Space.md)
@@ -156,7 +153,7 @@ struct AgentRunPanel: View {
     }
 
     private func activitySubtitle(_ run: AgentRunPresentation) -> String {
-        if !run.provisionalText.isEmpty { return "Typing…" }
+        if !run.isTerminal, !run.provisionalText.isEmpty { return "Typing…" }
         switch run.blockingReason {
         case .approval(let id): return "Approve or deny below"
         case .userInput: return "Reply below"
@@ -195,12 +192,20 @@ struct AgentRunPanel: View {
     }
 
     private func stepIcon(_ step: AgentRunStep) -> some View {
+        stepIcon(step, terminal: run?.isTerminal ?? false)
+    }
+
+    private func stepIcon(_ step: AgentRunStep, terminal: Bool) -> some View {
         Group {
             switch step.status {
             case .succeeded: Image(systemName: "checkmark").foregroundStyle(Theme.fitGreen)
             case .failed: Image(systemName: "xmark").foregroundStyle(Theme.danger)
             case .uncertain: Image(systemName: "questionmark").foregroundStyle(Theme.fitAmber)
             case .waiting: Image(systemName: "hourglass").foregroundStyle(Theme.accent)
+            case .running where terminal:
+                // A committed terminal event settles every in-flight step; spinners after "Completed"
+                // would contradict the visible outcome.
+                Image(systemName: "checkmark").foregroundStyle(Theme.fitGreen)
             case .running: ProgressView().controlSize(.mini).tint(Theme.accent)
             case .pending: Image(systemName: "circle.dashed").foregroundStyle(Theme.textTertiary)
             }
@@ -333,27 +338,6 @@ struct AgentRunPanel: View {
 
     // MARK: Provisional output
 
-    private func provisionalOutput(_ run: AgentRunPresentation) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            if !run.reasoningText.isEmpty {
-                Text("Reasoning…")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Theme.textTertiary)
-            }
-            Text(run.provisionalText.isEmpty ? "Working…" : run.provisionalText)
-                .font(.subheadline)
-                .foregroundStyle(Theme.textSecondary)
-                .textSelection(.enabled)
-            Label("Not final — the agent is still working.", systemImage: "ellipsis.circle")
-                .font(.caption2)
-                .foregroundStyle(Theme.textTertiary)
-        }
-        .padding(Theme.Space.sm)
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-        .accessibilityElement(children: .combine)
-    }
-
     // MARK: Controls
 
     @ViewBuilder
@@ -370,13 +354,8 @@ struct AgentRunPanel: View {
                     }
                     .buttonStyle(StudioButtonStyle(.secondary))
                     .accessibilityLabel("Pause run")
-                    Button {
-                        Task { await store.cancel(conversationID: conversationID) }
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(StudioButtonStyle(.secondary))
-                    .accessibilityLabel("Stop run")
+                    // Stop lives on the composer's Send↔Stop button; duplicating it here would
+                    // present two identical controls for one action.
                 } else if run.isResumable {
                     Button {
                         Task { await store.resume(conversationID: conversationID) }
@@ -385,15 +364,6 @@ struct AgentRunPanel: View {
                     }
                     .buttonStyle(StudioButtonStyle(.primary))
                     .accessibilityLabel("Resume run")
-                }
-                if !run.isTerminal && run.state != .waitingForReconciliation {
-                    Button(role: .destructive) {
-                        Task { await store.cancel(conversationID: conversationID) }
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(StudioButtonStyle(.secondary))
-                    .accessibilityLabel("Stop run")
                 }
             }
         }

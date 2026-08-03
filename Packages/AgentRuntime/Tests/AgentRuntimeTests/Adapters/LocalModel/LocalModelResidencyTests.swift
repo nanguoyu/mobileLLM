@@ -221,6 +221,55 @@ final class LocalModelResidencyTests: XCTestCase {
         _ = try await loadTask.value
     }
 
+    func testSingleDriverServesMultipleProvidersWithExactPerSelectionCapabilities() async throws {
+        let engine = LocalAdapterScriptedEngine()
+        let version = SemanticVersion("1.0.0")!
+        let bonsai = LLMCatalog.bonsai8b
+        let gemma = LLMCatalog.gemma4E2B
+        let bonsaiRegistration = try LocalModelRegistration(
+            providerID: try AgentModelProviderID("local.multi.bonsai"),
+            capabilityVersion: version,
+            model: bonsai,
+            variant: bonsai.defaultVariantValue,
+            weightsDirectory: URL(fileURLWithPath: "/tmp/mobilellm-multi-bonsai")
+        )
+        let gemmaRegistration = try LocalModelRegistration(
+            providerID: try AgentModelProviderID("local.multi.gemma"),
+            capabilityVersion: version,
+            model: gemma,
+            variant: gemma.defaultVariantValue,
+            weightsDirectory: URL(fileURLWithPath: "/tmp/mobilellm-multi-gemma")
+        )
+        let driver = try LLMCoreModelResidencyDriver(
+            engine: engine,
+            registrations: [bonsaiRegistration, gemmaRegistration]
+        )
+        let bonsaiProvider = try LocalModelProvider(
+            descriptor: AgentModelProviderDescriptor(
+                id: bonsaiRegistration.selection.providerID,
+                adapterVersion: version,
+                capabilityVersion: version,
+                location: .onDevice
+            ),
+            residencyDriver: driver
+        )
+        let gemmaProvider = try LocalModelProvider(
+            descriptor: AgentModelProviderDescriptor(
+                id: gemmaRegistration.selection.providerID,
+                adapterVersion: version,
+                capabilityVersion: version,
+                location: .onDevice
+            ),
+            residencyDriver: driver
+        )
+
+        let bonsaiCaps = try await bonsaiProvider.capabilities(for: bonsaiRegistration.selection)
+        let gemmaCaps = try await gemmaProvider.capabilities(for: gemmaRegistration.selection)
+        XCTAssertEqual(bonsaiCaps, bonsaiRegistration.capabilities)
+        XCTAssertEqual(gemmaCaps, gemmaRegistration.capabilities)
+        XCTAssertNotEqual(bonsaiCaps.maximumContextTokens, gemmaCaps.maximumContextTokens)
+    }
+
     func testCancellingCallerPropagatesToDecodeAndReleasesGenerationLane() async throws {
         let harness = try LocalAdapterHarness.make(
             scripts: [LocalEngineScript([

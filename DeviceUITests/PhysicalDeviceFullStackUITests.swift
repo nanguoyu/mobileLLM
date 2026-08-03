@@ -119,7 +119,9 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
 
     @MainActor
     func test03GemmaExactOutputMultiTurnAndNoThinkingControl() throws {
-        let app = try prepare(.gemma, tools: false, selected: [], thinking: true)
+        // Gemma 4 E2B is catalogued non-thinking; the agent runtime honestly rejects a reasoning
+        // request for it, so the no-thinking control test runs with thinking disabled.
+        let app = try prepare(.gemma, tools: false, selected: [], thinking: false)
         try openChatOptions(in: app)
         let thinking = app.descendants(matching: .any).matching(
             NSPredicate(format: "label == %@", "Thinking")
@@ -151,7 +153,9 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         let stats = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
         let field = app.textFields["composer.field"]
         field.tap()
-        field.typeText(marker + "\nSolve this carefully: find the smallest positive integer divisible by every integer from 1 through 18, and explain the prime-factor reasoning before the final number.")
+        field.typeText(
+            marker + "\nThink step by step: multiply 123 by 4, and explain each step before the final number."
+        )
         app.buttons["Send"].tap()
         let started = Date()
 
@@ -486,6 +490,124 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         XCTAssertTrue(app.descendants(matching: .any).matching(
             NSPredicate(format: "label == %@", "Active skill: Concise Mode")
         ).firstMatch.waitForExistence(timeout: 20), "conversation lost its selected skill after relaunch")
+    }
+
+    @MainActor
+    func test26AgentRuntimeWiresRunsAndRecoveryInbox() throws {
+        let app = try prepare(.bonsai, tools: false, selected: [], thinking: false)
+
+        // The production app must be on the durable agent runtime path (rollout-on), not the
+        // legacy in-process loop. The diagnostics surface the exact assembly reason on failure.
+        let initial = diagnosticValue("device-e2e.agent", in: app)
+        XCTAssertTrue(
+            initial.contains("enabled=true"),
+            "Agent runtime must be wired on device; diagnostics: \(initial)"
+        )
+        if initial.contains("error="), !initial.contains("error=none") {
+            XCTFail("Agent runtime assembly failed on device: \(initial)")
+        }
+
+        // A send must produce a durable run projection and a committed assistant answer. Drive the
+        // send manually so a generation failure reports the complete agent diagnostics instead of
+        // the generic UI message.
+        let field = app.textFields["composer.field"]
+        guard field.waitForExistence(timeout: 20) else {
+            throw DeviceE2EHarnessError.precondition("Composer missing before agent send")
+        }
+        field.tap()
+        field.typeText("Reply with exactly: AGENT-ON-DEVICE")
+        let sendButton = app.buttons["Send"]
+        guard waitForEnabled(sendButton, timeout: 20) else {
+            throw DeviceE2EHarnessError.precondition("Send did not enable")
+        }
+        sendButton.tap()
+        let deadline = Date().addingTimeInterval(DeviceTestModel.bonsai.generationTimeout)
+        var committed = false
+        while Date() < deadline {
+            if app.staticTexts["Couldn't generate a reply"].exists
+                || app.staticTexts["The model didn't reply"].exists
+            {
+                let diagnostics = diagnosticValue("device-e2e.agent", in: app)
+                XCTFail("agent generation failed; diagnostics: \(diagnostics)")
+                attachDiagnostics(app, name: "agent-generation-failed")
+                return
+            }
+            if app.buttons.matching(identifier: "Copy answer").count > 0 {
+                committed = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        if !committed {
+            let diagnostics = diagnosticValue("device-e2e.agent", in: app)
+            XCTFail("agent run did not commit; diagnostics: \(diagnostics)")
+            attachDiagnostics(app, name: "agent-run-stalled")
+            return
+        }
+        XCTAssertTrue(committed, "agent run did not commit an answer within the deadline")
+        let after = diagnosticValue("device-e2e.agent", in: app)
+        XCTAssertFalse(after.contains("failure=The"), "run failure surfaced: \(after)")
+        XCTAssertTrue(
+            after.contains("run=completed"),
+            "agent run must project completed; diagnostics: \(after)"
+        )
+
+        // A neutral relaunch must not auto-resume, and a completed run must not sit in the
+        // recovery inbox (spec §9.4 / §20).
+        try relaunch(app)
+        let relaunched = diagnosticValue("device-e2e.agent", in: app)
+        XCTAssertTrue(
+            relaunched.contains("recoverable=0"),
+            "completed runs must not surface as recoverable; diagnostics: \(relaunched)"
+        )
+    }
+
+    @MainActor
+    func test27AgentRuntimeDiagnosticProbe() throws {
+        let app = try prepare(.bonsai, tools: false, selected: [], thinking: true)
+        let field = app.textFields["composer.field"]
+        guard field.waitForExistence(timeout: 20) else {
+            throw DeviceE2EHarnessError.precondition("Composer missing before agent probe")
+        }
+        field.tap()
+        field.typeText(
+            "E2E_BONSAI_THINK_PROBE\n"
+                + "Solve this carefully: find the smallest positive integer divisible by every integer "
+                + "from 1 through 18, and explain the prime-factor reasoning before the final number."
+        )
+        let sendButton = app.buttons["Send"]
+        guard waitForEnabled(sendButton, timeout: 20) else {
+            throw DeviceE2EHarnessError.precondition("Send did not enable")
+        }
+        sendButton.tap()
+        // Short probe: the worker either commits or fails quickly; read the diagnostics either way.
+        let deadline = Date().addingTimeInterval(300)
+        var committed = false
+        var failed = false
+        while Date() < deadline {
+            if app.buttons.matching(identifier: "Copy answer").count > 0 {
+                committed = true
+                break
+            }
+            let diagnostics = diagnosticValue("device-e2e.agent", in: app)
+            if diagnostics.contains("run=failed") || diagnostics.contains("run=cancelled") {
+                failed = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 1)
+        }
+        if failed || !committed {
+            // Let the diagnostics overlay's 1s poll pick up the worker log before reading.
+            Thread.sleep(forTimeInterval: 3)
+        }
+        let diagnostics = diagnosticValue("device-e2e.agent", in: app)
+        if committed {
+            XCTAssertTrue(diagnostics.contains("run=completed"), "probe diagnostics: \(diagnostics)")
+        } else if failed {
+            XCTFail("agent probe failed; diagnostics: \(diagnostics)")
+        } else {
+            XCTFail("agent probe stalled; diagnostics: \(diagnostics)")
+        }
     }
 
     // This method is deliberately last in the serial suite. It uses only the public, chat-only and

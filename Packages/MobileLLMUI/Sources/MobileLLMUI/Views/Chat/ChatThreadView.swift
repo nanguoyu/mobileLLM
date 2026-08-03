@@ -124,7 +124,7 @@ struct ChatThreadView: View {
                         }
                         if let agentRuns,
                            let run = agentRuns.presentation(for: convo.id),
-                           !run.steps.isEmpty || !run.isTerminal
+                           run.needsPanel
                         {
                             AgentRunPanel(store: agentRuns, conversationID: convo.id)
                                 .id("agent-run-\(run.runID.description)")

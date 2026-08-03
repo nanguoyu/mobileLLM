@@ -59,8 +59,14 @@ public final class AgentRunStore {
     public var onAnswer: (@MainActor (UUID, UUID, String, String?, [AgentRunStep]) -> Void)?
     /// Invoked when a run fails terminally without an answer.
     public var onRunFailed: (@MainActor (UUID, UUID, String) -> Void)?
+    /// Invoked when a run terminates without a committed answer (cancelled or failed), so the chat
+    /// surface can settle the streaming row instead of leaving it live forever.
+    public var onRunTerminated: (@MainActor (UUID, UUID, AgentTerminalReason, String?) -> Void)?
     /// Invoked when a run first becomes visible (submission accepted).
     public var onRunStarted: (@MainActor (UUID, UUID) -> Void)?
+    /// Live-only token activity (reasoning/answer deltas) so the composer's streaming surface can
+    /// render the same thinking/answering phases the legacy loop produced.
+    public var onEphemeral: (@MainActor (UUID, AgentEphemeralDeltaKind, String) -> Void)?
 
     private let executor: any AgentExecutor
     private let requestBuilder: any AgentRunRequestBuilding
@@ -329,16 +335,30 @@ public final class AgentRunStore {
             run = run.replacing(
                 state: status.state,
                 terminalReason: status.terminalReason,
-                blockingReason: status.blockingReason,
-                failureMessage: status.failure?.safeMessage
+                blockingReason: .some(status.blockingReason),
+                failureMessage: Self.describe(status.failure)
             )
-            steps.append(step(
-                kind: stateStepKind(status.state),
-                title: stateTitle(status.state),
-                detail: status.failure?.safeMessage ?? "",
-                status: stateStepStatus(status.state),
-                sequence: record.sequence
-            ))
+            // Steps are action lifecycles: every state advance settles previously in-flight or
+            // waiting actions, then the current status contributes a step only when it describes a
+            // user-meaningful action (tools, approvals, questions, waits, terminal outcomes).
+            let settled = steps.map { entry -> AgentRunStep in
+                guard entry.status == .running || entry.status == .waiting
+                        || entry.status == .pending
+                else { return entry }
+                return AgentRunStep(
+                    id: entry.id,
+                    kind: entry.kind,
+                    title: entry.title,
+                    detail: entry.detail,
+                    status: .succeeded,
+                    sequence: entry.sequence
+                )
+            }
+            if let semantic = Self.semanticStep(for: status, sequence: record.sequence) {
+                steps = settled + [semantic]
+            } else {
+                steps = settled
+            }
         case .approvalRequested(let request):
             let plan = request.prepared.plan
             run = run.replacing(
@@ -361,7 +381,10 @@ public final class AgentRunStore {
                 sequence: record.sequence
             ))
         case .approvalDecided(let receipt):
-            run = run.replacing(pendingApproval: nil)
+            run = run.replacing(
+                blockingReason: .some(nil),
+                pendingApproval: .some(nil)
+            )
             steps.append(step(
                 kind: .approval,
                 title: receipt.decision == .approved ? "Approved" : "Denied",
@@ -383,7 +406,10 @@ public final class AgentRunStore {
             ))
         case .userInputResponseCommitted(let requestID, _):
             if run.pendingUserInput?.id == requestID {
-                run = run.replacing(pendingUserInput: nil)
+                run = run.replacing(
+                    blockingReason: .some(nil),
+                    pendingUserInput: .some(nil)
+                )
             }
             steps.append(step(
                 kind: .userInput,
@@ -394,8 +420,8 @@ public final class AgentRunStore {
         case .toolIntentRecorded(let prepared):
             steps.append(step(
                 kind: .toolCall,
-                title: prepared.plan.subjectID,
-                detail: prepared.plan.canonicalArguments?.string ?? "",
+                title: Self.toolDisplayName(prepared.plan.subjectID),
+                detail: Self.toolArgumentSummary(prepared.plan.canonicalArguments?.string),
                 status: .running,
                 sequence: record.sequence
             ))
@@ -425,25 +451,17 @@ public final class AgentRunStore {
                     sequence: steps[index].sequence
                 )
             }
-        case .modelAttemptOutcome(let outcome):
-            let status: AgentRunStep.Status
-            switch outcome {
-            case .completed: status = .succeeded
-            case .failed: status = .failed
-            case .interrupted: status = .failed
-            }
-            steps.append(step(
-                kind: .modelAttempt,
-                title: "Model pass",
-                status: status,
-                sequence: record.sequence
-            ))
+        case .modelAttemptOutcome:
+            // Token activity is rendered by the streaming row; a per-pass step is internal noise.
+            break
         case .terminal(let result):
             run = run.replacing(
                 state: result.status.state,
                 terminalReason: result.status.terminalReason,
+                blockingReason: .some(nil),
                 finalText: result.answer?.text,
-                failureMessage: result.status.failure?.safeMessage
+                failureMessage: Self.describe(result.status.failure),
+                usage: result.usage
             )
             steps.append(step(
                 kind: .finalization,
@@ -459,6 +477,11 @@ public final class AgentRunStore {
                     reasoning: run.reasoningText,
                     steps: steps
                 )
+            } else if let assistantMessageID = assistantMessageIDs[conversationID] {
+                let reason = result.status.terminalReason ?? .internalFailure
+                let message = result.status.failure?.safeMessage
+                    ?? "The run ended without a committed answer."
+                onRunTerminated?(conversationID, assistantMessageID, reason, message)
             }
         case .diagnostic(let failure):
             steps.append(step(
@@ -468,34 +491,11 @@ public final class AgentRunStore {
                 status: failure.classification == .potentiallySideEffecting ? .uncertain : .failed,
                 sequence: record.sequence
             ))
-        case .runInputSnapshotCommitted:
-            steps.append(step(
-                kind: .preparation,
-                title: "Run inputs frozen",
-                status: .succeeded,
-                sequence: record.sequence
-            ))
-        case .compiledManifestCommitted:
-            steps.append(step(
-                kind: .preparation,
-                title: "Context compiled",
-                status: .succeeded,
-                sequence: record.sequence
-            ))
-        case .validatedActionCommitted:
-            steps.append(step(
-                kind: .modelAttempt,
-                title: "Action validated",
-                status: .succeeded,
-                sequence: record.sequence
-            ))
-        case .artifactCommitted:
-            steps.append(step(
-                kind: .finalization,
-                title: "Artifact saved",
-                status: .succeeded,
-                sequence: record.sequence
-            ))
+        case .runInputSnapshotCommitted, .compiledManifestCommitted,
+             .validatedActionCommitted, .artifactCommitted:
+            // Internal pipeline boundaries are not user actions; the UI stays focused on what the
+            // agent is doing (tools, approvals, questions, waits), not how the runtime is plumbed.
+            break
         case .usageUpdated:
             break
         }
@@ -503,14 +503,20 @@ public final class AgentRunStore {
     }
 
     private func applyEphemeral(_ envelope: AgentEphemeralEventEnvelope, conversationID: UUID) {
-        guard var run = runs[conversationID] else { return }
+        guard var run = runs[conversationID], !run.isTerminal else {
+            // Live-only deltas that race in after the durable terminal event must never resurrect
+            // "still working" text over a committed answer.
+            return
+        }
         switch envelope.event {
         case .model(let event):
             switch event {
             case .visibleReasoningDelta(let delta):
                 run = run.replacing(reasoningText: run.reasoningText + delta)
+                onEphemeral?(conversationID, .reasoning, delta)
             case .provisionalAnswerDelta(let delta):
                 run = run.replacing(provisionalText: run.provisionalText + delta)
+                onEphemeral?(conversationID, .answer, delta)
             case .usage:
                 break
             case .provisionalAnswerResolved:
@@ -590,8 +596,8 @@ public final class AgentRunStore {
         run = run.replacing(
             state: status.state,
             terminalReason: status.terminalReason,
-            blockingReason: status.blockingReason,
-            failureMessage: status.failure?.safeMessage
+            blockingReason: .some(status.blockingReason),
+            failureMessage: Self.describe(status.failure)
         )
         runs[conversationID] = run
     }
@@ -614,46 +620,108 @@ public final class AgentRunStore {
         return bySequence.values.sorted { $0.sequence < $1.sequence }
     }
 
-    private func stateStepKind(_ state: AgentRunState) -> AgentRunStep.Kind {
-        switch state {
-        case .waitingForApproval: .approval
-        case .waitingForUser: .userInput
-        case .waitingForReconciliation: .reconciliation
-        case .completed, .failed, .cancelled: .finalization
-        case .generating, .synthesizing: .modelAttempt
-        case .executingTools: .toolCall
-        default: .preparation
+    /// One user-meaningful action step for a status that deserves one. Internal pipeline states
+    /// (preparing, waiting for the model, generating, validating, synthesizing) deliberately produce
+    /// no step: token activity is rendered by the streaming row, and plumbing stages are noise.
+    private static func semanticStep(
+        for status: AgentRunStatus,
+        sequence: UInt64
+    ) -> AgentRunStep? {
+        let step: AgentRunStep
+        switch status.state {
+        case .waitingForApproval:
+            step = AgentRunStep(
+                kind: .approval,
+                title: "Waiting for approval",
+                status: .waiting,
+                sequence: sequence
+            )
+        case .waitingForUser:
+            step = AgentRunStep(
+                kind: .userInput,
+                title: "Waiting for your answer",
+                status: .waiting,
+                sequence: sequence
+            )
+        case .waitingForReconciliation:
+            step = AgentRunStep(
+                kind: .reconciliation,
+                title: "External result uncertain",
+                status: .waiting,
+                sequence: sequence
+            )
+        case .paused:
+            step = AgentRunStep(
+                kind: .waiting,
+                title: "Paused",
+                status: .waiting,
+                sequence: sequence
+            )
+        case .waitingForForeground:
+            step = AgentRunStep(
+                kind: .waiting,
+                title: "Backgrounded — resume to continue",
+                status: .waiting,
+                sequence: sequence
+            )
+        case .completed:
+            step = AgentRunStep(
+                kind: .finalization,
+                title: "Completed",
+                status: .succeeded,
+                sequence: sequence
+            )
+        case .failed:
+            step = AgentRunStep(
+                kind: .finalization,
+                title: "Failed",
+                detail: status.failure?.safeMessage ?? "",
+                status: .failed,
+                sequence: sequence
+            )
+        case .cancelled:
+            step = AgentRunStep(
+                kind: .finalization,
+                title: "Stopped",
+                status: .failed,
+                sequence: sequence
+            )
+        case .created, .preparing, .waitingForModel, .generating, .validatingAction,
+             .executingTools, .synthesizing, .pausing:
+            return nil
         }
+        return step
     }
 
-    private func stateStepStatus(_ state: AgentRunState) -> AgentRunStep.Status {
-        switch state {
-        case .completed: .succeeded
-        case .failed, .cancelled: .failed
-        case .waitingForApproval, .waitingForUser, .paused, .waitingForForeground,
-             .waitingForReconciliation: .waiting
-        default: .running
-        }
+    /// "builtin.calculator" → "Using calculator": the visible action, not the internal subject id.
+    private static func toolDisplayName(_ subjectID: String) -> String {
+        let name = subjectID.split(separator: ".").last.map(String.init) ?? subjectID
+        return "Using \(name)"
     }
 
-    private func stateTitle(_ state: AgentRunState) -> String {
-        switch state {
-        case .created: "Run created"
-        case .preparing: "Preparing"
-        case .waitingForModel: "Waiting for model"
-        case .generating: "Generating"
-        case .validatingAction: "Validating action"
-        case .waitingForApproval: "Waiting for approval"
-        case .executingTools: "Running tools"
-        case .waitingForUser: "Waiting for you"
-        case .synthesizing: "Synthesizing"
-        case .pausing: "Pausing"
-        case .paused: "Paused"
-        case .waitingForForeground: "Waiting for foreground"
-        case .waitingForReconciliation: "Waiting to reconcile"
-        case .completed: "Completed"
-        case .failed: "Failed"
-        case .cancelled: "Cancelled"
-        }
+    private static func toolArgumentSummary(_ json: String?) -> String {
+        guard let json, !json.isEmpty else { return "" }
+        let compact = json
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return compact.count <= 120 ? compact : String(compact.prefix(117)) + "…"
     }
+
+    /// Redacted failure text including the typed reason when present, so device diagnostics show why
+    /// a run failed (e.g. "engine stream ended without usage statistics") rather than only the
+    /// generic safe message.
+    private static func describe(_ failure: AgentFailure?) -> String? {
+        guard let failure else { return nil }
+        if let reason = failure.details["reason"] {
+            return "\(failure.safeMessage) (\(reason))"
+        }
+        return failure.safeMessage
+    }
+
+}
+
+/// Discriminator for live-only token deltas forwarded to the chat streaming surface.
+public enum AgentEphemeralDeltaKind: Sendable {
+    case reasoning
+    case answer
 }

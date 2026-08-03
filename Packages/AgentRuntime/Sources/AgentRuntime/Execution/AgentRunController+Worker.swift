@@ -174,10 +174,23 @@ extension AgentRunController {
     }
 
     private static func redactedWorkerErrorDetails(_ error: Error) -> [String: String] {
-        guard let executionError = error as? AgentExecutionError,
-              case .internalInvariant(let detail) = executionError
-        else { return [:] }
-        return ["detail": detail]
+        if let executionError = error as? AgentExecutionError,
+           case .internalInvariant(let detail) = executionError
+        {
+            return ["detail": detail]
+        }
+        // Typed runtime errors carry only stable identities and safe messages — never prompts,
+        // tool arguments, or external content — so their case text is redaction-safe diagnostics.
+        if let resourceError = error as? ResourceArbiterError {
+            return ["detail": String(describing: resourceError)]
+        }
+        if let modelError = error as? LocalModelAdapterError {
+            return ["detail": String(describing: modelError)]
+        }
+        if let runtimeError = error as? AgentModelRuntimeError {
+            return ["detail": String(describing: runtimeError)]
+        }
+        return [:]
     }
 
     /// Derives recovery exclusively from the latest durable action and per-invocation facts.

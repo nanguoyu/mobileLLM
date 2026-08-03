@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 import XCTest
+import AgentContracts
+import AgentRuntime
 @testable import MobileLLMUI
 @testable import LLMCore
 
@@ -143,5 +145,116 @@ final class ChatStoreRegenerateEditTests: XCTestCase {
         XCTAssertNil(chat.streaming, "no generation starts")
         let stillThere = await store.attachmentData(ref.id)
         XCTAssertNotNil(stillThere, "no attachment is purged on a no-op edit")
+    }
+
+    // MARK: - agent-runtime routing
+
+    /// Retry (regenerate) must NOT fall back to the legacy in-process loop when the durable agent
+    /// runtime is attached: the composer's Stop targets the agent run, so a legacy retry would leave
+    /// Stop live forever (cancel reaches a stale run and no terminal event ever lands on the new row).
+    func testRegenerateRoutesThroughAgentRuntimeWhenAttached() async throws {
+        let (chat, _, box, dir) = makeAgentStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let u1 = Message(role: .user, answer: "first question")
+        let a1 = Message(role: .assistant, answer: "first answer", parentID: u1.id)
+        let convo = Conversation(modelID: model.id, variantID: model.defaultVariantValue.id,
+                                 messages: [u1, a1])
+        chat.conversations = [convo]
+        chat.activeID = convo.id
+
+        chat.regenerate(assistantMessageID: a1.id)
+        try await waitUntilIdle(chat)
+
+        XCTAssertEqual(box.submitted, ["first question"],
+                       "agent-mode regenerate must resubmit the parent turn through the durable runtime")
+        let msgs = try XCTUnwrap(chat.activeConversation?.messages)
+        XCTAssertEqual(msgs.count, 2)
+        XCTAssertEqual(msgs[1].role, .assistant)
+        XCTAssertNotEqual(msgs[1].id, a1.id)
+        XCTAssertEqual(msgs[1].parentID, u1.id)
+        XCTAssertEqual(msgs[1].emptyOutcome, .failed,
+                       "the rejected agent submission surfaces as a failed turn, not a legacy answer")
+    }
+
+    /// Edit-and-resend follows the same agent-runtime rule: the edited text must reach the durable
+    /// request builder, never the legacy engine loop.
+    func testEditAndResendRoutesThroughAgentRuntimeWhenAttached() async throws {
+        let (chat, _, box, dir) = makeAgentStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let u1 = Message(role: .user, answer: "original question")
+        let a1 = Message(role: .assistant, answer: "first answer", parentID: u1.id)
+        let convo = Conversation(modelID: model.id, variantID: model.defaultVariantValue.id,
+                                 messages: [u1, a1])
+        chat.conversations = [convo]
+        chat.activeID = convo.id
+
+        chat.editAndResend(userMessageID: u1.id, newText: "edited question")
+        try await waitUntilIdle(chat)
+
+        XCTAssertEqual(box.submitted, ["edited question"],
+                       "agent-mode edit must resubmit through the durable runtime")
+        let msgs = try XCTUnwrap(chat.activeConversation?.messages)
+        XCTAssertEqual(msgs.count, 2)
+        XCTAssertEqual(msgs[0].answer, "edited question")
+        XCTAssertEqual(msgs[1].parentID, u1.id)
+        XCTAssertEqual(msgs[1].emptyOutcome, .failed)
+    }
+
+    private func makeAgentStore() -> (ChatStore, ConversationStore, RecordingBox, URL) {
+        let (chat, store, _, dir) = makeStore()
+        let box = RecordingBox()
+        chat.attachAgentRuntime(AgentRunStore(
+            executor: ThrowingAgentExecutor(),
+            requestBuilder: RecordingAgentRunRequestBuilder(box: box)
+        ))
+        return (chat, store, box, dir)
+    }
+}
+
+/// Records every text the durable request builder is asked to submit (test-only).
+private final class RecordingBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _submitted: [String] = []
+
+    var submitted: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return _submitted
+    }
+
+    func append(_ text: String) {
+        lock.lock()
+        _submitted.append(text)
+        lock.unlock()
+    }
+}
+
+/// A request builder that records the text then refuses the submission, so the test can prove the
+/// agent path was taken without spinning up a full mock run.
+private struct RecordingAgentRunRequestBuilder: AgentRunRequestBuilding {
+    let box: RecordingBox
+
+    func buildSubmission(
+        conversationID: UUID,
+        userTurnID: UUID,
+        text: String,
+        imageRefs: [ImageRef]
+    ) async throws -> AgentRunSubmission {
+        box.append(text)
+        throw AgentExecutionError.internalInvariant("test builder unavailable")
+    }
+}
+
+private struct ThrowingAgentExecutor: AgentExecutor {
+    func submit(
+        _ request: AgentRequest,
+        commandID: AgentCommandID
+    ) async throws -> AgentExecutionHandleID {
+        throw AgentExecutionError.internalInvariant("test executor unavailable")
+    }
+
+    func attach(to id: AgentExecutionHandleID) async throws -> any AgentExecutionHandle {
+        throw AgentExecutionError.executionNotFound(id)
     }
 }

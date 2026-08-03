@@ -58,6 +58,17 @@ public protocol ThermalGoverning: Sendable {
 public final class ThermalGovernor: ThermalGoverning, @unchecked Sendable {
     public static let shared = ThermalGovernor()
 
+    /// Master switch for cooperative thermal pacing. Production stays enabled (the guard against
+    /// thermal shutdown); device-test harnesses disable it via launch environment so long-form
+    /// generation measures engine throughput instead of the cooling duty cycle.
+    ///
+    /// `nonisolated(unsafe)` is deliberate: this is process-lifetime configuration written once
+    /// before any generation task starts (App.init on the main thread, or a unit-test setup) and
+    /// only read afterwards from the generation loop. A lock would add per-decode-step contention
+    /// for a value that is never mutated concurrently; the escaping hatches are scoped to this
+    /// single flag, not to the governor's other state.
+    public nonisolated(unsafe) static var isPacingEnabled = true
+
     public typealias ThermalSource = @Sendable () -> ThermalSeverity
     public typealias PressureSource = @Sendable () -> MemoryPressure
     public typealias SleepFn = @Sendable (UInt64) async throws -> Void
@@ -183,6 +194,7 @@ public final class ThermalGovernor: ThermalGoverning, @unchecked Sendable {
     /// - Throws: `CancellationError` if cancelled while throttling; `ThermalError.pausedForHeat` if
     ///   the device stays `.critical` past the bounded cooling timeout.
     public func throttleIfNeeded(onCooling: (@Sendable () -> Void)? = nil) async throws {
+        guard Self.isPacingEnabled else { return }
         // Relieve memory pressure on the generation task (never from the dispatch handler).
         if currentPressure() >= .warning { clearCache() }
 

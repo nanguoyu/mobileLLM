@@ -115,7 +115,7 @@ final class ResourceArbiterCancellationInvariantTests: XCTestCase {
             .ownerMustQuiesce(runID: root.runID, reason: .memoryCritical)
         )
         await driver.failNext(.unload, selection: selection)
-        let expectedFailure = ModelResidencyFailure(operation: .unload, selection: selection)
+        let expectedFailure = ModelResidencyFailure(operation: .unload, selection: selection, detail: "scriptedFailure")
         let release = await arbiter.releaseRoot(root)
         XCTAssertEqual(release, .releasedWithCleanupFailure(expectedFailure))
 
@@ -162,7 +162,7 @@ final class ResourceArbiterCancellationInvariantTests: XCTestCase {
         let resumed = await driver.resumeNext(.cancelAndDrain, selection: first)
         XCTAssertTrue(resumed)
 
-        let expectedFailure = ModelResidencyFailure(operation: .unload, selection: first)
+        let expectedFailure = ModelResidencyFailure(operation: .unload, selection: first, detail: "scriptedFailure")
         await assertResourceFault(expectedFailure) { try await switchTask.value }
         await assertResourceFault(expectedFailure) { try await queued.value }
 

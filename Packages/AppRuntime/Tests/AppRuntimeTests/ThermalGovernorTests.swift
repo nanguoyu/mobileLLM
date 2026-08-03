@@ -90,4 +90,19 @@ final class ThermalGovernorTests: XCTestCase {
         try await g.throttleIfNeeded()
         XCTAssertGreaterThanOrEqual(clears.value, 1)
     }
+
+    /// The device-test opt-out must bypass every pacing path including critical pauses, so the
+    /// harness measures engine throughput instead of the cooling duty cycle.
+    func testPacingDisabledBypassesBackoffAndCacheClearing() async throws {
+        let sleeps = Counter(), clears = Counter()
+        let g = ThermalGovernor(thermalSource: { .critical },
+                                pressureSource: { .critical },
+                                sleep: { _ in sleeps.inc() },
+                                clearCache: { clears.inc() })
+        ThermalGovernor.isPacingEnabled = false
+        defer { ThermalGovernor.isPacingEnabled = true }
+        try await g.throttleIfNeeded()
+        XCTAssertEqual(sleeps.value, 0)
+        XCTAssertEqual(clears.value, 0)
+    }
 }

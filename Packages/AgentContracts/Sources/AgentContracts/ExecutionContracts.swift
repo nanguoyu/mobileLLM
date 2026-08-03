@@ -551,7 +551,7 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
         let normalizedLabels = Array(Set(labels)).sorted()
         try outputRequirement.validate()
         guard AgentWireValidation.isNonblankControlFree(role, maximumLength: 128),
-              AgentWireValidation.isNonblankControlFree(instruction, maximumLength: 256 * 1_024),
+              Self.isValidInstruction(instruction),
               Set(normalizedLabels.map(\.key)).count == normalizedLabels.count,
               Set(contextReferences).count == contextReferences.count,
               Set(artifactReferences.map(\.id)).count == artifactReferences.count
@@ -592,6 +592,16 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
         self.sandboxRequirement = sandboxRequirement
         self.labels = normalizedLabels
         self.provenance = provenance
+    }
+
+    /// User instructions are ordinary chat text: line breaks and tabs are legitimate content, while
+    /// other control characters and empty/oversized payloads remain rejected.
+    private static func isValidInstruction(_ value: String) -> Bool {
+        guard !value.isEmpty, value.utf8.count <= 256 * 1_024,
+              value == value.trimmingCharacters(in: .whitespacesAndNewlines)
+        else { return false }
+        let forbidden = CharacterSet.controlCharacters.subtracting(.whitespacesAndNewlines)
+        return !value.unicodeScalars.contains { forbidden.contains($0) }
     }
 
     /// Decodes and revalidates root/child attenuation, labels, artifacts, and sandbox budget.

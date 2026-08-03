@@ -597,7 +597,11 @@ actor ResourceArbiter {
             }
             return nil
         } catch {
-            return ModelResidencyFailure(operation: operation, selection: selection)
+            return ModelResidencyFailure(
+                operation: operation,
+                selection: selection,
+                detail: String(describing: error)
+            )
         }
     }
 

@@ -79,8 +79,8 @@ public struct RootView: View {
             NavigationStack {
                 ConversationListView(
                     chat: container.chat,
-                    agentRuns: container.agentRuns,
-                    onSelect: { _ in }
+                    onSelect: { _ in },
+                    agentRuns: container.agentRuns
                 )
                     .navigationTitle("Chat")
                     .navigationDestination(isPresented: hasActive) {

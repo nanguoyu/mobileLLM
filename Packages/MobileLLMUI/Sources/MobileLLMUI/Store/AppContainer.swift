@@ -30,6 +30,10 @@ public final class AppContainer {
     /// The durable agent runtime projection and command surface (spec §20). Nil keeps the legacy
     /// in-process loop (tests/previews and the rollout-off state).
     public private(set) var agentRuns: AgentRunStore?
+    /// When the agent runtime failed to assemble, the reason (rollout-off state stays functional).
+    public private(set) var agentRuntimeError: String?
+    /// App-assembled hook that returns the bounded redacted agent-runtime log (diagnostics only).
+    public var agentDiagnosticSnapshot: (@MainActor () async -> String)?
 
     /// A one-shot navigation intent the shell (RootView) honors and clears — e.g. a "not installed" error
     /// banner jumping to Models. The container can't push tabs itself (RootView owns the section state).
@@ -126,6 +130,12 @@ public final class AppContainer {
     public func attachAgentRuns(_ agentRuns: AgentRunStore) {
         self.agentRuns = agentRuns
         chat.attachAgentRuntime(agentRuns)
+    }
+
+    /// Records why the agent runtime could not be assembled (diagnostics only; the legacy loop
+    /// remains the fallback).
+    public func recordAgentRuntimeFailure(_ error: Error) {
+        agentRuntimeError = error.localizedDescription
     }
 
     /// Activate the (model, variant) a conversation remembers, if it's still installed. Falls back to any

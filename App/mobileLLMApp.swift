@@ -164,6 +164,10 @@ struct MobileLLMApp: App {
     #endif
 
     init() {
+        // Device-test harness opt-out for cooperative thermal pacing (production never sets this).
+        if ProcessInfo.processInfo.environment["MOBILELLM_DISABLE_THERMAL"] == "1" {
+            ThermalGovernor.isPacingEnabled = false
+        }
         // Multi-GB weights live under Application Support (a no-backup dir so they don't hit iCloud).
         let base = URL.applicationSupportDirectory.appending(path: "mobileLLM", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
@@ -226,10 +230,40 @@ struct MobileLLMApp: App {
                 }
             ) {
                 container.attachAgentRuns(assembly.runStore)
+                container.agentDiagnosticSnapshot = { @MainActor in
+                    await assembly.diagnosticLogger.snapshot()
+                        .map { "\($0.code):\($0.metadata.values.joined(separator: ","))" }
+                        .joined(separator: "|")
+                }
                 AgentRuntimeAssembly.logger(
                     "Agent runtime attached (journal: \(assembly.repository.location.path))"
                 )
             } else {
+                // Diagnose the exact assembly failure instead of silently falling back, so device
+                // tests can distinguish a healthy rollout-off state from a wiring bug.
+                do {
+                    _ = try AgentRuntimeAssembly(
+                        engine: engine,
+                        downloadBase: base,
+                        conversationDirectory: container.conversationStore.directory,
+                        snapshot: { [weak container] conversationID, userTurnID, text, imageRefs in
+                            guard let container else { return nil }
+                            return makeAgentSnapshot(
+                                container: container,
+                                conversationID: conversationID,
+                                userTurnID: userTurnID,
+                                text: text,
+                                imageRefs: imageRefs,
+                                downloadBase: base
+                            )
+                        }
+                    )
+                } catch {
+                    container.recordAgentRuntimeFailure(error)
+                    AgentRuntimeAssembly.logger(
+                        "Agent runtime unavailable: \(error.localizedDescription)"
+                    )
+                }
                 AgentRuntimeAssembly.logger("Agent runtime unavailable — legacy chat loop active")
             }
         }
@@ -325,7 +359,7 @@ private func makeAgentSnapshot(
         model: active.model,
         variant: active.variant,
         weightsDirectory: ModelDownloader(downloadBase: downloadBase)
-            .localURL(repoId: active.variant.id),
+            .localURL(repoId: active.variant.source.huggingFaceRepo),
         thinkingEnabled: container.chat.thinkingEnabled,
         contextLength: container.settings.contextLength,
         maxTokens: container.settings.maxTokens,

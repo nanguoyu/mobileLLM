@@ -51,7 +51,7 @@ public struct LocalModelProvider: AgentModelProvider, Sendable {
     ) throws {
         guard descriptor.location == .onDevice,
               !residencyDriver.registeredSelections.isEmpty,
-              residencyDriver.registeredSelections.allSatisfy({
+              residencyDriver.registeredSelections.contains(where: {
                   $0.providerID == descriptor.id
                     && $0.capabilityVersion == descriptor.capabilityVersion
               })

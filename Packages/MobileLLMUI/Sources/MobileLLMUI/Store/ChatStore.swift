@@ -105,6 +105,8 @@ public final class ChatStore {
     /// The durable agent runtime projection (spec §20). Nil in tests/previews that exercise the
     /// legacy in-process loop; when present every send routes through `AgentRuntime`.
     public private(set) var agentRuns: AgentRunStore?
+    /// Last agent-runtime send failure (diagnostics; toasts already surface it transiently).
+    public private(set) var agentLastSendError: String?
     /// Whether the app is wired to the durable agent runtime. A false value keeps the legacy loop,
     /// which is how the rollout switch is implemented (spec §26).
     public var agentRuntimeEnabled: Bool { agentRuns != nil }
@@ -215,11 +217,38 @@ public final class ChatStore {
                 message: message
             )
         }
+        agentRuns.onRunTerminated = { [weak self] conversationID, assistantMessageID, reason, message in
+            self?.settleAgentRunTerminal(
+                conversationID: conversationID,
+                assistantMessageID: assistantMessageID,
+                reason: reason,
+                message: message
+            )
+        }
         agentRuns.onRunStarted = { [weak self] conversationID, assistantMessageID in
             self?.agentRunDidStart(
                 conversationID: conversationID,
                 assistantMessageID: assistantMessageID
             )
+        }
+        agentRuns.onEphemeral = { [weak self] conversationID, kind, delta in
+            guard let self, self.activeID == conversationID, self.streaming != nil else { return }
+            switch kind {
+            case .reasoning:
+                if self.streaming?.thinkingStartedAt == nil {
+                    self.streaming?.thinkingStartedAt = Date()
+                }
+                if self.streaming?.phase != .stopping {
+                    self.streaming?.phase = .thinking
+                }
+                self.streaming?.reasoning += delta
+            case .answer:
+                self.pauseReasoningClock()
+                if self.streaming?.phase != .stopping {
+                    self.streaming?.phase = .answering
+                }
+                self.streaming?.answer += delta
+            }
         }
     }
 
@@ -656,7 +685,7 @@ public final class ChatStore {
         assistant: Message,
         text: String,
         attachments: [(id: UUID, data: Data)],
-        attachmentRollback: AttachmentSendRollback,
+        attachmentRollback: AttachmentSendRollback?,
         agentRuns: AgentRunStore
     ) {
         let store = self.store
@@ -671,13 +700,16 @@ public final class ChatStore {
                     }
                 } catch {
                     await store.removeAttachments(imageRefs)
-                    self?.recoverFailedAttachmentSend(attachmentRollback, error: error)
+                    if let attachmentRollback {
+                        self?.recoverFailedAttachmentSend(attachmentRollback, error: error)
+                    }
                     return
                 }
                 // Cold launch restores model identity only; the first agent turn loads weights here.
                 guard await self?.ensureModelReady?() ?? true,
                       self?.activeModel != nil
                 else {
+                    self?.agentLastSendError = "model readiness failed before agent send"
                     self?.finalizeAgentRun(
                         conversationID: conversationID,
                         assistantMessageID: assistant.id,
@@ -694,6 +726,7 @@ public final class ChatStore {
                     imageRefs: imageRefs
                 )
             } catch is CancellationError {
+                self?.agentLastSendError = "agent send cancelled before start"
                 self?.finalizeAgentRun(
                     conversationID: conversationID,
                     assistantMessageID: assistant.id,
@@ -701,6 +734,7 @@ public final class ChatStore {
                     errorMessage: "The run was cancelled before it started."
                 )
             } catch {
+                self?.agentLastSendError = "\(error)"
                 self?.finalizeAgentRun(
                     conversationID: conversationID,
                     assistantMessageID: assistant.id,
@@ -731,15 +765,32 @@ public final class ChatStore {
         guard let ci = conversations.firstIndex(where: { $0.id == conversationID }),
               let mi = conversations[ci].messages.firstIndex(where: { $0.id == assistantMessageID })
         else { return }
+        pauseReasoningClock()
         var message = conversations[ci].messages[mi]
         message.answer = text
         message.reasoning = reasoning
+        if let duration = streaming?.thinkingDuration, duration > 0 {
+            message.thinkingSeconds = duration
+        }
         let toolRuns = steps.compactMap { step -> ToolRun? in
             guard step.kind == .toolCall else { return nil }
             return ToolRun(name: step.title, arguments: step.detail, result: step.statusText)
         }
         if !toolRuns.isEmpty { message.toolRuns = toolRuns }
         if let model = activeModel { message.generatedBy = GenerationModel(model) }
+        if let usage = agentRuns?.presentation(for: conversationID)?.usage {
+            let outputTokens = usage.quantities[.outputTokens]
+            let activeMilliseconds = usage.quantities[.activeMilliseconds]
+            let seconds = max(1, Double(activeMilliseconds) / 1_000)
+            message.stats = Stats(
+                promptTokens: Int(usage.quantities[.inputTokens]),
+                genTokens: Int(outputTokens),
+                promptTPS: 0,
+                tokensPerSecond: Double(outputTokens) / seconds,
+                peakMemoryBytes: Int64(usage.quantities[.peakMemoryBytes]),
+                stopReason: .eos
+            )
+        }
         conversations[ci].messages[mi] = message
         conversations[ci].updatedAt = Date()
         persist(conversations[ci])
@@ -761,6 +812,40 @@ public final class ChatStore {
             failed: true,
             errorMessage: message
         )
+    }
+
+    /// A run that ended without an answer (Stop/cancel or failure) must settle the streaming row:
+    /// mark the turn Stopped/Failed and release the composer for the next send.
+    private func settleAgentRunTerminal(
+        conversationID: UUID,
+        assistantMessageID: UUID,
+        reason: AgentTerminalReason,
+        message: String?
+    ) {
+        pauseReasoningClock()
+        guard let ci = conversations.firstIndex(where: { $0.id == conversationID }),
+              let mi = conversations[ci].messages.firstIndex(where: { $0.id == assistantMessageID })
+        else {
+            if streamingMessageID == assistantMessageID {
+                streaming = nil
+                streamingMessageID = nil
+                genTask = nil
+            }
+            return
+        }
+        var turn = conversations[ci].messages[mi]
+        turn.emptyOutcome = reason == .cancelledByUser ? .stopped : .failed
+        conversations[ci].messages[mi] = turn
+        conversations[ci].updatedAt = Date()
+        persist(conversations[ci])
+        if streamingMessageID == assistantMessageID {
+            streaming = nil
+            streamingMessageID = nil
+            genTask = nil
+        }
+        if let message, reason != .cancelledByUser {
+            showToast(Toast(message, kind: .error, autoDismiss: 5))
+        }
     }
 
     private func finalizeAgentRun(
@@ -814,12 +899,28 @@ public final class ChatStore {
               let mi = conversations[ci].messages.firstIndex(where: { $0.id == assistantMessageID }),
               conversations[ci].messages[mi].role == .assistant else { return }
         let parentID = conversations[ci].messages[mi].parentID
+        guard let ui = conversations[ci].messages.firstIndex(where: { $0.id == parentID }),
+              conversations[ci].messages[ui].role == .user else { return }
+        let user = conversations[ci].messages[ui]
         purgeAttachments(of: Array(conversations[ci].messages[mi...]))
         conversations[ci].messages.removeSubrange(mi...)
         let fresh = Message(role: .assistant, answer: "", parentID: parentID)
         conversations[ci].messages.append(fresh)
         conversations[ci].updatedAt = Date()
-        startGeneration(assistantID: fresh.id, in: conversations[ci].id)
+        if let agentRuns {
+            materializeToolPolicyIfNeeded(at: ci)
+            startAgentRun(
+                conversationID: conversations[ci].id,
+                user: user,
+                assistant: fresh,
+                text: user.answer,
+                attachments: [],
+                attachmentRollback: nil,
+                agentRuns: agentRuns
+            )
+        } else {
+            startGeneration(assistantID: fresh.id, in: conversations[ci].id)
+        }
     }
 
     /// Truncation flows drop whole turns from a LIVE thread — their attachment pixels must leave the disk
@@ -855,10 +956,24 @@ public final class ChatStore {
         purgeAttachments(of: Array(conversations[ci].messages[(mi + 1)...]))
         conversations[ci].messages.removeSubrange((mi + 1)...)
         conversations[ci].messages[mi].answer = text
+        let user = conversations[ci].messages[mi]
         let assistant = Message(role: .assistant, answer: "", parentID: userMessageID)
         conversations[ci].messages.append(assistant)
         conversations[ci].updatedAt = Date()
-        startGeneration(assistantID: assistant.id, in: conversations[ci].id)
+        if let agentRuns {
+            materializeToolPolicyIfNeeded(at: ci)
+            startAgentRun(
+                conversationID: conversations[ci].id,
+                user: user,
+                assistant: assistant,
+                text: text,
+                attachments: [],
+                attachmentRollback: nil,
+                agentRuns: agentRuns
+            )
+        } else {
+            startGeneration(assistantID: assistant.id, in: conversations[ci].id)
+        }
     }
 
     private func startGeneration(assistantID: UUID, in conversationID: UUID,

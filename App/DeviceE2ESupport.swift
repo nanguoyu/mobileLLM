@@ -25,11 +25,13 @@ struct DeviceE2EConfiguration {
 /// A header and composer prove only model *identity*; `resident=true` proves the real engine has loaded.
 struct DeviceE2EDiagnosticsOverlay: View {
     let container: AppContainer
+    @State private var agentLog = ""
 
     var body: some View {
         VStack(spacing: 0) {
             diagnostic("device-e2e.runtime", value: runtimeValue)
             diagnostic("device-e2e.inventory", value: inventoryValue)
+            diagnostic("device-e2e.agent", value: agentValue)
             diagnostic("device-e2e.fixture", value: "pendingImages=\(container.chat.pendingImages.count)")
         }
         .frame(width: 1, height: 1)
@@ -39,6 +41,14 @@ struct DeviceE2EDiagnosticsOverlay: View {
         .task {
             guard DeviceE2EConfiguration.current()?.attachVisionFixture == true else { return }
             _ = container.chat.attach(imageData: DeviceE2EVisionFixture.pngData())
+        }
+        .task {
+            while !Task.isCancelled {
+                if let snapshot = container.agentDiagnosticSnapshot {
+                    agentLog = await snapshot()
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
         }
     }
 
@@ -67,7 +77,18 @@ struct DeviceE2EDiagnosticsOverlay: View {
             "engine=\(active?.variant.engine.label ?? "none")",
             "resident=\(container.models.engineResident)",
             "phase=\(phase)",
+            "thermal=\(thermalState)",
         ].joined(separator: ";")
+    }
+
+    private var thermalState: String {
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: "nominal"
+        case .fair: "fair"
+        case .serious: "serious"
+        case .critical: "critical"
+        @unknown default: "unknown"
+        }
     }
 
     private var inventoryValue: String {
@@ -77,6 +98,20 @@ struct DeviceE2EDiagnosticsOverlay: View {
             .map(\.id)
             .sorted()
         return ids.isEmpty ? "none" : ids.joined(separator: ",")
+    }
+
+    private var agentValue: String {
+        let run = container.agentRuns?.presentation(for: container.chat.activeID ?? UUID())
+        return [
+            "enabled=\(container.chat.agentRuntimeEnabled)",
+            "run=\(run?.state?.rawValue ?? "none")",
+            "steps=\(run?.steps.count ?? 0)",
+            "recoverable=\(container.agentRuns?.recoverableRuns.count ?? 0)",
+            "error=\(container.agentRuntimeError ?? "none")",
+            "failure=\(run?.failureMessage ?? "none")",
+            "sendError=\(container.chat.agentLastSendError ?? "none")",
+            "log=\(agentLog)",
+        ].joined(separator: ";")
     }
 }
 

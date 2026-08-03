@@ -13,6 +13,7 @@ public struct AgentRunStep: Identifiable, Equatable, Sendable {
         case approval
         case userInput
         case reconciliation
+        case waiting
         case finalization
         case diagnostic
     }
@@ -108,6 +109,8 @@ public struct AgentRunPresentation: Equatable, Sendable {
     public let reasoningText: String
     public let finalText: String?
     public let failureMessage: String?
+    /// Final cumulative usage from the terminal result (used to render generation stats).
+    public let usage: AgentUsage?
     public let updatedAt: Date
 
     public init(
@@ -124,6 +127,7 @@ public struct AgentRunPresentation: Equatable, Sendable {
         reasoningText: String = "",
         finalText: String? = nil,
         failureMessage: String? = nil,
+        usage: AgentUsage? = nil,
         updatedAt: Date = Date()
     ) {
         self.conversationID = conversationID
@@ -139,6 +143,7 @@ public struct AgentRunPresentation: Equatable, Sendable {
         self.reasoningText = reasoningText
         self.finalText = finalText
         self.failureMessage = failureMessage
+        self.usage = usage
         self.updatedAt = updatedAt
     }
 
@@ -171,17 +176,29 @@ public struct AgentRunPresentation: Equatable, Sendable {
         }
     }
 
+    /// Whether the run needs the agent activity panel at all. Pure chat stays visually identical to
+    /// the ordinary message stream; the panel appears only when there is real agent work to expose
+    /// (tools, approvals, waits, failures, paused/backgrounded runs).
+    public var needsPanel: Bool {
+        if pendingApproval != nil || pendingUserInput != nil { return true }
+        if isWaiting { return true }
+        if steps.contains(where: { $0.kind == .toolCall }) { return true }
+        if state == .failed || state == .cancelled { return true }
+        return false
+    }
+
     public func replacing(
         state: AgentRunState? = nil,
         terminalReason: AgentTerminalReason? = nil,
-        blockingReason: AgentBlockingReason? = nil,
+        blockingReason: AgentBlockingReason?? = nil,
         steps: [AgentRunStep]? = nil,
-        pendingApproval: AgentApprovalCard? = nil,
-        pendingUserInput: UserInputRequest? = nil,
+        pendingApproval: AgentApprovalCard?? = nil,
+        pendingUserInput: UserInputRequest?? = nil,
         provisionalText: String? = nil,
         reasoningText: String? = nil,
         finalText: String?? = nil,
         failureMessage: String?? = nil,
+        usage: AgentUsage? = nil,
         handleID: AgentExecutionHandleID? = nil
     ) -> AgentRunPresentation {
         AgentRunPresentation(
@@ -198,6 +215,7 @@ public struct AgentRunPresentation: Equatable, Sendable {
             reasoningText: reasoningText ?? self.reasoningText,
             finalText: finalText ?? self.finalText,
             failureMessage: failureMessage ?? self.failureMessage,
+            usage: usage ?? self.usage,
             updatedAt: Date()
         )
     }

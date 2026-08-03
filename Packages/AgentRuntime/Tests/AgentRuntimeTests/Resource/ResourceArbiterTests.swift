@@ -367,7 +367,11 @@ final class ResourceArbiterTests: XCTestCase {
         await expectAsyncValue(.released) { await arbiter.releaseRoot(root) }
         await expectAsyncValue(true) { await driver.resumeNext(.load, selection: selection) }
 
-        let cleanupFailure = ModelResidencyFailure(operation: .unload, selection: selection)
+        let cleanupFailure = ModelResidencyFailure(
+            operation: .unload,
+            selection: selection,
+            detail: "scriptedFailure"
+        )
         await expectResourceError(.residencyFaulted(cleanupFailure)) {
             try await decodeTask.value
         }
@@ -497,7 +501,8 @@ final class ResourceArbiterTests: XCTestCase {
         await driver.failNext(.cancelAndDrain, selection: selection)
         let cancelFailure = ModelResidencyFailure(
             operation: .cancelAndDrain,
-            selection: selection
+            selection: selection,
+            detail: "scriptedFailure"
         )
         await expectAsyncValue(
             .idleResidencyEvictionFailed(cancelFailure, reason: .memoryCritical)
@@ -507,7 +512,11 @@ final class ResourceArbiterTests: XCTestCase {
         await expectAsyncValue(.admissionsResumed) { await arbiter.updatePressure(.nominal) }
 
         await driver.failNext(.unload, selection: selection)
-        let unloadFailure = ModelResidencyFailure(operation: .unload, selection: selection)
+        let unloadFailure = ModelResidencyFailure(
+            operation: .unload,
+            selection: selection,
+            detail: "scriptedFailure"
+        )
         await expectAsyncValue(
             .idleResidencyEvictionFailed(unloadFailure, reason: .thermalCritical)
         ) {
@@ -541,7 +550,11 @@ final class ResourceArbiterTests: XCTestCase {
         }
 
         await driver.failNext(.cancelAndDrain, selection: selection)
-        let failure = ModelResidencyFailure(operation: .cancelAndDrain, selection: selection)
+        let failure = ModelResidencyFailure(
+            operation: .cancelAndDrain,
+            selection: selection,
+            detail: "scriptedFailure"
+        )
         await expectAsyncValue(.releasedWithCleanupFailure(failure)) {
             await arbiter.releaseRoot(root)
         }
@@ -566,7 +579,7 @@ final class ResourceArbiterTests: XCTestCase {
 
         await driver.failNext(.load, selection: first)
         await expectResourceError(
-            .driverFailure(.init(operation: .load, selection: first))
+            .driverFailure(.init(operation: .load, selection: first, detail: "scriptedFailure"))
         ) {
             try await arbiter.acquireDecode(selection: first, rootLease: root)
         }
@@ -578,7 +591,7 @@ final class ResourceArbiterTests: XCTestCase {
 
         await driver.failNext(.cancelAndDrain, selection: first)
         await expectResourceError(
-            .driverFailure(.init(operation: .cancelAndDrain, selection: first))
+            .driverFailure(.init(operation: .cancelAndDrain, selection: first, detail: "scriptedFailure"))
         ) {
             try await arbiter.acquireDecode(selection: second, rootLease: root)
         }
@@ -587,7 +600,7 @@ final class ResourceArbiterTests: XCTestCase {
 
         await driver.failNext(.unload, selection: first)
         await expectResourceError(
-            .driverFailure(.init(operation: .unload, selection: first))
+            .driverFailure(.init(operation: .unload, selection: first, detail: "scriptedFailure"))
         ) {
             try await arbiter.acquireDecode(selection: second, rootLease: root)
         }
@@ -597,7 +610,7 @@ final class ResourceArbiterTests: XCTestCase {
         let secondDecode = try await arbiter.acquireDecode(selection: second, rootLease: root)
         await driver.failNext(.cancelAndDrain, selection: second)
         await expectAsyncValue(
-            .driverFailure(.init(operation: .cancelAndDrain, selection: second))
+            .driverFailure(.init(operation: .cancelAndDrain, selection: second, detail: "scriptedFailure"))
         ) {
             await arbiter.cancelDrainAndReleaseDecode(secondDecode)
         }
@@ -626,7 +639,8 @@ final class ResourceArbiterTests: XCTestCase {
         await driver.failNext(.cancelAndDrain, selection: selection)
         let cleanupFailure = ModelResidencyFailure(
             operation: .cancelAndDrain,
-            selection: selection
+            selection: selection,
+            detail: "scriptedFailure"
         )
         await expectResourceError(.residencyFaulted(cleanupFailure)) {
             try await arbiter.acquireDecode(selection: selection, rootLease: owner)

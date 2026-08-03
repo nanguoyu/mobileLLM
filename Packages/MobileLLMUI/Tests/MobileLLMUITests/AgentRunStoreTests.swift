@@ -9,6 +9,46 @@ import AgentRuntime
 // TEST-ID: AHT-UI-001
 // TEST-ID: AHT-LIFECYCLE-001
 final class AgentRunStoreTests: XCTestCase {
+    func testNeedsPanelOnlyForComplexRuns() throws {
+        let runID = AgentRunID(rawValue: UUID())
+        let base = AgentRunPresentation(conversationID: UUID(), runID: runID, state: .generating)
+        XCTAssertFalse(base.needsPanel, "plain generating chat must look like ordinary chat")
+
+        let completed = base.replacing(
+            state: .completed,
+            terminalReason: .completed,
+            finalText: "answer"
+        )
+        XCTAssertFalse(completed.needsPanel, "a plain committed answer stays visually ordinary")
+
+        let withTool = base.replacing(steps: [
+            AgentRunStep(kind: .toolCall, title: "calculator", status: .running, sequence: 1),
+        ])
+        XCTAssertTrue(withTool.needsPanel, "tool activity must surface the agent panel")
+
+        let waitingApproval = base.replacing(
+            state: .waitingForApproval,
+            blockingReason: .approval(approvalID: ApprovalID(rawValue: UUID())),
+            pendingApproval: AgentApprovalCard(
+                approvalID: ApprovalID(rawValue: UUID()),
+                toolName: "web",
+                destination: nil,
+                preview: "preview",
+                dataCategories: [],
+                effects: [],
+                isExternalWrite: false
+            )
+        )
+        XCTAssertTrue(waitingApproval.needsPanel)
+
+        let failed = base.replacing(
+            state: .failed,
+            terminalReason: .internalFailure,
+            failureMessage: "boom"
+        )
+        XCTAssertTrue(failed.needsPanel, "failures need the recovery surface")
+    }
+
     func testStartProjectsEventsAndDeliversCommittedAnswer() async throws {
         let executor = MockAgentExecutor()
         let builder = MockAgentRunRequestBuilder(submission: try makeSubmission())
@@ -36,6 +76,31 @@ final class AgentRunStoreTests: XCTestCase {
         try await waitUntil {
             store.presentation(for: conversationID)?.state == .generating
         }
+        // Generating is token activity (rendered by the streaming row), not a user-facing step.
+        XCTAssertTrue(
+            store.presentation(for: conversationID)?.steps.isEmpty == true,
+            "pipeline stages must not appear as steps"
+        )
+
+        // A semantic wait (approval) appears as a step; advancing settles it.
+        let approvalID = ApprovalID(rawValue: UUID())
+        handle.push(status: try AgentRunStatus(
+            state: .waitingForApproval,
+            stateVersion: 3,
+            blockingReason: .approval(approvalID: approvalID)
+        ))
+        try await waitUntil {
+            store.presentation(for: conversationID)?.steps.last?.kind == .approval
+        }
+        handle.push(status: try AgentRunStatus(state: .executingTools, stateVersion: 4))
+        try await waitUntil {
+            store.presentation(for: conversationID)?.state == .executingTools
+        }
+        XCTAssertEqual(
+            store.presentation(for: conversationID)?.steps.last?.status,
+            .succeeded,
+            "the settled approval step must not keep waiting"
+        )
 
         let answer = try AgentAnswer(text: "Hi there")
         handle.push(terminal: answer, runID: runID, stateVersion: 3)
@@ -149,6 +214,53 @@ final class AgentRunStoreTests: XCTestCase {
         XCTAssertEqual(pauses, [.foregroundLost, .foregroundLost])
         XCTAssertEqual(handle.receivedCommands.count, 2)
     }
+
+    func testEphemeralDeltasForwardToStreamingSurfaceAndTerminalSettles() async throws {
+        let executor = MockAgentExecutor()
+        let builder = MockAgentRunRequestBuilder(submission: try makeSubmission())
+        let store = AgentRunStore(executor: executor, requestBuilder: builder)
+        let conversationID = UUID()
+        let assistantID = UUID()
+        var deltas: [(AgentEphemeralDeltaKind, String)] = []
+        store.onEphemeral = { _, kind, text in deltas.append((kind, text)) }
+        var terminated: (AgentTerminalReason, String?)?
+        store.onRunTerminated = { _, _, reason, message in terminated = (reason, message) }
+
+        _ = try await store.start(
+            conversationID: conversationID,
+            userMessageID: UUID(),
+            assistantMessageID: assistantID,
+            text: "hello",
+            imageRefs: []
+        )
+        let handle = try XCTUnwrap(executor.handle)
+        try await waitUntil {
+            store.presentation(for: conversationID) != nil
+        }
+        handle.pushEphemeral(.visibleReasoningDelta("reasoning "))
+        handle.pushEphemeral(.provisionalAnswerDelta("answer "))
+        try await waitUntil { deltas.count == 2 }
+        XCTAssertEqual(deltas[0].0, .reasoning)
+        XCTAssertEqual(deltas[0].1, "reasoning ")
+        XCTAssertEqual(deltas[1].0, .answer)
+        XCTAssertEqual(deltas[1].1, "answer ")
+
+        // A terminal event without an answer must settle the run through onRunTerminated.
+        handle.push(
+            terminal: try AgentAnswer(text: "unused"),
+            runID: builder.submission.request.runID,
+            stateVersion: 4
+        )
+        _ = terminated // Terminal-with-answer path uses onAnswer; the no-answer path is below.
+        terminated = nil
+        handle.push(
+            terminal: nil,
+            runID: builder.submission.request.runID,
+            stateVersion: 5
+        )
+        try await waitUntil { terminated != nil }
+        XCTAssertEqual(terminated?.0, .cancelledByUser)
+    }
 }
 
 // MARK: - Fakes
@@ -189,6 +301,9 @@ private final class MockAgentExecutionHandle: AgentExecutionHandle, @unchecked S
     var currentStatus: AgentRunStatus = try! AgentRunStatus(state: .created, stateVersion: 1)
     private var eventContinuations: [AsyncThrowingStream<AgentEventEnvelope, Error>.Continuation] = []
     private var pendingEvents: [AgentEventEnvelope] = []
+    private var ephemeralContinuations: [
+        AsyncThrowingStream<AgentEphemeralEventEnvelope, Error>.Continuation
+    ] = []
     private(set) var receivedCommands: [AgentCommandEnvelope] = []
 
     func events(
@@ -202,7 +317,9 @@ private final class MockAgentExecutionHandle: AgentExecutionHandle, @unchecked S
     }
 
     func ephemeralEvents() async -> AsyncThrowingStream<AgentEphemeralEventEnvelope, Error> {
-        AsyncThrowingStream { _ in }
+        AsyncThrowingStream { continuation in
+            ephemeralContinuations.append(continuation)
+        }
     }
 
     func status() async throws -> AgentRunStatus { currentStatus }
@@ -229,6 +346,28 @@ private final class MockAgentExecutionHandle: AgentExecutionHandle, @unchecked S
         pendingEvents.append(envelope)
     }
 
+    func push(status: AgentRunStatus, runID: AgentRunID, stateVersion: UInt64) {
+        currentStatus = status
+        let envelope = makeEnvelope(
+            status: status,
+            event: .statusChanged(status),
+            runID: runID
+        )
+        for continuation in eventContinuations { continuation.yield(envelope) }
+        pendingEvents.append(envelope)
+    }
+
+    func pushEphemeral(_ event: AgentEphemeralModelEvent) {
+        let envelope = AgentEphemeralEventEnvelope(
+            executionHandleID: id,
+            runID: AgentRunID(rawValue: UUID()),
+            stepID: AgentStepID(rawValue: UUID()),
+            emittedAt: AgentTimestamp(rawValue: 1),
+            event: .model(event)
+        )
+        for continuation in ephemeralContinuations { continuation.yield(envelope) }
+    }
+
     func push(userInput: UserInputRequest, runID: AgentRunID, stateVersion: UInt64) {
         let envelope = makeEnvelope(
             status: try! AgentRunStatus(
@@ -243,11 +382,22 @@ private final class MockAgentExecutionHandle: AgentExecutionHandle, @unchecked S
         pendingEvents.append(envelope)
     }
 
-    func push(terminal answer: AgentAnswer, runID: AgentRunID, stateVersion: UInt64) {
+    func push(terminal answer: AgentAnswer?, runID: AgentRunID, stateVersion: UInt64) {
         let status = try! AgentRunStatus(
-            state: .completed,
+            state: answer == nil ? .cancelled : .completed,
             stateVersion: stateVersion,
-            terminalReason: .completed
+            terminalReason: answer == nil ? .cancelledByUser : .completed,
+            failure: answer == nil
+                ? try! AgentFailure(
+                    code: "execution.cancelled",
+                    classification: .cancelled,
+                    safeMessage: "Stopped",
+                    retryAdvice: .never,
+                    externalEffect: .confirmedNone,
+                    requiredUserAction: .none,
+                    redaction: RedactionMetadata(classification: .publicMetadata, policyVersion: 1)
+                )
+                : nil
         )
         let result = try! AgentResult(
             requestID: requestID,
