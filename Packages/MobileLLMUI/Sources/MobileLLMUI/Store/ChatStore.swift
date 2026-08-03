@@ -388,13 +388,15 @@ public final class ChatStore {
         guard agentRuns != nil else { return nil }
         // The policy is the USER's selection (Tools screen), mapped to logical ids; the runtime's
         // selector and catalog decide which of those are adapted and advertised for a pass.
-        let allowed = settings.builtInToolConfig.enabled.compactMap { id in
+        var allowed = settings.builtInToolConfig.enabled.compactMap { id in
             try? AgentToolLogicalID(providerID: "builtin", name: id.rawValue)
         }
+        allowed.append(contentsOf: agentMCPToolLogicalIDs?() ?? [])
+        let deduped = Array(Set(allowed)).sorted()
         return try? ConversationToolPolicy(
             masterEnabled: settings.toolsEnabled,
-            allowedToolIDs: allowed,
-            pinnedToolIDs: allowed,
+            allowedToolIDs: deduped,
+            pinnedToolIDs: deduped,
             selectionPolicyVersion: 1,
             materializedFromGlobalTemplate: true
         )
@@ -415,6 +417,9 @@ public final class ChatStore {
     /// opens a conversation whose remembered model differs from the resident one — a thread keeps ITS
     /// model across relaunches instead of silently falling back to the Settings default.
     public var restoreModel: (@MainActor (_ modelID: String, _ variantID: String) -> Void)?
+    /// Set by the app shell: logical ids of MCP tools explicitly discovered through the server
+    /// setup/refresh flow. They join the built-in selection in every newly materialized policy.
+    public var agentMCPToolLogicalIDs: (@MainActor () -> [AgentToolLogicalID])?
     /// Canonicalizes an exact or legacy persisted variant id using the same installed-model resolver that
     /// will perform restoration. Without this, one legacy Explore id appears to match every quant sibling.
     public var resolvePersistedVariantID: (@MainActor (_ modelID: String, _ variantID: String) -> String?)?

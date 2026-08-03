@@ -35,6 +35,11 @@ public struct AgentRunRequestSnapshot: Sendable {
     public let localToolNames: [String]
     /// Whether the app can adapt the app-owned memory tools for this run (the MemoryBook store seam).
     public let memorySeamAvailable: Bool
+    /// MCP tools explicitly discovered by the user's server setup/refresh flow (spec §13: discovery
+    /// never happens during prompt compilation).
+    public let mcpToolDescriptors: [AgentToolDescriptor]
+    /// Host-only destinations of the user's configured web-search engines (run-ceiling enumeration).
+    public let webSearchDestinations: [ExternalDestination]
     /// The conversation-persistent tool policy (spec §14). App assembly snapshots the conversation's
     /// materialized policy; the runtime freezes it with the run.
     public let toolPolicy: ConversationToolPolicy?
@@ -61,6 +66,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         toolsEnabled: Bool,
         localToolNames: [String],
         memorySeamAvailable: Bool,
+        mcpToolDescriptors: [AgentToolDescriptor],
+        webSearchDestinations: [ExternalDestination],
         toolPolicy: ConversationToolPolicy?
     ) {
         self.conversationID = conversationID
@@ -84,6 +91,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.toolsEnabled = toolsEnabled
         self.localToolNames = localToolNames
         self.memorySeamAvailable = memorySeamAvailable
+        self.mcpToolDescriptors = mcpToolDescriptors
+        self.webSearchDestinations = webSearchDestinations
         self.toolPolicy = toolPolicy
     }
 }
@@ -184,7 +193,8 @@ struct AppFrozenInputBuilder: Sendable {
         let localTools = snapshot.localToolNames
         let toolCatalog = try AppToolCatalog.catalog(
             enabledToolNames: snapshot.toolsEnabled ? localTools : [],
-            memoryAvailable: snapshot.memorySeamAvailable
+            memoryAvailable: snapshot.memorySeamAvailable,
+            mcpDescriptors: snapshot.toolsEnabled ? snapshot.mcpToolDescriptors : []
         )
         let policy = try snapshot.toolPolicy ?? ConversationToolPolicy(
             masterEnabled: snapshot.toolsEnabled,
@@ -204,7 +214,11 @@ struct AppFrozenInputBuilder: Sendable {
             currentUser: currentUser,
             toolCatalog: toolCatalog,
             toolPolicy: policy,
-            availableToolCapabilities: AgentCapabilitySet([]),
+            // The app can execute network reads, app-local memory, and unknownExternal operations
+            // behind exact-approval receipts (web/MCP).
+            availableToolCapabilities: AgentCapabilitySet([
+                .networkRead, .localRead, .localWrite, .unknownExternal,
+            ]),
             activeSkillToolHints: [],
             explicitlyRequestedToolIDs: toolCatalog.descriptors.map(\.id.logicalID),
             maximumAdvertisedTools: 8,
@@ -231,6 +245,33 @@ struct AppFrozenInputBuilder: Sendable {
             // per-run ceiling, not a residency admission check.
             peakMemoryBytes: 2_147_483_648
         )
+        var ceilingDestinations = snapshot.webSearchDestinations
+        if snapshot.memorySeamAvailable {
+            ceilingDestinations.append(try ExternalDestination(
+                kind: .privateDataStore,
+                normalizedIdentity: "mobilellm.memory"
+            ))
+        }
+        for descriptor in snapshot.mcpToolDescriptors {
+            let providerID = descriptor.id.logicalID.providerID
+            let prefix = "mcp."
+            guard providerID.hasPrefix(prefix),
+                  let stableID = UUID(uuidString: String(providerID.dropFirst(prefix.count)))
+            else { continue }
+            ceilingDestinations.append(try ExternalDestination(
+                kind: .mcpServer,
+                normalizedIdentity: stableID.uuidString
+            ))
+        }
+        let ceilingAuthority = try AgentAuthorityScope(
+            capabilities: AgentCapabilitySet([.networkRead, .localRead, .localWrite, .unknownExternal]),
+            destinations: ceilingDestinations,
+            dataCategories: [
+                try AgentDataCategory(rawValue: "web.search"),
+                try AgentDataCategory(rawValue: "user.memory"),
+                try AgentDataCategory(rawValue: "mcp.call"),
+            ]
+        )
         return try AgentRequest(
             id: AgentRequestID(rawValue: UUID()),
             runID: runID,
@@ -245,7 +286,10 @@ struct AppFrozenInputBuilder: Sendable {
                 strategy: .pinned,
                 requiredCapabilities: AgentModelCapabilitySet([])
             ),
-            capabilityCeiling: RunCapabilityCeiling(authority: .empty),
+            // The run ceiling enumerates every bounded destination the app may call (web engines,
+            // app-owned memory, explicitly discovered MCP servers) and grants the matching
+            // capabilities, so step plans validate against it exactly.
+            capabilityCeiling: RunCapabilityCeiling(authority: ceilingAuthority),
             budget: budget,
             artifactReferences: artifactReferences,
             provenance: AgentRequestProvenance(source: .user)
@@ -356,15 +400,17 @@ struct AppAgentArtifactResolver: Sendable {
 /// gated on the MemoryBook seam). Every other built-in (Wikipedia, webpage fetch, MCP, calendar,
 /// location, …) stays unavailable so the runtime never advertises a capability it cannot safely
 /// execute.
-struct AppToolCatalog: ExecutableToolCatalog, Sendable {
+final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
     static let adaptedToolNames = AppLocalToolIDs.names
 
     let snapshot: ToolCatalogSnapshot
     let adapters: [AgentToolDescriptorID: any ToolV2]
+    private let mcpCache: MCPDiscoveryCache
 
     static func catalog(
         enabledToolNames: [String],
         memoryAvailable: Bool,
+        mcpDescriptors: [AgentToolDescriptor] = [],
         trustRevision: String = "builtin.v1"
     ) throws -> ToolCatalogSnapshot {
         let builtIns = ToolRegistry.standard.tools
@@ -390,7 +436,7 @@ struct AppToolCatalog: ExecutableToolCatalog, Sendable {
                     inputSchema: inputSchema,
                     outputSchema: nil,
                     effects: Self.effects(for: tool.schema.name),
-                    requiredCapabilities: AgentCapabilitySet([]),
+                    requiredCapabilities: Self.requiredCapabilities(for: tool.schema.name),
                     timeoutPolicy: ToolTimeoutPolicy(
                         maximumMilliseconds: Self.timeoutMilliseconds(for: tool.schema.name)
                     ),
@@ -408,6 +454,7 @@ struct AppToolCatalog: ExecutableToolCatalog, Sendable {
                 )
             }
         }
+        descriptors.append(contentsOf: mcpDescriptors.sorted { $0.id.description < $1.id.description })
         return try ToolCatalogSnapshot(
             revision: 1,
             descriptors: descriptors,
@@ -418,6 +465,7 @@ struct AppToolCatalog: ExecutableToolCatalog, Sendable {
     init(
         enabledToolNames: [String],
         memoryStore: (any MemoryStoring)?,
+        mcpCache: MCPDiscoveryCache,
         session: URLSession = .shared
     ) throws {
         let enabled = Set(enabledToolNames)
@@ -464,6 +512,7 @@ struct AppToolCatalog: ExecutableToolCatalog, Sendable {
             memoryAvailable: memoryStore != nil
         )
         self.adapters = adapters
+        self.mcpCache = mcpCache
     }
 
     private static func effects(for name: String) -> [AgentEffect] {
@@ -475,6 +524,10 @@ struct AppToolCatalog: ExecutableToolCatalog, Sendable {
         }
     }
 
+    private static func requiredCapabilities(for name: String) -> AgentCapabilitySet {
+        AgentCapabilitySet(effects(for: name).compactMap(\.minimumCapability))
+    }
+
     private static func timeoutMilliseconds(for name: String) -> UInt64 {
         name == "web_search" ? 30_000 : 5_000
     }
@@ -482,7 +535,24 @@ struct AppToolCatalog: ExecutableToolCatalog, Sendable {
     func localSnapshot() async throws -> ToolCatalogSnapshot { snapshot }
 
     func tool(for descriptorID: AgentToolDescriptorID) async throws -> (any ToolV2)? {
-        adapters[descriptorID]
+        if let adapter = adapters[descriptorID] { return adapter }
+        // MCP adapters are built lazily from the explicit discovery cache; a descriptor can only
+        // appear in a frozen run if the user's setup/refresh flow discovered that server.
+        let providerPrefix = "mcp."
+        let providerID = descriptorID.logicalID.providerID
+        guard providerID.hasPrefix(providerPrefix),
+              let stableID = UUID(uuidString: String(providerID.dropFirst(providerPrefix.count))),
+              let server = mcpCache.server(serverStableID: stableID)
+        else { return nil }
+        guard let spec = mcpCache.specs(serverStableID: stableID).first(where: {
+            $0.name == descriptorID.logicalID.name
+        }) else { return nil }
+        return try MCPToolV2Adapter(
+            client: MCPClient(server: server),
+            spec: spec,
+            serverStableID: stableID,
+            trustRevision: "mcp.v1"
+        )
     }
 }
 
@@ -616,6 +686,7 @@ public final class AgentRuntimeAssembly {
         conversationDirectory: URL,
         snapshot: @escaping @MainActor (UUID, UUID, String, [ImageRef]) -> AgentRunRequestSnapshot?,
         memoryStore: (any MemoryStoring)? = nil,
+        mcpDiscovery: MCPDiscoveryCache = MCPDiscoveryCache(),
         session: URLSession = .shared
     ) throws {
         let fileManager = FileManager.default
@@ -683,6 +754,7 @@ public final class AgentRuntimeAssembly {
         let toolCatalog = try AppToolCatalog(
             enabledToolNames: AppToolCatalog.adaptedToolNames,
             memoryStore: memoryStore,
+            mcpCache: mcpDiscovery,
             session: session
         )
         let frozenBuilder = AppFrozenInputBuilder(

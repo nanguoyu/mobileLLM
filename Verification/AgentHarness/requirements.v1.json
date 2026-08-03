@@ -1083,7 +1083,7 @@
       "area": "tools",
       "title": "MCP remains conservatively untrusted",
       "statement": "Unknown MCP tools remain unknownExternal with exact approval, no automatic retry, uncertain transport-loss handling, stable server identity, and approved discovery only.",
-      "status": "planned",
+      "status": "active",
       "riskTier": "P0",
       "specAnchors": [
         {

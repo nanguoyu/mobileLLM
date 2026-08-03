@@ -228,9 +228,16 @@ struct MobileLLMApp: App {
                         downloadBase: base
                     )
                 },
-                memoryStore: container.chat.memoryBook?.store
+                memoryStore: container.chat.memoryBook?.store,
+                mcpDiscovery: container.mcpDiscovery
             ) {
                 container.attachAgentRuns(assembly.runStore)
+                container.chat.agentMCPToolLogicalIDs = { [weak container] in
+                    guard let container else { return [] }
+                    return container.mcpDiscovery
+                        .descriptors(for: container.settings.mcpServers)
+                        .map(\.id.logicalID)
+                }
                 container.agentDiagnosticSnapshot = { @MainActor in
                     await assembly.diagnosticLogger.snapshot()
                         .map { entry in
@@ -264,7 +271,8 @@ struct MobileLLMApp: App {
                                 downloadBase: base
                             )
                         },
-                        memoryStore: container.chat.memoryBook?.store
+                        memoryStore: container.chat.memoryBook?.store,
+                        mcpDiscovery: container.mcpDiscovery
                     )
                 } catch {
                     container.recordAgentRuntimeFailure(error)
@@ -378,6 +386,14 @@ private func makeAgentSnapshot(
         toolsEnabled: container.settings.toolsEnabled,
         localToolNames: container.settings.builtInToolConfig.enabled.map(\.rawValue),
         memorySeamAvailable: container.chat.memoryBook != nil,
+        mcpToolDescriptors: container.settings.toolsEnabled
+            ? container.mcpDiscovery.descriptors(for: container.settings.mcpServers)
+            : [],
+        webSearchDestinations: container.settings.toolsEnabled
+            ? (try? container.settings.builtInToolConfig.searchEngines.map {
+                try AppWebSearchToolAdapter.destination(engine: $0)
+            }) ?? []
+            : [],
         toolPolicy: container.chat.activeConversation?.toolPolicy
     )
 }

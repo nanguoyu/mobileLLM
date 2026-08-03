@@ -34,6 +34,8 @@ public final class AppContainer {
     public private(set) var agentRuntimeError: String?
     /// App-assembled hook that returns the bounded redacted agent-runtime log (diagnostics only).
     public var agentDiagnosticSnapshot: (@MainActor () async -> String)?
+    /// Explicit MCP discovery cache shared by the settings UI (writer) and the agent catalog (reader).
+    public let mcpDiscovery = MCPDiscoveryCache.shared
 
     /// A one-shot navigation intent the shell (RootView) honors and clears — e.g. a "not installed" error
     /// banner jumping to Models. The container can't push tabs itself (RootView owns the section state).

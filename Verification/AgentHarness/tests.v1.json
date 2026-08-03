@@ -1042,13 +1042,34 @@
     {
       "id": "AHT-MCP-001",
       "title": "Apply conservative trust and approval to MCP discovery and calls",
-      "status": "planned",
+      "status": "active",
       "kind": "integration",
       "riskTier": "P0",
       "requirementIDs": [
         "AH-TOOLS-004"
       ],
-      "selectors": [],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MCPToolV2AdapterTests/testDescriptorAndPlanCarryConservativeRemotePosture"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MCPToolV2AdapterTests/testDiscoveryCacheGatesDescriptorsByExplicitDiscoveryAndSettings"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MCPToolV2AdapterTests/testExecuteSuccessConsumesBoundaryAndReturnsText"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MCPToolV2AdapterTests/testTransportLossAfterIntentBecomesUncertainReconciliation"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MCPToolV2AdapterTests/testBadURLIsConfirmedFailureWithoutUncertainty"
+        }
+      ],
       "platforms": [
         "swiftpm",
         "ios"

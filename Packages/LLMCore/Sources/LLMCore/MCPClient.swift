@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 import Foundation
+import CryptoKit
 
 /// A remote MCP (Model Context Protocol) server the user configured — a URL and an optional bearer token.
 /// Sandboxed iOS can only reach HTTP servers, never stdio, so this is always a remote endpoint.
 public struct MCPServer: Sendable, Hashable, Codable, Identifiable {
+    /// Stable random identity for agent destinations and approval scope. The URL is mutable (editing a
+    /// server's address must not re-scope previously approved operations), so identity is NEVER the URL.
+    public var stableID: UUID
     public var id: String { url }
     public var name: String
     public var url: String
@@ -16,8 +20,9 @@ public struct MCPServer: Sendable, Hashable, Codable, Identifiable {
     public var disabledTools: Set<String>
 
     public init(name: String, url: String, token: String? = nil,
-                isEnabled: Bool = true, disabledTools: Set<String> = []) {
-        self.name = name; self.url = url; self.token = token
+                isEnabled: Bool = true, disabledTools: Set<String> = [],
+                stableID: UUID = UUID()) {
+        self.stableID = stableID; self.name = name; self.url = url; self.token = token
         self.isEnabled = isEnabled; self.disabledTools = disabledTools
     }
 
@@ -27,17 +32,37 @@ public struct MCPServer: Sendable, Hashable, Codable, Identifiable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
         url = try c.decode(String.self, forKey: .url)
+        // Legacy records predate stable random identity. Derive a deterministic fallback from the URL
+        // so a decoded-then-persisted upgrade does not re-scope approvals on every launch; once saved,
+        // the record carries its own stable UUID and URL edits no longer move its identity.
+        stableID = try c.decodeIfPresent(UUID.self, forKey: .stableID)
+            ?? Self.legacyStableID(for: url)
         token = try c.decodeIfPresent(String.self, forKey: .token)
         isEnabled = try c.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
         disabledTools = try c.decodeIfPresent(Set<String>.self, forKey: .disabledTools) ?? []
     }
+
+    private static func legacyStableID(for url: String) -> UUID {
+        let digest = SHA256.hash(data: Data(url.utf8))
+        let bytes = Array(digest.prefix(16))
+        return UUID(uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
+    }
 }
 
 /// A tool advertised by an MCP server (name + description + raw JSON-Schema for its arguments).
-public struct MCPToolSpec: Sendable, Hashable {
+public struct MCPToolSpec: Sendable, Hashable, Codable {
     public let name: String
     public let description: String
     public let inputSchemaJSON: String
+
+    public init(name: String, description: String, inputSchemaJSON: String) {
+        self.name = name
+        self.description = description
+        self.inputSchemaJSON = inputSchemaJSON
+    }
 }
 
 /// A minimal, self-contained MCP client over **Streamable HTTP** (protocol `2025-11-25`) — hand-rolled

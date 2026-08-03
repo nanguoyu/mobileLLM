@@ -113,7 +113,7 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
             inputSchema: inputSchema,
             outputSchema: nil,
             effects: [.networkRead],
-            requiredCapabilities: AgentCapabilitySet([]),
+            requiredCapabilities: AgentCapabilitySet([.networkRead]),
             timeoutPolicy: ToolTimeoutPolicy(maximumMilliseconds: timeoutMilliseconds),
             retryPolicy: .never,
             idempotency: .pureRead,
@@ -136,7 +136,7 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
               tool.schema == frozenSchema
         else { throw ToolV2ContractError.descriptorMismatch }
         let query = Self.query(from: request.sanitizedArguments.string) ?? ""
-        let destinations = try engines.map { try Self.destination(engine: $0, query: query) }
+        let destinations = try engines.map { try Self.destination(engine: $0) }
         let plan = try ExternalOperationPlan(
             kind: .tool,
             subjectID: descriptor.id.logicalID.description,
@@ -187,7 +187,7 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
                         do {
                             let boundary = try await context.performBoundary(
                                 observation: ExternalOperationObservation(
-                                    destination: try Self.destination(engine: engine, query: query),
+                                    destination: try Self.destination(engine: engine),
                                     dataCategories: [try AgentDataCategory(rawValue: "web.search")],
                                     effects: [.networkRead],
                                     requestBytes: UInt64(query.utf8.count),
@@ -258,11 +258,22 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
         return query
     }
 
-    private static func destination(engine: SearchEngine, query: String) throws -> ExternalDestination {
-        guard let url = WebSearchTool.endpoint(engine: engine, query: query)?.absoluteString else {
+    /// Host-only destination for one engine. Public so the app's run ceiling can enumerate the exact
+    /// bounded endpoint set from the user's configured engines.
+    public static func destination(engine: SearchEngine) throws -> ExternalDestination {
+        // The DESTINATION is the engine host, not the query-specific URL: a run ceiling can enumerate
+        // the bounded endpoint set, and the query itself travels as the canonical argument.
+        guard let url = WebSearchTool.endpoint(engine: engine, query: "probe"),
+              let host = url.host
+        else {
             throw WebSearchTool.ToolNetError.badURL
         }
-        return try ExternalDestination(kind: .networkEndpoint, normalizedIdentity: url)
+        var components = URLComponents()
+        components.scheme = url.scheme ?? "https"
+        components.host = host
+        if let port = url.port { components.port = port }
+        guard let normalized = components.string else { throw WebSearchTool.ToolNetError.badURL }
+        return try ExternalDestination(kind: .networkEndpoint, normalizedIdentity: normalized)
     }
 }
 
@@ -303,7 +314,7 @@ public final class AppMemoryToolAdapter: ToolV2, @unchecked Sendable {
             inputSchema: inputSchema,
             outputSchema: nil,
             effects: effects,
-            requiredCapabilities: AgentCapabilitySet([]),
+            requiredCapabilities: AgentCapabilitySet(effects.compactMap(\.minimumCapability)),
             timeoutPolicy: ToolTimeoutPolicy(maximumMilliseconds: timeoutMilliseconds),
             retryPolicy: .never,
             idempotency: .pureRead,

@@ -312,6 +312,13 @@ class DeviceE2ETestCase: XCTestCase {
         guard field.waitForExistence(timeout: 20), field.isHittable else {
             throw DeviceE2EHarnessError.precondition("Composer is not ready for \(model.displayName)")
         }
+        // The whole device matrix must exercise the durable agent runtime; a silent fallback to the
+        // legacy loop would make tool/vision scenarios pass without ever testing the agent path.
+        let agentRuntime = diagnosticValue("device-e2e.agent", in: app)
+        XCTAssertTrue(
+            agentRuntime.contains("enabled=true"),
+            "device tests must run on the agent runtime; diagnostics: \(agentRuntime)"
+        )
 
         let answerQuery = app.descendants(matching: .any).matching(identifier: "assistant.answer")
         let statsQuery = app.descendants(matching: .any).matching(identifier: "assistant.stats")
@@ -460,6 +467,11 @@ class DeviceE2ETestCase: XCTestCase {
                                     timeout: TimeInterval? = nil,
                                     acceptedStops: [String] = ["eos", "stopSequence", "maxTokens"])
         throws -> GenerationEvidence {
+        let agentRuntime = diagnosticValue("device-e2e.agent", in: app)
+        XCTAssertTrue(
+            agentRuntime.contains("enabled=true"),
+            "manual generation must run on the agent runtime; diagnostics: \(agentRuntime)"
+        )
         let statsQuery = app.descendants(matching: .any).matching(identifier: "assistant.stats")
         let deadline = Date().addingTimeInterval(timeout ?? model.generationTimeout)
         while Date() < deadline {

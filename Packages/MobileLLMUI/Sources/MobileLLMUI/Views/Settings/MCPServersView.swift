@@ -2,6 +2,7 @@
 
 import SwiftUI
 import AppUI
+import AgentRuntime
 import LLMCore
 
 /// Live connection state for one configured server. Probing is the whole point of this screen: an MCP
@@ -18,6 +19,10 @@ final class MCPProbe {
 
     private(set) var status: [String: Status] = [:]
     private var inFlight: [String: Task<Void, Never>] = [:]
+    /// Explicit discovery results feed the agent runtime cache (spec §13: never during compilation).
+    var onDiscovered: (MCPServer, [MCPToolSpec]) -> Void = { server, specs in
+        MCPDiscoveryCache.shared.update(server: server, specs: specs)
+    }
 
     func status(for server: MCPServer) -> Status { status[server.id] ?? .idle }
 
@@ -37,6 +42,7 @@ final class MCPProbe {
                 let tools = try await client.connect()
                 guard !Task.isCancelled else { return }
                 self?.status[server.id] = .ok(tools)
+                self?.onDiscovered(server, tools)
             } catch {
                 guard !Task.isCancelled else { return }
                 self?.status[server.id] = .failed(Self.describe(error))
@@ -130,6 +136,9 @@ struct MCPServersView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .task { for server in settings.mcpServers where server.isEnabled { probe.probe(server) } }
+        .onChange(of: settings.mcpServers) { _, servers in
+            for server in servers { MCPDiscoveryCache.shared.upsert(server: server) }
+        }
         .sheet(isPresented: $showAdd) { MCPEditorView(settings: settings, probe: probe) }
         .sheet(item: $editing) { server in
             NavigationStack {
@@ -389,6 +398,7 @@ struct MCPServerDetailView: View {
 
     private func remove() {
         guard let index else { return }
+        MCPDiscoveryCache.shared.remove(serverStableID: settings.mcpServers[index].stableID)
         probe.forget(settings.mcpServers[index])
         settings.mcpServers.remove(at: index)
         dismiss()
