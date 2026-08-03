@@ -227,7 +227,8 @@ struct MobileLLMApp: App {
                         imageRefs: imageRefs,
                         downloadBase: base
                     )
-                }
+                },
+                memoryStore: container.chat.memoryBook?.store
             ) {
                 container.attachAgentRuns(assembly.runStore)
                 container.agentDiagnosticSnapshot = { @MainActor in
@@ -262,7 +263,8 @@ struct MobileLLMApp: App {
                                 imageRefs: imageRefs,
                                 downloadBase: base
                             )
-                        }
+                        },
+                        memoryStore: container.chat.memoryBook?.store
                     )
                 } catch {
                     container.recordAgentRuntimeFailure(error)
@@ -374,7 +376,8 @@ private func makeAgentSnapshot(
         topK: container.settings.topK,
         repetitionPenalty: container.settings.repetitionPenalty,
         toolsEnabled: container.settings.toolsEnabled,
-        localToolNames: AppToolCatalog.localToolNames,
+        localToolNames: container.settings.builtInToolConfig.enabled.map(\.rawValue),
+        memorySeamAvailable: container.chat.memoryBook != nil,
         toolPolicy: container.chat.activeConversation?.toolPolicy
     )
 }

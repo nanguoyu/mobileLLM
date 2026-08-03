@@ -53,11 +53,11 @@ public protocol AgentAttachmentBytesResolving: Sendable {
 /// runtime cannot safely execute are never advertised, and the conversation policy is the only
 /// authority that decides which of the adapted tools are allowed).
 public enum AppLocalToolIDs {
-    /// Exact `LLMCore.Tool.schema.name` values of the local-pure built-ins the first-release agent
-    /// catalog adapts. These MUST match the registry names (calculator, current_datetime) — the
-    /// policy logical ids and the catalog descriptor ids are the same namespace, so a mismatch here
-    /// makes an allowed tool permanently "descriptor missing" and never advertised.
-    public static let names = ["calculator", "current_datetime"]
+    /// Exact `LLMCore.Tool.schema.name` values of the built-ins the first-release agent catalog
+    /// adapts. These MUST match the registry names — the policy logical ids and the catalog
+    /// descriptor ids are the same namespace, so a mismatch makes an allowed tool permanently
+    /// "descriptor missing" and never advertised.
+    public static let names = ["calculator", "current_datetime", "web_search", "remember", "recall"]
 
     public static var current: [AgentToolLogicalID] {
         names.compactMap { try? AgentToolLogicalID(providerID: "builtin", name: $0) }

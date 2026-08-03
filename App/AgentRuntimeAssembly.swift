@@ -33,6 +33,8 @@ public struct AgentRunRequestSnapshot: Sendable {
     public let repetitionPenalty: Double
     public let toolsEnabled: Bool
     public let localToolNames: [String]
+    /// Whether the app can adapt the app-owned memory tools for this run (the MemoryBook store seam).
+    public let memorySeamAvailable: Bool
     /// The conversation-persistent tool policy (spec §14). App assembly snapshots the conversation's
     /// materialized policy; the runtime freezes it with the run.
     public let toolPolicy: ConversationToolPolicy?
@@ -58,6 +60,7 @@ public struct AgentRunRequestSnapshot: Sendable {
         repetitionPenalty: Double,
         toolsEnabled: Bool,
         localToolNames: [String],
+        memorySeamAvailable: Bool,
         toolPolicy: ConversationToolPolicy?
     ) {
         self.conversationID = conversationID
@@ -80,6 +83,7 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.repetitionPenalty = repetitionPenalty
         self.toolsEnabled = toolsEnabled
         self.localToolNames = localToolNames
+        self.memorySeamAvailable = memorySeamAvailable
         self.toolPolicy = toolPolicy
     }
 }
@@ -114,7 +118,8 @@ struct AppFrozenInputBuilder: Sendable {
 
     func frozenInputs(
         snapshot: AgentRunRequestSnapshot,
-        artifactReferences: [ArtifactReference]
+        artifactReferences: [ArtifactReference],
+        historyArtifacts: [UUID: [ArtifactReference]] = [:]
     ) throws -> FrozenAgentRunInputs {
         let registration = try registration(snapshot: snapshot)
         let effectiveContext = UInt64(
@@ -165,7 +170,8 @@ struct AppFrozenInputBuilder: Sendable {
                 messageID: MessageID(rawValue: message.id),
                 revision: "message.v1",
                 role: role,
-                content: message.answer
+                content: message.answer,
+                attachments: historyArtifacts[message.id] ?? []
             )
         }
         let currentUser = try CurrentUserContextSource(
@@ -177,7 +183,8 @@ struct AppFrozenInputBuilder: Sendable {
 
         let localTools = snapshot.localToolNames
         let toolCatalog = try AppToolCatalog.catalog(
-            enabledLocalToolNames: snapshot.toolsEnabled ? localTools : []
+            enabledToolNames: snapshot.toolsEnabled ? localTools : [],
+            memoryAvailable: snapshot.memorySeamAvailable
         )
         let policy = try snapshot.toolPolicy ?? ConversationToolPolicy(
             masterEnabled: snapshot.toolsEnabled,
@@ -251,33 +258,113 @@ struct AppFrozenInputBuilder: Sendable {
 /// Pre-authorized attachment bytes keyed by the artifact id the submission committed. The local model
 /// provider verifies byte count and SHA-256 before handing bytes to the engine.
 actor AppAttachmentResolver: LocalModelArtifactBytesResolving {
-    private var bytesByArtifactID: [ArtifactID: Data] = [:]
+    private let store: ContentAddressedArtifactStore
+    private var references: [ArtifactID: ArtifactReference] = [:]
 
-    func store(_ artifactID: ArtifactID, bytes: Data) {
-        bytesByArtifactID[artifactID] = bytes
+    init(store: ContentAddressedArtifactStore) {
+        self.store = store
+    }
+
+    func store(_ reference: ArtifactReference) {
+        references[reference.id] = reference
     }
 
     func preauthorizedBytes(for reference: ArtifactReference) async throws -> Data {
-        guard let bytes = bytesByArtifactID[reference.id],
-              bytes.count == reference.byteCount
-        else { throw LocalModelAdapterError.artifactUnavailable(reference.id) }
-        return bytes
+        // Keep only the reference in memory; read the bytes from the content-addressed store on
+        // demand. Retaining every image's Data across multi-turn runs doubled each image in RAM and
+        // contributed to device memory pressure on the vision path.
+        guard references[reference.id] == reference else {
+            throw LocalModelAdapterError.artifactUnavailable(reference.id)
+        }
+        return try await store.data(for: reference.id, maximumBytes: reference.byteCount)
+    }
+}
+
+/// Commits app-owned attachment bytes into the content-addressed artifact store and preloads them for
+/// the local model provider. Used for BOTH the current turn's images and the history replay: a
+/// follow-up turn must see the earlier user message's pixels again, so each run resolves every user
+/// attachment still referenced by the conversation.
+struct AppAgentArtifactResolver: Sendable {
+    let artifactStore: ContentAddressedArtifactStore
+    let attachmentResolver: AppAttachmentResolver
+    let attachmentDirectory: URL
+
+    func resolveCurrent(
+        _ imageRefs: [ImageRef],
+        conversationID: UUID
+    ) async throws -> [ArtifactReference] {
+        var references: [ArtifactReference] = []
+        for image in imageRefs {
+            references.append(try await commit(image, conversationID: conversationID))
+        }
+        return references
+    }
+
+    func resolveHistory(
+        in snapshot: AgentRunRequestSnapshot,
+        excluding userTurnID: UUID
+    ) async throws -> [UUID: [ArtifactReference]] {
+        var resolved: [UUID: [ArtifactReference]] = [:]
+        for message in snapshot.messages where message.role == .user {
+            guard message.id != userTurnID, let refs = message.attachments, !refs.isEmpty else {
+                continue
+            }
+            var artifacts: [ArtifactReference] = []
+            for image in refs {
+                let url = attachmentDirectory.appending(component: image.fileName)
+                // A purged/deleted attachment falls back to text-only history; the conversation UI
+                // already removes the ref alongside the bytes, so this is a recovery safety net.
+                guard let data = try? Data(contentsOf: url) else { continue }
+                artifacts.append(try await commit(image, conversationID: snapshot.conversationID, data: data))
+            }
+            if !artifacts.isEmpty { resolved[message.id] = artifacts }
+        }
+        return resolved
+    }
+
+    private func commit(
+        _ image: ImageRef,
+        conversationID: UUID,
+        data: Data? = nil
+    ) async throws -> ArtifactReference {
+        let url = attachmentDirectory.appending(component: image.fileName)
+        let bytes = try data ?? Data(contentsOf: url)
+        let runID = AgentRunID(rawValue: UUID())
+        let committed = try await artifactStore.commit(
+            ArtifactCommitRequest(
+                data: bytes,
+                mimeType: "image/jpeg",
+                semanticType: "user-image",
+                provenance: ArtifactProvenance(
+                    runID: runID,
+                    providerID: "mobilellm.app-attachments"
+                ),
+                retentionPolicy: .conversation,
+                sensitivity: .personalData,
+                initialOwner: .conversation(ConversationID(rawValue: conversationID))
+            )
+        )
+        await attachmentResolver.store(committed)
+        return committed
     }
 }
 
 // MARK: - Tool catalog
 
-/// The app's Tool V2 catalog. The first release adapts only local-pure tools; every other built-in
-/// tool (web, Wikipedia, MCP, calendar, location, …) is listed as unavailable so the runtime never
-/// advertises a capability it cannot safely execute, exactly as spec §14 requires.
+/// The app's Tool V2 catalog. First release adapts the curated tool set the device matrix exercises:
+/// calculator, clock, web search (networkRead with approval), and app-owned memory (localRead/write,
+/// gated on the MemoryBook seam). Every other built-in (Wikipedia, webpage fetch, MCP, calendar,
+/// location, …) stays unavailable so the runtime never advertises a capability it cannot safely
+/// execute.
 struct AppToolCatalog: ExecutableToolCatalog, Sendable {
-    static let localToolNames = AppLocalToolIDs.names
+    static let adaptedToolNames = AppLocalToolIDs.names
 
     let snapshot: ToolCatalogSnapshot
-    let adapters: [AgentToolDescriptorID: LegacyLocalToolAdapter]
+    let adapters: [AgentToolDescriptorID: any ToolV2]
 
     static func catalog(
-        enabledLocalToolNames: [String],
+        enabledToolNames: [String],
+        memoryAvailable: Bool,
         trustRevision: String = "builtin.v1"
     ) throws -> ToolCatalogSnapshot {
         let builtIns = ToolRegistry.standard.tools
@@ -285,18 +372,39 @@ struct AppToolCatalog: ExecutableToolCatalog, Sendable {
         var unavailable: [UnavailableTool] = []
         for tool in builtIns {
             let logicalID = try AgentToolLogicalID(providerID: "builtin", name: tool.schema.name)
-            if Self.localToolNames.contains(tool.schema.name),
-               enabledLocalToolNames.contains(tool.schema.name)
+            let enabled = enabledToolNames.contains(tool.schema.name)
+            let seamMissing = (tool.schema.name == "remember" || tool.schema.name == "recall")
+                && !memoryAvailable
+            if Self.adaptedToolNames.contains(tool.schema.name), enabled, !seamMissing
             {
-                let adapter = try LegacyLocalToolAdapter(
-                    tool: tool,
-                    providerID: "builtin",
-                    trustRevision: trustRevision
-                )
-                descriptors.append(adapter.descriptor)
+                let inputSchema = try AppToolV2Support.inputSchema(for: tool.schema)
+                descriptors.append(try AgentToolDescriptor(
+                    id: AgentToolDescriptorID(
+                        logicalID: logicalID,
+                        version: SemanticVersion("1.0.0")!,
+                        schemaDigest: inputSchema.digest,
+                        trustRevision: trustRevision
+                    ),
+                    title: tool.schema.name,
+                    summary: tool.schema.description,
+                    inputSchema: inputSchema,
+                    outputSchema: nil,
+                    effects: Self.effects(for: tool.schema.name),
+                    requiredCapabilities: AgentCapabilitySet([]),
+                    timeoutPolicy: ToolTimeoutPolicy(
+                        maximumMilliseconds: Self.timeoutMilliseconds(for: tool.schema.name)
+                    ),
+                    retryPolicy: .never,
+                    idempotency: .pureRead,
+                    supportsProgress: false,
+                    supportsCancellation: true
+                ))
             } else {
                 unavailable.append(
-                    UnavailableTool(logicalID: logicalID, reason: .providerUnavailable)
+                    UnavailableTool(
+                        logicalID: logicalID,
+                        reason: .providerUnavailable
+                    )
                 )
             }
         }
@@ -307,22 +415,68 @@ struct AppToolCatalog: ExecutableToolCatalog, Sendable {
         )
     }
 
-    init(enabledLocalToolNames: [String]) throws {
-        let snapshot = try Self.catalog(enabledLocalToolNames: enabledLocalToolNames)
-        var adapters: [AgentToolDescriptorID: LegacyLocalToolAdapter] = [:]
-        for tool in ToolRegistry.standard.tools
-            where Self.localToolNames.contains(tool.schema.name)
-                && enabledLocalToolNames.contains(tool.schema.name)
-        {
-            let adapter = try LegacyLocalToolAdapter(
-                tool: tool,
-                providerID: "builtin",
-                trustRevision: "builtin.v1"
-            )
+    init(
+        enabledToolNames: [String],
+        memoryStore: (any MemoryStoring)?,
+        session: URLSession = .shared
+    ) throws {
+        let enabled = Set(enabledToolNames)
+        var adapters: [AgentToolDescriptorID: any ToolV2] = [:]
+        func register(_ adapter: any ToolV2) {
             adapters[adapter.descriptor.id] = adapter
         }
-        self.snapshot = snapshot
+        if enabled.contains("calculator") {
+            try register(LegacyLocalToolAdapter(
+                tool: CalculatorTool(),
+                providerID: "builtin",
+                trustRevision: "builtin.v1"
+            ))
+        }
+        if enabled.contains("current_datetime") {
+            try register(LegacyLocalToolAdapter(
+                tool: DateTimeTool(),
+                providerID: "builtin",
+                trustRevision: "builtin.v1"
+            ))
+        }
+        if enabled.contains("web_search") {
+            try register(AppWebSearchToolAdapter(
+                tool: WebSearchTool(session: session),
+                trustRevision: "builtin.v1"
+            ))
+        }
+        if enabled.contains("remember"), let memoryStore {
+            try register(AppMemoryToolAdapter(
+                tool: RememberTool(store: memoryStore),
+                effects: [.localWrite],
+                trustRevision: "builtin.v1"
+            ))
+        }
+        if enabled.contains("recall"), let memoryStore {
+            try register(AppMemoryToolAdapter(
+                tool: RecallTool(store: memoryStore),
+                effects: [.localRead],
+                trustRevision: "builtin.v1"
+            ))
+        }
+        self.snapshot = try Self.catalog(
+            enabledToolNames: enabledToolNames,
+            memoryAvailable: memoryStore != nil
+        )
         self.adapters = adapters
+    }
+
+    private static func effects(for name: String) -> [AgentEffect] {
+        switch name {
+        case "web_search": [.networkRead]
+        case "remember": [.localWrite]
+        case "recall": [.localRead]
+        default: [.localPure]
+        }
+    }
+
+    private static func timeoutMilliseconds(for name: String) -> UInt64 {
+        name == "web_search" ? 30_000 : 5_000
     }
 
     func localSnapshot() async throws -> ToolCatalogSnapshot { snapshot }
@@ -337,9 +491,7 @@ struct AppToolCatalog: ExecutableToolCatalog, Sendable {
 struct AppAgentRunRequestBuilder: AgentRunRequestBuilding {
     let frozenBuilder: AppFrozenInputBuilder
     let snapshot: @MainActor (UUID, UUID, String, [ImageRef]) -> AgentRunRequestSnapshot?
-    let artifactStore: ContentAddressedArtifactStore
-    let attachmentResolver: AppAttachmentResolver
-    let attachmentDirectory: URL
+    let artifacts: AppAgentArtifactResolver
     let lastSubmission: LastSubmissionBox
 
     func buildSubmission(
@@ -351,37 +503,19 @@ struct AppAgentRunRequestBuilder: AgentRunRequestBuilding {
         guard let snapshot = await snapshot(conversationID, userTurnID, text, imageRefs) else {
             throw AgentExecutionError.internalInvariant("agent snapshot unavailable")
         }
-        var artifactReferences: [ArtifactReference] = []
-        if !imageRefs.isEmpty {
-            for image in imageRefs {
-                let url = attachmentDirectory.appending(component: image.fileName)
-                let data = try Data(contentsOf: url)
-                let runID = AgentRunID(rawValue: UUID())
-                let committed = try await artifactStore.commit(
-                    ArtifactCommitRequest(
-                        data: data,
-                        mimeType: "image/jpeg",
-                        semanticType: "user-image",
-                        provenance: ArtifactProvenance(
-                            runID: runID,
-                            providerID: "mobilellm.app-attachments"
-                        ),
-                        retentionPolicy: .conversation,
-                        sensitivity: .personalData,
-                        initialOwner: .conversation(ConversationID(rawValue: conversationID))
-                    )
-                )
-                await attachmentResolver.store(committed.id, bytes: data)
-                artifactReferences.append(committed)
-            }
-        }
+        let artifactReferences = try await artifacts.resolveCurrent(imageRefs, conversationID: conversationID)
+        let historyArtifacts = try await artifacts.resolveHistory(
+            in: snapshot,
+            excluding: userTurnID
+        )
         let request = try frozenBuilder.request(
             snapshot: snapshot,
             artifactReferences: artifactReferences
         )
         let frozen = try frozenBuilder.frozenInputs(
             snapshot: snapshot,
-            artifactReferences: artifactReferences
+            artifactReferences: artifactReferences,
+            historyArtifacts: historyArtifacts
         )
         let submission = AgentRunSubmission(request: request, frozenInputs: frozen)
         lastSubmission.store(submission)
@@ -392,6 +526,7 @@ struct AppAgentRunRequestBuilder: AgentRunRequestBuilding {
 struct AppAgentRunInputFreezer: AgentRunInputFreezing {
     let frozenBuilder: AppFrozenInputBuilder
     let snapshot: @MainActor (UUID, UUID, String, [ImageRef]) -> AgentRunRequestSnapshot?
+    let artifacts: AppAgentArtifactResolver
     let lastSubmission: LastSubmissionBox
 
     func freeze(_ request: AgentRequest) async throws -> FrozenAgentRunInputs {
@@ -406,9 +541,14 @@ struct AppAgentRunInputFreezer: AgentRunInputFreezing {
         ) else {
             throw AgentExecutionError.internalInvariant("agent snapshot unavailable")
         }
+        let historyArtifacts = try await artifacts.resolveHistory(
+            in: snapshot,
+            excluding: request.userTurnID.rawValue
+        )
         return try frozenBuilder.frozenInputs(
             snapshot: snapshot,
-            artifactReferences: request.artifactReferences
+            artifactReferences: request.artifactReferences,
+            historyArtifacts: historyArtifacts
         )
     }
 }
@@ -474,7 +614,9 @@ public final class AgentRuntimeAssembly {
         engine: any LLMEngine,
         downloadBase: URL,
         conversationDirectory: URL,
-        snapshot: @escaping @MainActor (UUID, UUID, String, [ImageRef]) -> AgentRunRequestSnapshot?
+        snapshot: @escaping @MainActor (UUID, UUID, String, [ImageRef]) -> AgentRunRequestSnapshot?,
+        memoryStore: (any MemoryStoring)? = nil,
+        session: URLSession = .shared
     ) throws {
         let fileManager = FileManager.default
         let support = conversationDirectory.appending(component: "agent")
@@ -495,7 +637,7 @@ public final class AgentRuntimeAssembly {
             temporaryNameGenerator: { names.nextName() }
         )
         let payloadStore = ContentAddressedExecutionPayloadStore(store: artifactStore)
-        let attachmentResolver = AppAttachmentResolver()
+        let attachmentResolver = AppAttachmentResolver(store: artifactStore)
         let sanitizer = try LocalSanitizationAttestor(
             key: Data("mobilellm.agent-runtime.sanitization.v1".utf8.prefix(32)),
             policyRevision: 1
@@ -538,24 +680,32 @@ public final class AgentRuntimeAssembly {
             )
         }
         let providerCatalog = try StaticAgentModelProviderCatalog(providers: providers)
-        let toolCatalog = try AppToolCatalog(enabledLocalToolNames: AppToolCatalog.localToolNames)
+        let toolCatalog = try AppToolCatalog(
+            enabledToolNames: AppToolCatalog.adaptedToolNames,
+            memoryStore: memoryStore,
+            session: session
+        )
         let frozenBuilder = AppFrozenInputBuilder(
             capabilityVersion: capabilityVersion
         )
         let attachmentDirectory = conversationDirectory
             .appending(component: "attachments")
+        let artifactResolver = AppAgentArtifactResolver(
+            artifactStore: artifactStore,
+            attachmentResolver: attachmentResolver,
+            attachmentDirectory: attachmentDirectory
+        )
         let lastSubmission = LastSubmissionBox()
         let builder = AppAgentRunRequestBuilder(
             frozenBuilder: frozenBuilder,
             snapshot: snapshot,
-            artifactStore: artifactStore,
-            attachmentResolver: attachmentResolver,
-            attachmentDirectory: attachmentDirectory,
+            artifacts: artifactResolver,
             lastSubmission: lastSubmission
         )
         let freezer = AppAgentRunInputFreezer(
             frozenBuilder: frozenBuilder,
             snapshot: snapshot,
+            artifacts: artifactResolver,
             lastSubmission: lastSubmission
         )
         executor = DurableAgentExecutor(

@@ -247,14 +247,23 @@ public enum ConversationContextRole: String, CaseIterable, Hashable, Codable, Se
 public struct ConversationTurnContextSource: Hashable, Codable, Sendable {
     public let frozen: FrozenContextText
     public let role: ConversationContextRole
+    /// Artifacts (e.g. images) that travelled with this turn; replayed for multi-turn vision history.
+    public let attachments: [ArtifactReference]
 
-    public init(messageID: MessageID, revision: String, role: ConversationContextRole, content: String) throws {
+    public init(
+        messageID: MessageID,
+        revision: String,
+        role: ConversationContextRole,
+        content: String,
+        attachments: [ArtifactReference] = []
+    ) throws {
         self.frozen = try FrozenContextText(
             sourceID: messageID.description,
             revision: revision,
             content: content
         )
         self.role = role
+        self.attachments = attachments
     }
 
     public init(from decoder: Decoder) throws {
@@ -268,7 +277,11 @@ public struct ConversationTurnContextSource: Hashable, Codable, Sendable {
                 messageID: messageID,
                 revision: value.revision,
                 role: container.decode(ConversationContextRole.self, forKey: .role),
-                content: value.content
+                content: value.content,
+                attachments: container.decodeIfPresent(
+                    [ArtifactReference].self,
+                    forKey: .attachments
+                ) ?? []
             )
         } catch {
             throw DecodingError.dataCorrupted(
@@ -277,7 +290,7 @@ public struct ConversationTurnContextSource: Hashable, Codable, Sendable {
         }
     }
 
-    private enum CodingKeys: String, CodingKey { case frozen, role }
+    private enum CodingKeys: String, CodingKey { case frozen, role, attachments }
 }
 
 public struct CurrentUserContextSource: Hashable, Codable, Sendable {

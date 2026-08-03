@@ -29,7 +29,8 @@ public struct SearchResult: Sendable, Equatable, Hashable, Codable {
 /// URL-building + HTML parsing are pure functions covered by canned-fixture tests; only `fetch` hits the
 /// network.
 public struct WebSearchTool: Tool {
-    private let engines: [SearchEngine]
+    /// Engine priority order, public so Tool V2 adapters can plan the same fallback itinerary.
+    public let engines: [SearchEngine]
     private let httpClient: WebHTTPClient
     private let maxResults: Int
     private let maxBytes: Int
@@ -77,7 +78,21 @@ public struct WebSearchTool: Tool {
 
     // MARK: - Network
 
-    enum ToolNetError: Error { case badURL, badResponse }
+    public enum ToolNetError: Error { case badURL, badResponse }
+
+    /// Bounded fetch of ONE engine's results page. Public for Tool V2 adapters that must place the
+    /// network call inside an authorized execution boundary (they consume the response bytes through
+    /// the boundary control before parsing); the legacy `execute` keeps its tolerant fallback loop.
+    public func fetchHTML(query: String, engine: SearchEngine) async throws -> Data {
+        guard let url = Self.endpoint(engine: engine, query: query) else { throw ToolNetError.badURL }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        req.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+        req.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        let result = try await httpClient.get(req, maxBytes: maxBytes)
+        guard result.response.statusCode == 200 else { throw ToolNetError.badResponse }
+        return result.body
+    }
 
     private func fetch(engine: SearchEngine, query: String) async throws -> String {
         guard let url = Self.endpoint(engine: engine, query: query) else { throw ToolNetError.badURL }
@@ -97,7 +112,7 @@ public struct WebSearchTool: Tool {
                          + "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
     /// Build the results-page URL. DuckDuckGo's `html.duckduckgo.com/html/` is the no-JS HTML endpoint.
-    static func endpoint(engine: SearchEngine, query: String) -> URL? {
+    public static func endpoint(engine: SearchEngine, query: String) -> URL? {
         let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
         switch engine {
         case .duckduckgo: return URL(string: "https://html.duckduckgo.com/html/?q=\(q)")
@@ -107,7 +122,7 @@ public struct WebSearchTool: Tool {
 
     // MARK: - Parsing (pure, unit-tested against canned fixtures)
 
-    static func parse(engine: SearchEngine, html: String) -> [SearchResult] {
+    public static func parse(engine: SearchEngine, html: String) -> [SearchResult] {
         switch engine {
         case .duckduckgo: return parseDuckDuckGo(html)
         case .bing:       return parseBing(html)
@@ -179,7 +194,7 @@ public struct WebSearchTool: Tool {
     }
 
     /// A compact, model-friendly rendering: a numbered list of title / url / snippet.
-    static func render(_ results: [SearchResult], query: String) -> String {
+    public static func render(_ results: [SearchResult], query: String) -> String {
         var lines = ["Web results for \"\(query)\":"]
         for (i, r) in results.enumerated() {
             var entry = "\(i + 1). \(r.title)\n\(r.url)"

@@ -1025,6 +1025,11 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         // memory and then unexpectedly started browsing. The turn must use Memory and zero Web calls.
         let app = try prepare(writer, tools: true,
                               selected: ["Memory", "Web search"], thinking: false)
+        // One fact on the device only: a stale fact from an earlier run makes the reader's exact-name
+        // answer depend on which of two similar notes a 1-bit model happens to pick.
+        try clearAllMemories(in: app)
+        try openNewChat(in: app)
+        try activate(writer, in: app)
         let code = (writer == .bonsai ? "QuartzBonsai" : "QuartzGemma")
             + String(Int.random(in: 10_000...99_999))
         let marker = uniqueMarker(writer == .bonsai ? "BONSAI_MEMORY" : "GEMMA_MEMORY")

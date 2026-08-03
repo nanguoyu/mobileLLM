@@ -342,7 +342,8 @@ enum ContextRendering {
                 kind: $0.role == .user ? .conversationUser : .conversationAssistant,
                 frozen: $0.frozen,
                 role: $0.role == .user ? .user : .assistant,
-                untrusted: false
+                untrusted: false,
+                artifacts: $0.attachments
             )
         })
         result.append(candidate(

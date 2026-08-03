@@ -194,6 +194,41 @@ class DeviceE2ETestCase: XCTestCase {
         }
     }
 
+    /// Clears every saved memory fact through the Settings UI. Cross-model memory tests need exactly one
+    /// fact on the device, otherwise a small reader model can pick the wrong one of two similar notes.
+    @MainActor
+    func clearAllMemories(in app: XCUIApplication) throws {
+        try goToSettings(in: app)
+        let memory = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Memory")
+        ).firstMatch
+        guard scrollToHittable(memory, in: app.scrollViews.firstMatch) else {
+            throw DeviceE2EHarnessError.precondition("Memory settings row is unreachable")
+        }
+        memory.tap()
+        guard app.navigationBars["Memory"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("Memory sheet did not open")
+        }
+        let forget = app.buttons["Forget everything"]
+        if forget.exists, forget.isHittable {
+            forget.tap()
+            let alert = app.alerts["Forget everything?"]
+            guard alert.waitForExistence(timeout: 5) else {
+                throw DeviceE2EHarnessError.precondition("Forget-everything confirmation did not appear")
+            }
+            alert.buttons["Forget everything"].tap()
+            guard waitUntilGone(forget, timeout: 10) else {
+                throw DeviceE2EHarnessError.precondition("Memory was not cleared")
+            }
+        }
+        let done = app.navigationBars["Memory"].buttons["Done"]
+        if done.exists, done.isHittable { done.tap() }
+        guard app.navigationBars["Settings"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("Memory sheet did not close")
+        }
+        try goToChatList(in: app)
+    }
+
     @MainActor
     func activate(_ model: DeviceTestModel, in app: XCUIApplication) throws {
         let active = app.buttons["Active model"]
@@ -300,6 +335,7 @@ class DeviceE2ETestCase: XCTestCase {
                 attachDiagnostics(app, name: "generation-left-foreground")
                 throw DeviceE2EHarnessError.precondition("App left foreground during \(model.displayName) generation")
             }
+            approvePendingAgentApprovalIfNeeded(in: app)
             let failure = app.descendants(matching: .any).matching(
                 NSPredicate(format: "label == %@ OR label == %@",
                             "Couldn't generate a reply", "The model didn't reply")
@@ -430,6 +466,7 @@ class DeviceE2ETestCase: XCTestCase {
             if app.state != .runningForeground {
                 throw DeviceE2EHarnessError.precondition("App left foreground during generation")
             }
+            approvePendingAgentApprovalIfNeeded(in: app)
             if app.buttons.matching(identifier: "Copy answer").count > previousCopyCount,
                statsQuery.count > previousStatsCount,
                !app.buttons["Stop"].exists { break }
@@ -722,6 +759,25 @@ class DeviceE2ETestCase: XCTestCase {
             Thread.sleep(forTimeInterval: 0.1)
         }
         return element.exists && element.isEnabled && element.isHittable
+    }
+
+    /// The durable agent runtime pauses a network tool on first use in a conversation and presents an
+    /// approval card (spec §15.2). Approve it when it appears; local tools never trigger this.
+    @MainActor
+    func approvePendingAgentApprovalIfNeeded(in app: XCUIApplication, timeout: TimeInterval = 60) {
+        let approve = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Approve")
+        ).firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if approve.exists, approve.isHittable {
+                approve.tap()
+                let gone = Date().addingTimeInterval(10)
+                while Date() < gone, approve.exists { Thread.sleep(forTimeInterval: 0.2) }
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
     }
 
     @MainActor

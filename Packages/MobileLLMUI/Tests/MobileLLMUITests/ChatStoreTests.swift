@@ -103,8 +103,12 @@ final class ChatStoreTests: XCTestCase {
             requestBuilder: UnavailableAgentRunRequestBuilder()
         ))
         let fresh = try XCTUnwrap(chat.newConversation())
-        XCTAssertEqual(fresh.toolPolicy?.allowedToolIDs, AppLocalToolIDs.current)
-        XCTAssertEqual(fresh.toolPolicy?.pinnedToolIDs, AppLocalToolIDs.current)
+        let expected = settings.builtInToolConfig.enabled.compactMap { id in
+            try? AgentToolLogicalID(providerID: "builtin", name: id.rawValue)
+        }.sorted()
+        XCTAssertEqual(fresh.toolPolicy?.allowedToolIDs, expected,
+                       "the materialized policy mirrors the user's current tool selection")
+        XCTAssertEqual(fresh.toolPolicy?.pinnedToolIDs, expected)
         XCTAssertEqual(fresh.toolPolicy?.masterEnabled, settings.toolsEnabled)
         XCTAssertTrue(fresh.toolPolicy?.materializedFromGlobalTemplate == true)
     }

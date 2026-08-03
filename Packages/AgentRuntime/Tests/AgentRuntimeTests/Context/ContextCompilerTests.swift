@@ -8,6 +8,35 @@ import XCTest
 // TEST-ID: AHT-CONTEXT-001
 // TEST-ID: AHT-CONTEXT-002
 final class ContextCompilerTests: XCTestCase {
+    /// Multi-turn vision: an earlier user turn's image artifact must ride the conversation message
+    /// into the compiled context, so the follow-up model pass sees the same pixels again.
+    func testHistoryUserTurnAttachmentsReachCompiledMessages() throws {
+        let historyArtifact = try artifact(21)
+        let history = try ConversationTurnContextSource(
+            messageID: messageID(21),
+            revision: "1",
+            role: .user,
+            content: "What is in this picture?",
+            attachments: [historyArtifact]
+        )
+        let snapshot = try minimalSnapshot(
+            conversation: [history],
+            currentAttachments: [try artifact(22)]
+        )
+        let compiled = try ContextCompiler().compile(snapshot, budget: wideBudget())
+
+        let historyMessage = try XCTUnwrap(
+            compiled.messages.first { $0.artifacts.contains(historyArtifact) }
+        )
+        XCTAssertEqual(historyMessage.role, AgentModelMessageRole.user)
+        XCTAssertTrue(historyMessage.content.contains("What is in this picture?"))
+
+        // Round-trip keeps the attachment too (journal persistence + recovery replay).
+        let encoded = try JSONEncoder().encode(history)
+        let decoded = try JSONDecoder().decode(ConversationTurnContextSource.self, from: encoded)
+        XCTAssertEqual(decoded.attachments, [historyArtifact])
+    }
+
     func testCompilesEveryTypedSourceWithExactEvidenceAndUntrustedFraming() throws {
         let snapshot = try completeSnapshot()
         let compiled = try ContextCompiler().compile(snapshot, budget: wideBudget())

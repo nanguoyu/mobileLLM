@@ -386,7 +386,11 @@ public final class ChatStore {
     /// copy the template once at creation; later global changes affect new conversations only).
     private func globalToolTemplate() -> ConversationToolPolicy? {
         guard agentRuns != nil else { return nil }
-        let allowed = AppLocalToolIDs.current
+        // The policy is the USER's selection (Tools screen), mapped to logical ids; the runtime's
+        // selector and catalog decide which of those are adapted and advertised for a pass.
+        let allowed = settings.builtInToolConfig.enabled.compactMap { id in
+            try? AgentToolLogicalID(providerID: "builtin", name: id.rawValue)
+        }
         return try? ConversationToolPolicy(
             masterEnabled: settings.toolsEnabled,
             allowedToolIDs: allowed,
