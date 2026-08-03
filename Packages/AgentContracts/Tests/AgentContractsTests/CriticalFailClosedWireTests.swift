@@ -23,7 +23,8 @@ final class CriticalFailClosedWireTests: XCTestCase {
         XCTAssertEqual(budget.limits[.consecutiveNoProgressActions], 2)
         XCTAssertEqual(budget.limits[.activeMilliseconds], 15 * 60 * 1_000)
         XCTAssertEqual(budget.limits[.inputTokens], 24_576)
-        XCTAssertEqual(budget.limits[.outputTokens], 1_024)
+        XCTAssertEqual(budget.limits[.outputTokens], 6_144,
+                       "output budget is a run total sized for six model passes, each up to the ceiling")
         XCTAssertEqual(budget.limits[.contextTokensPerAttempt], 4_096)
         XCTAssertEqual(budget.limits[.networkRequestBytes], 8 * 1_024 * 1_024)
         XCTAssertEqual(budget.limits[.networkResponseBytesPerOperation], 2 * 1_024 * 1_024)

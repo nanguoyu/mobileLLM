@@ -526,7 +526,11 @@ public final class AgentRuntimeAssembly {
                 ),
                 residencyDriver: residencyDriver,
                 artifactResolver: attachmentResolver,
-                configuration: try LocalModelAdapterConfiguration()
+                configuration: try LocalModelAdapterConfiguration(
+                    recordDiagnostic: { code, metadata in
+                        await diagnosticLogger.record(code: code, metadata: metadata)
+                    }
+                )
             )
         }
         let providerCatalog = try StaticAgentModelProviderCatalog(providers: providers)

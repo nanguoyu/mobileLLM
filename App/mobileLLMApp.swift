@@ -232,7 +232,13 @@ struct MobileLLMApp: App {
                 container.attachAgentRuns(assembly.runStore)
                 container.agentDiagnosticSnapshot = { @MainActor in
                     await assembly.diagnosticLogger.snapshot()
-                        .map { "\($0.code):\($0.metadata.values.joined(separator: ","))" }
+                        .map { entry in
+                            let fields = entry.metadata
+                                .map { "\($0.key)=\($0.value)" }
+                                .sorted()
+                                .joined(separator: ",")
+                            return "\(entry.code):\(fields)"
+                        }
                         .joined(separator: "|")
                 }
                 AgentRuntimeAssembly.logger(

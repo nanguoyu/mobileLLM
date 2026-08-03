@@ -324,6 +324,26 @@ extension AgentRunController {
             latestUserRequest: frozen.currentUser.frozen.content
         )
         let descriptors = toolFree ? [] : selected.descriptors
+        await logger.record(
+            code: "execution.tool-selection",
+            metadata: [
+                "advertised": descriptors
+                    .map { $0.id.logicalID.description }.sorted().joined(separator: ","),
+                "catalog": frozen.toolCatalog.descriptors
+                    .map { $0.id.logicalID.description }.sorted().joined(separator: ","),
+                "policy.master": String(frozen.toolPolicy.masterEnabled),
+                "policy.allowed": frozen.toolPolicy.allowedToolIDs
+                    .map(\.description).sorted().joined(separator: ","),
+                "policy.pinned": frozen.toolPolicy.pinnedToolIDs
+                    .map(\.description).sorted().joined(separator: ","),
+                "explicit": frozen.explicitlyRequestedToolIDs
+                    .map(\.description).sorted().joined(separator: ","),
+                "unavailable": selected.unavailable
+                    .map { "\($0.logicalID.description):\($0.reason.rawValue)" }
+                    .joined(separator: ","),
+                "toolFree": String(toolFree),
+            ]
+        )
         var stateFields: [String: JSONValue] = [
             "state": .string(facts.projection.state.rawValue),
             "stateVersion": .unsignedInteger(facts.projection.stateVersion),

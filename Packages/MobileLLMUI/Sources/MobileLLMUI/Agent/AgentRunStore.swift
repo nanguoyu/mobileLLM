@@ -425,28 +425,29 @@ public final class AgentRunStore {
                 status: .running,
                 sequence: record.sequence
             ))
-        case .toolOutcomeRecorded(let invocationID, let outcome):
+        case .toolOutcomeRecorded(_, let outcome):
             if let index = steps.lastIndex(where: {
                 $0.kind == .toolCall && $0.status == .running && $0.sequence <= record.sequence
             }) {
                 let status: AgentRunStep.Status
-                let detail: String
+                let resultText: String?
                 switch outcome {
-                case .completed:
+                case .completed(let results):
                     status = .succeeded
-                    detail = "Completed"
+                    resultText = Self.toolResultSummary(results)
                 case .failed(let failure):
                     status = .failed
-                    detail = failure.safeMessage
+                    resultText = failure.safeMessage
                 case .uncertain(let failure):
                     status = .uncertain
-                    detail = failure.safeMessage
+                    resultText = failure.safeMessage
                 }
                 steps[index] = AgentRunStep(
                     id: steps[index].id,
                     kind: .toolCall,
                     title: steps[index].title,
-                    detail: detail,
+                    detail: steps[index].detail,
+                    resultText: resultText,
                     status: status,
                     sequence: steps[index].sequence
                 )
@@ -693,10 +694,10 @@ public final class AgentRunStore {
         return step
     }
 
-    /// "builtin.calculator" → "Using calculator": the visible action, not the internal subject id.
+    /// "builtin:current_datetime" / "7:builtin8:calculator" → "calculator": the visible action
+    /// keeps the tool's real name (the message row and panel prettify it), not the internal subject id.
     private static func toolDisplayName(_ subjectID: String) -> String {
-        let name = subjectID.split(separator: ".").last.map(String.init) ?? subjectID
-        return "Using \(name)"
+        subjectID.split(separator: ":").last.map(String.init) ?? subjectID
     }
 
     private static func toolArgumentSummary(_ json: String?) -> String {
@@ -705,6 +706,27 @@ public final class AgentRunStore {
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespaces)
         return compact.count <= 120 ? compact : String(compact.prefix(117)) + "…"
+    }
+
+    /// Bounded one-line summary of a successful tool result for the committed ToolRun row.
+    private static func toolResultSummary(_ results: ToolResultCollection) -> String? {
+        let parts = results.map { content -> String in
+            switch content {
+            case .text(let text):
+                return text.value
+            case .structured(let structured):
+                return String(decoding: structured.value.data, as: UTF8.self)
+            case .resourceLink(let link):
+                return link.url
+            case .image, .artifact:
+                return "[artifact]"
+            }
+        }
+        guard !parts.isEmpty else { return nil }
+        let joined = parts.joined(separator: " | ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return joined.count <= 240 ? joined : String(joined.prefix(237)) + "…"
     }
 
     /// Redacted failure text including the typed reason when present, so device diagnostics show why

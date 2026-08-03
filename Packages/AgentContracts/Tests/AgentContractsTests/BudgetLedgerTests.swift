@@ -222,6 +222,17 @@ final class BudgetLedgerTests: XCTestCase {
         ) { error in
             XCTAssertEqual(error as? AgentContractError, .arithmeticOverflow(dimension: .inputTokens))
         }
+
+        let overflowingOutput = UInt64.max / 6 + 1
+        XCTAssertThrowsError(
+            try AgentBudget.firstReleaseDefaults(
+                contextTokensPerAttempt: 1,
+                outputTokens: overflowingOutput,
+                peakMemoryBytes: 1
+            )
+        ) { error in
+            XCTAssertEqual(error as? AgentContractError, .arithmeticOverflow(dimension: .outputTokens))
+        }
     }
 
     func testBudgetCodableRejectsMissingDuplicateNoncanonicalAndOverBudgetForgeries() throws {

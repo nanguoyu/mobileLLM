@@ -774,7 +774,11 @@ public final class ChatStore {
         }
         let toolRuns = steps.compactMap { step -> ToolRun? in
             guard step.kind == .toolCall else { return nil }
-            return ToolRun(name: step.title, arguments: step.detail, result: step.statusText)
+            return ToolRun(
+                name: step.title,
+                arguments: step.detail,
+                result: step.resultText ?? step.statusText
+            )
         }
         if !toolRuns.isEmpty { message.toolRuns = toolRuns }
         if let model = activeModel { message.generatedBy = GenerationModel(model) }

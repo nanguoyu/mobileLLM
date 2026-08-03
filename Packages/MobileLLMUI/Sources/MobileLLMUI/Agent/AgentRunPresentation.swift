@@ -31,6 +31,9 @@ public struct AgentRunStep: Identifiable, Equatable, Sendable {
     public let kind: Kind
     public let title: String
     public let detail: String
+    /// Short user-visible outcome for a committed action (e.g. the text a tool returned). nil until
+    /// the action settles, and for actions whose outcome carries no summary.
+    public let resultText: String?
     public let status: Status
     public let sequence: UInt64
 
@@ -39,6 +42,7 @@ public struct AgentRunStep: Identifiable, Equatable, Sendable {
         kind: Kind,
         title: String,
         detail: String = "",
+        resultText: String? = nil,
         status: Status,
         sequence: UInt64
     ) {
@@ -46,6 +50,7 @@ public struct AgentRunStep: Identifiable, Equatable, Sendable {
         self.kind = kind
         self.title = title
         self.detail = detail
+        self.resultText = resultText
         self.status = status
         self.sequence = sequence
     }

@@ -173,11 +173,17 @@ struct AgentRunPanel: View {
                 HStack(alignment: .top, spacing: Theme.Space.xs) {
                     stepIcon(step)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(step.title)
+                        Text(stepTitle(step))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(Theme.textPrimary)
                         if !step.detail.isEmpty {
                             Text(step.detail)
+                                .font(.caption2)
+                                .foregroundStyle(Theme.textSecondary)
+                                .textSelection(.enabled)
+                        }
+                        if let resultText = step.resultText, !resultText.isEmpty {
+                            Text(resultText)
                                 .font(.caption2)
                                 .foregroundStyle(Theme.textSecondary)
                                 .textSelection(.enabled)
@@ -189,6 +195,12 @@ struct AgentRunPanel: View {
             }
         }
         .padding(.top, Theme.Space.xs)
+    }
+
+    private func stepTitle(_ step: AgentRunStep) -> String {
+        guard step.kind == .toolCall else { return step.title }
+        let pretty = step.title.replacingOccurrences(of: "_", with: " ").capitalized
+        return (step.status == .running || step.status == .pending) ? "Using \(pretty)" : pretty
     }
 
     private func stepIcon(_ step: AgentRunStep) -> some View {

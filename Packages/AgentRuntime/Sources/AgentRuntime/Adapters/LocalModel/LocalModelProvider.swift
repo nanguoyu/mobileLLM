@@ -11,6 +11,8 @@ public struct LocalModelAdapterConfiguration: Sendable {
     public let maximumTotalImageBytes: UInt64
     public let maximumBufferedActionBytes: UInt64
     let nowMilliseconds: @Sendable () -> UInt64
+    /// Bounded device-only diagnostic hook for what the model actually emitted (never user history).
+    let recordDiagnostic: @Sendable (String, [String: String]) async -> Void
 
     public init(
         maximumImageBytes: UInt64 = 32 * 1_024 * 1_024,
@@ -18,7 +20,8 @@ public struct LocalModelAdapterConfiguration: Sendable {
         maximumBufferedActionBytes: UInt64 = 64 * 1_024,
         nowMilliseconds: @escaping @Sendable () -> UInt64 = {
             DispatchTime.now().uptimeNanoseconds / 1_000_000
-        }
+        },
+        recordDiagnostic: @escaping @Sendable (String, [String: String]) async -> Void = { _, _ in }
     ) throws {
         guard maximumImageBytes > 0,
               maximumTotalImageBytes >= maximumImageBytes,
@@ -28,6 +31,7 @@ public struct LocalModelAdapterConfiguration: Sendable {
         self.maximumTotalImageBytes = maximumTotalImageBytes
         self.maximumBufferedActionBytes = maximumBufferedActionBytes
         self.nowMilliseconds = nowMilliseconds
+        self.recordDiagnostic = recordDiagnostic
     }
 }
 
@@ -104,6 +108,13 @@ public struct LocalModelProvider: AgentModelProvider, Sendable {
 }
 
 private enum LocalModelGeneration {
+    /// Immutable copy of the bounded response summary, safe to hand to a diagnostic Task.
+    private struct ResponseDiagnosticSnapshot: Sendable {
+        let tail: String
+        let calls: Int
+        let answerBytes: Int
+    }
+
     static func run(
         engine: any LLMEngine,
         registration: LocalModelRegistration,
@@ -142,7 +153,23 @@ private enum LocalModelGeneration {
         var answer = ""
         var stats: Stats?
         var silentActionBytes: UInt64 = 0
+        var responseTail = ""
         let startedAt = configuration.nowMilliseconds()
+        defer {
+            let snapshot = ResponseDiagnosticSnapshot(
+                tail: responseTail,
+                calls: parsedCalls.count,
+                answerBytes: answer.utf8.count
+            )
+            Task {
+                await configuration.recordDiagnostic("model.local.response", [
+                    "dialect": registration.toolDialect.rawValue,
+                    "tail": snapshot.tail,
+                    "calls": String(snapshot.calls),
+                    "answerBytes": String(snapshot.answerBytes),
+                ])
+            }
+        }
 
         do {
             for try await delta in engine.generate(messages: messages, params: sampling) {
@@ -178,6 +205,7 @@ private enum LocalModelGeneration {
                             emitter: emitter
                         )
                     }
+                    responseTail = Self.boundedTail(responseTail, appending: value)
                     let byteCount = UInt64(value.utf8.count)
                     let events = processor.feed(value)
                     let emittedText = try await consume(
@@ -338,6 +366,13 @@ private enum LocalModelGeneration {
             )
         }
         return try await complete(action, usage: usage, emitter: emitter)
+    }
+
+    /// Keep only the last ~400 bytes of raw model output for the bounded diagnostic tail.
+    private static func boundedTail(_ current: String, appending value: String) -> String {
+        let joined = current + value
+        guard joined.utf8.count > 400 else { return joined }
+        return String(joined.suffix(400))
     }
 
     private static func compileMessages(

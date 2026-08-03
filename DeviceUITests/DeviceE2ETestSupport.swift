@@ -305,8 +305,12 @@ class DeviceE2ETestCase: XCTestCase {
                             "Couldn't generate a reply", "The model didn't reply")
             ).firstMatch
             if failure.exists {
+                Thread.sleep(forTimeInterval: 3)
+                let finalDiagnostics = diagnosticValue("device-e2e.agent", in: app)
                 attachDiagnostics(app, name: "generation-failed-\(model.modelID)")
-                throw DeviceE2EHarnessError.precondition("\(model.displayName) committed a failed/empty reply")
+                throw DeviceE2EHarnessError.precondition(
+                    "\(model.displayName) committed a failed/empty reply; diagnostics: \(finalDiagnostics)"
+                )
             }
             // The agent runtime surfaces failures in its own projection panel; detect that state
             // directly so a failed run fails fast with full diagnostics instead of waiting out the
