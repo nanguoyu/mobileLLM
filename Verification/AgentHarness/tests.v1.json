@@ -1856,6 +1856,120 @@
       }
     },
     {
+      "id": "AHT-DEVICE-WEB-001",
+      "title": "Physical device: web search Tool V2 with first-use approval",
+      "status": "active",
+      "kind": "device",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-TOOLS-001",
+        "AH-SELECT-001",
+        "AH-APPROVAL-002",
+        "AH-SELECT-002",
+        "AH-TEST-003"
+      ],
+      "selectors": [
+        {
+          "kind": "device-scenario",
+          "value": "PhysicalDeviceFullStackUITests/test12BonsaiWebSearchOnly"
+        },
+        {
+          "kind": "device-scenario",
+          "value": "PhysicalDeviceFullStackUITests/test13GemmaWebSearchOnly"
+        },
+        {
+          "kind": "device-scenario",
+          "value": "PhysicalDeviceFullStackUITests/test24ChangingWebSelectionDuringColdLoadDoesNotAffectCurrentTurn"
+        }
+      ],
+      "platforms": [
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Exactly one Web Search tool row per turn, approval card granted on first conversation use, no tool on master-off turns, and cold-load race isolation"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      },
+      "notes": "Passed on iPhone 16 Pro (iOS 27): test12/test13/test24 green with the networkRead adapter and durable approval flow."
+    },
+    {
+      "id": "AHT-DEVICE-MEMORY-001",
+      "title": "Physical device: memory Tool V2 cross-model save and read",
+      "status": "active",
+      "kind": "device",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-TOOLS-001",
+        "AH-SELECT-001",
+        "AH-CONTEXT-002",
+        "AH-TEST-003"
+      ],
+      "selectors": [
+        {
+          "kind": "device-scenario",
+          "value": "PhysicalDeviceFullStackUITests/test16BonsaiSavesEnglishMemoryGemmaReadsWithoutTools"
+        },
+        {
+          "kind": "device-scenario",
+          "value": "PhysicalDeviceFullStackUITests/test17GemmaSavesEnglishMemoryBonsaiReadsWithoutTools"
+        }
+      ],
+      "platforms": [
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Saved-to-memory tool row, durable canonical-English fact after relaunch, and cross-model readback with exactly one fact on device"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      },
+      "notes": "Passed on iPhone 16 Pro (iOS 27): test16/test17 green with the localRead/localWrite adapter on the app-owned MemoryStore."
+    },
+    {
+      "id": "AHT-DEVICE-VISION-001",
+      "title": "Physical device: vision with multi-turn image history replay",
+      "status": "active",
+      "kind": "device",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-CONTEXT-002",
+        "AH-TEST-003"
+      ],
+      "selectors": [
+        {
+          "kind": "device-scenario",
+          "value": "PhysicalDeviceFullStackUITests/test18GemmaVisionFixtureAndImageHistoryWithoutTools"
+        },
+        {
+          "kind": "device-scenario",
+          "value": "PhysicalDeviceFullStackUITests/test19GemmaVisualQuestionDoesNotTriggerAllowedWebSearch"
+        }
+      ],
+      "platforms": [
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Fixture shapes and number on first turn, exact 7421 readback on the follow-up turn (image bytes replayed), and zero Web Search activity"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      },
+      "notes": "Passed on iPhone 16 Pro (iOS 27): test18/test19 green with conversation-turn artifact replay."
+    },
+    {
       "id": "AHT-PERF-001",
       "title": "Compare latency and resource metrics to matched baseline",
       "status": "planned",

@@ -1003,7 +1003,9 @@
         "pull-request"
       ],
       "testIDs": [
-        "AHT-TOOL-001"
+        "AHT-TOOL-001",
+        "AHT-DEVICE-WEB-001",
+        "AHT-DEVICE-MEMORY-001"
       ],
       "requiredEvidence": [
         "Fake tool boundary-crossing spies and terminal stream tests"
@@ -1129,7 +1131,9 @@
         "pull-request"
       ],
       "testIDs": [
-        "AHT-SELECT-001"
+        "AHT-SELECT-001",
+        "AHT-DEVICE-MEMORY-001",
+        "AHT-DEVICE-WEB-001"
       ],
       "requiredEvidence": [
         "New, legacy, upgrade, and global-change persistence fixtures"
@@ -1158,7 +1162,8 @@
         "pull-request"
       ],
       "testIDs": [
-        "AHT-SELECT-002"
+        "AHT-SELECT-002",
+        "AHT-DEVICE-WEB-001"
       ],
       "requiredEvidence": [
         "Allowed-set property tests and zero provider calls"
@@ -1225,7 +1230,8 @@
         "pull-request"
       ],
       "testIDs": [
-        "AHT-AUTH-002"
+        "AHT-AUTH-002",
+        "AHT-DEVICE-WEB-001"
       ],
       "requiredEvidence": [
         "100% approval decision-table row coverage"
@@ -1326,7 +1332,9 @@
         "release-candidate"
       ],
       "testIDs": [
-        "AHT-CONTEXT-002"
+        "AHT-CONTEXT-002",
+        "AHT-DEVICE-VISION-001",
+        "AHT-DEVICE-MEMORY-001"
       ],
       "requiredEvidence": [
         "Memory recall, Skill version, budget, and injection isolation assertions"
@@ -1935,7 +1943,10 @@
         "release-candidate"
       ],
       "testIDs": [
-        "AHT-DEVICE-001"
+        "AHT-DEVICE-001",
+        "AHT-DEVICE-WEB-001",
+        "AHT-DEVICE-MEMORY-001",
+        "AHT-DEVICE-VISION-001"
       ],
       "requiredEvidence": [
         "Signed device evidence records and xcresult bundles for every matrix cell"

@@ -241,11 +241,13 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     }
 
     @MainActor
+    // TEST-ID: AHT-DEVICE-WEB-001
     func test12BonsaiWebSearchOnly() throws {
         try exerciseWebSearch(.bonsai)
     }
 
     @MainActor
+    // TEST-ID: AHT-DEVICE-WEB-001
     func test13GemmaWebSearchOnly() throws {
         try exerciseWebSearch(.gemma)
     }
@@ -285,11 +287,13 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     }
 
     @MainActor
+    // TEST-ID: AHT-DEVICE-MEMORY-001
     func test16BonsaiSavesEnglishMemoryGemmaReadsWithoutTools() throws {
         try exerciseCrossModelMemory(writer: .bonsai, reader: .gemma)
     }
 
     @MainActor
+    // TEST-ID: AHT-DEVICE-MEMORY-001
     func test17GemmaSavesEnglishMemoryBonsaiReadsWithoutTools() throws {
         try exerciseCrossModelMemory(writer: .gemma, reader: .bonsai)
     }
@@ -297,6 +301,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     // MARK: Vision
 
     @MainActor
+    // TEST-ID: AHT-DEVICE-VISION-001
     func test18GemmaVisionFixtureAndImageHistoryWithoutTools() throws {
         let app = try launchApp(visionFixture: true)
         XCTAssertTrue(waitForFixtureCount(1, in: app), "deterministic image fixture was not staged")
@@ -324,6 +329,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     }
 
     @MainActor
+    // TEST-ID: AHT-DEVICE-VISION-001
     func test19GemmaVisualQuestionDoesNotTriggerAllowedWebSearch() throws {
         let app = try launchApp(visionFixture: true)
         XCTAssertTrue(waitForFixtureCount(1, in: app))
@@ -418,6 +424,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     }
 
     @MainActor
+    // TEST-ID: AHT-DEVICE-WEB-001
     func test24ChangingWebSelectionDuringColdLoadDoesNotAffectCurrentTurn() throws {
         let app = try launchApp()
         try configureTools(master: true, enabled: [], in: app)

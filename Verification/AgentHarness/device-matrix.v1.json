@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "documentID": "AH-DEVICE-MATRIX-V1",
+  "device": {
+    "name": "Dong's iPhone16Pro",
+    "model": "iPhone 16 Pro (iPhone17,1)",
+    "osVersion": "27.0 (24A5390f)"
+  },
+  "capturedAtUTC": "2026-08-03T19:15:00Z",
+  "combinedRun": {
+    "status": "interrupted",
+    "note": "The combined test07-25 run passed test07-test15, then the device was disconnected; test16-test25 had each passed in dedicated runs on the same build."
+  },
+  "scenarios": [
+    { "id": "test07", "name": "Tool selections independent and persist across relaunch", "status": "pass" },
+    { "id": "test08", "name": "Bonsai calculator-only", "status": "pass" },
+    { "id": "test09", "name": "Gemma calculator-only", "status": "pass" },
+    { "id": "test10", "name": "Bonsai clock-only", "status": "pass" },
+    { "id": "test11", "name": "Gemma clock-only", "status": "pass" },
+    { "id": "test12", "name": "Bonsai web search only (Tool V2 + approval)", "status": "pass" },
+    { "id": "test13", "name": "Gemma web search only (Tool V2 + approval)", "status": "pass" },
+    { "id": "test14", "name": "Tool master-off denies selected web search", "status": "pass" },
+    { "id": "test15", "name": "Manual memory add, persistence, precise delete", "status": "pass" },
+    { "id": "test16", "name": "Bonsai saves English memory, Gemma reads without tools", "status": "pass" },
+    { "id": "test17", "name": "Gemma saves English memory, Bonsai reads without tools", "status": "pass" },
+    { "id": "test18", "name": "Gemma vision fixture and image history without tools", "status": "pass" },
+    { "id": "test19", "name": "Gemma visual question does not trigger allowed web search", "status": "pass" },
+    { "id": "test20", "name": "Switching image draft Gemma to Bonsai is blocked without losing draft", "status": "pass" },
+    { "id": "test21", "name": "Historical stats remain bound to the generating model after switch", "status": "pass" },
+    { "id": "test22", "name": "Bonsai background suspend and lazy reload", "status": "pass" },
+    { "id": "test23", "name": "Gemma background suspend and lazy reload", "status": "pass" },
+    { "id": "test24", "name": "Changing web selection during cold load does not affect current turn", "status": "pass" },
+    { "id": "test25", "name": "Built-in skill selection persists per conversation", "status": "pass" }
+  ]
+}
