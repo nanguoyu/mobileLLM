@@ -386,6 +386,12 @@ public final class ChatStore {
     /// copy the template once at creation; later global changes affect new conversations only).
     private func globalToolTemplate() -> ConversationToolPolicy? {
         guard agentRuns != nil else { return nil }
+        return currentToolPolicy(materializedFromGlobalTemplate: true)
+    }
+
+    /// Builds the current user selection into a conversation tool policy. Shared by the one-time
+    /// global template copy and the Chat options menu's explicit per-conversation edits.
+    private func currentToolPolicy(materializedFromGlobalTemplate: Bool) -> ConversationToolPolicy? {
         // The policy is the USER's selection (Tools screen), mapped to logical ids; the runtime's
         // selector and catalog decide which of those are adapted and advertised for a pass.
         var allowed = settings.builtInToolConfig.enabled.compactMap { id in
@@ -398,8 +404,20 @@ public final class ChatStore {
             allowedToolIDs: deduped,
             pinnedToolIDs: deduped,
             selectionPolicyVersion: 1,
-            materializedFromGlobalTemplate: true
+            materializedFromGlobalTemplate: materializedFromGlobalTemplate
         )
+    }
+
+    /// Explicit per-conversation edit from the Chat options menu: the toggles there are the
+    /// conversation-local surface, so they must apply to the NEXT send in THIS thread. Global
+    /// Settings changes alone never expand an existing policy (spec §14); a menu toggle is the
+    /// explicit edit that does.
+    public func applyCurrentToolSelectionToActiveConversation() {
+        guard let idx = conversations.firstIndex(where: { $0.id == activeID }),
+              let policy = currentToolPolicy(materializedFromGlobalTemplate: false)
+        else { return }
+        conversations[idx].toolPolicy = policy
+        persist(conversations[idx])
     }
 
     /// One-time materialization for a legacy conversation on its first agent-runtime edit/run

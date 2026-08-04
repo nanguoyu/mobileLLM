@@ -375,6 +375,7 @@ struct Composer: View {
             Toggle(isOn: Binding(get: { chat.toolsEnabled },
                                  set: { newValue in
                                      chat.toolsEnabled = newValue
+                                     chat.applyCurrentToolSelectionToActiveConversation()
                                      chat.showToast(Toast(newValue
                                          ? "Selected tools are now available to the model."
                                          : "Tools off.", autoDismiss: 3))
@@ -430,6 +431,7 @@ struct Composer: View {
                     if enabled { disabled.remove(id.rawValue) } else { disabled.insert(id.rawValue) }
                 }
                 settings.disabledBuiltInTools = disabled
+                chat.applyCurrentToolSelectionToActiveConversation()
                 if enabled, row.privacy {
                     Task { @MainActor in
                         if await row.requestPermission(eventStore: toolEventStore,
@@ -457,6 +459,7 @@ struct Composer: View {
                 guard let index = servers.firstIndex(where: { $0.id == id }) else { return }
                 servers[index].isEnabled = enabled
                 settings.mcpServers = servers
+                chat.applyCurrentToolSelectionToActiveConversation()
             }
         )
     }

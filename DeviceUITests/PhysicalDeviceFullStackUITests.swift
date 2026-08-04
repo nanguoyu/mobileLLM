@@ -462,6 +462,12 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
                                                        startedAt: started)
         XCTAssertFalse(evidence.toolActivities.contains(where: { $0.localizedCaseInsensitiveContains("Web Search") }),
                        "a per-tool change during warming retroactively authorized the current turn")
+        // Deterministic half of the race contract: the warming toggle must not enter the CURRENT
+        // turn's advertised tool set. Activity is empty-proof, but advertised is set-proof.
+        let racingAdvertised = Self.advertisedToolIDs(in: diagnosticValue("device-e2e.agent", in: app))
+        XCTAssertTrue(racingAdvertised?.localizedCaseInsensitiveContains("web_search") == false,
+                      "the warming toggle retroactively entered the current turn's advertised set: "
+                          + "\(racingAdvertised ?? "<missing>")")
 
         // Prove the same selection applies to the following turn. Without this, a failed toggle would
         // make the race assertion pass vacuously.
@@ -478,16 +484,13 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         }
         if next.toolActivities.isEmpty {
             // The race contract is that the toggle applied to the NEXT turn, not that a particular
-            // model happens to call the tool. Prove the persisted selection through the UI instead of
-            // coupling the functional invariant to sampling luck.
-            try openChatOptions(in: app)
-            let tools = freshMenuElement("Tools", in: app)
-            tools.tap()
-            let web = freshMenuElement("Web search", in: app)
-            XCTAssertTrue(web.waitForExistence(timeout: 10))
-            XCTAssertTrue(switchIsOn(web),
-                          "the newly selected Web tool did not persist for the next turn")
-            try settleChatOptionsAfterToolSelection(in: app)
+            // model happens to call the tool. The run's advertised set is the deterministic proof.
+            let nextAdvertised = Self.advertisedToolIDs(
+                in: diagnosticValue("device-e2e.agent", in: app)
+            )
+            XCTAssertTrue(nextAdvertised?.localizedCaseInsensitiveContains("web_search") == true,
+                          "the next turn did not receive the newly selected Web tool; "
+                              + "advertised=\(nextAdvertised ?? "<missing>")")
         } else {
             XCTAssertEqual(next.toolActivities.count, 1,
                            "the next turn did not receive exactly the newly selected Web tool")
@@ -780,6 +783,15 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     }
 
     // MARK: Helpers
+
+    /// Extracts the `advertised=` field from one device-e2e.agent diagnostics string. The metadata
+    /// fields are comma-separated and the advertised set is the exact tool list offered to the model,
+    /// which is the deterministic proof of per-turn tool availability.
+    private static func advertisedToolIDs(in log: String) -> String? {
+        guard let range = log.range(of: "advertised=") else { return nil }
+        let tail = log[range.upperBound...]
+        return String(tail.prefix { $0 != "," })
+    }
 
     @MainActor
     private func prepare(_ model: DeviceTestModel,
@@ -1151,8 +1163,14 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
             writerEvidence = evidence
             failures += generationEvidenceFailures(evidence, model: writer)
                 .map { "Writer generation: \($0)" }
-            if evidence.answer != "MEMORY_SAVED_OK" {
-                failures.append("Writer answer was \(String(reflecting: evidence.answer)), expected MEMORY_SAVED_OK")
+            // A 1-bit model may acknowledge by echoing the saved fact instead of the literal
+            // MEMORY_SAVED_OK. The durable Memory row and the reader's exact recall below are the real
+            // contract; only a reply that carries neither the marker nor the code is a genuine miss.
+            if evidence.answer != "MEMORY_SAVED_OK", !evidence.answer.contains(code) {
+                failures.append(
+                    "Writer answer was \(String(reflecting: evidence.answer)), "
+                        + "expected MEMORY_SAVED_OK or the saved code"
+                )
             }
             if !evidence.toolActivities.contains("Saved to memory") {
                 failures.append("Writer did not expose a successful Memory tool row: \(evidence.toolActivities)")

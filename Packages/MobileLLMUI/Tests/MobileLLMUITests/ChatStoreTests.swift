@@ -113,6 +113,33 @@ final class ChatStoreTests: XCTestCase {
         XCTAssertTrue(fresh.toolPolicy?.materializedFromGlobalTemplate == true)
     }
 
+    func testChatOptionsMenuAppliesSelectionToActiveConversationPolicy() throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "chat-menu-policy-\(UUID().uuidString)")!)
+        let chat = ChatStore(engine: MockLLMEngine(script: .init()), store: store, settings: settings,
+                             activeModel: mockModel)
+        chat.attachAgentRuntime(AgentRunStore(
+            executor: UnavailableAgentExecutor(),
+            requestBuilder: UnavailableAgentRunRequestBuilder()
+        ))
+        settings.disabledBuiltInTools.insert("web_search")
+        let fresh = try XCTUnwrap(chat.newConversation())
+        XCTAssertFalse(fresh.toolPolicy?.allowedToolIDs.contains { $0.name == "web_search" } == true,
+                       "the conversation must start without the web tool")
+
+        // The Chat options menu mutates settings and then calls the explicit per-conversation sync;
+        // that sync must land in the ACTIVE conversation so the next send in this thread sees it.
+        settings.disabledBuiltInTools.remove("web_search")
+        chat.applyCurrentToolSelectionToActiveConversation()
+        let updated = try XCTUnwrap(chat.activeConversation?.toolPolicy)
+        XCTAssertTrue(updated.allowedToolIDs.contains { $0.name == "web_search" },
+                      "the explicit menu edit must update the active conversation's policy")
+        XCTAssertTrue(updated.pinnedToolIDs.contains { $0.name == "web_search" })
+        XCTAssertFalse(updated.materializedFromGlobalTemplate,
+                       "a menu edit is an explicit per-conversation policy, not the global template")
+    }
+
     func testStopCommitsPartialAnswer() async throws {
         // A slow, long stream so we can Stop mid-flight and assert the partial is committed, not lost.
         let (chat, dir) = makeStore(script: .init(reasoning: "r",
