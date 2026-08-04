@@ -499,6 +499,45 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         ).firstMatch.waitForExistence(timeout: 20), "conversation lost its selected skill after relaunch")
     }
 
+    // MARK: MCP
+
+    /// The full MCP conservative-trust path on device: configure a public server, explicitly discover
+    /// it in Settings, then call one of its tools from chat. unknownExternal must pause for exact
+    /// approval, execute after approval, and surface a tool row (spec §13 / AH-TOOLS-004).
+    @MainActor
+    // TEST-ID: AHT-MCP-001
+    func test28MCPToolApprovalAndResult() throws {
+        let app = try launchApp()
+        try configureTools(master: true, enabled: [], in: app)
+        try addPublicMCPServer(in: app)
+        try openNewChat(in: app)
+        try activate(.gemma, in: app)
+
+        let marker = uniqueMarker("MCP")
+        var evidence = try send(
+            marker + "\nUse the MCP tool read_documentation exactly once to look up the deepwiki "
+                + "server's documentation, then answer in one short line.",
+            model: .gemma, in: app, timeout: 360)
+        if evidence.toolActivities.isEmpty {
+            let retryMarker = uniqueMarker("MCP_RETRY")
+            evidence = try send(
+                retryMarker + "\nYou MUST call the MCP tool read_documentation (the tool from your "
+                    + "configured MCP server) exactly once before answering. Then reply briefly.",
+                model: .gemma, in: app, timeout: 360)
+        }
+        XCTAssertGreaterThanOrEqual(
+            evidence.toolActivities.count, 1,
+            "MCP tool did not execute; activities: \(evidence.toolActivities)"
+        )
+        XCTAssertTrue(
+            evidence.toolActivities.contains(where: {
+                $0.localizedCaseInsensitiveContains("read_documentation")
+                    || $0.localizedCaseInsensitiveContains("documentation")
+            }),
+            "MCP tool activity is missing read_documentation: \(evidence.toolActivities)"
+        )
+    }
+
     @MainActor
     func test26AgentRuntimeWiresRunsAndRecoveryInbox() throws {
         let app = try prepare(.bonsai, tools: false, selected: [], thinking: false)

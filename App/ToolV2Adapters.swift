@@ -317,7 +317,7 @@ public final class AppMemoryToolAdapter: ToolV2, @unchecked Sendable {
             requiredCapabilities: AgentCapabilitySet(effects.compactMap(\.minimumCapability)),
             timeoutPolicy: ToolTimeoutPolicy(maximumMilliseconds: timeoutMilliseconds),
             retryPolicy: .never,
-            idempotency: .pureRead,
+            idempotency: effects.contains(.localWrite) ? .nonIdempotent : .pureRead,
             supportsProgress: false,
             supportsCancellation: true
         )

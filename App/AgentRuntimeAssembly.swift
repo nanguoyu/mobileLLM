@@ -441,7 +441,7 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
                         maximumMilliseconds: Self.timeoutMilliseconds(for: tool.schema.name)
                     ),
                     retryPolicy: .never,
-                    idempotency: .pureRead,
+                    idempotency: Self.idempotency(for: tool.schema.name),
                     supportsProgress: false,
                     supportsCancellation: true
                 ))
@@ -526,6 +526,11 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
 
     private static func requiredCapabilities(for name: String) -> AgentCapabilitySet {
         AgentCapabilitySet(effects(for: name).compactMap(\.minimumCapability))
+    }
+
+    private static func idempotency(for name: String) -> ExternalIdempotency {
+        // A write tool cannot declare pure-read idempotency (descriptor semantics validation).
+        name == "remember" ? .nonIdempotent : .pureRead
     }
 
     private static func timeoutMilliseconds(for name: String) -> UInt64 {

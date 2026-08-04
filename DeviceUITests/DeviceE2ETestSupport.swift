@@ -229,6 +229,94 @@ class DeviceE2ETestCase: XCTestCase {
         try goToChatList(in: app)
     }
 
+    /// Adds a public MCP server (DeepWiki) through Settings and waits for its explicit discovery.
+    /// Discovery is the ONLY network touch allowed by spec §13; the agent runtime never connects at
+    /// prompt-compilation time.
+    @MainActor
+    func addPublicMCPServer(in app: XCUIApplication) throws {
+        try goToSettings(in: app)
+        let toolsRow = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Tools")
+        ).firstMatch
+        guard scrollToHittable(toolsRow, in: app.scrollViews.firstMatch) else {
+            throw DeviceE2EHarnessError.precondition("Tools settings row is unreachable")
+        }
+        toolsRow.tap()
+        guard app.navigationBars["Tools"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("Tools settings did not open")
+        }
+        let mcpRow = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "MCP servers")
+        ).firstMatch
+        guard scrollToHittable(mcpRow, in: app.scrollViews.firstMatch) else {
+            throw DeviceE2EHarnessError.precondition("MCP servers row is unreachable")
+        }
+        mcpRow.tap()
+        guard app.navigationBars["MCP servers"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("MCP servers sheet did not open")
+        }
+        let add = app.buttons["Add a server"]
+        guard add.waitForExistence(timeout: 10) else {
+            throw DeviceE2EHarnessError.precondition("Add-a-server button is missing")
+        }
+        add.tap()
+
+        let name = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == %@", "DeepWiki")
+        ).firstMatch
+        guard name.waitForExistence(timeout: 10) else {
+            throw DeviceE2EHarnessError.precondition("MCP name field is missing")
+        }
+        name.tap()
+        name.typeText("DeepWiki")
+        let url = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == %@", "https://host/mcp")
+        ).firstMatch
+        guard url.waitForExistence(timeout: 10) else {
+            throw DeviceE2EHarnessError.precondition("MCP URL field is missing")
+        }
+        url.tap()
+        url.typeText("https://mcp.deepwiki.com/mcp")
+
+        let test = app.buttons["Test connection"]
+        guard test.waitForExistence(timeout: 10) else {
+            throw DeviceE2EHarnessError.precondition("Test-connection button is missing")
+        }
+        test.tap()
+        let connected = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Connected ·")
+        ).firstMatch
+        guard connected.waitForExistence(timeout: 90) else {
+            attachDiagnostics(app, name: "mcp-connect-failed")
+            throw DeviceE2EHarnessError.precondition("DeepWiki MCP did not connect")
+        }
+        let confirmAdd = app.buttons["Add"]
+        guard confirmAdd.waitForExistence(timeout: 10), confirmAdd.isEnabled else {
+            throw DeviceE2EHarnessError.precondition("MCP Add stayed disabled")
+        }
+        confirmAdd.tap()
+
+        guard app.navigationBars["MCP servers"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("MCP servers sheet did not reappear")
+        }
+        // Give the post-add probe a moment to finish discovery and cache the tool specs.
+        Thread.sleep(forTimeInterval: 3)
+        let done = app.navigationBars["MCP servers"].buttons["Done"]
+        guard done.exists, done.isHittable else {
+            throw DeviceE2EHarnessError.precondition("MCP servers Done is not actionable")
+        }
+        done.tap()
+        guard app.navigationBars["Tools"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("MCP sheet did not close to Tools")
+        }
+        let toolsDone = app.navigationBars["Tools"].buttons["Done"]
+        if toolsDone.exists, toolsDone.isHittable { toolsDone.tap() }
+        guard app.navigationBars["Settings"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("Tools settings did not close")
+        }
+        try goToChatList(in: app)
+    }
+
     @MainActor
     func activate(_ model: DeviceTestModel, in app: XCUIApplication) throws {
         let active = app.buttons["Active model"]
