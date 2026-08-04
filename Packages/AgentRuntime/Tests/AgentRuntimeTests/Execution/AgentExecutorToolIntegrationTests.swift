@@ -571,6 +571,55 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
         XCTAssertEqual(toolCounts.boundaries, 0)
     }
 
+    func testToolFailureThenAnswerCompletesWithFailuresNotCleanSuccess() async throws {
+        let model = try ExecutorTestModelDefinition(offset: 303)
+        let definition = try ExecutorTestToolDefinition(name: "flaky-lookup")
+        let call = try definition.call(offset: 303, query: "same")
+        let provider = try ToolSequenceModelProvider(
+            model: model,
+            call: call,
+            answer: "Here is the answer.",
+            script: ToolSequenceModelScript(mode: .toolThenAnswer)
+        )
+        let reported = try AgentFailure(
+            code: "tool.flaky",
+            classification: .permanent,
+            safeMessage: "The flaky tool failed.",
+            retryAdvice: .never,
+            externalEffect: .confirmedNone,
+            requiredUserAction: .none,
+            redaction: RedactionMetadata(classification: .internalMetadata, policyVersion: 1)
+        )
+        let tool = ExecutorTestTool(
+            definition: definition,
+            behavior: .failWithoutBoundary(reported)
+        )
+        let harness = try ExecutorTestHarness(
+            offset: 303,
+            provider: provider,
+            model: model,
+            toolDescriptors: [definition.descriptor],
+            tools: SingleExecutorTestToolCatalog(tool: tool),
+            explicitlyRequestedToolIDs: [definition.descriptor.id.logicalID]
+        )
+        let handleID = try await harness.executor.submit(
+            harness.request,
+            commandID: ExecutorTestID.command(303)
+        )
+        let handle = try await harness.executor.attach(to: handleID)
+        let events = try await collectTerminalEvents(from: handle)
+
+        let result = try await handle.result()
+        XCTAssertEqual(result?.status.state, .completed)
+        XCTAssertEqual(result?.status.terminalReason, .completedWithFailures)
+        XCTAssertNil(result?.status.failure)
+        XCTAssertEqual(result?.answer?.text, "Here is the answer.")
+        XCTAssertTrue(events.contains { event in
+            if case .toolOutcomeRecorded(_, .failed) = event.payload.event { return true }
+            return false
+        })
+    }
+
     func testExternalReadWaitsForExactApprovalAndCannotCrossBoundaryBeforeDecision() async throws {
         let model = try ExecutorTestModelDefinition(offset: 302)
         let definition = try ExecutorTestToolDefinition(

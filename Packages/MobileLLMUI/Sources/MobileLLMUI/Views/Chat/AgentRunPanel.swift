@@ -120,6 +120,8 @@ struct AgentRunPanel: View {
     private func statusIcon(_ run: AgentRunPresentation) -> some View {
         Group {
             switch run.state {
+            case .completed where run.terminalReason == .completedWithFailures:
+                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Theme.fitAmber)
             case .completed:
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.fitGreen)
             case .failed, .cancelled:
@@ -136,7 +138,11 @@ struct AgentRunPanel: View {
     }
 
     private func activityTitle(_ run: AgentRunPresentation) -> String {
-        if let failure = run.failureMessage, run.state == .failed { return failure }
+        if let failure = run.failureMessage,
+           run.state == .failed || run.terminalReason == .completedWithFailures
+        {
+            return failure
+        }
         switch run.state {
         case .waitingForApproval: return "Approval needed"
         case .waitingForUser: return "Waiting for your answer"
@@ -145,6 +151,7 @@ struct AgentRunPanel: View {
         case .waitingForForeground: return "Run backgrounded"
         case .generating, .synthesizing: return "Generating…"
         case .executingTools: return "Running tools…"
+        case .completed where run.terminalReason == .completedWithFailures: return "Completed with issues"
         case .completed: return "Completed"
         case .failed: return "Failed"
         case .cancelled: return "Stopped"

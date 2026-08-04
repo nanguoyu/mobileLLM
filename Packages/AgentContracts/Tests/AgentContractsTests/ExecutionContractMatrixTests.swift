@@ -361,7 +361,7 @@ private extension ExecutionContractMatrixTests {
     ) -> Bool {
         switch state {
         case .completed:
-            reason == .completed && classification == nil
+            (reason == .completed || reason == .completedWithFailures) && classification == nil
         case .cancelled:
             reason == .cancelledByUser && (classification == nil || classification == .cancelled)
         case .failed:
@@ -373,7 +373,7 @@ private extension ExecutionContractMatrixTests {
                 classification == .incompatible
             case .externalResultUncertain: classification == .potentiallySideEffecting
             case .internalFailure: classification == .transient || classification == .permanent
-            case .completed, .cancelledByUser: false
+            case .completed, .completedWithFailures, .cancelledByUser: false
             }
         default:
             false

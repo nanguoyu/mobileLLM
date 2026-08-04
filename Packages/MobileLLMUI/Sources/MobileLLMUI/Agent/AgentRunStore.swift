@@ -466,8 +466,13 @@ public final class AgentRunStore {
             )
             steps.append(step(
                 kind: .finalization,
-                title: result.status.state == .completed ? "Completed" : "Terminated",
-                status: result.status.state == .completed ? .succeeded : .failed,
+                title: result.status.state == .completed
+                    ? (result.status.terminalReason == .completedWithFailures
+                        ? "Completed with issues" : "Completed")
+                    : "Terminated",
+                status: result.status.state == .completed
+                    && result.status.terminalReason != .completedWithFailures
+                    ? .succeeded : .failed,
                 sequence: record.sequence
             ))
             if let answer = result.answer?.text {
@@ -671,10 +676,12 @@ public final class AgentRunStore {
                 sequence: sequence
             )
         case .completed:
+            let clean = status.terminalReason != .completedWithFailures
             step = AgentRunStep(
                 kind: .finalization,
-                title: "Completed",
-                status: .succeeded,
+                title: clean ? "Completed" : "Completed with issues",
+                detail: clean ? "" : "At least one tool reported an error or an uncertain result.",
+                status: clean ? .succeeded : .failed,
                 sequence: sequence
             )
         case .failed:

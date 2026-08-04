@@ -191,16 +191,15 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
                         continuation.finish()
                         return
                     }
+                    // Never hop outside the plan: the ceiling may authorize a subset of the shared
+                    // adapter's engines (settings changes after executor build), and every hop must
+                    // stay inside the plan the user approved.
+                    let plan = prepared.prepared.externalOperation.plan
+                    let allowedDestinations = Set(
+                        [plan.destination].compactMap { $0 } + plan.allowedFallbacks
+                    )
                     for engine in engines {
                         if await context.cancellation.isCancelled() { throw CancellationError() }
-                        // Never hop outside the plan: the ceiling may authorize a subset of the shared
-                        // adapter's engines (settings changes after executor build), and every hop must
-                        // stay inside the plan the user approved.
-                        let plan = prepared.prepared.externalOperation.plan
-                        let allowedDestinations = Set(
-                            [plan.destination].compactMap { $0 }
-                                + plan.allowedFallbacks
-                        )
                         guard let engineDestination = try? Self.destination(engine: engine),
                               allowedDestinations.contains(engineDestination)
                         else { continue }

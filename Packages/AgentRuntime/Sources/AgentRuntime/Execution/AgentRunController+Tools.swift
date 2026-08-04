@@ -166,7 +166,7 @@ extension AgentRunController {
             // Small local models routinely repeat the tool call that just succeeded instead of
             // answering. Suppress the duplicate with one explicit repair instruction; only a second
             // repetition is a real no-progress failure.
-            if history.repairCount > 0 {
+            if history.duplicateRepairCount > 0 {
                 try await failRun(
                     runID: facts.projection.runID,
                     reason: .noProgress,

@@ -82,6 +82,9 @@ public enum AgentRunTransitionMatrix {
 public enum AgentTerminalReason: String, CaseIterable, Hashable, Codable, Sendable {
     /// A committed final answer satisfied the output contract.
     case completed
+    /// A final answer was committed, but at least one intermediate tool outcome failed or is
+    /// uncertain. The run is not a clean success: the UI must never paint it as a plain "Completed".
+    case completedWithFailures
     /// The user explicitly cancelled the run.
     case cancelledByUser
     /// A hard resource budget was exhausted.
@@ -132,7 +135,11 @@ public struct AgentRunStatus: Hashable, Codable, Sendable {
             }
             switch state {
             case .completed:
-                guard terminalReason == .completed, failure == nil else {
+                // A completed run may still carry `.completedWithFailures` when an intermediate tool
+                // outcome failed or is uncertain; the answer is real, but the run is not a clean win.
+                guard terminalReason == .completed || terminalReason == .completedWithFailures,
+                      failure == nil
+                else {
                     throw AgentContractError.invalidRunStatus("completed state has incompatible outcome")
                 }
             case .cancelled:
@@ -241,7 +248,7 @@ public struct AgentRunStatus: Hashable, Codable, Sendable {
                 && failure.externalEffect == .uncertain
         case .internalFailure:
             failure.classification == .transient || failure.classification == .permanent
-        case .completed, .cancelledByUser:
+        case .completed, .completedWithFailures, .cancelledByUser:
             false
         }
     }
@@ -1083,7 +1090,9 @@ public struct AgentResult: Hashable, Codable, Sendable, AgentContractPayload {
         guard status.state.isTerminal else {
             throw AgentContractError.invalidRunStatus("result status must be terminal")
         }
-        guard (status.terminalReason == .completed) == (answer != nil) else {
+        let answerableCompletion = status.terminalReason == .completed
+            || status.terminalReason == .completedWithFailures
+        guard answerableCompletion == (answer != nil) else {
             throw AgentContractError.invalidRunStatus("answer and terminal reason disagree")
         }
         self.requestID = requestID

@@ -750,7 +750,7 @@ extension AgentRunController {
                     runID: facts.projection.runID,
                     stepID: modelRequest.stepID,
                     reservation: reservation,
-                    repairAlreadyAttempted: history.repairCount > 0
+                    repairAlreadyAttempted: history.structuredRepairCount > 0
                 )
                 return
             }
@@ -771,7 +771,7 @@ extension AgentRunController {
                 runID: facts.projection.runID,
                 stepID: modelRequest.stepID,
                 reservation: reservation,
-                repairAlreadyAttempted: history.repairCount > 0
+                repairAlreadyAttempted: history.structuredRepairCount > 0
             )
             return
         }
@@ -1269,10 +1269,18 @@ extension AgentRunController {
             event: .artifactCommitted(artifact),
             redaction: Self.publicRedaction
         )]
+        let (_, finalHistory) = try await loadRun(runID)
+        let failedToolCount = finalHistory.toolOutcomes.values.reduce(into: 0) { count, pair in
+            switch pair.1 {
+            case .failed, .uncertain: count += 1
+            case .completed: break
+            }
+        }
+        let hadFailures = failedToolCount > 0
         let terminalStatus = try status(
             after: builder,
             state: .completed,
-            terminalReason: .completed
+            terminalReason: hadFailures ? .completedWithFailures : .completed
         )
         let result = try AgentResult(
             requestID: builder.requestID,

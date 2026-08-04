@@ -402,9 +402,15 @@ struct ExecutionHistory: Sendable {
     }
 
     var repairCount: UInt64 {
-        UInt64(diagnostics.lazy.filter {
-            $0.1.code == "execution.structured-repair" || $0.1.code == "execution.repeated-tool-call"
-        }.count)
+        structuredRepairCount + duplicateRepairCount
+    }
+
+    var structuredRepairCount: UInt64 {
+        UInt64(diagnostics.lazy.filter { $0.1.code == "execution.structured-repair" }.count)
+    }
+
+    var duplicateRepairCount: UInt64 {
+        UInt64(diagnostics.lazy.filter { $0.1.code == "execution.repeated-tool-call" }.count)
     }
 
 }
@@ -445,7 +451,7 @@ enum ExecutionFailureFactory {
             classification = .cancelled
             external = .confirmedNone
             action = .none
-        case .completed:
+        case .completed, .completedWithFailures:
             throw AgentExecutionError.internalInvariant("completion is not a failure")
         case .noProgress, .internalFailure:
             classification = .permanent
