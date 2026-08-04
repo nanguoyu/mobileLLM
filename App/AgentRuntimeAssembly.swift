@@ -454,6 +454,43 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
                 )
             }
         }
+        // Memory tools are opt-in seams and therefore absent from `ToolRegistry.standard`; the frozen
+        // catalog must advertise them explicitly or the selector reports `descriptorMissing` for a
+        // perfectly valid `remember`/`recall` call (the executor adapters exist, the descriptors did not).
+        for (name, schema) in [("remember", RememberTool.schema), ("recall", RecallTool.schema)] {
+            let logicalID = try AgentToolLogicalID(providerID: "builtin", name: name)
+            if enabledToolNames.contains(name), memoryAvailable {
+                let inputSchema = try AppToolV2Support.inputSchema(for: schema)
+                descriptors.append(try AgentToolDescriptor(
+                    id: AgentToolDescriptorID(
+                        logicalID: logicalID,
+                        version: SemanticVersion("1.0.0")!,
+                        schemaDigest: inputSchema.digest,
+                        trustRevision: trustRevision
+                    ),
+                    title: schema.name,
+                    summary: schema.description,
+                    inputSchema: inputSchema,
+                    outputSchema: nil,
+                    effects: Self.effects(for: name),
+                    requiredCapabilities: Self.requiredCapabilities(for: name),
+                    timeoutPolicy: ToolTimeoutPolicy(
+                        maximumMilliseconds: Self.timeoutMilliseconds(for: name)
+                    ),
+                    retryPolicy: .never,
+                    idempotency: Self.idempotency(for: name),
+                    supportsProgress: false,
+                    supportsCancellation: true
+                ))
+            } else {
+                unavailable.append(
+                    UnavailableTool(
+                        logicalID: logicalID,
+                        reason: .providerUnavailable
+                    )
+                )
+            }
+        }
         descriptors.append(contentsOf: mcpDescriptors.sorted { $0.id.description < $1.id.description })
         return try ToolCatalogSnapshot(
             revision: 1,

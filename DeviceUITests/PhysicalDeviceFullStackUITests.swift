@@ -524,14 +524,15 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
 
         let marker = uniqueMarker("MCP")
         var evidence = try send(
-            marker + "\nUse the MCP tool read_documentation exactly once to look up the deepwiki "
-                + "server's documentation, then answer in one short line.",
+            marker + "\nUse the MCP tool read_wiki_structure exactly once with a repoName argument to "
+                + "look up the deepwiki server's structure, then answer in one short line.",
             model: .gemma, in: app, timeout: 360)
         if evidence.toolActivities.isEmpty {
             let retryMarker = uniqueMarker("MCP_RETRY")
             evidence = try send(
-                retryMarker + "\nYou MUST call the MCP tool read_documentation (the tool from your "
-                    + "configured MCP server) exactly once before answering. Then reply briefly.",
+                retryMarker + "\nYou MUST call the MCP tool read_wiki_structure (the tool from your "
+                    + "configured MCP server) exactly once with a repoName argument before answering. "
+                    + "Then reply briefly.",
                 model: .gemma, in: app, timeout: 360)
         }
         XCTAssertGreaterThanOrEqual(
@@ -540,10 +541,10 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         )
         XCTAssertTrue(
             evidence.toolActivities.contains(where: {
-                $0.localizedCaseInsensitiveContains("read_documentation")
-                    || $0.localizedCaseInsensitiveContains("documentation")
+                $0.localizedCaseInsensitiveContains("read_wiki_structure")
+                    || $0.localizedCaseInsensitiveContains("read_wiki")
             }),
-            "MCP tool activity is missing read_documentation: \(evidence.toolActivities)"
+            "MCP tool activity is missing read_wiki_structure: \(evidence.toolActivities)"
         )
     }
 

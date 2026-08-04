@@ -75,8 +75,9 @@ public struct RememberTool: Tool {
     static let rejectedMemoryReply =
         "I couldn't save that memory. Nothing was saved."
 
-    public var schema: ToolSchema {
-        ToolSchema(name: "remember",
+    /// Schema without a store instance, so descriptor catalogs can advertise the tool before any
+    /// execution seam exists. The instance accessor returns the same value.
+    public static let schema: ToolSchema = ToolSchema(name: "remember",
                    // Every clause here is set by measurement, not taste — `llama-smoke --memory-eval` runs
                    // 20 labelled turns against real weights and reports recall vs restraint. The version
                    // that said "their name, a preference or dislike, a constraint (allergy, deadline…)"
@@ -116,7 +117,8 @@ public struct RememberTool: Tool {
         // NOTE: the stored note also carries a search alias (the user's own sentence), but the model is
         // never asked for it — `ToolLoop` attaches it. Adding a second parameter here was tried and
         // measured: Gemma 4 E2B ignored it whether optional or required. See `canonicalizedCall`.
-    }
+
+    public var schema: ToolSchema { Self.schema }
 
     public func execute(argumentsJSON: String) async -> String {
         let call = ToolCall(name: "remember", argumentsJSON: argumentsJSON)
@@ -156,8 +158,8 @@ public struct RecallTool: Tool {
     private let limit: Int
     public init(store: any MemoryStoring, limit: Int = 5) { self.store = store; self.limit = max(1, limit) }
 
-    public var schema: ToolSchema {
-        ToolSchema(name: "recall",
+    /// Schema without a store instance (see `RememberTool.schema`).
+    public static let schema: ToolSchema = ToolSchema(name: "recall",
                    description: "Search your saved notes for something the user told you earlier. Anything "
                               + "already listed under \"What you remember about the user\" is in front of "
                               + "you — use this to look for what isn't, before saying you don't know "
@@ -165,7 +167,8 @@ public struct RecallTool: Tool {
                    parameters: [ToolParam(name: "query", kind: .string,
                                           description: "English search words for what to find. Translate the "
                                                      + "user's request into English before calling.")])
-    }
+
+    public var schema: ToolSchema { Self.schema }
 
     public func execute(argumentsJSON: String) async -> String {
         let query = ToolCall(name: "recall", argumentsJSON: argumentsJSON).arg("query") ?? ""

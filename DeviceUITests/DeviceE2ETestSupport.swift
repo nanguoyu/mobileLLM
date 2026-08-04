@@ -363,13 +363,19 @@ class DeviceE2ETestCase: XCTestCase {
                 throw DeviceE2EHarnessError.precondition("MCP server detail did not expose Remove server")
             }
             remove.tap()
-            let alert = app.alerts["Remove this server?"]
+            let alert = app.alerts.firstMatch
             guard alert.waitForExistence(timeout: 10) else {
                 throw DeviceE2EHarnessError.precondition("MCP remove confirmation did not appear")
             }
             alert.buttons["Remove"].tap()
-            guard app.navigationBars["MCP servers"].waitForExistence(timeout: 15) else {
-                throw DeviceE2EHarnessError.precondition("MCP servers list did not reappear after removal")
+            if !app.navigationBars["MCP servers"].waitForExistence(timeout: 10) {
+                // The detail view may still be up if the confirmation did not dismiss it; its Done
+                // returns to the list and the removal already committed.
+                let detailDone = app.buttons["Done"]
+                if detailDone.exists, detailDone.isHittable { detailDone.tap() }
+                guard app.navigationBars["MCP servers"].waitForExistence(timeout: 15) else {
+                    throw DeviceE2EHarnessError.precondition("MCP servers list did not reappear after removal")
+                }
             }
         }
         let done = app.navigationBars["MCP servers"].buttons["Done"]
