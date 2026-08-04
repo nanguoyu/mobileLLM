@@ -17,6 +17,8 @@ struct SettingsView: View {
     @State private var showSystemPrompt = false
     @State private var showSkills = false
     @State private var showMemory = false
+    @State private var showOpenAI = false
+    @State private var openAIKeyStored = false
 
     init(container: AppContainer) {
         self.container = container
@@ -27,6 +29,7 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
                 behaviorSection
+                onlineSection
                 samplingSection
                 appearanceSection
                 privacySection
@@ -39,6 +42,7 @@ struct SettingsView: View {
         .scrollDismissesKeyboard(.interactively)   // drag to dismiss the system-prompt keyboard
         .background(Theme.bg)
         .task { storageBytes = await container.conversationStore.storageBytes() }
+        .task { openAIKeyStored = (try? container.openAICredentials.loadAPIKey()) != nil }
         .alert("Delete all chats?", isPresented: $confirmDeleteChats) {
             Button("Delete all chats", role: .destructive) { deleteAllChats() }
             Button("Cancel", role: .cancel) {}
@@ -89,6 +93,14 @@ struct SettingsView: View {
             NavigationStack { MemoryView(book: container.memory, settings: settings) }
             #if os(macOS)
             .frame(minWidth: 520, minHeight: 560)
+            #endif
+        }
+        .sheet(isPresented: $showOpenAI) {
+            NavigationStack {
+                OpenAIServiceSheet(settings: settings, store: container.openAICredentials)
+            }
+            #if os(macOS)
+            .frame(minWidth: 520, minHeight: 440)
             #endif
         }
     }
@@ -200,6 +212,38 @@ struct SettingsView: View {
         // The count comes from a mirror of the durable store; a chat that saved a fact while Settings was
         // on screen must not leave the row reading "Nothing saved yet".
         .task { await container.memory.refresh() }
+    }
+
+    // MARK: Choose tools
+
+    // MARK: Online models
+
+    @ViewBuilder private var onlineSection: some View {
+        section("Online models", icon: "network") {
+            Divider().background(Theme.hairline)
+            Button { showOpenAI = true } label: {
+                HStack(spacing: Theme.Space.sm) {
+                    Image(systemName: "key.horizontal")
+                        .font(.subheadline).foregroundStyle(Theme.accent).frame(width: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("OpenAI service").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                        Text(openAIKeyStored
+                             ? "Key stored · \(settings.openAIBaseURL)"
+                             : "Not set · \(settings.openAIBaseURL)")
+                            .font(.caption).foregroundStyle(Theme.textTertiary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(Theme.textTertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("OpenAI service")
+            .accessibilityValue(openAIKeyStored ? "Key stored" : "Not set")
+            Text("Online model support uses the Responses API. The key lives in the device Keychain "
+                 + "only — never synced, backed up, or committed.")
+                .font(.caption).foregroundStyle(Theme.textTertiary)
+        }
     }
 
     // MARK: Choose tools

@@ -43,6 +43,12 @@ public final class AppSettings {
     /// one is kept while `web_search` is on (the UI enforces it); an empty list falls back to both.
     public var searchEngines: [SearchEngine] { didSet { persist() } }
 
+    // MARK: Online models
+    /// Responses API base URL (gateway/proxy supported). Not a secret — the API key lives in Keychain.
+    public var openAIBaseURL: String { didSet { persist() } }
+    /// Model identifier on the compatible service (e.g. "gpt-4o-mini"); nil = the service default.
+    public var openAIModelID: String? { didSet { persist() } }
+
     // MARK: Sampling
     public var temperature: Double { didSet { persist() } }
     public var topP: Double { didSet { persist() } }
@@ -103,6 +109,9 @@ public final class AppSettings {
             loadedEngines = [.duckduckgo, .bing, .brave]
         }
         searchEngines = loadedEngines
+        openAIBaseURL = snap?.openAIBaseURL.flatMap(OpenAIServiceConfiguration.normalizedBaseURL)
+            ?? OpenAIServiceConfiguration.defaultBaseURL
+        openAIModelID = snap?.openAIModelID
         temperature = snap?.temperature ?? 0.7
         topP = snap?.topP ?? 0.95
         topK = snap?.topK ?? 20
@@ -235,6 +244,8 @@ public final class AppSettings {
         /// defaults (privacy tools off; both search engines on).
         var disabledBuiltInTools: Set<String>? = nil
         var searchEngines: [SearchEngine]? = nil
+        var openAIBaseURL: String? = nil
+        var openAIModelID: String? = nil
         var temperature: Double
         var topP: Double
         var topK: Int
@@ -257,6 +268,8 @@ public final class AppSettings {
                             toolsEnabled: toolsEnabled, dictationLocale: dictationLocale,
                             mcpServers: scrubbed, mcpTokenMarkers: markers,
                             disabledBuiltInTools: disabledBuiltInTools, searchEngines: searchEngines,
+                            openAIBaseURL: openAIBaseURL,
+                            openAIModelID: openAIModelID,
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
                             contextLength: contextLength, kvBits: kvBits, appearance: appearance)

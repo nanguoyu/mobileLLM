@@ -3,6 +3,38 @@
 import Foundation
 import XCTest
 
+/// Local, non-repo OpenAI-compatible service config used by UI tests on macOS. The developer stores it
+/// once at `~/.mobilellm/openai.json`; tests forward it into the app's launch environment so the
+/// simulator and physical device never need the key typed by hand.
+private struct OpenAILocalTestConfig: Codable {
+    var apiKey: String?
+    var baseURL: String?
+    var model: String?
+}
+
+private func loadOpenAITestConfig() -> (
+    apiKey: String?, baseURL: String?, model: String?
+) {
+    let env = ProcessInfo.processInfo.environment
+    var apiKey = env["MOBILELLM_OPENAI_API_KEY"]
+    var baseURL = env["MOBILELLM_OPENAI_BASE_URL"]
+    var model = env["MOBILELLM_OPENAI_MODEL"]
+    if apiKey == nil || baseURL == nil || model == nil {
+        #if os(macOS)
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".mobilellm/openai.json")
+        if let data = try? Data(contentsOf: url),
+           let config = try? JSONDecoder().decode(OpenAILocalTestConfig.self, from: data)
+        {
+            apiKey = apiKey ?? config.apiKey
+            baseURL = baseURL ?? config.baseURL
+            model = model ?? config.model
+        }
+        #endif
+    }
+    return (apiKey, baseURL, model)
+}
+
 enum DeviceTestModel: CaseIterable, Equatable {
     case bonsai
     case gemma
@@ -116,6 +148,20 @@ class DeviceE2ETestCase: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["MOBILELLM_DEVICE_E2E"] = "1"
         app.launchEnvironment["MOBILELLM_DEVICE_E2E_FIXTURE"] = visionFixture ? "1" : "0"
+        // The OpenAI-compatible service config is stored ONCE on the Mac at ~/.mobilellm/openai.json
+        // (never in Git). Environment variables win when present; otherwise the file is read here and
+        // injected through launchEnvironment so simulator and physical-device apps never need manual
+        // entry. The DEBUG app seeds the key into its own Keychain.
+        let openAI = loadOpenAITestConfig()
+        if let key = openAI.apiKey, !key.isEmpty {
+            app.launchEnvironment["MOBILELLM_OPENAI_API_KEY"] = key
+        }
+        if let baseURL = openAI.baseURL, !baseURL.isEmpty {
+            app.launchEnvironment["MOBILELLM_OPENAI_BASE_URL"] = baseURL
+        }
+        if let model = openAI.model, !model.isEmpty {
+            app.launchEnvironment["MOBILELLM_OPENAI_MODEL"] = model
+        }
         // Long-form device tests measure engine behavior, not the cooling duty cycle: the harness
         // opts out of cooperative thermal pacing (production is unaffected).
         app.launchEnvironment["MOBILELLM_DISABLE_THERMAL"] = "1"

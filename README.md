@@ -213,6 +213,21 @@ simulator's hardware keyboard disabled — see `UITests/KeyboardUITests.swift`).
 
 See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup and package map.
 
+## OpenAI-compatible online models (developer setup)
+
+Online-model testing reads one file **outside the repository**: `~/.mobilellm/openai.json`
+(`apiKey`, `baseURL`, `model`), created once with:
+
+```sh
+scripts/setup-openai-config.sh
+```
+
+It is written `chmod 600` and never committed. macOS DEBUG builds read it directly; simulator and
+physical-device UI tests forward it through the `MOBILELLM_OPENAI_API_KEY`,
+`MOBILELLM_OPENAI_BASE_URL`, and `MOBILELLM_OPENAI_MODEL` launch-environment variables, and the DEBUG
+app seeds the key into the device Keychain (this-device-only, off-backup). The key is never written to
+Settings or `UserDefaults`.
+
 ## Community
 
 [**GitHub Discussions**](https://github.com/nanguoyu/mobileLLM/discussions) is the place for ideas, questions, and skills:

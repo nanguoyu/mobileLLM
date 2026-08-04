@@ -208,6 +208,33 @@ struct MobileLLMApp: App {
                 eventStore: eventStore,
                 locationProvider: locationProvider)
         }
+        #if DEBUG
+        // Local OpenAI-compatible service config: the developer stores it once at
+        // ~/.mobilellm/openai.json (outside the repo); the macOS DEBUG app reads it directly, and the
+        // simulator/device test runners inject the same values through launch environment variables,
+        // which this block applies with env winning over the file. The key then goes into the device
+        // Keychain store; base URL and model are non-secret settings.
+        do {
+            var config = OpenAILocalConfigLoader.loadDefault()
+                ?? OpenAILocalConfig(
+                    apiKey: "",
+                    baseURL: OpenAIServiceConfiguration.defaultBaseURL
+                )
+            OpenAILocalConfigLoader.applyEnvironment(
+                ProcessInfo.processInfo.environment,
+                to: &config
+            )
+            if !config.apiKey.isEmpty {
+                try? container.openAICredentials.saveAPIKey(config.apiKey)
+            }
+            if let baseURL = OpenAIServiceConfiguration.normalizedBaseURL(config.baseURL) {
+                container.settings.openAIBaseURL = baseURL
+            }
+            if let model = config.model, !model.isEmpty {
+                container.settings.openAIModelID = model
+            }
+        }
+        #endif
         // Attach the durable agent runtime (spec §6 / §20): SQLite journal, artifact store, local
         // model providers over the same routing engine, and the run store the UI projects. A failure
         // here keeps the legacy in-process loop — the rollout switch (spec §26) is the assembly's

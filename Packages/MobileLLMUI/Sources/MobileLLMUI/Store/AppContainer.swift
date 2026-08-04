@@ -27,6 +27,8 @@ public final class AppContainer {
     /// request the system permission right there (nil in tests/previews — the screen then skips prompting).
     public let toolEventStore: (any EventStoring)?
     public let toolLocationProvider: (any LocationProviding)?
+    /// OpenAI Responses API key store (Keychain-backed in the app; injectable for tests/previews).
+    public let openAICredentials: any OpenAICredentialStoring
     /// The durable agent runtime projection and command surface (spec §20). Nil keeps the legacy
     /// in-process loop (tests/previews and the rollout-off state).
     public private(set) var agentRuns: AgentRunStore?
@@ -69,6 +71,7 @@ public final class AppContainer {
                 availableMemory: @escaping @Sendable () -> Int64 = { Int64(bitPattern: MemoryProbe.availableBytes()) },
                 eventStore: (any EventStoring)? = nil,
                 locationProvider: (any LocationProviding)? = nil,
+                openAICredentials: (any OpenAICredentialStoring)? = nil,
                 agentRuns: AgentRunStore? = nil) {
         let settings = settings ?? AppSettings(fallbackDefaultModelID: LLMCatalog.defaultModel(for: device).id)
         let store = conversationStore ?? ConversationStore()
@@ -96,6 +99,7 @@ public final class AppContainer {
         self.skills = skillStore
         self.toolEventStore = eventStore
         self.toolLocationProvider = locationProvider
+        self.openAICredentials = openAICredentials ?? KeychainOpenAICredentialStore()
         self.agentRuns = agentRuns
         self.chat = ChatStore(engine: engine, store: store, settings: settings,
                               memoryBook: memoryBook, eventStore: eventStore,

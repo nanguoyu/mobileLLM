@@ -120,6 +120,32 @@ final class SettingsPersistenceTests: XCTestCase {
         XCTAssertEqual(settings.searchEngines, [.duckduckgo, .bing, .brave])
     }
 
+    func testOpenAIServiceConfigRoundTripAndInvalidFallback() {
+        write(#"""
+        {"defaultModelID":"bonsai-8b","systemPrompt":"keep me","systemPromptSeeded":true,
+         "thinkingDefault":true,"thinkingDisplay":"autoCollapse","toolsEnabled":true,
+         "temperature":0.7,"topP":0.95,"topK":20,"repetitionPenalty":1.05,"maxTokens":1024,
+         "contextLength":8192,"kvBits":4,"appearance":"system",
+         "openAIBaseURL":"https://gateway.example.com/v1","openAIModelID":"gpt-4o-mini"}
+        """#)
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.openAIBaseURL, "https://gateway.example.com/v1")
+        XCTAssertEqual(settings.openAIModelID, "gpt-4o-mini")
+
+        // A stored non-https or malformed base URL must never survive a load.
+        write(#"""
+        {"defaultModelID":"bonsai-8b","systemPrompt":"keep me","systemPromptSeeded":true,
+         "thinkingDefault":true,"thinkingDisplay":"autoCollapse","toolsEnabled":true,
+         "temperature":0.7,"topP":0.95,"topK":20,"repetitionPenalty":1.05,"maxTokens":1024,
+         "contextLength":8192,"kvBits":4,"appearance":"system",
+         "openAIBaseURL":"http://insecure.example","openAIModelID":"gpt-4o-mini"}
+        """#)
+        let reloaded = AppSettings(defaults: defaults)
+        XCTAssertEqual(reloaded.openAIBaseURL, OpenAIServiceConfiguration.defaultBaseURL)
+        XCTAssertEqual(reloaded.openAIModelID, "gpt-4o-mini",
+                       "the model id is non-secret configuration and survives")
+    }
+
     /// A fresh install disables exactly the three privacy-sensitive capabilities (four tool ids) and leaves
     /// every other built-in on.
     func testFreshInstallDisablesOnlyPrivacyTools() {
