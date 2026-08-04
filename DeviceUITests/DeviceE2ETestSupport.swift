@@ -74,6 +74,14 @@ class DeviceE2ETestCase: XCTestCase {
             withDescription: "Unknown-system-alert firewall"
         ) { alert in
             MainActor.assumeIsolated {
+                // Handoff's "Pasting from <Mac>" prompt is unrelated to the app under test; dismiss it
+                // so memory/typing tests are not derailed by an ambient system UI. Everything else stays
+                // a hard boundary below.
+                if alert.label.hasPrefix("Pasting from") {
+                    let dontPaste = alert.buttons["Don't Paste"]
+                    if dontPaste.exists { dontPaste.tap() }
+                    return true
+                }
                 XCTContext.runActivity(named: "Blocked unexpected system alert") { activity in
                     let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
                     screenshot.name = "blocked-system-alert-\(alert.label)"

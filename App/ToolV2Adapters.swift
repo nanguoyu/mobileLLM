@@ -173,7 +173,7 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
         prepared: AuthorizedToolInvocation,
         context: ToolExecutionContext
     ) -> AsyncThrowingStream<ToolExecutionEvent, Error> {
-        AsyncThrowingStream { continuation in
+        AsyncThrowingStream<ToolExecutionEvent, Error>(bufferingPolicy: .unbounded) { continuation in
             let task = Task {
                 do {
                     guard prepared.prepared.request.descriptor == descriptor,
@@ -196,9 +196,10 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
                         // Never hop outside the plan: the ceiling may authorize a subset of the shared
                         // adapter's engines (settings changes after executor build), and every hop must
                         // stay inside the plan the user approved.
+                        let plan = prepared.prepared.externalOperation.plan
                         let allowedDestinations = Set(
-                            [prepared.prepared.request.plan.destination].compactMap { $0 }
-                                + prepared.prepared.request.plan.allowedFallbacks
+                            [plan.destination].compactMap { $0 }
+                                + plan.allowedFallbacks
                         )
                         guard let engineDestination = try? Self.destination(engine: engine),
                               allowedDestinations.contains(engineDestination)
