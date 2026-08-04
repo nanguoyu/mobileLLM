@@ -168,6 +168,7 @@ struct ToolActivityPresentation: Equatable {
             || (normalized.hasPrefix("mcp tool ") && normalized.contains(" failed:"))
             || normalized.hasPrefix("couldn't ")
             || normalized.hasPrefix("search failed")
+            || normalized.hasPrefix("web search failed")
             || normalized.hasPrefix("calendar access is off")
             || normalized.hasPrefix("reminders access is off")
             || normalized.hasPrefix("location access is off")

@@ -7,6 +7,7 @@ import Foundation
 public enum SearchEngine: String, Sendable, Codable, CaseIterable, Hashable {
     case duckduckgo
     case bing
+    case brave
 }
 
 /// One organic web-search hit.
@@ -35,19 +36,19 @@ public struct WebSearchTool: Tool {
     private let maxResults: Int
     private let maxBytes: Int
 
-    public init(engines: [SearchEngine] = [.duckduckgo, .bing],
+    public init(engines: [SearchEngine] = [.duckduckgo, .bing, .brave],
                 session: URLSession = .shared, maxResults: Int = 6,
                 maxBytes: Int = 2 * 1024 * 1024) {
-        self.engines = engines.isEmpty ? [.duckduckgo, .bing] : engines
+        self.engines = engines.isEmpty ? [.duckduckgo, .bing, .brave] : engines
         self.httpClient = WebHTTPClient(session: session)
         self.maxResults = max(1, maxResults)
         self.maxBytes = max(1, maxBytes)
     }
 
-    init(engines: [SearchEngine] = [.duckduckgo, .bing],
+    init(engines: [SearchEngine] = [.duckduckgo, .bing, .brave],
          session: URLSession, maxResults: Int = 6, maxBytes: Int = 2 * 1024 * 1024,
          dnsResolver: @escaping WebDNSResolver) {
-        self.engines = engines.isEmpty ? [.duckduckgo, .bing] : engines
+        self.engines = engines.isEmpty ? [.duckduckgo, .bing, .brave] : engines
         self.httpClient = WebHTTPClient(session: session, resolver: dnsResolver)
         self.maxResults = max(1, maxResults)
         self.maxBytes = max(1, maxBytes)
@@ -73,7 +74,7 @@ public struct WebSearchTool: Tool {
                 continue   // this engine failed — try the next one
             }
         }
-        return "No web results for \"\(q)\" — the search engines returned nothing or were unreachable."
+        return "Web search failed: all search engines returned no results or were unreachable."
     }
 
     // MARK: - Network
@@ -117,6 +118,7 @@ public struct WebSearchTool: Tool {
         switch engine {
         case .duckduckgo: return URL(string: "https://html.duckduckgo.com/html/?q=\(q)")
         case .bing:       return URL(string: "https://www.bing.com/search?q=\(q)&count=10")
+        case .brave:      return URL(string: "https://search.brave.com/search?q=\(q)")
         }
     }
 
@@ -126,6 +128,7 @@ public struct WebSearchTool: Tool {
         switch engine {
         case .duckduckgo: return parseDuckDuckGo(html)
         case .bing:       return parseBing(html)
+        case .brave:      return parseBrave(html)
         }
     }
 
@@ -162,6 +165,39 @@ public struct WebSearchTool: Tool {
             out.append(SearchResult(title: title, url: cleanBingURL(href), snippet: snippet))
         }
         return out
+    }
+
+    /// Parse Brave's current organic results: each `<div class="result-wrapper">` carries a direct
+    /// `<a href>` plus a `title` attribute on its title div and a `generic-snippet` text block. Brave
+    /// serves this markup without a redirect wrapper, which keeps URL cleaning trivial.
+    static func parseBrave(_ html: String) -> [SearchResult] {
+        var out: [SearchResult] = []
+        for block in HTMLUtil.segments(html, startingAt: "class=\"result-wrapper") {
+            guard let anchor = HTMLUtil.firstGroup("<a[^>]+href=\"([^\"]+)\"", in: String(block)) else {
+                continue
+            }
+            let title = HTMLUtil.firstGroup(
+                "class=\"title[^\"]*\"[^>]*title=\"([^\"]+)\"",
+                in: String(block)
+            ).map(HTMLUtil.unescape) ?? ""
+            guard !title.isEmpty else { continue }
+            let snippet = HTMLUtil.firstGroup(
+                "class=\"generic-snippet[^\"]*\"[^>]*>(.*?)</div>",
+                in: String(block)
+            ).map(HTMLUtil.inlineText) ?? ""
+            out.append(SearchResult(
+                title: title,
+                url: cleanBraveURL(anchor),
+                snippet: snippet
+            ))
+        }
+        return out
+    }
+
+    /// Brave links are direct destinations; only make protocol-relative URLs absolute.
+    static func cleanBraveURL(_ raw: String) -> String {
+        let s = HTMLUtil.unescape(raw)
+        return s.hasPrefix("//") ? "https:" + s : s
     }
 
     /// Unwrap DDG's redirect wrapper (`//duckduckgo.com/l/?uddg=<pct-encoded-target>&rut=…`) back to the

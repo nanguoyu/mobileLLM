@@ -34,6 +34,16 @@ final class WebSearchToolTests: XCTestCase {
         XCTAssertEqual(results[1].url, "https://en.wikipedia.org/wiki/Swift_(programming_language)")
     }
 
+    func testParsesBraveResultsWithDirectLinks() {
+        let results = WebSearchTool.parseBrave(Fixtures.brave)
+        XCTAssertEqual(results.count, 2)
+        XCTAssertEqual(results[0].url, "https://openai.com/")
+        XCTAssertTrue(results[0].title.contains("OpenAI"))
+        XCTAssertTrue(results[0].snippet.contains("artificial general intelligence"))
+        XCTAssertEqual(results[1].url, "https://openai.com/api/")
+        XCTAssertTrue(results[1].title.contains("OpenAI API"))
+    }
+
     func testTrackerUnwrapHelpers() {
         XCTAssertEqual(
             WebSearchTool.cleanDuckDuckGoURL("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa&amp;rut=xyz"),
@@ -46,6 +56,7 @@ final class WebSearchToolTests: XCTestCase {
     func testMalformedHTMLYieldsNoResultsNeverThrows() {
         XCTAssertEqual(WebSearchTool.parseDuckDuckGo("<html><body>garbage <div> no results"), [])
         XCTAssertEqual(WebSearchTool.parseBing("not even html"), [])
+        XCTAssertEqual(WebSearchTool.parseBrave("not even html"), [])
         XCTAssertEqual(WebSearchTool.parseDuckDuckGo(""), [])
     }
 
@@ -56,6 +67,9 @@ final class WebSearchToolTests: XCTestCase {
         let bing = WebSearchTool.endpoint(engine: .bing, query: "swift lang")!
         XCTAssertEqual(bing.host, "www.bing.com")
         XCTAssertTrue(bing.absoluteString.contains("q=swift%20lang"))
+        let brave = WebSearchTool.endpoint(engine: .brave, query: "swift lang")!
+        XCTAssertEqual(brave.host, "search.brave.com")
+        XCTAssertTrue(brave.absoluteString.contains("q=swift%20lang"))
     }
 
     func testRenderIsNumberedWithURLAndSnippet() {
@@ -70,7 +84,7 @@ final class WebSearchToolTests: XCTestCase {
 
     // MARK: - execute() over a stubbed session
 
-    private func tool(engines: [SearchEngine] = [.duckduckgo, .bing], maxResults: Int = 6) -> WebSearchTool {
+    private func tool(engines: [SearchEngine] = [.duckduckgo, .bing, .brave], maxResults: Int = 6) -> WebSearchTool {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SerpMockProtocol.self]
         return WebSearchTool(
@@ -98,9 +112,15 @@ final class WebSearchToolTests: XCTestCase {
         XCTAssertTrue(out.contains("swift.org"), "expected Bing results after DDG fell through, got: \(out)")
     }
 
+    func testExecuteFallsThroughToBraveWhenFirstTwoEnginesEmpty() async {
+        // DDG and Bing both return empty/error pages → Brave must be the working fallback.
+        let out = await run(tool(), "DDGEMPTY BINGEMPTY swift")
+        XCTAssertTrue(out.contains("OpenAI"), "expected Brave results after DDG+Bing fell through, got: \(out)")
+    }
+
     func testExecuteAllEnginesFailReturnsGracefulString() async {
-        let out = await run(tool(), "DDGFAIL BINGFAIL")
-        XCTAssertTrue(out.contains("No web results"), out)
+        let out = await run(tool(), "DDGFAIL BINGFAIL BRAVEFAIL")
+        XCTAssertTrue(out.contains("Web search failed"), out)
         XCTAssertFalse(out.hasPrefix("Web results"))
     }
 
@@ -158,6 +178,51 @@ private enum Fixtures {
       </li>
     </ol></body></html>
     """
+
+    /// Trimmed from Brave's live results page (2026-08): each result is a `result-wrapper` block with a
+    /// direct href, a title attribute on the title div, and a `generic-snippet` text block.
+    static let brave = """
+    <!DOCTYPE html><html><body>
+      <div class="snippet svelte-jmfu5f" data-pos="0" data-type="web" data-keynav="true">
+        <div class="result-wrapper svelte-1rq4ngz">
+          <div class="result-content svelte-1rq4ngz">
+            <a href="https://openai.com/" target="_self" class="svelte-14r20fy l1">
+              <div class="site-name-wrapper svelte-on1hvy">
+                <div class="site-name-content svelte-on1hvy">
+                  <div class="desktop-small-semibold t-secondary text-ellipsis">OpenAI</div>
+                  <div class="url-wrapper svelte-on1hvy">
+                    <cite class="snippet-url desktop-small-regular t-tertiary svelte-on1hvy">openai.com</cite>
+                  </div>
+                </div>
+              </div>
+              <div class="title search-snippet-title line-clamp-1 svelte-14r20fy"
+                   title="OpenAI | Research &amp; Deployment">OpenAI | Research &amp; Deployment</div>
+            </a>
+            <div class="generic-snippet svelte-1cwdgg3">
+              <div class="content desktop-default-regular t-primary line-clamp-dynamic svelte-1cwdgg3">
+                We believe our research will eventually lead to artificial general intelligence.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="snippet svelte-jmfu5f" data-pos="1" data-type="web" data-keynav="true">
+        <div class="result-wrapper svelte-1rq4ngz">
+          <div class="result-content svelte-1rq4ngz">
+            <a href="https://openai.com/api/" target="_self" class="svelte-14r20fy l1">
+              <div class="title search-snippet-title line-clamp-1 svelte-14r20fy"
+                   title="OpenAI API">OpenAI API</div>
+            </a>
+            <div class="generic-snippet svelte-1cwdgg3">
+              <div class="content desktop-default-regular t-primary line-clamp-dynamic svelte-1cwdgg3">
+                Build production-grade applications with OpenAI's developer platform.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </body></html>
+    """
 }
 
 // MARK: - URLProtocol stub: routes by host + `q` marker
@@ -191,7 +256,12 @@ private final class SerpMockProtocol: URLProtocol {
         }
         if host.contains("bing") {
             if q.contains("BINGFAIL") { return (500, "") }
+            if q.contains("BINGEMPTY") { return (200, "<html><body></body></html>") }
             return (200, Fixtures.bing)
+        }
+        if host.contains("brave") {
+            if q.contains("BRAVEFAIL") { return (500, "") }
+            return (200, Fixtures.brave)
         }
         return (404, "")
     }

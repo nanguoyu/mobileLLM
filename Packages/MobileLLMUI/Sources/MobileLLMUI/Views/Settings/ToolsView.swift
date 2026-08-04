@@ -87,6 +87,8 @@ struct ToolsView: View {
             engineToggle("DuckDuckGo", .duckduckgo)
             Divider().background(Theme.hairline)
             engineToggle("Bing", .bing)
+            Divider().background(Theme.hairline)
+            engineToggle("Brave", .brave)
             Text(searchFootnote).font(.caption).foregroundStyle(Theme.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }

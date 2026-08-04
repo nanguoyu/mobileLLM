@@ -95,7 +95,7 @@ public final class AppSettings {
         // Absent in pre-D2 snapshots → the default disabled set (privacy tools off), matching
         // `BuiltInToolConfig.defaultEnabled`, so an upgraded install behaves exactly like a fresh one.
         disabledBuiltInTools = snap?.disabledBuiltInTools ?? Self.defaultDisabledBuiltInTools
-        searchEngines = snap?.searchEngines ?? [.duckduckgo, .bing]
+        searchEngines = snap?.searchEngines ?? [.duckduckgo, .bing, .brave]
         temperature = snap?.temperature ?? 0.7
         topP = snap?.topP ?? 0.95
         topK = snap?.topK ?? 20
@@ -180,7 +180,7 @@ public final class AppSettings {
     /// `ToolRegistry.assemble(config:…)` — the single mapping from Settings to the live registry.
     public var builtInToolConfig: BuiltInToolConfig {
         let enabled = Set(ToolID.allCases).subtracting(disabledBuiltInTools.compactMap(ToolID.init(rawValue:)))
-        let engines = searchEngines.isEmpty ? [SearchEngine.duckduckgo, .bing] : searchEngines
+        let engines = searchEngines.isEmpty ? [SearchEngine.duckduckgo, .bing, .brave] : searchEngines
         return BuiltInToolConfig(searchEngines: engines, enabled: enabled)
     }
 
@@ -282,7 +282,7 @@ public final class AppSettings {
         dictationLocale = nil
         mcpServers = []
         disabledBuiltInTools = Self.defaultDisabledBuiltInTools
-        searchEngines = [.duckduckgo, .bing]
+        searchEngines = [.duckduckgo, .bing, .brave]
         temperature = 0.7
         topP = 0.95
         topK = 20

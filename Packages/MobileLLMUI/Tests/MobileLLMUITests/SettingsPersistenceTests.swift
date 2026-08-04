@@ -101,7 +101,7 @@ final class SettingsPersistenceTests: XCTestCase {
         """#)
         let settings = AppSettings(defaults: defaults)
         XCTAssertEqual(settings.disabledBuiltInTools, AppSettings.defaultDisabledBuiltInTools)
-        XCTAssertEqual(Set(settings.searchEngines), [.duckduckgo, .bing])
+        XCTAssertEqual(Set(settings.searchEngines), [.duckduckgo, .bing, .brave])
         XCTAssertEqual(settings.builtInToolConfig.enabled, BuiltInToolConfig.defaultEnabled,
                        "the derived config matches D1's default-enabled set exactly")
         XCTAssertEqual(settings.systemPrompt, "keep me", "unrelated settings survive the added fields")
@@ -133,7 +133,7 @@ final class SettingsPersistenceTests: XCTestCase {
     func testBuiltInToolConfigFallsBackWhenNoEnginesChosen() {
         let settings = AppSettings(defaults: defaults)
         settings.searchEngines = []
-        XCTAssertEqual(Set(settings.builtInToolConfig.searchEngines), [.duckduckgo, .bing])
+        XCTAssertEqual(Set(settings.builtInToolConfig.searchEngines), [.duckduckgo, .bing, .brave])
     }
 
     // MARK: Context clamp

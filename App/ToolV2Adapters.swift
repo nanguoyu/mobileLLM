@@ -231,7 +231,7 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
                     continuation.yield(.failed(
                         try AppToolV2Support.toolFailure(
                             code: "tool.web-search.unreachable",
-                            message: "Web search engines returned no results or were unreachable."
+                            message: "Web search failed: all search engines returned no results or were unreachable."
                         )
                     ))
                     continuation.finish()

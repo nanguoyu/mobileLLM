@@ -26,7 +26,7 @@ public struct BuiltInToolConfig: Sendable {
     public var searchEngines: [SearchEngine]
     public var enabled: Set<ToolID>
 
-    public init(searchEngines: [SearchEngine] = [.duckduckgo, .bing],
+    public init(searchEngines: [SearchEngine] = [.duckduckgo, .bing, .brave],
                 enabled: Set<ToolID> = BuiltInToolConfig.defaultEnabled) {
         self.searchEngines = searchEngines
         self.enabled = enabled

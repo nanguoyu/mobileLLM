@@ -465,12 +465,21 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
 
         // Prove the same selection applies to the following turn. Without this, a failed toggle would
         // make the race assertion pass vacuously.
-        let next = try send(
+        var next = try send(
             "Use web search exactly once for the query OpenAI official website, then return its first title.",
             model: .gemma, in: app, timeout: 720)
+        if next.toolActivities.isEmpty {
+            // Same model-luck allowance as the dedicated web-search tests: the race invariant is that
+            // the toggle applied to the NEXT turn, which a retry proves just as strongly.
+            next = try send(
+                "You MUST call the web search tool exactly once for the query OpenAI official website, "
+                    + "then return its first title.",
+                model: .gemma, in: app, timeout: 720)
+        }
         XCTAssertEqual(next.toolActivities.count, 1,
                        "the next turn did not receive exactly the newly selected Web tool")
-        XCTAssertTrue(next.toolActivities.first?.hasPrefix("Web Search returned ") == true)
+        XCTAssertTrue(next.toolActivities.first?.hasPrefix("Web Search returned Web results for") == true,
+                      "the selected Web tool did not return organic results: \(next.toolActivities)")
     }
 
     @MainActor
@@ -872,7 +881,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
             }
             try setSwitch(toggle, on: false)
         }
-        for title in ["DuckDuckGo", "Bing"] {
+        for title in ["DuckDuckGo", "Bing", "Brave"] {
             let toggle = switchStarting(with: title, in: app)
             guard scrollToHittable(toggle, in: toolsScroll, swipingUp: false) else {
                 throw DeviceE2EHarnessError.precondition("Search-engine toggle is unreachable: \(title)")
@@ -1013,15 +1022,25 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     private func exerciseWebSearch(_ model: DeviceTestModel) throws {
         let app = try prepare(model, tools: true, selected: ["Web search"], thinking: false)
         let marker = uniqueMarker(model == .bonsai ? "BONSAI_WEB" : "GEMMA_WEB")
-        let evidence = try send(
+        var evidence = try send(
             marker + "\nUse web search exactly once for the query OpenAI official website. Then answer with the first result's title.",
             model: model, in: app, timeout: 720)
+        if evidence.toolActivities.isEmpty {
+            // A 1-bit local model occasionally answers from its training prior instead of calling the
+            // tool. A wiring regression fails earlier with run=failed diagnostics, so a single retry
+            // keeps the functional tool contract from depending on sampling luck.
+            let retryMarker = uniqueMarker(model == .bonsai ? "BONSAI_WEB_RETRY" : "GEMMA_WEB_RETRY")
+            evidence = try send(
+                retryMarker + "\nYou MUST call the web search tool exactly once for the query OpenAI "
+                    + "official website. Then answer with the first result's title.",
+                model: model, in: app, timeout: 720)
+        }
         XCTAssertEqual(evidence.toolActivities.count, 1, "unexpected tool chain: \(evidence.toolActivities)")
         guard let activity = evidence.toolActivities.first else { return }
-        XCTAssertTrue(activity.hasPrefix("Web Search returned "))
-        XCTAssertFalse(activity.localizedCaseInsensitiveContains("No web results"),
-                       "Web Search was presented as success despite returning no results")
-        XCTAssertFalse(activity.localizedCaseInsensitiveContains("failed"))
+        // The functional contract is that the tool really returned organic results: the row must show
+        // the "Web results for …" payload, never an unreachable/no-results failure painted as success.
+        XCTAssertTrue(activity.hasPrefix("Web Search returned Web results for"),
+                      "Web Search did not return organic results: \(activity)")
     }
 
     @MainActor
@@ -1088,11 +1107,24 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         // Defer all content assertions: a wrong acknowledgement must not prevent us from observing whether
         // the Memory tool ran, whether it wrote durable state, or whether another model consumed that state.
         do {
-            let evidence = try send(
+            var evidence = try send(
                 marker + "\nMy temporary device-test name is \(code). Please remember this lasting fact "
                     + "using the memory tool. Do not use web search. After it is saved, reply exactly "
                     + "MEMORY_SAVED_OK.",
                 model: writer, in: app, assertEvidence: false)
+            if !evidence.toolActivities.contains("Saved to memory") {
+                // A 1-bit local model occasionally answers without calling the tool. A wiring regression
+                // fails earlier with run=failed diagnostics, so a single retry keeps the durable-memory
+                // contract from depending on sampling luck.
+                let retryMarker = uniqueMarker(
+                    writer == .bonsai ? "BONSAI_MEMORY_RETRY" : "GEMMA_MEMORY_RETRY"
+                )
+                evidence = try send(
+                    retryMarker + "\nMy temporary device-test name is \(code). You MUST call the memory "
+                        + "tool to save this lasting fact, then reply exactly MEMORY_SAVED_OK. Do not use "
+                        + "web search.",
+                    model: writer, in: app, assertEvidence: false)
+            }
             writerEvidence = evidence
             failures += generationEvidenceFailures(evidence, model: writer)
                 .map { "Writer generation: \($0)" }
