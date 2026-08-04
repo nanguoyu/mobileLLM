@@ -136,12 +136,21 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
               tool.schema == frozenSchema
         else { throw ToolV2ContractError.descriptorMismatch }
         let query = Self.query(from: request.sanitizedArguments.string) ?? ""
-        let destinations = try engines.map { try Self.destination(engine: $0) }
+        // The plan is the authority-bounded itinerary: only engines the run ceiling actually granted
+        // may be called or offered as fallbacks. The shared adapter's engine list is a superset of the
+        // per-run ceiling (settings may change after the executor is built), so intersect it here.
+        let grantedDestinations = context.capabilityGrant.authority.destinations
+        let destinations = try engines
+            .map { try Self.destination(engine: $0) }
+            .filter { grantedDestinations.contains($0) }
+        guard let first = destinations.first else {
+            throw AgentContractError.capabilityEscalation([])
+        }
         let plan = try ExternalOperationPlan(
             kind: .tool,
             subjectID: descriptor.id.logicalID.description,
             canonicalArguments: request.sanitizedArguments,
-            destination: destinations.first,
+            destination: first,
             allowedFallbacks: Array(destinations.dropFirst()),
             dataCategories: [try AgentDataCategory(rawValue: "web.search")],
             payloadDigest: request.sanitizedArguments.fingerprint,
@@ -184,10 +193,20 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
                     }
                     for engine in engines {
                         if await context.cancellation.isCancelled() { throw CancellationError() }
+                        // Never hop outside the plan: the ceiling may authorize a subset of the shared
+                        // adapter's engines (settings changes after executor build), and every hop must
+                        // stay inside the plan the user approved.
+                        let allowedDestinations = Set(
+                            [prepared.prepared.request.plan.destination].compactMap { $0 }
+                                + prepared.prepared.request.plan.allowedFallbacks
+                        )
+                        guard let engineDestination = try? Self.destination(engine: engine),
+                              allowedDestinations.contains(engineDestination)
+                        else { continue }
                         do {
                             let boundary = try await context.performBoundary(
                                 observation: ExternalOperationObservation(
-                                    destination: try Self.destination(engine: engine),
+                                    destination: engineDestination,
                                     dataCategories: [try AgentDataCategory(rawValue: "web.search")],
                                     effects: [.networkRead],
                                     requestBytes: UInt64(query.utf8.count),

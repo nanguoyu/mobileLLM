@@ -95,7 +95,14 @@ public final class AppSettings {
         // Absent in pre-D2 snapshots → the default disabled set (privacy tools off), matching
         // `BuiltInToolConfig.defaultEnabled`, so an upgraded install behaves exactly like a fresh one.
         disabledBuiltInTools = snap?.disabledBuiltInTools ?? Self.defaultDisabledBuiltInTools
-        searchEngines = snap?.searchEngines ?? [.duckduckgo, .bing, .brave]
+        var loadedEngines = snap?.searchEngines ?? [.duckduckgo, .bing, .brave]
+        // Upgrade: installs that predate the Brave fallback kept the legacy two-engine default. Adding
+        // Brave matches the fresh-install default and keeps the executor engine list and the run
+        // ceiling in lockstep (the plan must never name a fallback the ceiling did not grant).
+        if loadedEngines == [.duckduckgo, .bing] {
+            loadedEngines = [.duckduckgo, .bing, .brave]
+        }
+        searchEngines = loadedEngines
         temperature = snap?.temperature ?? 0.7
         topP = snap?.topP ?? 0.95
         topK = snap?.topK ?? 20

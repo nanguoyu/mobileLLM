@@ -107,6 +107,19 @@ final class SettingsPersistenceTests: XCTestCase {
         XCTAssertEqual(settings.systemPrompt, "keep me", "unrelated settings survive the added fields")
     }
 
+    /// A pre-Brave install persisted the legacy two-engine default; loading it must migrate to the
+    /// fresh-install three-engine default so the tool plan and the run ceiling stay in lockstep.
+    func testLegacyTwoEngineDefaultMigratesToBrave() {
+        write(#"""
+        {"defaultModelID":"bonsai-8b","systemPrompt":"keep me","systemPromptSeeded":true,
+         "thinkingDefault":true,"thinkingDisplay":"autoCollapse","toolsEnabled":true,
+         "temperature":0.7,"topP":0.95,"topK":20,"repetitionPenalty":1.05,"maxTokens":1024,
+         "contextLength":8192,"kvBits":4,"appearance":"system","searchEngines":["duckduckgo","bing"]}
+        """#)
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.searchEngines, [.duckduckgo, .bing, .brave])
+    }
+
     /// A fresh install disables exactly the three privacy-sensitive capabilities (four tool ids) and leaves
     /// every other built-in on.
     func testFreshInstallDisablesOnlyPrivacyTools() {

@@ -236,7 +236,7 @@ class DeviceE2ETestCase: XCTestCase {
     func addPublicMCPServer(in app: XCUIApplication) throws {
         try goToSettings(in: app)
         let toolsRow = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Tools")
+            NSPredicate(format: "label BEGINSWITH %@", "Choose tools")
         ).firstMatch
         guard scrollToHittable(toolsRow, in: app.scrollViews.firstMatch) else {
             throw DeviceE2EHarnessError.precondition("Tools settings row is unreachable")
