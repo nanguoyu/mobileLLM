@@ -5,6 +5,70 @@ import XCTest
 
 // TEST-ID: AHT-SUBAGENT-001
 final class AuthorityAndAuthorizationTests: XCTestCase {
+    func testHTTPSWildcardDestinationCoversConcreteHTTPSOnly() throws {
+        let wildcard = try ExternalDestination(
+            kind: .networkEndpoint,
+            normalizedIdentity: ExternalDestination.anyHTTPSNetworkEndpoint
+        )
+        let https = try ExternalDestination(
+            kind: .networkEndpoint,
+            normalizedIdentity: "https://example.com"
+        )
+        let http = try ExternalDestination(
+            kind: .networkEndpoint,
+            normalizedIdentity: "http://example.com"
+        )
+        XCTAssertTrue(wildcard.covers(https))
+        XCTAssertFalse(wildcard.covers(http))
+        XCTAssertTrue(https.covers(https))
+        XCTAssertFalse(https.covers(wildcard), "the wildcard is not a concrete host")
+
+        let wildcardScope = try AgentAuthorityScope(
+            capabilities: AgentCapabilitySet([.networkRead]),
+            destinations: [wildcard],
+            dataCategories: [try AgentDataCategory(rawValue: "web.page")]
+        )
+        let concreteScope = try AgentAuthorityScope(
+            capabilities: AgentCapabilitySet([.networkRead]),
+            destinations: [https],
+            dataCategories: [try AgentDataCategory(rawValue: "web.page")]
+        )
+        XCTAssertTrue(concreteScope.isSubset(of: wildcardScope))
+        let httpOnly = try AgentAuthorityScope(
+            capabilities: AgentCapabilitySet([.networkRead]),
+            destinations: [http],
+            dataCategories: [try AgentDataCategory(rawValue: "web.page")]
+        )
+        XCTAssertFalse(httpOnly.isSubset(of: wildcardScope), "http must never be covered by https://*")
+    }
+
+    func testPlanIsWithinWildcardHTTPSAuthority() throws {
+        let concrete = try ExternalDestination(
+            kind: .networkEndpoint,
+            normalizedIdentity: "https://docs.example.com"
+        )
+        let prepared = try TestValues.preparedRead(destination: concrete)
+        let wildcardScope = try AgentAuthorityScope(
+            capabilities: AgentCapabilitySet([.networkRead]),
+            destinations: [
+                try ExternalDestination(
+                    kind: .networkEndpoint,
+                    normalizedIdentity: ExternalDestination.anyHTTPSNetworkEndpoint
+                ),
+            ],
+            dataCategories: [TestValues.category()]
+        )
+        XCTAssertTrue(prepared.plan.isWithin(wildcardScope),
+                      "a concrete https plan must fit under the https wildcard ceiling")
+        let httpDest = try ExternalDestination(
+            kind: .networkEndpoint,
+            normalizedIdentity: "http://docs.example.com"
+        )
+        let httpPrepared = try TestValues.preparedRead(destination: httpDest)
+        XCTAssertFalse(httpPrepared.plan.isWithin(wildcardScope),
+                       "http plans must never fit under the https-only wildcard")
+    }
+
     func testEveryAuthorityDimensionAttenuatesAndFingerprints() throws {
         let destination = TestValues.destination()
         let artifact = TestValues.id(ArtifactIDDomain.self, 10)

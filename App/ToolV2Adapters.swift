@@ -12,6 +12,38 @@ enum AppToolV2Support {
         case invalidBoundaryResult
     }
 
+    /// A tool result that is a failure or denial, not a successful payload. Tool V2 adapters turn
+    /// these into `.failed` outcomes so a run that recovered from them can never look like a clean
+    /// "Completed".
+    static func isFailureText(_ text: String) -> Bool {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.hasPrefix("error:")
+            || normalized.hasPrefix("couldn't")
+            || normalized.hasPrefix("search failed")
+            || normalized.hasPrefix("web search failed")
+            || normalized.hasPrefix("no web results")
+            || normalized.hasPrefix("no wikipedia article")
+            || normalized.hasPrefix("calendar access is off")
+            || normalized.hasPrefix("reminders access is off")
+            || normalized.hasPrefix("location access is off")
+            || normalized.hasPrefix("location is unavailable")
+            || normalized.hasPrefix("that url isn't a readable web page")
+            || normalized.hasPrefix("the page loaded but had no readable text")
+    }
+
+    /// Host-only normalization of an engine or document URL so a plan names the bounded endpoint, not
+    /// the query-specific path.
+    static func hostOnlyDestination(_ url: URL) throws -> ExternalDestination {
+        var components = URLComponents()
+        components.scheme = url.scheme ?? "https"
+        components.host = url.host
+        if let port = url.port { components.port = port }
+        guard let normalized = components.string else {
+            throw AgentContractError.invalidExternalOperationPlan("invalid network destination")
+        }
+        return try ExternalDestination(kind: .networkEndpoint, normalizedIdentity: normalized)
+    }
+
     /// Converts a legacy LLMCore schema into the Tool V2 Draft 2020-12 JSON Schema document.
     static func inputSchema(for schema: LLMCore.ToolSchema) throws -> JSONSchemaDocument {
         var properties: [String: JSONValue] = [:]
@@ -249,6 +281,10 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
                             return
                         } catch is CancellationError {
                             throw CancellationError()
+                        } catch let contract as AgentContractError {
+                            // A gate/contract rejection is a wiring or authorization bug, not an engine
+                            // outage; surface it instead of swallowing it into "no results".
+                            throw contract
                         } catch {
                             // This engine failed or returned nothing; fall through to the next one.
                             let reason: String
@@ -311,6 +347,517 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
         if let port = url.port { components.port = port }
         guard let normalized = components.string else { throw WebSearchTool.ToolNetError.badURL }
         return try ExternalDestination(kind: .networkEndpoint, normalizedIdentity: normalized)
+    }
+}
+
+// MARK: - Wikipedia (networkRead, bounded to the language-specific wikipedia host)
+
+/// Adapts the legacy `WikipediaTool` to Tool V2. The destination is `{lang}.wikipedia.org` chosen from
+/// the query, so the run ceiling can enumerate both language hosts exactly; both network steps of the
+/// lookup run inside one authorized boundary hop.
+public final class AppWikipediaToolAdapter: ToolV2, @unchecked Sendable {
+    public let descriptor: AgentToolDescriptor
+    private let tool: WikipediaTool
+    private let frozenSchema: LLMCore.ToolSchema
+    private let maximumResponseBytes: UInt64
+    private let timeoutMilliseconds: UInt64
+
+    public init(
+        tool: WikipediaTool,
+        providerID: String = "builtin",
+        version: SemanticVersion = SemanticVersion("1.0.0")!,
+        trustRevision: String,
+        timeoutMilliseconds: UInt64 = 30_000,
+        maximumResponseBytes: UInt64 = 2 * 1_024 * 1_024
+    ) throws {
+        let schema = tool.schema
+        let inputSchema = try AppToolV2Support.inputSchema(for: schema)
+        let logicalID = try AgentToolLogicalID(providerID: providerID, name: schema.name)
+        descriptor = try AgentToolDescriptor(
+            id: AgentToolDescriptorID(
+                logicalID: logicalID,
+                version: version,
+                schemaDigest: inputSchema.digest,
+                trustRevision: trustRevision
+            ),
+            title: schema.name,
+            summary: schema.description,
+            inputSchema: inputSchema,
+            outputSchema: nil,
+            effects: [.networkRead],
+            requiredCapabilities: AgentCapabilitySet([.networkRead]),
+            timeoutPolicy: ToolTimeoutPolicy(maximumMilliseconds: timeoutMilliseconds),
+            retryPolicy: .never,
+            idempotency: .pureRead,
+            supportsProgress: false,
+            supportsCancellation: true
+        )
+        self.tool = tool
+        frozenSchema = schema
+        self.maximumResponseBytes = maximumResponseBytes
+        self.timeoutMilliseconds = timeoutMilliseconds
+    }
+
+    public static func destination(lang: String) throws -> ExternalDestination {
+        guard let url = URL(string: "https://\(lang).wikipedia.org/") else {
+            throw WikipediaTool.ToolNetError.badURL
+        }
+        return try AppToolV2Support.hostOnlyDestination(url)
+    }
+
+    public func prepare(
+        request: ToolExecutionRequest,
+        context: ToolPreparationContext
+    ) async throws -> PreparedToolInvocation {
+        guard request.descriptor == descriptor,
+              request.proposedCall.toolID == descriptor.id.logicalID,
+              tool.schema == frozenSchema
+        else { throw ToolV2ContractError.descriptorMismatch }
+        guard let query = Self.query(from: request.sanitizedArguments.string),
+              !query.trimmingCharacters(in: .whitespaces).isEmpty
+        else { throw ToolV2ContractError.invalidArguments }
+        let lang = WikipediaTool.lang(for: query)
+        let plan = try ExternalOperationPlan(
+            kind: .tool,
+            subjectID: descriptor.id.logicalID.description,
+            canonicalArguments: request.sanitizedArguments,
+            destination: try Self.destination(lang: lang),
+            dataCategories: [try AgentDataCategory(rawValue: "web.wikipedia")],
+            payloadDigest: request.sanitizedArguments.fingerprint,
+            effects: [.networkRead],
+            requiredCapabilities: AgentCapabilitySet([.networkRead]),
+            maximumRequestBytes: request.maximumArgumentBytes,
+            maximumResponseBytes: maximumResponseBytes,
+            timeoutMilliseconds: timeoutMilliseconds,
+            retryPolicy: .never,
+            idempotency: .pureRead,
+            userPreview: "Look up \"\(query)\" on Wikipedia",
+            descriptorID: descriptor.id.description,
+            schemaDigest: descriptor.id.schemaDigest,
+            trustRevision: descriptor.id.trustRevision
+        )
+        return try PreparedToolInvocation(request: request, context: context, plan: plan)
+    }
+
+    public func execute(
+        prepared: AuthorizedToolInvocation,
+        context: ToolExecutionContext
+    ) -> AsyncThrowingStream<ToolExecutionEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard prepared.prepared.request.descriptor == descriptor,
+                          prepared.prepared.request.proposedCall.toolID == descriptor.id.logicalID,
+                          tool.schema == frozenSchema
+                    else { throw ToolV2ContractError.executingWrongDescriptor }
+                    if await context.cancellation.isCancelled() { throw CancellationError() }
+                    let arguments = prepared.prepared.request.sanitizedArguments.string
+                    guard let query = Self.query(from: arguments) else {
+                        throw ToolV2ContractError.invalidArguments
+                    }
+                    let lang = WikipediaTool.lang(for: query)
+                    let boundary = try await context.performBoundary(
+                        observation: ExternalOperationObservation(
+                            destination: try Self.destination(lang: lang),
+                            dataCategories: [try AgentDataCategory(rawValue: "web.wikipedia")],
+                            effects: [.networkRead],
+                            requestBytes: UInt64(arguments.utf8.count),
+                            responseBytesLimit: maximumResponseBytes,
+                            payloadDigest: prepared.prepared.request.sanitizedArguments.fingerprint,
+                            descriptorID: descriptor.id.description,
+                            schemaDigest: descriptor.id.schemaDigest,
+                            trustRevision: descriptor.id.trustRevision
+                        ),
+                        operation: { control in
+                            if await context.cancellation.isCancelled() { throw CancellationError() }
+                            let search = try await self.tool.fetchSearch(query: query, lang: lang)
+                            try await control.consumeResponseBytes(UInt64(search.count))
+                            guard let title = WikipediaTool.parseTopTitle(search) else {
+                                throw WikipediaTool.ToolNetError.badResponse
+                            }
+                            let summaryData = try await self.tool.fetchSummary(title: title, lang: lang)
+                            try await control.consumeResponseBytes(UInt64(summaryData.count))
+                            let summary = WikipediaTool.parseSummary(summaryData)
+                            let text = summary.isEmpty
+                                ? "No Wikipedia article found for \"\(query)\"."
+                                : "\(title): \(summary)"
+                            return try AppToolV2Support.canonicalText(text)
+                        }
+                    )
+                    let text = try AppToolV2Support.textValue(boundary.value) ?? ""
+                    try Task.checkCancellation()
+                    if AppToolV2Support.isFailureText(text) {
+                        continuation.yield(.failed(try AppToolV2Support.toolFailure(
+                            code: "tool.wikipedia.failed",
+                            message: text
+                        )))
+                    } else {
+                        continuation.yield(.completed(try ToolResultCollection([
+                            .text(try ToolTextResult(text)),
+                        ])))
+                    }
+                    continuation.finish()
+                } catch is CancellationError {
+                    do {
+                        continuation.yield(.failed(try AppToolV2Support.cancelledFailure()))
+                        continuation.finish()
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                } catch let contract as AgentContractError {
+                    continuation.finish(throwing: contract)
+                } catch {
+                    do {
+                        continuation.yield(.failed(try AppToolV2Support.toolFailure(
+                            code: "tool.wikipedia.failed",
+                            message: "Wikipedia lookup failed or returned no article."
+                        )))
+                        continuation.finish()
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private static func query(from argumentsJSON: String) -> String? {
+        guard let data = argumentsJSON.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let query = object["query"] as? String
+        else { return nil }
+        return query
+    }
+}
+
+// MARK: - Webpage reader (networkRead, user-supplied https destination)
+
+/// Adapts the legacy `WebScraperTool` to Tool V2. The destination is the host of the user-supplied
+/// URL; the run ceiling covers it with the https-only wildcard, and the tool's SSRF/redirect guards
+/// still run inside the authorized boundary before any byte reaches the network.
+public final class AppWebScraperToolAdapter: ToolV2, @unchecked Sendable {
+    public let descriptor: AgentToolDescriptor
+    private let tool: WebScraperTool
+    private let frozenSchema: LLMCore.ToolSchema
+    private let maximumResponseBytes: UInt64
+    private let timeoutMilliseconds: UInt64
+
+    public init(
+        tool: WebScraperTool,
+        providerID: String = "builtin",
+        version: SemanticVersion = SemanticVersion("1.0.0")!,
+        trustRevision: String,
+        timeoutMilliseconds: UInt64 = 30_000,
+        maximumResponseBytes: UInt64 = 2 * 1_024 * 1_024
+    ) throws {
+        let schema = tool.schema
+        let inputSchema = try AppToolV2Support.inputSchema(for: schema)
+        let logicalID = try AgentToolLogicalID(providerID: providerID, name: schema.name)
+        descriptor = try AgentToolDescriptor(
+            id: AgentToolDescriptorID(
+                logicalID: logicalID,
+                version: version,
+                schemaDigest: inputSchema.digest,
+                trustRevision: trustRevision
+            ),
+            title: schema.name,
+            summary: schema.description,
+            inputSchema: inputSchema,
+            outputSchema: nil,
+            effects: [.networkRead],
+            requiredCapabilities: AgentCapabilitySet([.networkRead]),
+            timeoutPolicy: ToolTimeoutPolicy(maximumMilliseconds: timeoutMilliseconds),
+            retryPolicy: .never,
+            idempotency: .pureRead,
+            supportsProgress: false,
+            supportsCancellation: true
+        )
+        self.tool = tool
+        frozenSchema = schema
+        self.maximumResponseBytes = maximumResponseBytes
+        self.timeoutMilliseconds = timeoutMilliseconds
+    }
+
+    public static func destination(url: URL) throws -> ExternalDestination {
+        try AppToolV2Support.hostOnlyDestination(url)
+    }
+
+    public func prepare(
+        request: ToolExecutionRequest,
+        context: ToolPreparationContext
+    ) async throws -> PreparedToolInvocation {
+        guard request.descriptor == descriptor,
+              request.proposedCall.toolID == descriptor.id.logicalID,
+              tool.schema == frozenSchema
+        else { throw ToolV2ContractError.descriptorMismatch }
+        let url = try Self.url(from: request.sanitizedArguments.string)
+        let plan = try ExternalOperationPlan(
+            kind: .tool,
+            subjectID: descriptor.id.logicalID.description,
+            canonicalArguments: request.sanitizedArguments,
+            destination: try Self.destination(url: url),
+            dataCategories: [try AgentDataCategory(rawValue: "web.page")],
+            payloadDigest: request.sanitizedArguments.fingerprint,
+            effects: [.networkRead],
+            requiredCapabilities: AgentCapabilitySet([.networkRead]),
+            maximumRequestBytes: request.maximumArgumentBytes,
+            maximumResponseBytes: maximumResponseBytes,
+            timeoutMilliseconds: timeoutMilliseconds,
+            retryPolicy: .never,
+            idempotency: .pureRead,
+            userPreview: "Read \(url.host ?? url.absoluteString)",
+            descriptorID: descriptor.id.description,
+            schemaDigest: descriptor.id.schemaDigest,
+            trustRevision: descriptor.id.trustRevision
+        )
+        return try PreparedToolInvocation(request: request, context: context, plan: plan)
+    }
+
+    public func execute(
+        prepared: AuthorizedToolInvocation,
+        context: ToolExecutionContext
+    ) -> AsyncThrowingStream<ToolExecutionEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard prepared.prepared.request.descriptor == descriptor,
+                          prepared.prepared.request.proposedCall.toolID == descriptor.id.logicalID,
+                          tool.schema == frozenSchema
+                    else { throw ToolV2ContractError.executingWrongDescriptor }
+                    if await context.cancellation.isCancelled() { throw CancellationError() }
+                    let arguments = prepared.prepared.request.sanitizedArguments.string
+                    let url = try Self.url(from: arguments)
+                    let boundary = try await context.performBoundary(
+                        observation: ExternalOperationObservation(
+                            destination: try Self.destination(url: url),
+                            dataCategories: [try AgentDataCategory(rawValue: "web.page")],
+                            effects: [.networkRead],
+                            requestBytes: UInt64(arguments.utf8.count),
+                            responseBytesLimit: maximumResponseBytes,
+                            payloadDigest: prepared.prepared.request.sanitizedArguments.fingerprint,
+                            descriptorID: descriptor.id.description,
+                            schemaDigest: descriptor.id.schemaDigest,
+                            trustRevision: descriptor.id.trustRevision
+                        ),
+                        operation: { control in
+                            if await context.cancellation.isCancelled() { throw CancellationError() }
+                            let page = try await self.tool.fetchPage(url: url)
+                            try await control.consumeResponseBytes(UInt64(page.body.count))
+                            return try AppToolV2Support.canonicalText(self.tool.renderReadable(page: page))
+                        }
+                    )
+                    let text = try AppToolV2Support.textValue(boundary.value) ?? ""
+                    try Task.checkCancellation()
+                    if AppToolV2Support.isFailureText(text) {
+                        continuation.yield(.failed(try AppToolV2Support.toolFailure(
+                            code: "tool.webpage.failed",
+                            message: text
+                        )))
+                    } else {
+                        continuation.yield(.completed(try ToolResultCollection([
+                            .text(try ToolTextResult(text)),
+                        ])))
+                    }
+                    continuation.finish()
+                } catch is CancellationError {
+                    do {
+                        continuation.yield(.failed(try AppToolV2Support.cancelledFailure()))
+                        continuation.finish()
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                } catch let contract as AgentContractError {
+                    continuation.finish(throwing: contract)
+                } catch {
+                    do {
+                        continuation.yield(.failed(try AppToolV2Support.toolFailure(
+                            code: "tool.webpage.failed",
+                            message: "Couldn't read that web page."
+                        )))
+                        continuation.finish()
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// https-only on the agent path: the https wildcard destination is the security boundary, and
+    /// plaintext http is not authorized by it.
+    private static func url(from argumentsJSON: String) throws -> URL {
+        guard let data = argumentsJSON.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let raw = object["url"] as? String,
+              let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+              url.scheme?.lowercased() == "https",
+              let host = url.host,
+              !host.isEmpty,
+              !WebScraperTool.isBlockedHost(host)
+        else { throw ToolV2ContractError.invalidArguments }
+        return url
+    }
+}
+
+// MARK: - System data (calendar / reminders / location: localRead / localWrite + TCC seam)
+
+/// Adapts privacy-gated system-data tools (calendar, reminders, location) to Tool V2. The TCC
+/// permission is requested lazily by the underlying provider; the runtime boundary names the private
+/// store and the data category, and a denial string becomes a failed tool outcome (never a clean
+/// success).
+public final class AppSystemDataToolAdapter: ToolV2, @unchecked Sendable {
+    public let descriptor: AgentToolDescriptor
+    private let tool: any LLMCore.Tool
+    private let frozenSchema: LLMCore.ToolSchema
+    private let effects: [AgentEffect]
+    private let destinationIdentity: String
+    private let dataCategory: String
+    private let userPreview: String
+    private let maximumResponseBytes: UInt64
+    private let timeoutMilliseconds: UInt64
+
+    public init(
+        tool: any LLMCore.Tool,
+        effects: [AgentEffect],
+        destinationIdentity: String,
+        dataCategory: String,
+        userPreview: String,
+        providerID: String = "builtin",
+        version: SemanticVersion = SemanticVersion("1.0.0")!,
+        trustRevision: String,
+        timeoutMilliseconds: UInt64 = 15_000,
+        maximumResponseBytes: UInt64 = 64 * 1_024
+    ) throws {
+        let schema = tool.schema
+        let inputSchema = try AppToolV2Support.inputSchema(for: schema)
+        let logicalID = try AgentToolLogicalID(providerID: providerID, name: schema.name)
+        descriptor = try AgentToolDescriptor(
+            id: AgentToolDescriptorID(
+                logicalID: logicalID,
+                version: version,
+                schemaDigest: inputSchema.digest,
+                trustRevision: trustRevision
+            ),
+            title: schema.name,
+            summary: schema.description,
+            inputSchema: inputSchema,
+            outputSchema: nil,
+            effects: effects,
+            requiredCapabilities: AgentCapabilitySet(effects.compactMap(\.minimumCapability)),
+            timeoutPolicy: ToolTimeoutPolicy(maximumMilliseconds: timeoutMilliseconds),
+            retryPolicy: .never,
+            idempotency: effects.contains(.localWrite) ? .nonIdempotent : .pureRead,
+            supportsProgress: false,
+            supportsCancellation: true
+        )
+        self.tool = tool
+        frozenSchema = schema
+        self.effects = effects
+        self.destinationIdentity = destinationIdentity
+        self.dataCategory = dataCategory
+        self.userPreview = userPreview
+        self.maximumResponseBytes = maximumResponseBytes
+        self.timeoutMilliseconds = timeoutMilliseconds
+    }
+
+    public func prepare(
+        request: ToolExecutionRequest,
+        context: ToolPreparationContext
+    ) async throws -> PreparedToolInvocation {
+        guard request.descriptor == descriptor,
+              request.proposedCall.toolID == descriptor.id.logicalID,
+              tool.schema == frozenSchema
+        else { throw ToolV2ContractError.descriptorMismatch }
+        let plan = try ExternalOperationPlan(
+            kind: .tool,
+            subjectID: descriptor.id.logicalID.description,
+            canonicalArguments: request.sanitizedArguments,
+            destination: try ExternalDestination(
+                kind: .privateDataStore,
+                normalizedIdentity: destinationIdentity
+            ),
+            dataCategories: [try AgentDataCategory(rawValue: dataCategory)],
+            payloadDigest: request.sanitizedArguments.fingerprint,
+            effects: descriptor.effects,
+            requiredCapabilities: descriptor.requiredCapabilities,
+            maximumRequestBytes: request.maximumArgumentBytes,
+            maximumResponseBytes: maximumResponseBytes,
+            timeoutMilliseconds: timeoutMilliseconds,
+            retryPolicy: .never,
+            idempotency: descriptor.idempotency,
+            userPreview: userPreview,
+            descriptorID: descriptor.id.description,
+            schemaDigest: descriptor.id.schemaDigest,
+            trustRevision: descriptor.id.trustRevision
+        )
+        return try PreparedToolInvocation(request: request, context: context, plan: plan)
+    }
+
+    public func execute(
+        prepared: AuthorizedToolInvocation,
+        context: ToolExecutionContext
+    ) -> AsyncThrowingStream<ToolExecutionEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard prepared.prepared.request.descriptor == descriptor,
+                          prepared.prepared.request.proposedCall.toolID == descriptor.id.logicalID,
+                          tool.schema == frozenSchema
+                    else { throw ToolV2ContractError.executingWrongDescriptor }
+                    if await context.cancellation.isCancelled() { throw CancellationError() }
+                    let arguments = prepared.prepared.request.sanitizedArguments.string
+                    let boundary = try await context.performBoundary(
+                        observation: ExternalOperationObservation(
+                            destination: try ExternalDestination(
+                                kind: .privateDataStore,
+                                normalizedIdentity: destinationIdentity
+                            ),
+                            dataCategories: [try AgentDataCategory(rawValue: dataCategory)],
+                            effects: effects,
+                            requestBytes: UInt64(arguments.utf8.count),
+                            responseBytesLimit: maximumResponseBytes,
+                            payloadDigest: prepared.prepared.request.sanitizedArguments.fingerprint,
+                            descriptorID: descriptor.id.description,
+                            schemaDigest: descriptor.id.schemaDigest,
+                            trustRevision: descriptor.id.trustRevision
+                        ),
+                        operation: { control in
+                            if await context.cancellation.isCancelled() { throw CancellationError() }
+                            let text = await self.tool.execute(argumentsJSON: arguments)
+                            try await control.consumeResponseBytes(UInt64(text.utf8.count))
+                            return try AppToolV2Support.canonicalText(text)
+                        }
+                    )
+                    let text = try AppToolV2Support.textValue(boundary.value) ?? ""
+                    try Task.checkCancellation()
+                    if AppToolV2Support.isFailureText(text) {
+                        continuation.yield(.failed(try AppToolV2Support.toolFailure(
+                            code: "tool.system-data.failed",
+                            message: text
+                        )))
+                    } else {
+                        continuation.yield(.completed(try ToolResultCollection([
+                            .text(try ToolTextResult(text)),
+                        ])))
+                    }
+                    continuation.finish()
+                } catch is CancellationError {
+                    do {
+                        continuation.yield(.failed(try AppToolV2Support.cancelledFailure()))
+                        continuation.finish()
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                } catch let contract as AgentContractError {
+                    continuation.finish(throwing: contract)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 }
 
@@ -439,10 +986,16 @@ public final class AppMemoryToolAdapter: ToolV2, @unchecked Sendable {
                         throw AppToolV2Support.ToolAdapterError.invalidBoundaryResult
                     }
                     try Task.checkCancellation()
-                    let results = try ToolResultCollection([
-                        .text(try ToolTextResult(text)),
-                    ])
-                    continuation.yield(.completed(results))
+                    if AppToolV2Support.isFailureText(text) {
+                        continuation.yield(.failed(try AppToolV2Support.toolFailure(
+                            code: "tool.memory.failed",
+                            message: text
+                        )))
+                    } else {
+                        continuation.yield(.completed(try ToolResultCollection([
+                            .text(try ToolTextResult(text)),
+                        ])))
+                    }
                     continuation.finish()
                 } catch is CancellationError {
                     do {

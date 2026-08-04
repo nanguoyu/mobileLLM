@@ -225,8 +225,11 @@ public struct AgentAuthorityScope: Hashable, Codable, Sendable {
 
     /// Returns whether every verb and every resource dimension is contained by a parent scope.
     public func isSubset(of parent: Self) -> Bool {
+        let destinationsContained = destinations.allSatisfy { child in
+            parent.destinations.contains { $0.covers(child) }
+        }
         guard capabilities.isSubset(of: parent.capabilities),
-              Set(destinations).isSubset(of: Set(parent.destinations)),
+              destinationsContained,
               Set(dataCategories).isSubset(of: Set(parent.dataCategories)),
               Set(artifactIDs).isSubset(of: Set(parent.artifactIDs)),
               Set(secretReferenceIDs).isSubset(of: Set(parent.secretReferenceIDs)),

@@ -35,6 +35,10 @@ public struct AgentRunRequestSnapshot: Sendable {
     public let localToolNames: [String]
     /// Whether the app can adapt the app-owned memory tools for this run (the MemoryBook store seam).
     public let memorySeamAvailable: Bool
+    /// Whether the EventKit seam is available for calendar/reminder tools (TCC granted lazily).
+    public let eventSeamAvailable: Bool
+    /// Whether the CoreLocation seam is available for the location tool (TCC granted lazily).
+    public let locationSeamAvailable: Bool
     /// MCP tools explicitly discovered by the user's server setup/refresh flow (spec §13: discovery
     /// never happens during prompt compilation).
     public let mcpToolDescriptors: [AgentToolDescriptor]
@@ -66,6 +70,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         toolsEnabled: Bool,
         localToolNames: [String],
         memorySeamAvailable: Bool,
+        eventSeamAvailable: Bool,
+        locationSeamAvailable: Bool,
         mcpToolDescriptors: [AgentToolDescriptor],
         webSearchDestinations: [ExternalDestination],
         toolPolicy: ConversationToolPolicy?
@@ -91,6 +97,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.toolsEnabled = toolsEnabled
         self.localToolNames = localToolNames
         self.memorySeamAvailable = memorySeamAvailable
+        self.eventSeamAvailable = eventSeamAvailable
+        self.locationSeamAvailable = locationSeamAvailable
         self.mcpToolDescriptors = mcpToolDescriptors
         self.webSearchDestinations = webSearchDestinations
         self.toolPolicy = toolPolicy
@@ -194,6 +202,8 @@ struct AppFrozenInputBuilder: Sendable {
         let toolCatalog = try AppToolCatalog.catalog(
             enabledToolNames: snapshot.toolsEnabled ? localTools : [],
             memoryAvailable: snapshot.memorySeamAvailable,
+            eventSeamAvailable: snapshot.eventSeamAvailable,
+            locationSeamAvailable: snapshot.locationSeamAvailable,
             mcpDescriptors: snapshot.toolsEnabled ? snapshot.mcpToolDescriptors : []
         )
         let policy = try snapshot.toolPolicy ?? ConversationToolPolicy(
@@ -252,6 +262,52 @@ struct AppFrozenInputBuilder: Sendable {
                 normalizedIdentity: "mobilellm.memory"
             ))
         }
+        var ceilingDataCategories = [
+            try AgentDataCategory(rawValue: "web.search"),
+            try AgentDataCategory(rawValue: "user.memory"),
+            try AgentDataCategory(rawValue: "mcp.call"),
+        ]
+        let enabledTools = Set(snapshot.localToolNames)
+        if enabledTools.contains("wikipedia") {
+            ceilingDestinations.append(contentsOf: try ["en", "zh"].map {
+                try AppWikipediaToolAdapter.destination(lang: $0)
+            })
+            ceilingDataCategories.append(try AgentDataCategory(rawValue: "web.wikipedia"))
+        }
+        if enabledTools.contains("fetch_webpage") {
+            // The webpage reader reads user-supplied links: any public https host, enforced by the
+            // tool's SSRF guards inside the boundary. http is never covered by this wildcard.
+            ceilingDestinations.append(try ExternalDestination(
+                kind: .networkEndpoint,
+                normalizedIdentity: ExternalDestination.anyHTTPSNetworkEndpoint
+            ))
+            ceilingDataCategories.append(try AgentDataCategory(rawValue: "web.page"))
+        }
+        if snapshot.eventSeamAvailable {
+            if enabledTools.contains("create_calendar_event")
+                || enabledTools.contains("list_calendar_events")
+            {
+                ceilingDestinations.append(try ExternalDestination(
+                    kind: .privateDataStore,
+                    normalizedIdentity: "mobilellm.calendar"
+                ))
+                ceilingDataCategories.append(try AgentDataCategory(rawValue: "user.calendar"))
+            }
+            if enabledTools.contains("create_reminder") {
+                ceilingDestinations.append(try ExternalDestination(
+                    kind: .privateDataStore,
+                    normalizedIdentity: "mobilellm.reminders"
+                ))
+                ceilingDataCategories.append(try AgentDataCategory(rawValue: "user.reminders"))
+            }
+        }
+        if snapshot.locationSeamAvailable, enabledTools.contains("current_location") {
+            ceilingDestinations.append(try ExternalDestination(
+                kind: .privateDataStore,
+                normalizedIdentity: "mobilellm.location"
+            ))
+            ceilingDataCategories.append(try AgentDataCategory(rawValue: "user.location"))
+        }
         for descriptor in snapshot.mcpToolDescriptors {
             let providerID = descriptor.id.logicalID.providerID
             let prefix = "mcp."
@@ -266,11 +322,7 @@ struct AppFrozenInputBuilder: Sendable {
         let ceilingAuthority = try AgentAuthorityScope(
             capabilities: AgentCapabilitySet([.networkRead, .localRead, .localWrite, .unknownExternal]),
             destinations: ceilingDestinations,
-            dataCategories: [
-                try AgentDataCategory(rawValue: "web.search"),
-                try AgentDataCategory(rawValue: "user.memory"),
-                try AgentDataCategory(rawValue: "mcp.call"),
-            ]
+            dataCategories: ceilingDataCategories
         )
         return try AgentRequest(
             id: AgentRequestID(rawValue: UUID()),
@@ -395,11 +447,10 @@ struct AppAgentArtifactResolver: Sendable {
 
 // MARK: - Tool catalog
 
-/// The app's Tool V2 catalog. First release adapts the curated tool set the device matrix exercises:
-/// calculator, clock, web search (networkRead with approval), and app-owned memory (localRead/write,
-/// gated on the MemoryBook seam). Every other built-in (Wikipedia, webpage fetch, MCP, calendar,
-/// location, …) stays unavailable so the runtime never advertises a capability it cannot safely
-/// execute.
+/// The app's Tool V2 catalog: every built-in the UI can enable has a Tool V2 adapter, so the agent
+/// runtime advertises exactly what it can execute. Network tools (web search, Wikipedia, webpage
+/// reading) cross approved network boundaries; memory/calendar/reminders/location cross private-data
+/// boundaries gated on their app seams; MCP tools come from explicit discovery.
 final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
     static let adaptedToolNames = AppLocalToolIDs.names
 
@@ -410,6 +461,8 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
     static func catalog(
         enabledToolNames: [String],
         memoryAvailable: Bool,
+        eventSeamAvailable: Bool,
+        locationSeamAvailable: Bool,
         mcpDescriptors: [AgentToolDescriptor] = [],
         trustRevision: String = "builtin.v1"
     ) throws -> ToolCatalogSnapshot {
@@ -491,6 +544,48 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
                 )
             }
         }
+        // Calendar, reminders and location are also opt-in system seams (EventKit / CoreLocation),
+        // absent from `ToolRegistry.standard`; advertise them exactly when their seam is available.
+        let systemDataTools: [(name: String, schema: ToolSchema, seam: Bool)] = [
+            ("create_calendar_event", CreateCalendarEventTool.schema, eventSeamAvailable),
+            ("list_calendar_events", ListCalendarEventsTool.schema, eventSeamAvailable),
+            ("create_reminder", CreateReminderTool.schema, eventSeamAvailable),
+            ("current_location", CurrentLocationTool.schema, locationSeamAvailable),
+        ]
+        for entry in systemDataTools {
+            let logicalID = try AgentToolLogicalID(providerID: "builtin", name: entry.name)
+            if enabledToolNames.contains(entry.name), entry.seam {
+                let inputSchema = try AppToolV2Support.inputSchema(for: entry.schema)
+                descriptors.append(try AgentToolDescriptor(
+                    id: AgentToolDescriptorID(
+                        logicalID: logicalID,
+                        version: SemanticVersion("1.0.0")!,
+                        schemaDigest: inputSchema.digest,
+                        trustRevision: trustRevision
+                    ),
+                    title: entry.schema.name,
+                    summary: entry.schema.description,
+                    inputSchema: inputSchema,
+                    outputSchema: nil,
+                    effects: Self.effects(for: entry.name),
+                    requiredCapabilities: Self.requiredCapabilities(for: entry.name),
+                    timeoutPolicy: ToolTimeoutPolicy(
+                        maximumMilliseconds: Self.timeoutMilliseconds(for: entry.name)
+                    ),
+                    retryPolicy: .never,
+                    idempotency: Self.idempotency(for: entry.name),
+                    supportsProgress: false,
+                    supportsCancellation: true
+                ))
+            } else {
+                unavailable.append(
+                    UnavailableTool(
+                        logicalID: logicalID,
+                        reason: .providerUnavailable
+                    )
+                )
+            }
+        }
         descriptors.append(contentsOf: mcpDescriptors.sorted { $0.id.description < $1.id.description })
         return try ToolCatalogSnapshot(
             revision: 1,
@@ -502,6 +597,8 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
     init(
         enabledToolNames: [String],
         memoryStore: (any MemoryStoring)?,
+        eventStore: (any EventStoring)?,
+        locationProvider: (any LocationProviding)?,
         mcpCache: MCPDiscoveryCache,
         session: URLSession = .shared
     ) throws {
@@ -530,6 +627,58 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
                 trustRevision: "builtin.v1"
             ))
         }
+        if enabled.contains("wikipedia") {
+            try register(AppWikipediaToolAdapter(
+                tool: WikipediaTool(session: session),
+                trustRevision: "builtin.v1"
+            ))
+        }
+        if enabled.contains("fetch_webpage") {
+            try register(AppWebScraperToolAdapter(
+                tool: WebScraperTool(session: session),
+                trustRevision: "builtin.v1"
+            ))
+        }
+        if enabled.contains("create_calendar_event"), let eventStore {
+            try register(AppSystemDataToolAdapter(
+                tool: CreateCalendarEventTool(store: eventStore),
+                effects: [.localWrite],
+                destinationIdentity: "mobilellm.calendar",
+                dataCategory: "user.calendar",
+                userPreview: "Add an event to the user's calendar",
+                trustRevision: "builtin.v1"
+            ))
+        }
+        if enabled.contains("list_calendar_events"), let eventStore {
+            try register(AppSystemDataToolAdapter(
+                tool: ListCalendarEventsTool(store: eventStore),
+                effects: [.localRead],
+                destinationIdentity: "mobilellm.calendar",
+                dataCategory: "user.calendar",
+                userPreview: "List the user's upcoming calendar events",
+                trustRevision: "builtin.v1"
+            ))
+        }
+        if enabled.contains("create_reminder"), let eventStore {
+            try register(AppSystemDataToolAdapter(
+                tool: CreateReminderTool(store: eventStore),
+                effects: [.localWrite],
+                destinationIdentity: "mobilellm.reminders",
+                dataCategory: "user.reminders",
+                userPreview: "Create a reminder for the user",
+                trustRevision: "builtin.v1"
+            ))
+        }
+        if enabled.contains("current_location"), let locationProvider {
+            try register(AppSystemDataToolAdapter(
+                tool: CurrentLocationTool(provider: locationProvider),
+                effects: [.localRead],
+                destinationIdentity: "mobilellm.location",
+                dataCategory: "user.location",
+                userPreview: "Get the user's approximate current location",
+                trustRevision: "builtin.v1"
+            ))
+        }
         if enabled.contains("remember"), let memoryStore {
             try register(AppMemoryToolAdapter(
                 tool: RememberTool(store: memoryStore),
@@ -546,7 +695,9 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
         }
         self.snapshot = try Self.catalog(
             enabledToolNames: enabledToolNames,
-            memoryAvailable: memoryStore != nil
+            memoryAvailable: memoryStore != nil,
+            eventSeamAvailable: eventStore != nil,
+            locationSeamAvailable: locationProvider != nil
         )
         self.adapters = adapters
         self.mcpCache = mcpCache
@@ -555,8 +706,11 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
     private static func effects(for name: String) -> [AgentEffect] {
         switch name {
         case "web_search": [.networkRead]
+        case "wikipedia", "fetch_webpage": [.networkRead]
         case "remember": [.localWrite]
         case "recall": [.localRead]
+        case "create_calendar_event", "create_reminder": [.localWrite]
+        case "list_calendar_events", "current_location": [.localRead]
         default: [.localPure]
         }
     }
@@ -567,11 +721,16 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
 
     private static func idempotency(for name: String) -> ExternalIdempotency {
         // A write tool cannot declare pure-read idempotency (descriptor semantics validation).
-        name == "remember" ? .nonIdempotent : .pureRead
+        name == "remember" || name == "create_calendar_event" || name == "create_reminder"
+            ? .nonIdempotent : .pureRead
     }
 
     private static func timeoutMilliseconds(for name: String) -> UInt64 {
-        name == "web_search" ? 30_000 : 5_000
+        switch name {
+        case "web_search", "wikipedia", "fetch_webpage": 30_000
+        case "current_location": 15_000
+        default: 5_000
+        }
     }
 
     func localSnapshot() async throws -> ToolCatalogSnapshot { snapshot }
@@ -728,6 +887,8 @@ public final class AgentRuntimeAssembly {
         conversationDirectory: URL,
         snapshot: @escaping @MainActor (UUID, UUID, String, [ImageRef]) -> AgentRunRequestSnapshot?,
         memoryStore: (any MemoryStoring)? = nil,
+        eventStore: (any EventStoring)? = nil,
+        locationProvider: (any LocationProviding)? = nil,
         mcpDiscovery: MCPDiscoveryCache = MCPDiscoveryCache(),
         session: URLSession = .shared
     ) throws {
@@ -796,6 +957,8 @@ public final class AgentRuntimeAssembly {
         let toolCatalog = try AppToolCatalog(
             enabledToolNames: AppToolCatalog.adaptedToolNames,
             memoryStore: memoryStore,
+            eventStore: eventStore,
+            locationProvider: locationProvider,
             mcpCache: mcpDiscovery,
             session: session
         )

@@ -167,8 +167,8 @@ public struct CreateCalendarEventTool: Tool {
     private let store: any EventStoring
     public init(store: any EventStoring) { self.store = store }
 
-    public var schema: ToolSchema {
-        ToolSchema(name: "create_calendar_event",
+    /// Schema without a store instance (see `RememberTool.schema`).
+    public static let schema: ToolSchema = ToolSchema(name: "create_calendar_event",
                    description: "Add an event to the user's calendar. Use when the user asks to schedule, "
                               + "book, or add something at a specific date/time.",
                    parameters: [
@@ -179,7 +179,8 @@ public struct CreateCalendarEventTool: Tool {
                                  description: "End — same formats (optional; defaults to one hour after start)", required: false),
                        ToolParam(name: "notes", kind: .string, description: "Optional notes", required: false),
                    ])
-    }
+
+    public var schema: ToolSchema { Self.schema }
 
     public func execute(argumentsJSON: String) async -> String {
         let call = ToolCall(name: "create_calendar_event", argumentsJSON: argumentsJSON)
@@ -213,14 +214,15 @@ public struct ListCalendarEventsTool: Tool {
     private let store: any EventStoring
     public init(store: any EventStoring) { self.store = store }
 
-    public var schema: ToolSchema {
-        ToolSchema(name: "list_calendar_events",
+    /// Schema without a store instance (see `RememberTool.schema`).
+    public static let schema: ToolSchema = ToolSchema(name: "list_calendar_events",
                    description: "List the user's upcoming calendar events. Use when asked what's on their "
                               + "schedule or if they're free.",
                    parameters: [ToolParam(name: "daysAhead", kind: .number,
                                           description: "How many days ahead to look (1–14, default 7)",
                                           required: false)])
-    }
+
+    public var schema: ToolSchema { Self.schema }
 
     public func execute(argumentsJSON: String) async -> String {
         let call = ToolCall(name: "list_calendar_events", argumentsJSON: argumentsJSON)
@@ -246,8 +248,8 @@ public struct CreateReminderTool: Tool {
     private let store: any EventStoring
     public init(store: any EventStoring) { self.store = store }
 
-    public var schema: ToolSchema {
-        ToolSchema(name: "create_reminder",
+    /// Schema without a store instance (see `RememberTool.schema`).
+    public static let schema: ToolSchema = ToolSchema(name: "create_reminder",
                    description: "Create a reminder in the user's Reminders. Use when the user asks to be "
                               + "reminded to do something, optionally by a due time.",
                    parameters: [
@@ -257,7 +259,8 @@ public struct CreateReminderTool: Tool {
                                             + "(\"now + 1 hour\", \"明天 09:00\") (optional)", required: false),
                        ToolParam(name: "notes", kind: .string, description: "Optional notes", required: false),
                    ])
-    }
+
+    public var schema: ToolSchema { Self.schema }
 
     public func execute(argumentsJSON: String) async -> String {
         let call = ToolCall(name: "create_reminder", argumentsJSON: argumentsJSON)

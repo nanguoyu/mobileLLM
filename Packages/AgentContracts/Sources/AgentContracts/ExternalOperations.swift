@@ -24,6 +24,11 @@ public enum ExternalOperationKind: String, CaseIterable, Hashable, Codable, Send
 
 /// A normalized exact destination or one element of a bounded redirect/fallback set.
 public struct ExternalDestination: Hashable, Codable, Sendable, Comparable {
+    /// The bounded "any public https host" destination used by the webpage-reader adapter for
+    /// user-supplied links. Only https is covered; the adapter's SSRF guards still reject local,
+    /// private, loopback, and literal-IP hosts before a plan is built.
+    public static let anyHTTPSNetworkEndpoint = "https://*"
+
     /// The kind of boundary being addressed.
     public enum Kind: String, CaseIterable, Hashable, Codable, Sendable {
         /// A scheme, host, and optional port.
@@ -55,6 +60,15 @@ public struct ExternalDestination: Hashable, Codable, Sendable, Comparable {
         }
         self.kind = kind
         self.normalizedIdentity = normalizedIdentity
+    }
+
+    /// Whether this destination (or its https wildcard) authorizes `candidate`. Exact identities always
+    /// match; only the network-endpoint `https://*` wildcard covers a different concrete https host.
+    public func covers(_ candidate: ExternalDestination) -> Bool {
+        if self == candidate { return true }
+        guard kind == .networkEndpoint, candidate.kind == .networkEndpoint else { return false }
+        return normalizedIdentity == Self.anyHTTPSNetworkEndpoint
+            && candidate.normalizedIdentity.hasPrefix("https://")
     }
 
     /// Decodes and validates a normalized destination.
@@ -503,7 +517,10 @@ public struct ExternalOperationPlan: Hashable, Codable, Sendable {
     public func isWithin(_ authority: AgentAuthorityScope) -> Bool {
         guard requiredCapabilities.isSubset(of: authority.capabilities) else { return false }
         let plannedDestinations = [destination].compactMap { $0 } + allowedRedirects + allowedFallbacks
-        guard Set(plannedDestinations).isSubset(of: Set(authority.destinations)),
+        let destinationsCovered = plannedDestinations.allSatisfy { planned in
+            authority.destinations.contains { $0.covers(planned) }
+        }
+        guard destinationsCovered,
               Set(dataCategories).isSubset(of: Set(authority.dataCategories)),
               Set(artifactIDs).isSubset(of: Set(authority.artifactIDs))
         else { return false }

@@ -34,12 +34,64 @@ public struct WebScraperTool: Tool {
         self.maxOutputChars = max(1, maxOutputChars)
     }
 
-    public var schema: ToolSchema {
-        ToolSchema(name: "fetch_webpage",
+    /// Schema without an HTTP client, so descriptor catalogs can advertise the tool before any
+    /// execution seam exists (see `RememberTool.schema`).
+    public static let schema: ToolSchema = ToolSchema(name: "fetch_webpage",
                    description: "Fetch a web page by URL and return its readable text. Use to read an "
                               + "article or page the user linked, or a result returned by web_search.",
                    parameters: [ToolParam(name: "url", kind: .string,
                                           description: "The full http(s) URL of the page to read")])
+
+    public var schema: ToolSchema { Self.schema }
+
+    /// One bounded network fetch with the same SSRF and redirect guards the legacy `execute` uses,
+    /// exposed for Tool V2 adapters that must run inside an authorized boundary.
+    public struct FetchedPage: Sendable {
+        public let statusCode: Int
+        public let mimeType: String?
+        public let body: Data
+        public init(statusCode: Int, mimeType: String?, body: Data) {
+            self.statusCode = statusCode
+            self.mimeType = mimeType
+            self.body = body
+        }
+    }
+
+    public func fetchPage(url: URL) async throws -> FetchedPage {
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue(WebSearchTool.userAgent, forHTTPHeaderField: "User-Agent")
+        req.setValue("text/html,application/xhtml+xml,text/plain", forHTTPHeaderField: "Accept")
+        let result = try await httpClient.get(req, maxBytes: maxBytes)
+        return FetchedPage(
+            statusCode: result.response.statusCode,
+            mimeType: result.response.mimeType,
+            body: result.body
+        )
+    }
+
+    /// The full post-fetch rendering pipeline (status/mime/decode/extract/truncate) shared by the
+    /// legacy `execute` and the Tool V2 adapter, which runs `fetchPage` inside an authorized boundary.
+    public func renderReadable(page: FetchedPage) -> String {
+        guard page.statusCode == 200 else {
+            return "Error: couldn't fetch the page (HTTP \(page.statusCode))."
+        }
+        let mime = (page.mimeType ?? "").lowercased()
+        guard mime.isEmpty || mime.hasPrefix("text/html") || mime.hasPrefix("text/plain")
+                || mime.hasPrefix("application/xhtml") else {
+            return "Error: that URL isn't a readable web page (content type: \(mime))."
+        }
+        guard let body = String(data: page.body, encoding: .utf8)
+                      ?? String(data: page.body, encoding: .isoLatin1) else {
+            return "Error: couldn't decode the page text."
+        }
+        let text = mime.hasPrefix("text/plain")
+            ? HTMLUtil.unescape(body)   // already plain text — just normalize entities
+            : Self.extractReadableText(fromHTML: body)
+        let cleaned = Self.collapse(text)
+        guard !cleaned.isEmpty else { return "The page loaded but had no readable text." }
+        let title = Self.title(ofHTML: body)
+        let rendered = Self.truncate(cleaned, to: maxOutputChars)
+        return title.map { "\($0)\n\n\(rendered)" } ?? rendered
     }
 
     public func execute(argumentsJSON: String) async -> String {
@@ -54,31 +106,8 @@ public struct WebScraperTool: Tool {
             return "Error: that host isn't allowed (local/private addresses are blocked)."
         }
         do {
-            var req = URLRequest(url: url, timeoutInterval: 10)
-            req.setValue(WebSearchTool.userAgent, forHTTPHeaderField: "User-Agent")
-            req.setValue("text/html,application/xhtml+xml,text/plain", forHTTPHeaderField: "Accept")
-            let result = try await httpClient.get(req, maxBytes: maxBytes)
-            let http = result.response
-            guard http.statusCode == 200 else {
-                return "Error: couldn't fetch the page (HTTP \(http.statusCode))."
-            }
-            let mime = (http.mimeType ?? "").lowercased()
-            guard mime.isEmpty || mime.hasPrefix("text/html") || mime.hasPrefix("text/plain")
-                    || mime.hasPrefix("application/xhtml") else {
-                return "Error: that URL isn't a readable web page (content type: \(mime))."
-            }
-            guard let body = String(data: result.body, encoding: .utf8)
-                          ?? String(data: result.body, encoding: .isoLatin1) else {
-                return "Error: couldn't decode the page text."
-            }
-            let text = mime.hasPrefix("text/plain")
-                ? HTMLUtil.unescape(body)   // already plain text — just normalize entities
-                : Self.extractReadableText(fromHTML: body)
-            let cleaned = Self.collapse(text)
-            guard !cleaned.isEmpty else { return "The page loaded but had no readable text." }
-            let title = Self.title(ofHTML: body)
-            let rendered = Self.truncate(cleaned, to: maxOutputChars)
-            return title.map { "\($0)\n\n\(rendered)" } ?? rendered
+            let page = try await fetchPage(url: url)
+            return renderReadable(page: page)
         } catch WebNetworkError.blockedHost {
             return "Error: that host isn't allowed (local/private addresses are blocked)."
         } catch WebNetworkError.unsafeRedirect {
@@ -100,7 +129,7 @@ public struct WebScraperTool: Tool {
 
     /// Pure fast path for literal/local-name checks. Domain names are additionally resolved and checked
     /// by `WebHTTPClient` immediately before each request.
-    static func isBlockedHost(_ rawHost: String) -> Bool {
+    public static func isBlockedHost(_ rawHost: String) -> Bool {
         WebURLPolicy.isBlockedHost(rawHost)
     }
 

@@ -229,6 +229,8 @@ struct MobileLLMApp: App {
                     )
                 },
                 memoryStore: container.chat.memoryBook?.store,
+                eventStore: container.toolEventStore,
+                locationProvider: container.toolLocationProvider,
                 mcpDiscovery: container.mcpDiscovery
             ) {
                 container.attachAgentRuns(assembly.runStore)
@@ -272,6 +274,8 @@ struct MobileLLMApp: App {
                             )
                         },
                         memoryStore: container.chat.memoryBook?.store,
+                        eventStore: container.toolEventStore,
+                        locationProvider: container.toolLocationProvider,
                         mcpDiscovery: container.mcpDiscovery
                     )
                 } catch {
@@ -386,6 +390,8 @@ private func makeAgentSnapshot(
         toolsEnabled: container.settings.toolsEnabled,
         localToolNames: container.settings.builtInToolConfig.enabled.map(\.rawValue),
         memorySeamAvailable: container.chat.memoryBook != nil,
+        eventSeamAvailable: container.toolEventStore != nil,
+        locationSeamAvailable: container.toolLocationProvider != nil,
         mcpToolDescriptors: container.settings.toolsEnabled
             ? container.mcpDiscovery.descriptors(for: container.settings.mcpServers)
             : [],

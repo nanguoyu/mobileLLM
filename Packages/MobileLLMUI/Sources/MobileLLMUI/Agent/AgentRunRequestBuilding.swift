@@ -57,7 +57,11 @@ public enum AppLocalToolIDs {
     /// adapts. These MUST match the registry names — the policy logical ids and the catalog
     /// descriptor ids are the same namespace, so a mismatch makes an allowed tool permanently
     /// "descriptor missing" and never advertised.
-    public static let names = ["calculator", "current_datetime", "web_search", "remember", "recall"]
+    public static let names = [
+        "calculator", "current_datetime", "wikipedia", "web_search", "fetch_webpage",
+        "remember", "recall", "create_calendar_event", "list_calendar_events",
+        "create_reminder", "current_location",
+    ]
 
     public static var current: [AgentToolLogicalID] {
         names.compactMap { try? AgentToolLogicalID(providerID: "builtin", name: $0) }

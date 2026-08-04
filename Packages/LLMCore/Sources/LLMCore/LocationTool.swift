@@ -49,12 +49,13 @@ public struct CurrentLocationTool: Tool {
     private let provider: any LocationProviding
     public init(provider: any LocationProviding) { self.provider = provider }
 
-    public var schema: ToolSchema {
-        ToolSchema(name: "current_location",
+    /// Schema without a provider instance (see `RememberTool.schema`).
+    public static let schema: ToolSchema = ToolSchema(name: "current_location",
                    description: "Get the user's approximate current location (city-level). Use for "
                               + "\"near me\", local weather, or where-am-I questions.",
                    parameters: [])
-    }
+
+    public var schema: ToolSchema { Self.schema }
 
     public func execute(argumentsJSON: String) async -> String {
         do {
