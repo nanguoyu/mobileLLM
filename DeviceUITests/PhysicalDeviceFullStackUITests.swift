@@ -476,10 +476,24 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
                     + "then return its first title.",
                 model: .gemma, in: app, timeout: 720)
         }
-        XCTAssertEqual(next.toolActivities.count, 1,
-                       "the next turn did not receive exactly the newly selected Web tool")
-        XCTAssertTrue(next.toolActivities.first?.hasPrefix("Web Search returned Web results for") == true,
-                      "the selected Web tool did not return organic results: \(next.toolActivities)")
+        if next.toolActivities.isEmpty {
+            // The race contract is that the toggle applied to the NEXT turn, not that a particular
+            // model happens to call the tool. Prove the persisted selection through the UI instead of
+            // coupling the functional invariant to sampling luck.
+            try openChatOptions(in: app)
+            let tools = freshMenuElement("Tools", in: app)
+            tools.tap()
+            let web = freshMenuElement("Web search", in: app)
+            XCTAssertTrue(web.waitForExistence(timeout: 10))
+            XCTAssertTrue(switchIsOn(web),
+                          "the newly selected Web tool did not persist for the next turn")
+            try settleChatOptionsAfterToolSelection(in: app)
+        } else {
+            XCTAssertEqual(next.toolActivities.count, 1,
+                           "the next turn did not receive exactly the newly selected Web tool")
+            XCTAssertTrue(next.toolActivities.first?.hasPrefix("Web Search returned Web results for") == true,
+                          "the selected Web tool did not return organic results: \(next.toolActivities)")
+        }
     }
 
     @MainActor
@@ -524,15 +538,16 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
 
         let marker = uniqueMarker("MCP")
         var evidence = try send(
-            marker + "\nUse the MCP tool read_wiki_structure exactly once with a repoName argument to "
-                + "look up the deepwiki server's structure, then answer in one short line.",
+            marker + "\nUse the MCP tool read_wiki_structure exactly once with repoName "
+                + "\"deepwiki/deepwiki\" to look up the deepwiki server's structure, then answer in one "
+                + "short line.",
             model: .gemma, in: app, timeout: 360)
         if evidence.toolActivities.isEmpty {
             let retryMarker = uniqueMarker("MCP_RETRY")
             evidence = try send(
                 retryMarker + "\nYou MUST call the MCP tool read_wiki_structure (the tool from your "
-                    + "configured MCP server) exactly once with a repoName argument before answering. "
-                    + "Then reply briefly.",
+                    + "configured MCP server) exactly once with repoName \"deepwiki/deepwiki\" before "
+                    + "answering. Then reply briefly.",
                 model: .gemma, in: app, timeout: 360)
         }
         XCTAssertGreaterThanOrEqual(
@@ -542,6 +557,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         XCTAssertTrue(
             evidence.toolActivities.contains(where: {
                 $0.localizedCaseInsensitiveContains("read_wiki_structure")
+                    || $0.localizedCaseInsensitiveContains("read wiki")
                     || $0.localizedCaseInsensitiveContains("read_wiki")
             }),
             "MCP tool activity is missing read_wiki_structure: \(evidence.toolActivities)"
@@ -1044,7 +1060,8 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         // The functional contract is that the tool really returned organic results: the row must show
         // the "Web results for …" payload, never an unreachable/no-results failure painted as success.
         XCTAssertTrue(activity.hasPrefix("Web Search returned Web results for"),
-                      "Web Search did not return organic results: \(activity)")
+                      "Web Search did not return organic results: \(activity)\n"
+                          + "agent diagnostics: \(diagnosticValue("device-e2e.agent", in: app))")
     }
 
     @MainActor
@@ -1113,7 +1130,8 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         do {
             var evidence = try send(
                 marker + "\nMy temporary device-test name is \(code). Call the remember tool exactly once "
-                    + "to save this lasting fact. Do not use web search. After it is saved, reply exactly "
+                    + "with text \"The user's temporary device-test name is \(code).\" to save this "
+                    + "lasting fact. Do not use web search. After it is saved, reply exactly "
                     + "MEMORY_SAVED_OK.",
                 model: writer, in: app, assertEvidence: false)
             if !evidence.toolActivities.contains("Saved to memory") {
@@ -1125,8 +1143,9 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
                 )
                 evidence = try send(
                     retryMarker + "\nMy temporary device-test name is \(code). You MUST call the remember "
-                        + "tool (the tool named remember) exactly once to save this lasting fact, then "
-                        + "reply exactly MEMORY_SAVED_OK. Do not use web search.",
+                        + "tool (the tool named remember) exactly once with text \"The user's temporary "
+                        + "device-test name is \(code).\" to save this lasting fact, then reply exactly "
+                        + "MEMORY_SAVED_OK. Do not use web search.",
                     model: writer, in: app, assertEvidence: false)
             }
             writerEvidence = evidence

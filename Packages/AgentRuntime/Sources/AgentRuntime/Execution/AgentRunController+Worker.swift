@@ -825,7 +825,10 @@ extension AgentRunController {
                 .inputTokens: request.generationParameters.maximumContextTokens,
                 .outputTokens: request.generationParameters.maximumOutputTokens,
                 .contextTokensPerAttempt: request.generationParameters.maximumContextTokens,
-                .activeMilliseconds: min(60_000, budget.limits[.activeMilliseconds]),
+                // A local decode can legitimately overrun the request timeout by a small margin on a
+                // warm device; reserving twice the timeout (still bounded by the run ceiling) keeps a
+                // 500ms settle overrun from killing an otherwise healthy run.
+                .activeMilliseconds: min(2 * 60_000, budget.limits[.activeMilliseconds]),
                 .peakMemoryBytes: budget.limits[.peakMemoryBytes],
             ])),
             reason: "model-attempt"

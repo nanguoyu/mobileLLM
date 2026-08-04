@@ -353,6 +353,27 @@ class DeviceE2ETestCase: XCTestCase {
             throw DeviceE2EHarnessError.precondition("MCP servers sheet did not open")
         }
         while true {
+            // The list must be on top before we scan for rows: while the detail sheet is up the rows
+            // are covered and a scan would wrongly conclude there are no servers left.
+            guard app.buttons["Add a server"].waitForExistence(timeout: 8) else {
+                // A removal can dismiss back to the Tools sheet instead of the list; re-enter it.
+                if app.navigationBars["Tools"].waitForExistence(timeout: 5) {
+                    let mcpRow = app.buttons.matching(
+                        NSPredicate(format: "label CONTAINS %@", "MCP servers")
+                    ).firstMatch
+                    guard scrollToHittable(mcpRow, in: firstHittableScrollView(in: app)) else {
+                        throw DeviceE2EHarnessError.precondition(
+                            "MCP servers row disappeared during cleanup"
+                        )
+                    }
+                    mcpRow.tap()
+                    guard app.navigationBars["MCP servers"].waitForExistence(timeout: 15) else {
+                        throw DeviceE2EHarnessError.precondition("MCP servers sheet did not reopen")
+                    }
+                    continue
+                }
+                throw DeviceE2EHarnessError.precondition("MCP servers list did not reappear after removal")
+            }
             let serverRow = app.buttons.matching(
                 NSPredicate(format: "label CONTAINS %@", "://")
             ).firstMatch
@@ -368,14 +389,11 @@ class DeviceE2ETestCase: XCTestCase {
                 throw DeviceE2EHarnessError.precondition("MCP remove confirmation did not appear")
             }
             alert.buttons["Remove"].tap()
-            if !app.navigationBars["MCP servers"].waitForExistence(timeout: 10) {
-                // The detail view may still be up if the confirmation did not dismiss it; its Done
-                // returns to the list and the removal already committed.
-                let detailDone = app.buttons["Done"]
-                if detailDone.exists, detailDone.isHittable { detailDone.tap() }
-                guard app.navigationBars["MCP servers"].waitForExistence(timeout: 15) else {
-                    throw DeviceE2EHarnessError.precondition("MCP servers list did not reappear after removal")
-                }
+            // Let the detail sheet dismiss before the next iteration scans the list.
+            let detailDone = app.buttons["Done"]
+            if detailDone.exists, detailDone.isHittable {
+                // Detail is still up: dismiss it (the removal already committed).
+                detailDone.tap()
             }
         }
         let done = app.navigationBars["MCP servers"].buttons["Done"]
