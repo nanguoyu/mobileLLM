@@ -355,9 +355,14 @@ extension AgentRunController {
             "toolFreeSynthesis": .bool(toolFree),
         ]
         if history.repairCount > 0 {
+            let lastRepair = history.diagnostics.last { $0.1.code == "execution.structured-repair" }
+                ?? history.diagnostics.last { $0.1.code == "execution.repeated-tool-call" }
             stateFields["repairInstruction"] = .string(
-                "Return exactly one valid action matching the advertised response contract. "
-                    + "Do not include prose outside that action."
+                lastRepair?.1.code == "execution.repeated-tool-call"
+                    ? "Your last tool call already executed in this turn. Do NOT call any tool again — "
+                        + "answer the user's request directly with text only."
+                    : "Return exactly one valid action matching the advertised response contract. "
+                        + "Do not include prose outside that action."
             )
         }
         let stateJSON = try CanonicalJSON(.object(stateFields))

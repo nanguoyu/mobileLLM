@@ -517,7 +517,8 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
         XCTAssertEqual(result?.status.state, .failed)
         XCTAssertEqual(result?.status.terminalReason, .noProgress)
         XCTAssertEqual(result?.status.failure?.code, "execution.repeated-tool-call")
-        XCTAssertEqual(result?.usage.quantities[.modelAttempts], 2)
+        // One duplicate is suppressed with a repair instruction; the second repetition is the failure.
+        XCTAssertEqual(result?.usage.quantities[.modelAttempts], 3)
         XCTAssertEqual(result?.usage.quantities[.toolInvocations], 1)
         let toolCounts = await toolCounter.snapshot()
         XCTAssertEqual(toolCounts.executions, 1)
@@ -526,6 +527,48 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
             if case .toolOutcomeRecorded = event.payload.event { return true }
             return false
         }.count, 1)
+    }
+
+    func testRepeatedToolCallIsRepairedOnceThenModelAnswers() async throws {
+        let model = try ExecutorTestModelDefinition(offset: 302)
+        let definition = try ExecutorTestToolDefinition(name: "repeat-once-lookup")
+        let call = try definition.call(offset: 302, query: "same")
+        let modelScript = ToolSequenceModelScript(mode: .repeatOnceThenAnswer)
+        let provider = try ToolSequenceModelProvider(
+            model: model,
+            call: call,
+            answer: "Here is the answer.",
+            script: modelScript
+        )
+        let toolCounter = ExecutorTestToolCounter()
+        let tool = ExecutorTestTool(
+            definition: definition,
+            behavior: .complete("same value"),
+            counter: toolCounter
+        )
+        let harness = try ExecutorTestHarness(
+            offset: 302,
+            provider: provider,
+            model: model,
+            toolDescriptors: [definition.descriptor],
+            tools: SingleExecutorTestToolCatalog(tool: tool),
+            explicitlyRequestedToolIDs: [definition.descriptor.id.logicalID]
+        )
+        let handleID = try await harness.executor.submit(
+            harness.request,
+            commandID: ExecutorTestID.command(302)
+        )
+        let handle = try await harness.executor.attach(to: handleID)
+        _ = try await collectTerminalEvents(from: handle)
+
+        let result = try await handle.result()
+        XCTAssertEqual(result?.status.state, .completed)
+        XCTAssertEqual(result?.answer?.text, "Here is the answer.")
+        XCTAssertEqual(result?.usage.quantities[.modelAttempts], 3)
+        XCTAssertEqual(result?.usage.quantities[.toolInvocations], 1)
+        let toolCounts = await toolCounter.snapshot()
+        XCTAssertEqual(toolCounts.executions, 1)
+        XCTAssertEqual(toolCounts.boundaries, 0)
     }
 
     func testExternalReadWaitsForExactApprovalAndCannotCrossBoundaryBeforeDecision() async throws {

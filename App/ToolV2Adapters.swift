@@ -246,6 +246,16 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
                             throw CancellationError()
                         } catch {
                             // This engine failed or returned nothing; fall through to the next one.
+                            let reason: String
+                            if let net = error as? WebSearchTool.ToolNetError {
+                                reason = net == .badResponse ? "bad-response-or-empty" : "bad-url"
+                            } else {
+                                reason = String(describing: type(of: error))
+                            }
+                            await context.logger.record(
+                                code: "tool.web-search.engine-failed",
+                                metadata: ["engine": engine.rawValue, "reason": reason]
+                            )
                         }
                     }
                     continuation.yield(.failed(

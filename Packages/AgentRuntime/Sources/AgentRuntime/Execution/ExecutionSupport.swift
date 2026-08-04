@@ -402,7 +402,9 @@ struct ExecutionHistory: Sendable {
     }
 
     var repairCount: UInt64 {
-        UInt64(diagnostics.lazy.filter { $0.1.code == "execution.structured-repair" }.count)
+        UInt64(diagnostics.lazy.filter {
+            $0.1.code == "execution.structured-repair" || $0.1.code == "execution.repeated-tool-call"
+        }.count)
     }
 
 }

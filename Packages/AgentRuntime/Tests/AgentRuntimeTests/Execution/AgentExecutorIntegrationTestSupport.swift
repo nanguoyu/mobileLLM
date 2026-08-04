@@ -688,6 +688,7 @@ actor ToolSequenceModelScript {
     enum Mode: Sendable {
         case toolThenAnswer
         case repeatTool
+        case repeatOnceThenAnswer
     }
 
     let mode: Mode
@@ -702,7 +703,10 @@ actor ToolSequenceModelScript {
     ) -> AgentAction {
         requests.append(request)
         return switch (mode, requests.count) {
-        case (.toolThenAnswer, 1), (.repeatTool, _): .callTools([call])
+        case (.toolThenAnswer, 1),
+             (.repeatOnceThenAnswer, 1),
+             (.repeatOnceThenAnswer, 2),
+             (.repeatTool, _): .callTools([call])
         default: .finalAnswer(answer)
         }
     }

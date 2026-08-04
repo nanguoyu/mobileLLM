@@ -163,12 +163,52 @@ extension AgentRunController {
                 previouslyExecutedFingerprints: previous
             )
         } catch ToolBatchValidationError.previouslyExecutedCall {
-            try await failRun(
-                runID: facts.projection.runID,
-                reason: .noProgress,
+            // Small local models routinely repeat the tool call that just succeeded instead of
+            // answering. Suppress the duplicate with one explicit repair instruction; only a second
+            // repetition is a real no-progress failure.
+            if history.repairCount > 0 {
+                try await failRun(
+                    runID: facts.projection.runID,
+                    reason: .noProgress,
+                    code: "execution.repeated-tool-call",
+                    message: "The model repeated an already executed tool call."
+                )
+                return
+            }
+            let repair = try AgentFailure(
                 code: "execution.repeated-tool-call",
-                message: "The model repeated an already executed tool call."
+                classification: .transient,
+                safeMessage: "Your last tool call already executed in this turn. Do not call any tool "
+                    + "again — answer the user directly.",
+                retryAdvice: .never,
+                externalEffect: .confirmedNone,
+                requiredUserAction: .none,
+                redaction: Self.publicRedaction
             )
+            let id = ExecutionStableID.event(
+                runID: facts.projection.runID,
+                key: "repeated-tool-repair-\(facts.projection.eventCount + 1)"
+            )
+            _ = try await commitEvents(runID: facts.projection.runID, identity: .outcome(id)) {
+                builder in
+                var events = [try builder.append(
+                    id: id,
+                    event: .diagnostic(repair),
+                    redaction: Self.publicRedaction
+                )]
+                let waiting = try self.status(
+                    after: builder,
+                    state: .waitingForModel,
+                    blockingReason: .modelResource
+                )
+                events.append(try builder.append(
+                    id: self.nextEventID(builder, key: "repeated-tool-repair-waiting"),
+                    event: .statusChanged(waiting),
+                    transitionTo: .waitingForModel,
+                    redaction: Self.publicRedaction
+                ))
+                return events
+            }
             return
         } catch {
             try await failRun(
