@@ -646,7 +646,8 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
                 destinationIdentity: "mobilellm.calendar",
                 dataCategory: "user.calendar",
                 userPreview: "Add an event to the user's calendar",
-                trustRevision: "builtin.v1"
+                trustRevision: "builtin.v1",
+                timeoutMilliseconds: 5_000
             ))
         }
         if enabled.contains("list_calendar_events"), let eventStore {
@@ -656,7 +657,8 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
                 destinationIdentity: "mobilellm.calendar",
                 dataCategory: "user.calendar",
                 userPreview: "List the user's upcoming calendar events",
-                trustRevision: "builtin.v1"
+                trustRevision: "builtin.v1",
+                timeoutMilliseconds: 5_000
             ))
         }
         if enabled.contains("create_reminder"), let eventStore {
@@ -666,7 +668,8 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
                 destinationIdentity: "mobilellm.reminders",
                 dataCategory: "user.reminders",
                 userPreview: "Create a reminder for the user",
-                trustRevision: "builtin.v1"
+                trustRevision: "builtin.v1",
+                timeoutMilliseconds: 5_000
             ))
         }
         if enabled.contains("current_location"), let locationProvider {
@@ -676,7 +679,8 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
                 destinationIdentity: "mobilellm.location",
                 dataCategory: "user.location",
                 userPreview: "Get the user's approximate current location",
-                trustRevision: "builtin.v1"
+                trustRevision: "builtin.v1",
+                timeoutMilliseconds: 15_000
             ))
         }
         if enabled.contains("remember"), let memoryStore {

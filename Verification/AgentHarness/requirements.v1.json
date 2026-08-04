@@ -2007,7 +2007,8 @@
         "AHT-AUDIT-001"
       ],
       "requiredEvidence": [
-        "Consolidated audit report, remediation set, full rerun, and bounded closure report"
+        "Consolidated audit report, remediation set, full rerun, and bounded closure report",
+        "Verification/AgentHarness/audit-findings.v1.json (2026-08-04 self-audit wave; independent sign-off pending)"
       ]
     },
     {
@@ -2036,7 +2037,8 @@
         "AHT-TOOL-005"
       ],
       "requiredEvidence": [
-        "Per-tool unit adapter tests plus device matrix entries"
+        "Per-tool unit adapter tests plus device matrix entries",
+        "ToolSchemaConsistencyTests parity guard; wildcard destination plan tests; device scenarios pending"
       ]
     }
   ]

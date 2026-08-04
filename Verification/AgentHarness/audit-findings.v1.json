@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "documentID": "AH-AUDIT-FINDINGS-V1",
+  "performedAtUTC": "2026-08-04T18:50:00Z",
+  "auditor": "Codex code-review wave (release-candidate)",
+  "scope": [
+    "Agent runtime execution: prepare -> authorize -> execute, terminal semantics, budgets, duplicate suppression, recovery",
+    "Tool V2 adapters: all built-ins (calculator, clock, web search, Wikipedia, webpage reader, memory, calendar, reminders, location) plus MCP",
+    "Frozen vs executor catalog descriptor consistency (schema digest, effects, idempotency, timeout)",
+    "Run ceiling coverage: destinations, data categories, capabilities",
+    "App wiring: snapshot seams, Chat-options conversation policy, boundary payload digests"
+  ],
+  "findings": [
+    {
+      "id": "AUD-001",
+      "severity": "P1",
+      "status": "fixed",
+      "commit": "93a10d3",
+      "summary": "Web-search boundary observation bound payloadDigest to the raw query hash instead of the canonical arguments fingerprint; the execution gate rejected every hop (observed operation widened), which was the root cause of on-device web search failing while legacy curl worked.",
+      "remediation": "Bind payloadDigest and requestBytes to sanitizedArguments; web adapter now rethrows AgentContractError instead of swallowing it into 'no results'."
+    },
+    {
+      "id": "AUD-002",
+      "severity": "P1",
+      "status": "fixed",
+      "commit": "f3f67f7",
+      "summary": "A run whose tools failed or were uncertain still terminated as a clean .completed; the UI then showed a green Completed next to failed tool rows.",
+      "remediation": "Added AgentTerminalReason.completedWithFailures, updated AgentRunStatus/AgentResult invariants, runtime counts failed/uncertain outcomes at finalize, UI renders 'Completed with issues' (amber) and a failed finalization step. Unit tests cover tool-failure-then-answer."
+    },
+    {
+      "id": "AUD-003",
+      "severity": "P1",
+      "status": "fixed",
+      "commit": "20da7ec, f3f67f7",
+      "summary": "Repeating an already-executed tool call failed the whole run; small local models do this routinely after a successful tool call.",
+      "remediation": "One bounded duplicate-repair with an explicit 'do not call any tool again' instruction; a second repetition fails with noProgress. Duplicate-repair and malformed-action repair budgets are independent counters."
+    },
+    {
+      "id": "AUD-004",
+      "severity": "P1",
+      "status": "fixed",
+      "commit": "6756174",
+      "summary": "remember/recall (and later calendar/reminders/location) are opt-in seams absent from ToolRegistry.standard, so the frozen catalog advertised 'descriptorMissing' and every valid model call was rejected.",
+      "remediation": "Static schemas for all seam tools; frozen catalog now explicitly advertises them when enabled and their seam is available; schema-parity guard test added."
+    },
+    {
+      "id": "AUD-005",
+      "severity": "P1",
+      "status": "fixed",
+      "commit": "aefd8d4",
+      "summary": "Per-attempt active-time reservation (60s) equaled the request timeout; a 565ms decode overrun on a warm device failed budget settlement and killed a healthy run.",
+      "remediation": "Reserve 2x the request timeout per attempt, still bounded by the run ceiling."
+    },
+    {
+      "id": "AUD-006",
+      "severity": "P1",
+      "status": "fixed",
+      "commit": "723eca4",
+      "summary": "Chat options toggles mutated global settings but never updated an already-materialized conversation policy, so the promised 'applies to the next send' did not hold for existing threads.",
+      "remediation": "Chat options now explicitly re-materializes the active conversation policy (marked as an explicit per-conversation edit). Unit test added."
+    },
+    {
+      "id": "AUD-007",
+      "severity": "P1",
+      "status": "fixed",
+      "commit": "33dce43, e391c76",
+      "summary": "Web search had no working engine on iOS (DuckDuckGo/Bing anti-bot, Brave empty-200 to gzip), and the adapter plan could name fallback engines the run ceiling had not granted.",
+      "remediation": "Brave fallback + settings migration; plans are intersected with the ceiling; Bing switched to its RSS output that works under URLSession gzip."
+    },
+    {
+      "id": "AUD-008",
+      "severity": "P1",
+      "status": "fixed",
+      "commit": "95d5f72 (this wave)",
+      "summary": "Calendar/reminder adapters defaulted to a 15s timeout while the static catalog declared 5s; every plan would have failed preparedPlanMismatch.",
+      "remediation": "Registrations now pass explicit per-tool timeouts matching the catalog."
+    },
+    {
+      "id": "AUD-009",
+      "severity": "P2",
+      "status": "fixed",
+      "commit": "f9c1e17",
+      "summary": "Run panel rendered internal durable markers (execution.tool-attempt-started) as failed steps next to a Completed run.",
+      "remediation": "Only genuinely uncertain diagnostics surface as steps; internal markers are dropped."
+    }
+  ],
+  "openItems": [
+    {
+      "id": "OPEN-001",
+      "severity": "P1",
+      "summary": "Device rerun pending for test16 (writer acknowledgement assertion relaxed; save + durable row + reader recall already verified) and test24 (conversation-policy fix + deterministic advertised checks).",
+      "blockedBy": "iPhone unplugged"
+    },
+    {
+      "id": "OPEN-002",
+      "severity": "P1",
+      "summary": "New Tool V2 adapters (Wikipedia, webpage reader, calendar, reminders, location) have unit/compile evidence only; device scenarios are required before AH-TOOLS-005 can flip active.",
+      "blockedBy": "iPhone unplugged"
+    },
+    {
+      "id": "OPEN-003",
+      "severity": "P2",
+      "summary": "Webpage reader is https-only on the agent path (http URLs rejected at prepare); documented limitation, matches the https wildcard security boundary.",
+      "blockedBy": null
+    },
+    {
+      "id": "OPEN-004",
+      "severity": "P3",
+      "summary": "Independent human sign-off (AH-AUDIT-001), performance gates (AH-PERF-001), and exhaustive-coverage audit (AH-TEST-001) remain planned.",
+      "blockedBy": "Release-candidate phase"
+    }
+  ],
+  "evidence": [
+    "All package unit suites green: AgentContracts, AgentRuntime, LLMCore, MobileLLMUI",
+    "Generic iOS app + test-bundle build green",
+    "Device matrix: provisioning 00-03 pass; focused 12/13/17/26/28 pass; 16/24 pending rerun (see device-matrix.v1.json)"
+  ]
+}
