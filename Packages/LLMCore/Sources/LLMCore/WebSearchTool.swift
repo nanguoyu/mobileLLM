@@ -90,6 +90,9 @@ public struct WebSearchTool: Tool {
         req.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         req.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
         req.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        // URLSession advertises gzip by default; Brave's edge serves an empty 200 body to compressed
+        // clients (verified 2026-08), so pin identity to keep the HTML scrapeable.
+        req.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         let result = try await httpClient.get(req, maxBytes: maxBytes)
         guard result.response.statusCode == 200 else { throw ToolNetError.badResponse }
         return result.body
@@ -101,6 +104,7 @@ public struct WebSearchTool: Tool {
         req.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         req.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
         req.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        req.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         let result = try await httpClient.get(req, maxBytes: maxBytes)
         guard result.response.statusCode == 200 else { throw ToolNetError.badResponse }
         guard let html = String(data: result.body, encoding: .utf8)

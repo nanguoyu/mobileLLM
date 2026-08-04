@@ -472,7 +472,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
             // Same model-luck allowance as the dedicated web-search tests: the race invariant is that
             // the toggle applied to the NEXT turn, which a retry proves just as strongly.
             next = try send(
-                "You MUST call the web search tool exactly once for the query OpenAI official website, "
+                "You MUST call the web_search tool exactly once for the query OpenAI official website, "
                     + "then return its first title.",
                 model: .gemma, in: app, timeout: 720)
         }
@@ -1023,7 +1023,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         let app = try prepare(model, tools: true, selected: ["Web search"], thinking: false)
         let marker = uniqueMarker(model == .bonsai ? "BONSAI_WEB" : "GEMMA_WEB")
         var evidence = try send(
-            marker + "\nUse web search exactly once for the query OpenAI official website. Then answer with the first result's title.",
+            marker + "\nCall the web_search tool exactly once for the query OpenAI official website. Then answer with the first result's title.",
             model: model, in: app, timeout: 720)
         if evidence.toolActivities.isEmpty {
             // A 1-bit local model occasionally answers from its training prior instead of calling the
@@ -1031,7 +1031,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
             // keeps the functional tool contract from depending on sampling luck.
             let retryMarker = uniqueMarker(model == .bonsai ? "BONSAI_WEB_RETRY" : "GEMMA_WEB_RETRY")
             evidence = try send(
-                retryMarker + "\nYou MUST call the web search tool exactly once for the query OpenAI "
+                retryMarker + "\nYou MUST call the web_search tool exactly once for the query OpenAI "
                     + "official website. Then answer with the first result's title.",
                 model: model, in: app, timeout: 720)
         }
@@ -1108,8 +1108,8 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         // the Memory tool ran, whether it wrote durable state, or whether another model consumed that state.
         do {
             var evidence = try send(
-                marker + "\nMy temporary device-test name is \(code). Please remember this lasting fact "
-                    + "using the memory tool. Do not use web search. After it is saved, reply exactly "
+                marker + "\nMy temporary device-test name is \(code). Call the remember tool exactly once "
+                    + "to save this lasting fact. Do not use web search. After it is saved, reply exactly "
                     + "MEMORY_SAVED_OK.",
                 model: writer, in: app, assertEvidence: false)
             if !evidence.toolActivities.contains("Saved to memory") {
@@ -1120,9 +1120,9 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
                     writer == .bonsai ? "BONSAI_MEMORY_RETRY" : "GEMMA_MEMORY_RETRY"
                 )
                 evidence = try send(
-                    retryMarker + "\nMy temporary device-test name is \(code). You MUST call the memory "
-                        + "tool to save this lasting fact, then reply exactly MEMORY_SAVED_OK. Do not use "
-                        + "web search.",
+                    retryMarker + "\nMy temporary device-test name is \(code). You MUST call the remember "
+                        + "tool (the tool named remember) exactly once to save this lasting fact, then "
+                        + "reply exactly MEMORY_SAVED_OK. Do not use web search.",
                     model: writer, in: app, assertEvidence: false)
             }
             writerEvidence = evidence

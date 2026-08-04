@@ -96,6 +96,7 @@ struct MCPServersView: View {
     @State private var probe = MCPProbe()
     @State private var showAdd = false
     @State private var editing: MCPServer?
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ScrollView {
@@ -132,6 +133,11 @@ struct MCPServersView: View {
         }
         .background(Theme.bg)
         .navigationTitle("MCP servers")
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { dismiss() }
+            }
+        }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
