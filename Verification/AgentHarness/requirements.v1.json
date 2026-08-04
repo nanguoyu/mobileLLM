@@ -2009,6 +2009,35 @@
       "requiredEvidence": [
         "Consolidated audit report, remediation set, full rerun, and bounded closure report"
       ]
+    },
+    {
+      "id": "AH-TOOLS-005",
+      "area": "tools",
+      "title": "Every built-in tool has a Tool V2 adapter on the agent runtime",
+      "statement": "Wikipedia, webpage reading, calendar, reminders and location cross the same prepare-authorize-execute boundary as the first five adapted tools; each executes through a Tool V2 adapter with exact destinations, data categories, effects, and system-permission seams, and none is silently advertised while unavailable.",
+      "status": "planned",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "14",
+          "heading": "Tool authorization",
+          "lineStart": 700,
+          "lineEnd": 730
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "continuous",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-TOOL-005"
+      ],
+      "requiredEvidence": [
+        "Per-tool unit adapter tests plus device matrix entries"
+      ]
     }
   ]
 }

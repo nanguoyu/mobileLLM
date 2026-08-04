@@ -45,7 +45,7 @@ access happens only for model discovery/downloads or tools you explicitly enable
   capped by what the model was trained for and re-scored per rung — a setting that buys memory, not capability.
   Local engines cooperatively check cancellation, memory pressure, and iOS thermal state at decode boundaries.
 - 🛠️ **Tool calling + MCP.** An on-device agent loop with a real toolbox: keyless **web search**
-  (DuckDuckGo first, Bing fall-through — scraped result pages, no API key), a **webpage reader**
+  (DuckDuckGo first, Bing RSS fall-through, Brave last — no API key), a **webpage reader**
   (readable-text extraction with SSRF guards), Wikipedia, calculator, clock — plus permission-gated
   **calendar, reminders and location** tools (off until you select them; the system permission prompt
   appears when selected). The chat's Tools submenu shows a master authorization plus a checkmark for every built-in

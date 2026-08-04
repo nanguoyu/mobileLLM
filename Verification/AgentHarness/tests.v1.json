@@ -2039,6 +2039,31 @@
         "fixedSeedRequired": false,
         "rotatingSeedRequired": false
       }
+    },
+    {
+      "id": "AHT-TOOL-005",
+      "title": "Every built-in tool executes through its Tool V2 adapter",
+      "status": "planned",
+      "kind": "unit",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-TOOLS-005"
+      ],
+      "selectors": [],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "continuous",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Adapter prepare/execute contract tests per tool; device matrix rows"
+      ],
+      "determinism": {
+        "fixedSeedRequired": false,
+        "rotatingSeedRequired": false
+      }
     }
   ]
 }
