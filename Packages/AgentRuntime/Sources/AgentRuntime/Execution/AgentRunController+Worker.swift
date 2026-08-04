@@ -190,6 +190,9 @@ extension AgentRunController {
         if let runtimeError = error as? AgentModelRuntimeError {
             return ["detail": String(describing: runtimeError)]
         }
+        if error is AgentContractError {
+            return ["detail": String(describing: error)]
+        }
         return [:]
     }
 
