@@ -485,11 +485,16 @@ public final class AgentRunStore {
                 onRunTerminated?(conversationID, assistantMessageID, reason, message)
             }
         case .diagnostic(let failure):
+            // Runtime diagnostics are durable bookkeeping (tool-attempt markers, retries,
+            // structured repairs). They are not failures and must not paint a ❌ beside a
+            // completed run. Only an uncertain external outcome is user-meaningful here:
+            // the run itself blocks for reconciliation and the step says so.
+            guard failure.classification == .potentiallySideEffecting else { break }
             steps.append(step(
                 kind: .diagnostic,
                 title: failure.code,
                 detail: failure.safeMessage,
-                status: failure.classification == .potentiallySideEffecting ? .uncertain : .failed,
+                status: .uncertain,
                 sequence: record.sequence
             ))
         case .runInputSnapshotCommitted, .compiledManifestCommitted,
