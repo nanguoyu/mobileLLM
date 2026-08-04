@@ -34,6 +34,16 @@ final class WebSearchToolTests: XCTestCase {
         XCTAssertEqual(results[1].url, "https://en.wikipedia.org/wiki/Swift_(programming_language)")
     }
 
+    func testParsesBingRSSResults() {
+        let results = WebSearchTool.parseBing(Fixtures.bingRSS)
+        XCTAssertEqual(results.count, 3)
+        XCTAssertEqual(results[0].url, "https://openai.com/")
+        XCTAssertTrue(results[0].title.contains("OpenAI"))
+        XCTAssertTrue(results[0].snippet.contains("AGI"))
+        XCTAssertEqual(results[1].url, "https://chatgpt.com/")
+        XCTAssertTrue(results[2].title.contains("Wikipedia"))
+    }
+
     func testParsesBraveResultsWithDirectLinks() {
         let results = WebSearchTool.parseBrave(Fixtures.brave)
         XCTAssertEqual(results.count, 2)
@@ -67,6 +77,8 @@ final class WebSearchToolTests: XCTestCase {
         let bing = WebSearchTool.endpoint(engine: .bing, query: "swift lang")!
         XCTAssertEqual(bing.host, "www.bing.com")
         XCTAssertTrue(bing.absoluteString.contains("q=swift%20lang"))
+        XCTAssertTrue(bing.absoluteString.contains("format=rss"),
+                      "Bing must use its scrapeable RSS output, not the captcha-gated HTML page")
         let brave = WebSearchTool.endpoint(engine: .brave, query: "swift lang")!
         XCTAssertEqual(brave.host, "search.brave.com")
         XCTAssertTrue(brave.absoluteString.contains("q=swift%20lang"))
@@ -133,6 +145,12 @@ final class WebSearchToolTests: XCTestCase {
     func testExecuteSingleEngineBing() async {
         let out = await run(tool(engines: [.bing]), "swift")
         XCTAssertTrue(out.contains("swift.org"))
+    }
+
+    func testExecuteBingRSSOutput() async {
+        let out = await run(tool(engines: [.bing]), "RSS swift")
+        XCTAssertTrue(out.contains("openai.com"), out)
+        XCTAssertTrue(out.contains("Web results for"))
     }
 
     func testExecuteMissingQuery() async {
@@ -223,6 +241,30 @@ private enum Fixtures {
       </div>
     </body></html>
     """
+
+    /// Trimmed from Bing's live `format=rss` output (2026-08): direct item title/link/description.
+    static let bingRSS = """
+    <?xml version="1.0" encoding="utf-8" ?>
+    <rss version="2.0"><channel>
+      <title>Bing: OpenAI official website</title>
+      <link>http://www.bing.com/search?q=OpenAI+official+website</link>
+      <item>
+        <title>OpenAI | Research &amp; Deployment</title>
+        <link>https://openai.com/</link>
+        <description>We believe our research will eventually lead to AGI.</description>
+      </item>
+      <item>
+        <title>ChatGPT: Chat, Work, Create &amp; Code with AI</title>
+        <link>https://chatgpt.com/</link>
+        <description>Use ChatGPT to answer questions and write code.</description>
+      </item>
+      <item>
+        <title>OpenAI - Wikipedia</title>
+        <link>https://en.wikipedia.org/wiki/OpenAI</link>
+        <description>OpenAI is an American artificial intelligence research organization.</description>
+      </item>
+    </channel></rss>
+    """
 }
 
 // MARK: - URLProtocol stub: routes by host + `q` marker
@@ -257,6 +299,7 @@ private final class SerpMockProtocol: URLProtocol {
         if host.contains("bing") {
             if q.contains("BINGFAIL") { return (500, "") }
             if q.contains("BINGEMPTY") { return (200, "<html><body></body></html>") }
+            if q.contains("RSS") { return (200, Fixtures.bingRSS) }
             return (200, Fixtures.bing)
         }
         if host.contains("brave") {

@@ -770,6 +770,9 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
                          selected: Set<String>,
                          thinking: Bool) throws -> XCUIApplication {
         let app = try launchApp()
+        // Stale MCP servers from the MCP test or manual device use can overwhelm the local models;
+        // every built-in-tool scenario must start from a clean remote-tool catalog.
+        try removeAllMCPServers(in: app)
         try setThinkingDefault(thinking, in: app)
         try configureTools(master: tools, enabled: selected, in: app)
         // ChatStore snapshots the per-conversation Thinking default at construction. Relaunch after

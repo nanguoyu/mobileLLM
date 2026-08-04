@@ -121,7 +121,7 @@ public struct WebSearchTool: Tool {
         let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
         switch engine {
         case .duckduckgo: return URL(string: "https://html.duckduckgo.com/html/?q=\(q)")
-        case .bing:       return URL(string: "https://www.bing.com/search?q=\(q)&count=10")
+        case .bing:       return URL(string: "https://www.bing.com/search?q=\(q)&format=rss&count=10")
         case .brave:      return URL(string: "https://search.brave.com/search?q=\(q)")
         }
     }
@@ -155,9 +155,13 @@ public struct WebSearchTool: Tool {
         return out
     }
 
-    /// Parse Bing's organic results: each `<li class="b_algo">` block carries the title/link in its `<h2>`
-    /// anchor and the snippet in the first `<p>`.
+    /// Parse Bing's organic results. The HTML endpoint now serves a captcha to scripted clients, so the
+    /// engine uses Bing's RSS output (`format=rss`), which stays parseable even under URLSession's
+    /// default gzip. The legacy HTML parser remains as a tolerant fallback for the same engine.
     static func parseBing(_ html: String) -> [SearchResult] {
+        if html.contains("<item>") || html.contains("<item >") {
+            return parseBingRSS(html)
+        }
         var out: [SearchResult] = []
         for block in HTMLUtil.segments(html, startingAt: "<li class=\"b_algo") {
             guard let h2 = HTMLUtil.firstGroup("<h2[^>]*>(.*?)</h2>", in: String(block)),
@@ -167,6 +171,24 @@ public struct WebSearchTool: Tool {
             let snippet = HTMLUtil.firstGroup("<p[^>]*>(.*?)</p>", in: String(block))
                 .map(HTMLUtil.inlineText) ?? ""
             out.append(SearchResult(title: title, url: cleanBingURL(href), snippet: snippet))
+        }
+        return out
+    }
+
+    /// Parse Bing's RSS feed: each `<item>` carries `<title>`, `<link>`, and `<description>` directly.
+    static func parseBingRSS(_ html: String) -> [SearchResult] {
+        var out: [SearchResult] = []
+        for block in HTMLUtil.segments(html, startingAt: "<item") {
+            guard let title = HTMLUtil.firstGroup("<title>(.*?)</title>", in: String(block))
+                    .map(HTMLUtil.unescape),
+                  !title.isEmpty,
+                  let link = HTMLUtil.firstGroup("<link>(.*?)</link>", in: String(block))
+                    .map(HTMLUtil.unescape),
+                  link.hasPrefix("http")
+            else { continue }
+            let snippet = HTMLUtil.firstGroup("<description>(.*?)</description>", in: String(block))
+                .map(HTMLUtil.inlineText) ?? ""
+            out.append(SearchResult(title: title, url: link, snippet: snippet))
         }
         return out
     }

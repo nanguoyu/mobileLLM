@@ -325,6 +325,66 @@ class DeviceE2ETestCase: XCTestCase {
         try goToChatList(in: app)
     }
 
+    /// Removes every configured MCP server before model tests that must exercise only the built-in
+    /// tool chain. A server added by the MCP test (or by manual device use) persists in Settings and
+    /// can push dozens of remote tools into the prompt, which overwhelms the local 1-bit models and
+    /// makes unrelated tests fail with "could not produce a valid structured action".
+    @MainActor
+    func removeAllMCPServers(in app: XCUIApplication) throws {
+        try goToSettings(in: app)
+        let choose = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Choose tools")
+        ).firstMatch
+        guard scrollToHittable(choose, in: app.scrollViews.firstMatch) else {
+            throw DeviceE2EHarnessError.precondition("Choose tools is unreachable while removing MCP servers")
+        }
+        choose.tap()
+        guard app.navigationBars["Tools"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("Tools settings did not open while removing MCP servers")
+        }
+        let mcpRow = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "MCP servers")
+        ).firstMatch
+        guard scrollToHittable(mcpRow, in: firstHittableScrollView(in: app)) else {
+            throw DeviceE2EHarnessError.precondition("MCP servers row is unreachable while removing servers")
+        }
+        mcpRow.tap()
+        guard app.navigationBars["MCP servers"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("MCP servers sheet did not open")
+        }
+        while true {
+            let serverRow = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS %@", "://")
+            ).firstMatch
+            guard serverRow.waitForExistence(timeout: 3), serverRow.isHittable else { break }
+            serverRow.tap()
+            let remove = app.buttons["Remove server"]
+            guard remove.waitForExistence(timeout: 10), remove.isHittable else {
+                throw DeviceE2EHarnessError.precondition("MCP server detail did not expose Remove server")
+            }
+            remove.tap()
+            let alert = app.alerts["Remove this server?"]
+            guard alert.waitForExistence(timeout: 10) else {
+                throw DeviceE2EHarnessError.precondition("MCP remove confirmation did not appear")
+            }
+            alert.buttons["Remove"].tap()
+            guard app.navigationBars["MCP servers"].waitForExistence(timeout: 15) else {
+                throw DeviceE2EHarnessError.precondition("MCP servers list did not reappear after removal")
+            }
+        }
+        let done = app.navigationBars["MCP servers"].buttons["Done"]
+        if done.exists, done.isHittable { done.tap() }
+        guard app.navigationBars["Tools"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("MCP sheet did not close after cleanup")
+        }
+        let toolsDone = app.navigationBars["Tools"].buttons["Done"]
+        if toolsDone.exists, toolsDone.isHittable { toolsDone.tap() }
+        guard app.navigationBars["Settings"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("Tools settings did not close after MCP cleanup")
+        }
+        try goToChatList(in: app)
+    }
+
     @MainActor
     func activate(_ model: DeviceTestModel, in app: XCUIApplication) throws {
         let active = app.buttons["Active model"]
