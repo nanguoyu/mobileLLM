@@ -209,9 +209,15 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
                                     destination: engineDestination,
                                     dataCategories: [try AgentDataCategory(rawValue: "web.search")],
                                     effects: [.networkRead],
-                                    requestBytes: UInt64(query.utf8.count),
+                                    requestBytes: UInt64(
+                                        prepared.prepared.request.sanitizedArguments.string.utf8.count
+                                    ),
                                     responseBytesLimit: maximumResponseBytes,
-                                    payloadDigest: StableDigest.sha256(Data(query.utf8)),
+                                    // The authorization is bound to the canonical arguments digest, not
+                                    // the raw query hash; a mismatch is rejected by the execution gate
+                                    // before any network hop ("observed operation widened").
+                                    payloadDigest: prepared.prepared.request
+                                        .sanitizedArguments.fingerprint,
                                     descriptorID: descriptor.id.description,
                                     schemaDigest: descriptor.id.schemaDigest,
                                     trustRevision: descriptor.id.trustRevision
@@ -248,6 +254,8 @@ public final class AppWebSearchToolAdapter: ToolV2, @unchecked Sendable {
                             let reason: String
                             if let net = error as? WebSearchTool.ToolNetError {
                                 reason = net == .badResponse ? "bad-response-or-empty" : "bad-url"
+                            } else if error is AgentContractError {
+                                reason = String(describing: error)
                             } else {
                                 reason = String(describing: type(of: error))
                             }
