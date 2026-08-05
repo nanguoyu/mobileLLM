@@ -797,6 +797,28 @@ must all produce it rather than implementing parallel approval formats.
 - Gateways that require `max_output_tokens` fall back to the runtime ceiling on a 400 token-limit
   rejection instead of failing the turn.
 
+### 15.5 Server-side native tools (design decision, NOT yet implemented)
+
+Some online services execute tools on the server instead of returning a function call for the app to run
+(e.g. DeepSeek's Responses API supports `web_search` / `web_search_2025_08_26` executed server-side).
+This section fixes the policy for when such support is added; no production code implements it today.
+
+- Each online service declares its native server-side tools as per-service capability metadata
+  (`nativeServerTools`, e.g. `["web_search"]`), never as a global hardcode. Model-level limitations
+  (for example a service exposing a server tool only on specific models) are declared the same way per
+  service/model.
+- When the selected online model's service declares a native tool that mirrors an app adapter (web
+  search), the frozen run advertises the NATIVE tool and omits the corresponding local adapter. The
+  model must never see two competing implementations of the same capability.
+- A native tool call is not executed by the app. The provider translates it: the wire `tools` payload
+  carries the server tool item, streaming lifecycle events (`response.web_search_call.in_progress /
+  searching / completed` or equivalents) surface as a real, user-visible tool step, and a
+  `web_search_call` output item is passed back as-is in the next request's input so the server restores
+  its results across turns.
+- Native server tools keep the same approval semantics as local tools: `networkRead`-class effects, a
+  destination scoped to `<serviceID>:<tool>`, and the three per-conversation approval modes. Approving
+  the online-model inference does not by itself authorize a native tool's network read.
+
 Approval records contain the displayed preview, normalized scope, arguments hash, policy version, timestamp, expiry,
 actual host/destination matcher, redirect/fallback bounds, data-category or payload digest, descriptor/schema/trust
 hashes, and user decision. The run capability ceiling is immutable for the run; every step receives an immutable
@@ -1389,6 +1411,8 @@ findings have been resolved.
 These decisions are intentionally deferred because the corresponding capability is not implemented now:
 
 - online provider vendors, authentication schemes, pricing UI, and routing policy;
+- server-side native tools (e.g. DeepSeek `web_search`): policy recorded in §15.5, implementation
+  deferred until the capability metadata, provider translation, step UI, and approval wiring land together;
 - the private sandbox runtime's transport, packaging, entitlements, and binary distribution;
 - subagent scheduling limits and local/remote concurrency;
 - workflow definition language, interpreter, DAG semantics, saved-workflow locations, and workflow UX;
