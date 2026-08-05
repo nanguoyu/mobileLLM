@@ -216,7 +216,11 @@ public struct AgentModelRequestPreparer: Sendable {
         request: AgentModelRequest,
         context: ModelPreparationContext
     ) throws {
-        guard descriptor.location == .onDevice, context.modelPolicy.localOnly else {
+        // Local providers require a local-only policy; remote providers require an explicit opt-in
+        // policy (online inference is data egress, spec §15.1).
+        let local = descriptor.location == .onDevice && context.modelPolicy.localOnly
+        let remote = descriptor.location == .remote && !context.modelPolicy.localOnly
+        guard local || remote else {
             throw AgentModelRuntimeError.onlineProviderForbidden
         }
         guard descriptor.id == request.selection.providerID else {
@@ -293,6 +297,7 @@ public struct AgentModelRequestPreparer: Sendable {
     ) throws {
         let external = prepared.externalOperation
         let plan = external.plan
+        let isLocal = descriptor.location == .onDevice
         guard prepared.request == request,
               external.requestID == request.requestID,
               external.runID == request.runID,
@@ -301,15 +306,18 @@ public struct AgentModelRequestPreparer: Sendable {
               external.invocationID == nil,
               external.payload == context.authorizationPayload,
               external.capabilityGrant == context.capabilityGrant,
-              plan.kind == .localPure,
+              plan.kind == (isLocal ? .localPure : .modelProvider),
               plan.subjectID == descriptor.id.rawValue,
-              plan.effects == [.localPure],
-              plan.requiredCapabilities.values.isEmpty,
+              plan.effects == (isLocal ? [.localPure] : [.externalCommunication]),
+              plan.requiredCapabilities
+                == (isLocal ? AgentCapabilitySet([])
+                            : AgentCapabilitySet([.externalCommunication])),
+              (plan.destination != nil) == !isLocal,
               plan.maximumRequestBytes <= context.maximumRequestBytes,
               plan.maximumResponseBytes <= context.maximumResponseBytes,
               plan.timeoutMilliseconds <= context.timeoutMilliseconds,
               plan.retryPolicy == .never,
-              plan.idempotency == .pureRead,
+              plan.idempotency == (isLocal ? .pureRead : .nonIdempotent),
               plan.payloadDigest == context.authorizationPayload.fingerprint,
               plan.descriptorID == nil,
               plan.schemaDigest == nil,

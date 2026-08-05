@@ -680,15 +680,91 @@ extension AgentRunController {
                 expectedStateVersion: generatingVersion.partialValue
             )
         )
-        let authorized = try await AgentModelAuthorizationBinder().authorizeLocal(
-            prepared,
-            approvalID: approvalID,
-            trustedRunAuthority: authority,
-            at: now,
-            policyEngine: policyEngine,
-            clock: clock,
-            attemptLedger: attemptLedger
-        )
+        let authorized: AuthorizedAgentModelAttempt
+        if prepared.providerDescriptor.location == .onDevice {
+            authorized = try await AgentModelAuthorizationBinder().authorizeLocal(
+                prepared,
+                approvalID: approvalID,
+                trustedRunAuthority: authority,
+                at: now,
+                policyEngine: policyEngine,
+                clock: clock,
+                attemptLedger: attemptLedger
+            )
+        } else {
+            // Online inference is data egress (spec §15.1): the exact model plan goes through the same
+            // prepare -> authorize -> execute approval machinery as external tools.
+            let external = prepared.preparedRequest.externalOperation
+            let reusable = try await reusableApprovals.candidateReceipts(
+                conversationID: facts.submission!.request.payload.conversationID,
+                prepared: external
+            )
+            let evaluation = policyEngine.evaluate(
+                prepared: external,
+                trustedRunAuthority: authority,
+                feature: .enabled,
+                interaction: interactionContext,
+                candidateReceipts: history.approvals.values.compactMap(\.receipt) + reusable,
+                at: now
+            )
+            if let persisted = history.approvals[approvalID]?.request,
+               persisted.prepared != external
+            {
+                try await failRun(
+                    runID: facts.projection.runID,
+                    reason: .toolUnavailable,
+                    code: "execution.approved-model-plan-changed",
+                    message: "The online model plan changed after approval and cannot be executed."
+                )
+                return
+            }
+            let authorization: AuthorizedExternalOperationRequest
+            switch evaluation.authorization.decision {
+            case .authorizeLocalPolicy:
+                authorization = try await policyEngine.bindLocalPolicy(
+                    prepared: external,
+                    approvalID: approvalID,
+                    trustedRunAuthority: authority,
+                    at: now
+                )
+            case .authorizeMatchingReceipt:
+                guard let receipt = evaluation.matchingReceipt else {
+                    throw AgentExecutionError.approvalUnavailable
+                }
+                authorization = try await policyEngine.bind(
+                    prepared: external,
+                    receipt: receipt,
+                    trustedRunAuthority: authority,
+                    at: now
+                )
+            case .requireApproval:
+                try await requestApproval(
+                    approvalID: approvalID,
+                    prepared: external,
+                    createdAt: now
+                )
+                return
+            case .deny:
+                try await failRun(
+                    runID: facts.projection.runID,
+                    reason: .permissionDenied,
+                    code: "execution.model-authorization-denied",
+                    message: "The online model request was denied by local policy."
+                )
+                return
+            }
+            let authorizedRequest = try AuthorizedModelRequest(
+                request: modelRequest,
+                authorization: authorization,
+                clock: clock,
+                policyValidator: policyEngine,
+                attemptLedger: attemptLedger
+            )
+            authorized = AuthorizedAgentModelAttempt(
+                preparedAttempt: prepared,
+                request: authorizedRequest
+            )
+        }
         let reservation = try modelReservation(
             request: modelRequest,
             budget: facts.submission!.request.payload.budget,

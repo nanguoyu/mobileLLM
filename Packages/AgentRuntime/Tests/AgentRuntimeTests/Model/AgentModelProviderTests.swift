@@ -132,6 +132,38 @@ final class AgentModelProviderTests: XCTestCase {
         }
     }
 
+    func testPreparationAllowsRemoteProviderWithExplicitCloudPolicy() async throws {
+        let remote = try ModelFixture(location: .remote)
+        let cloudPolicy = try AgentModelPolicy(
+            localOnly: false,
+            allowedSelections: [remote.request.selection],
+            strategy: .pinned,
+            requiredCapabilities: AgentModelCapabilitySet([])
+        )
+        let cloudContext = try ModelPreparationContext(
+            conversationID: remote.context.conversationID,
+            modelPolicy: cloudPolicy,
+            capabilityGrant: remote.context.capabilityGrant,
+            authorizationPayload: remote.context.authorizationPayload,
+            maximumRequestBytes: remote.context.maximumRequestBytes,
+            maximumResponseBytes: remote.context.maximumResponseBytes,
+            timeoutMilliseconds: remote.context.timeoutMilliseconds
+        )
+        let prepared = try await AgentModelRequestPreparer().prepare(
+            provider: ScriptedModelProvider(
+                descriptor: remote.descriptor,
+                capabilities: remote.capabilities
+            ),
+            request: remote.request,
+            context: cloudContext
+        )
+        XCTAssertEqual(prepared.preparedRequest.externalOperation.plan.kind, .modelProvider)
+        XCTAssertEqual(
+            prepared.preparedRequest.externalOperation.plan.effects,
+            [.externalCommunication]
+        )
+    }
+
     func testPreparationRejectsPolicyAndAuthorizationPayloadMismatch() async throws {
         let fixture = try ModelFixture()
         let other = try ModelFixture(offset: 3)

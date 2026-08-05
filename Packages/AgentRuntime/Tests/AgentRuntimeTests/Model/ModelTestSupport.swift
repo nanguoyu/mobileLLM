@@ -101,8 +101,23 @@ struct ModelFixture {
             policyRevision: 1,
             attestationDigest: StableDigest.sha256(Data("attestation-\(offset)".utf8))
         )
-        ceiling = RunCapabilityCeiling(authority: .empty)
-        let grant = try StepCapabilityGrant(runCeiling: ceiling, authority: .empty)
+        let grantAuthority: AgentAuthorityScope
+        if location == .remote {
+            grantAuthority = try AgentAuthorityScope(
+                capabilities: AgentCapabilitySet([.externalCommunication]),
+                destinations: [
+                    try ExternalDestination(
+                        kind: .modelProvider,
+                        normalizedIdentity: "fixture.remote:\(descriptor.id.rawValue)"
+                    ),
+                ],
+                dataCategories: [try AgentDataCategory(rawValue: "model.inference")]
+            )
+        } else {
+            grantAuthority = .empty
+        }
+        ceiling = RunCapabilityCeiling(authority: grantAuthority)
+        let grant = try StepCapabilityGrant(runCeiling: ceiling, authority: grantAuthority)
         context = try ModelPreparationContext(
             conversationID: ConversationID(rawValue: Self.uuid(4 + offset * 100)),
             modelPolicy: AgentModelPolicy(
@@ -265,6 +280,36 @@ struct ScriptedModelProvider: AgentModelProvider {
     ) async throws -> PreparedModelRequest {
         switch preparationMode {
         case .valid:
+            if descriptor.location == .remote {
+                let plan = try ExternalOperationPlan(
+                    kind: .modelProvider,
+                    subjectID: descriptor.id.rawValue,
+                    destination: try ExternalDestination(
+                        kind: .modelProvider,
+                        normalizedIdentity: "fixture.remote:\(descriptor.id.rawValue)"
+                    ),
+                    dataCategories: [try AgentDataCategory(rawValue: "model.inference")],
+                    payloadDigest: context.authorizationPayload.fingerprint,
+                    effects: [.externalCommunication],
+                    requiredCapabilities: AgentCapabilitySet([.externalCommunication]),
+                    maximumRequestBytes: context.maximumRequestBytes,
+                    maximumResponseBytes: context.maximumResponseBytes,
+                    timeoutMilliseconds: context.timeoutMilliseconds,
+                    retryPolicy: .never,
+                    idempotency: .nonIdempotent,
+                    userPreview: "Send this conversation to the remote model"
+                )
+                let external = try PreparedExternalOperationRequest(
+                    requestID: request.requestID,
+                    runID: request.runID,
+                    conversationID: context.conversationID,
+                    stepID: request.stepID,
+                    plan: plan,
+                    payload: context.authorizationPayload,
+                    capabilityGrant: context.capabilityGrant
+                )
+                return try PreparedModelRequest(request: request, externalOperation: external)
+            }
             return try LocalAgentModelPreparation.prepare(
                 request: request,
                 context: context,

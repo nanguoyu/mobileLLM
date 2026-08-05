@@ -996,7 +996,7 @@ extension AgentRunController {
         }
     }
 
-    private func requestApproval(
+    func requestApproval(
         approvalID: ApprovalID,
         prepared: PreparedExternalOperationRequest,
         createdAt: AgentTimestamp

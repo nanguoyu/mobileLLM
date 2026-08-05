@@ -90,6 +90,8 @@ public struct AgentModelExecutor: Sendable {
         guard provider.descriptor == frozen.providerDescriptor,
               provider.descriptor.id == authorized.request.request.selection.providerID,
               provider.descriptor.location == .onDevice
+                || (provider.descriptor.location == .remote
+                    && frozen.preparedRequest.externalOperation.plan.kind == .modelProvider)
         else { throw AgentModelRuntimeError.executingWrongProvider }
 
         let prepared = frozen.preparedRequest.externalOperation
@@ -100,7 +102,7 @@ public struct AgentModelExecutor: Sendable {
         let hop = try ExternalOperationBoundaryHop(
             prepared: prepared,
             attempt: attempt,
-            destination: nil
+            destination: prepared.plan.destination
         )
         let observation = try Self.observation(for: prepared)
         let accumulator = ModelEventAccumulator(
@@ -187,7 +189,7 @@ public struct AgentModelExecutor: Sendable {
     ) throws -> ExternalOperationObservation {
         let plan = prepared.plan
         return try ExternalOperationObservation(
-            destination: nil,
+            destination: plan.destination,
             dataCategories: plan.dataCategories,
             effects: plan.effects,
             requestBytes: UInt64(prepared.payload.data.count),

@@ -8,7 +8,7 @@ public struct AuthorizedAgentModelAttempt: Sendable {
     public let preparedAttempt: PreparedAgentModelAttempt
     public let request: AuthorizedModelRequest
 
-    fileprivate init(
+    public init(
         preparedAttempt: PreparedAgentModelAttempt,
         request: AuthorizedModelRequest
     ) {
