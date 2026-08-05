@@ -47,6 +47,11 @@ public struct AgentRunRequestSnapshot: Sendable {
     /// The conversation-persistent tool policy (spec §14). App assembly snapshots the conversation's
     /// materialized policy; the runtime freezes it with the run.
     public let toolPolicy: ConversationToolPolicy?
+    /// Whether the run should use the online Responses provider (Settings toggle). The provider still
+    /// fails closed at generation time if the key/model are no longer configured.
+    public let onlineModelEnabled: Bool
+    /// Model identifier on the compatible service; nil keeps the run local even if the toggle is on.
+    public let onlineModelID: String?
 
     public init(
         conversationID: UUID,
@@ -74,7 +79,9 @@ public struct AgentRunRequestSnapshot: Sendable {
         locationSeamAvailable: Bool,
         mcpToolDescriptors: [AgentToolDescriptor],
         webSearchDestinations: [ExternalDestination],
-        toolPolicy: ConversationToolPolicy?
+        toolPolicy: ConversationToolPolicy?,
+        onlineModelEnabled: Bool,
+        onlineModelID: String?
     ) {
         self.conversationID = conversationID
         self.userTurnID = userTurnID
@@ -102,6 +109,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.mcpToolDescriptors = mcpToolDescriptors
         self.webSearchDestinations = webSearchDestinations
         self.toolPolicy = toolPolicy
+        self.onlineModelEnabled = onlineModelEnabled
+        self.onlineModelID = onlineModelID
     }
 }
 
@@ -112,6 +121,20 @@ public struct AgentRunRequestSnapshot: Sendable {
 struct AppFrozenInputBuilder: Sendable {
     let capabilityVersion: SemanticVersion
 
+    /// Stable provider identity for the online Responses API provider. The request builder, the app
+    /// assembly, and the provider itself MUST derive it the same way or resolution fails.
+    static let onlineProviderID = "openai.responses"
+    /// Stable variant identity for the online selection (the service model id is the real identity).
+    static let onlineVariantID = "responses.default"
+
+    /// Whether the snapshot requests the online provider. Both the toggle and a non-empty model id are
+    /// required; the key itself is checked later at generation time (never frozen into the run).
+    static func isOnline(snapshot: AgentRunRequestSnapshot) -> Bool {
+        snapshot.onlineModelEnabled
+            && snapshot.onlineModelID.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                ?? false
+    }
+
     /// Stable provider identity for one exact (model, variant) registration. The request builder and
     /// the app assembly MUST derive it the same way or the runtime cannot resolve the pinned provider.
     static func providerID(model: LLMModel, variant: LLMVariant) throws -> AgentModelProviderID {
@@ -119,6 +142,20 @@ struct AppFrozenInputBuilder: Sendable {
             "local.mobilellm.\(model.id).\(variant.id.sanitizedProviderComponent)"
                 .prefix(120).description
         )
+    }
+
+    /// The exact selection pinned for a run: online when the snapshot opted in, otherwise the local
+    /// registration. Recovery uses the same derivation so a frozen request re-resolves identically.
+    func selection(snapshot: AgentRunRequestSnapshot) throws -> AgentModelSelection {
+        if Self.isOnline(snapshot: snapshot), let modelID = snapshot.onlineModelID {
+            return try AgentModelSelection(
+                providerID: AgentModelProviderID(Self.onlineProviderID),
+                modelID: AgentModelID(modelID.trimmingCharacters(in: .whitespacesAndNewlines)),
+                variantID: AgentModelVariantID(Self.onlineVariantID),
+                capabilityVersion: capabilityVersion
+            )
+        }
+        return try registration(snapshot: snapshot).selection
     }
 
     func registration(
@@ -147,6 +184,13 @@ struct AppFrozenInputBuilder: Sendable {
             reservedOutputTokens: 1_024,
             maximumToolSchemaTokens: 1_024
         )
+        let online = Self.isOnline(snapshot: snapshot)
+        // Online providers never advertise `.reasoning` (compatible gateways decide internally), so an
+        // explicit `.enabled` request would fail capability validation. `.automatic` lets the provider
+        // keep its default while still honoring an explicit user "off".
+        let thinkingMode: AgentModelThinkingMode = online
+            ? (snapshot.thinkingEnabled ? .automatic : .disabled)
+            : (snapshot.thinkingEnabled ? .enabled : .disabled)
         let generationParameters = try AgentModelGenerationParameters(
             maximumOutputTokens: UInt64(snapshot.maxTokens),
             maximumContextTokens: effectiveContext,
@@ -154,7 +198,7 @@ struct AppFrozenInputBuilder: Sendable {
             topP: snapshot.topP,
             topK: snapshot.topK > 0 ? UInt32(snapshot.topK) : nil,
             repetitionPenalty: snapshot.repetitionPenalty,
-            thinkingMode: snapshot.thinkingEnabled ? .enabled : .disabled,
+            thinkingMode: thinkingMode,
             seed: nil
         )
 
@@ -214,7 +258,7 @@ struct AppFrozenInputBuilder: Sendable {
             materializedFromGlobalTemplate: false
         )
         return try FrozenAgentRunInputs(
-            modelSelection: registration.selection,
+            modelSelection: try selection(snapshot: snapshot),
             generationParameters: generationParameters,
             contextBudget: contextBudget,
             baseSystem: baseSystem,
@@ -241,7 +285,8 @@ struct AppFrozenInputBuilder: Sendable {
         snapshot: AgentRunRequestSnapshot,
         artifactReferences: [ArtifactReference]
     ) throws -> AgentRequest {
-        let registration = try registration(snapshot: snapshot)
+        let selection = try selection(snapshot: snapshot)
+        let online = Self.isOnline(snapshot: snapshot)
         let runID = AgentRunID(rawValue: UUID())
         let effectiveContext = UInt64(
             ContextPolicy.effective(requested: snapshot.contextLength, model: snapshot.model)
@@ -255,6 +300,7 @@ struct AppFrozenInputBuilder: Sendable {
             // per-run ceiling, not a residency admission check.
             peakMemoryBytes: 2_147_483_648
         )
+        var ceilingCapabilities = AgentCapabilitySet([.networkRead, .localRead, .localWrite, .unknownExternal])
         var ceilingDestinations = snapshot.webSearchDestinations
         if snapshot.memorySeamAvailable {
             ceilingDestinations.append(try ExternalDestination(
@@ -267,6 +313,18 @@ struct AppFrozenInputBuilder: Sendable {
             try AgentDataCategory(rawValue: "user.memory"),
             try AgentDataCategory(rawValue: "mcp.call"),
         ]
+        if online, let modelID = snapshot.onlineModelID {
+            // The online model is data egress (spec §15.1): the run ceiling must grant exactly the
+            // destination the Responses provider's prepared plan names, or approval fails closed.
+            ceilingCapabilities = AgentCapabilitySet([
+                .externalCommunication, .networkRead, .localRead, .localWrite, .unknownExternal,
+            ])
+            ceilingDestinations.append(try ExternalDestination(
+                kind: .modelProvider,
+                normalizedIdentity: "\(AppFrozenInputBuilder.onlineProviderID):\(modelID.trimmingCharacters(in: .whitespacesAndNewlines))"
+            ))
+            ceilingDataCategories.append(try AgentDataCategory(rawValue: "model.inference"))
+        }
         let enabledTools = Set(snapshot.localToolNames)
         if enabledTools.contains("wikipedia") {
             ceilingDestinations.append(contentsOf: try ["en", "zh"].map {
@@ -320,7 +378,7 @@ struct AppFrozenInputBuilder: Sendable {
             ))
         }
         let ceilingAuthority = try AgentAuthorityScope(
-            capabilities: AgentCapabilitySet([.networkRead, .localRead, .localWrite, .unknownExternal]),
+            capabilities: ceilingCapabilities,
             destinations: ceilingDestinations,
             dataCategories: ceilingDataCategories
         )
@@ -333,8 +391,8 @@ struct AppFrozenInputBuilder: Sendable {
             instruction: snapshot.text,
             outputRequirement: .text,
             modelPolicy: AgentModelPolicy(
-                localOnly: true,
-                allowedSelections: [registration.selection],
+                localOnly: !online,
+                allowedSelections: [selection],
                 strategy: .pinned,
                 requiredCapabilities: AgentModelCapabilitySet([])
             ),
@@ -866,6 +924,46 @@ struct SQLiteJournalRecoveryLister: AgentRunRecoveryListing {
 
 // MARK: - Assembly
 
+/// Thread-safe holder for the online Responses service configuration. The app refreshes the non-secret
+/// values (base URL, model id) from Settings on the main actor at each submission; the runtime provider
+/// reads a complete configuration on a worker thread and loads the API key from the Keychain on demand,
+/// so the secret is never retained by this box or frozen into a run.
+public final class OpenAIOnlineConfigurationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var baseURL: String
+    private var modelID: String?
+    private let credentials: any OpenAICredentialStoring
+
+    public init(
+        baseURL: String,
+        modelID: String?,
+        credentials: any OpenAICredentialStoring
+    ) {
+        self.baseURL = baseURL
+        self.modelID = modelID
+        self.credentials = credentials
+    }
+
+    /// Refresh non-secret settings before a submission (called on the main actor).
+    public func update(baseURL: String, modelID: String?) {
+        lock.withLock {
+            self.baseURL = baseURL
+            self.modelID = modelID
+        }
+    }
+
+    /// Provider-side read: returns a complete configuration only when the service is configured.
+    func configuration() -> ResponsesAPIConfiguration? {
+        lock.withLock {
+            guard let modelID, !modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let key = try? credentials.loadAPIKey(),
+                  !key.isEmpty
+            else { return nil }
+            return ResponsesAPIConfiguration(baseURL: baseURL, apiKey: key)
+        }
+    }
+}
+
 /// Composes the durable agent runtime at app assembly: SQLite journal, content-addressed artifacts,
 /// local model providers over the app's routing engine, the local-pure tool catalog, the approval
 /// engine, and the run store the UI projects.
@@ -894,7 +992,8 @@ public final class AgentRuntimeAssembly {
         eventStore: (any EventStoring)? = nil,
         locationProvider: (any LocationProviding)? = nil,
         mcpDiscovery: MCPDiscoveryCache = MCPDiscoveryCache(),
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        onlineConfiguration: @escaping @Sendable () -> ResponsesAPIConfiguration? = { nil }
     ) throws {
         let fileManager = FileManager.default
         let support = conversationDirectory.appending(component: "agent")
@@ -940,7 +1039,7 @@ public final class AgentRuntimeAssembly {
             }
         }
         let residencyDriver = try LLMCoreModelResidencyDriver(engine: engine, registrations: registrations)
-        let providers = try registrations.map { registration in
+        var providers: [any AgentModelProvider] = try registrations.map { registration in
             try LocalModelProvider(
                 descriptor: AgentModelProviderDescriptor(
                     id: registration.selection.providerID,
@@ -957,6 +1056,12 @@ public final class AgentRuntimeAssembly {
                 )
             )
         }
+        // Registered unconditionally so a recovered online run still resolves its provider even if the
+        // user turned the toggle off before relaunch; generation then fails closed with a clear message.
+        providers.append(try ResponsesAPIModelProvider(
+            configurationProvider: onlineConfiguration,
+            capabilityVersion: capabilityVersion
+        ))
         let providerCatalog = try StaticAgentModelProviderCatalog(providers: providers)
         let toolCatalog = try AppToolCatalog(
             enabledToolNames: AppToolCatalog.adaptedToolNames,

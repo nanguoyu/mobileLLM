@@ -228,6 +228,12 @@ physical-device UI tests forward it through the `MOBILELLM_OPENAI_API_KEY`,
 app seeds the key into the device Keychain (this-device-only, off-backup). The key is never written to
 Settings or `UserDefaults`.
 
+To actually route chat through the service, open Settings → Online models → OpenAI service and turn
+on **Use online model** (the toggle appears once a key is stored and a model id is set). The next
+message is sent to the configured endpoint; like other external tools, the first request in each
+conversation goes through the approval card. The base URL and model id may point at any
+OpenAI-compatible gateway — only `https` is accepted.
+
 ## Community
 
 [**GitHub Discussions**](https://github.com/nanguoyu/mobileLLM/discussions) is the place for ideas, questions, and skills:

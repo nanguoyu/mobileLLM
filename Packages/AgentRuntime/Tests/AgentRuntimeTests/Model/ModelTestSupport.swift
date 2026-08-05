@@ -23,11 +23,14 @@ struct ModelFixture {
         maximumContextTokens: UInt64 = 4_096,
         maximumOutputTokens: UInt64 = 1_024,
         reportsCost: Bool = false,
-        offset: Int = 0
+        offset: Int = 0,
+        providerID: String? = nil,
+        remoteDestination: String? = nil
     ) throws {
         let version = SemanticVersion("1.0.0")!
+        let resolvedProviderID = providerID ?? "local.scripted.\(offset)"
         descriptor = AgentModelProviderDescriptor(
-            id: try AgentModelProviderID("local.scripted.\(offset)"),
+            id: try AgentModelProviderID(resolvedProviderID),
             adapterVersion: version,
             capabilityVersion: version,
             location: location
@@ -108,7 +111,8 @@ struct ModelFixture {
                 destinations: [
                     try ExternalDestination(
                         kind: .modelProvider,
-                        normalizedIdentity: "fixture.remote:\(descriptor.id.rawValue)"
+                        normalizedIdentity: remoteDestination
+                            ?? "fixture.remote:\(descriptor.id.rawValue)"
                     ),
                 ],
                 dataCategories: [try AgentDataCategory(rawValue: "model.inference")]

@@ -48,6 +48,8 @@ public final class AppSettings {
     public var openAIBaseURL: String { didSet { persist() } }
     /// Model identifier on the compatible service (e.g. "gpt-4o-mini"); nil = the service default.
     public var openAIModelID: String? { didSet { persist() } }
+    /// When true and a model id is set, the next send uses the online provider (data egress, approval).
+    public var openAIOnlineEnabled: Bool { didSet { persist() } }
 
     // MARK: Sampling
     public var temperature: Double { didSet { persist() } }
@@ -112,6 +114,7 @@ public final class AppSettings {
         openAIBaseURL = snap?.openAIBaseURL.flatMap(OpenAIServiceConfiguration.normalizedBaseURL)
             ?? OpenAIServiceConfiguration.defaultBaseURL
         openAIModelID = snap?.openAIModelID
+        openAIOnlineEnabled = snap?.openAIOnlineEnabled ?? false
         temperature = snap?.temperature ?? 0.7
         topP = snap?.topP ?? 0.95
         topK = snap?.topK ?? 20
@@ -246,6 +249,7 @@ public final class AppSettings {
         var searchEngines: [SearchEngine]? = nil
         var openAIBaseURL: String? = nil
         var openAIModelID: String? = nil
+        var openAIOnlineEnabled: Bool? = nil
         var temperature: Double
         var topP: Double
         var topK: Int
@@ -270,6 +274,7 @@ public final class AppSettings {
                             disabledBuiltInTools: disabledBuiltInTools, searchEngines: searchEngines,
                             openAIBaseURL: openAIBaseURL,
                             openAIModelID: openAIModelID,
+                            openAIOnlineEnabled: openAIOnlineEnabled,
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
                             contextLength: contextLength, kvBits: kvBits, appearance: appearance)

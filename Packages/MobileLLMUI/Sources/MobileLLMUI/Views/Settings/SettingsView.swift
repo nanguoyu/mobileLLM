@@ -227,9 +227,7 @@ struct SettingsView: View {
                         .font(.subheadline).foregroundStyle(Theme.accent).frame(width: 22)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("OpenAI service").font(.subheadline).foregroundStyle(Theme.textPrimary)
-                        Text(openAIKeyStored
-                             ? "Key stored · \(settings.openAIBaseURL)"
-                             : "Not set · \(settings.openAIBaseURL)")
+                        Text(onlineSummary)
                             .font(.caption).foregroundStyle(Theme.textTertiary)
                     }
                     Spacer()
@@ -241,9 +239,18 @@ struct SettingsView: View {
             .accessibilityLabel("OpenAI service")
             .accessibilityValue(openAIKeyStored ? "Key stored" : "Not set")
             Text("Online model support uses the Responses API. The key lives in the device Keychain "
-                 + "only — never synced, backed up, or committed.")
+                 + "only — never synced, backed up, or committed. Enable it inside the service sheet.")
                 .font(.caption).foregroundStyle(Theme.textTertiary)
         }
+    }
+
+    private var onlineSummary: String {
+        let key = openAIKeyStored ? "Key stored" : "No key"
+        if settings.openAIOnlineEnabled {
+            let model = settings.openAIModelID ?? "service default"
+            return "On · \(model) · \(settings.openAIBaseURL)"
+        }
+        return "Off · \(key) · \(settings.openAIBaseURL)"
     }
 
     // MARK: Choose tools

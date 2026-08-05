@@ -208,6 +208,13 @@ struct MobileLLMApp: App {
                 eventStore: eventStore,
                 locationProvider: locationProvider)
         }
+        // Online Responses config box: the provider reads it on worker threads; the app refreshes the
+        // non-secret values from Settings on the main actor at every submission.
+        let onlineConfigBox = OpenAIOnlineConfigurationBox(
+            baseURL: container.settings.openAIBaseURL,
+            modelID: container.settings.openAIModelID,
+            credentials: container.openAICredentials
+        )
         #if DEBUG
         // Local OpenAI-compatible service config: the developer stores it once at
         // ~/.mobilellm/openai.json (outside the repo); the macOS DEBUG app reads it directly, and the
@@ -252,13 +259,15 @@ struct MobileLLMApp: App {
                         userTurnID: userTurnID,
                         text: text,
                         imageRefs: imageRefs,
-                        downloadBase: base
+                        downloadBase: base,
+                        onlineConfigBox: onlineConfigBox
                     )
                 },
                 memoryStore: container.chat.memoryBook?.store,
                 eventStore: container.toolEventStore,
                 locationProvider: container.toolLocationProvider,
-                mcpDiscovery: container.mcpDiscovery
+                mcpDiscovery: container.mcpDiscovery,
+                onlineConfiguration: { onlineConfigBox.configuration() }
             ) {
                 container.attachAgentRuns(assembly.runStore)
                 container.chat.agentMCPToolLogicalIDs = { [weak container] in
@@ -297,13 +306,15 @@ struct MobileLLMApp: App {
                                 userTurnID: userTurnID,
                                 text: text,
                                 imageRefs: imageRefs,
-                                downloadBase: base
+                                downloadBase: base,
+                                onlineConfigBox: onlineConfigBox
                             )
                         },
                         memoryStore: container.chat.memoryBook?.store,
                         eventStore: container.toolEventStore,
                         locationProvider: container.toolLocationProvider,
-                        mcpDiscovery: container.mcpDiscovery
+                        mcpDiscovery: container.mcpDiscovery,
+                        onlineConfiguration: { onlineConfigBox.configuration() }
                     )
                 } catch {
                     container.recordAgentRuntimeFailure(error)
@@ -391,9 +402,15 @@ private func makeAgentSnapshot(
     userTurnID: UUID,
     text: String,
     imageRefs: [ImageRef],
-    downloadBase: URL
+    downloadBase: URL,
+    onlineConfigBox: OpenAIOnlineConfigurationBox
 ) -> AgentRunRequestSnapshot? {
     guard let active = container.chat.activeModel else { return nil }
+    // Keep the provider's config box in step with Settings before the snapshot freezes the selection.
+    onlineConfigBox.update(
+        baseURL: container.settings.openAIBaseURL,
+        modelID: container.settings.openAIModelID
+    )
     return AgentRunRequestSnapshot(
         conversationID: conversationID,
         userTurnID: userTurnID,
@@ -427,7 +444,9 @@ private func makeAgentSnapshot(
                 try AppWebSearchToolAdapter.destination(engine: $0)
             }) ?? []
             : [],
-        toolPolicy: container.chat.activeConversation?.toolPolicy
+        toolPolicy: container.chat.activeConversation?.toolPolicy,
+        onlineModelEnabled: container.settings.openAIOnlineEnabled,
+        onlineModelID: container.settings.openAIModelID
     )
 }
 

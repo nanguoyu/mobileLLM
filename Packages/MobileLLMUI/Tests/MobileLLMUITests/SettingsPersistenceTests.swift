@@ -89,6 +89,22 @@ final class SettingsPersistenceTests: XCTestCase {
         XCTAssertEqual(reloaded.searchEngines, [.bing])
     }
 
+    /// The online-model toggle must survive a save/reload like every other setting; a fresh install
+    /// starts with it off so no data egress happens by accident.
+    func testOpenAIOnlineToggleRoundTripAndDefaultsOff() {
+        XCTAssertFalse(AppSettings(defaults: defaults).openAIOnlineEnabled)
+
+        let settings = AppSettings(defaults: defaults)
+        settings.openAIBaseURL = "https://gateway.example.com/v1"
+        settings.openAIModelID = "gpt-4o-mini"
+        settings.openAIOnlineEnabled = true
+
+        let reloaded = AppSettings(defaults: defaults)
+        XCTAssertTrue(reloaded.openAIOnlineEnabled)
+        XCTAssertEqual(reloaded.openAIModelID, "gpt-4o-mini")
+        XCTAssertEqual(reloaded.openAIBaseURL, "https://gateway.example.com/v1")
+    }
+
     /// A pre-D2 snapshot (no tool fields at all) decodes to the defaults: the privacy-sensitive tools off,
     /// both engines on — so an upgraded install behaves exactly like a fresh one, and the surrounding
     /// settings are untouched (all-or-nothing decode).

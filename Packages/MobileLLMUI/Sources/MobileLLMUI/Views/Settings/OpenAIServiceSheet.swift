@@ -7,7 +7,7 @@ import AppUI
 /// supported) plus the API key, which lives in the device Keychain only (this-device-only, off-backup);
 /// it is never written to UserDefaults, settings backups, or the repo.
 struct OpenAIServiceSheet: View {
-    let settings: AppSettings
+    @Bindable var settings: AppSettings
     let store: any OpenAICredentialStoring
     @Environment(\.dismiss) private var dismiss
     @State private var key = ""
@@ -59,6 +59,20 @@ struct OpenAIServiceSheet: View {
                     #endif
                     .accessibilityLabel("OpenAI model")
 
+                Divider().background(Theme.hairline)
+                Toggle(isOn: $settings.openAIOnlineEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Use online model").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                        Text("The next message is sent to this service instead of the on-device model. "
+                             + "Each conversation asks for approval once before the first request.")
+                            .font(.caption).foregroundStyle(Theme.textTertiary)
+                    }
+                }
+                .tint(Theme.accent)
+                .disabled(!onlineAvailable)
+                .accessibilityLabel("Use online model")
+                .accessibilityValue(settings.openAIOnlineEnabled ? "On" : "Off")
+
                 HStack(spacing: Theme.Space.md) {
                     Button("Save") {
                         let trimmedURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -90,6 +104,7 @@ struct OpenAIServiceSheet: View {
                             try store.deleteAPIKey()
                             stored = false
                             key = ""
+                            settings.openAIOnlineEnabled = false
                             status = "Removed."
                         } catch {
                             status = "Couldn't remove the key: \(error.localizedDescription)"
@@ -128,5 +143,10 @@ struct OpenAIServiceSheet: View {
         #if os(macOS)
         .frame(minWidth: 480, minHeight: 380)
         #endif
+    }
+
+    /// The toggle is only meaningful once a key is stored and a model id is present.
+    private var onlineAvailable: Bool {
+        stored && !modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
