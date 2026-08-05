@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 # One-time local setup for an OpenAI-compatible service. Writes ~/.mobilellm/openai.json
 # (chmod 600) — OUTSIDE the repository — so macOS unit/UI tests, simulator tests, and physical-device
 # tests can all pick up the same key/base URL/model without anything secret ever being committed.
