@@ -2201,6 +2201,15 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
                       "Background tasks must push its page")
         app.navigationBars["Background tasks"].buttons.element(boundBy: 0).tap()
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
+
+        // Add to Project opens the tag picker sheet with a Done affordance.
+        menu.tap()
+        app.buttons["Add to Project"].tap()
+        let projectBar = app.navigationBars["Add to Project"]
+        XCTAssertTrue(projectBar.waitForExistence(timeout: 10),
+                      "Add to Project must open the tag picker")
+        projectBar.buttons["Done"].tap()
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
     }
 }
 

@@ -794,6 +794,58 @@ public final class ChatStore {
         return result.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
+    /// How many conversations carry a tag (case-insensitive) — shown in the tag picker.
+    public func projectTagCount(_ tag: String) -> Int {
+        conversations.reduce(into: 0) { count, convo in
+            if convo.projectTagList.contains(where: {
+                $0.caseInsensitiveCompare(tag) == .orderedSame
+            }) {
+                count += 1
+            }
+        }
+    }
+
+    /// Rename a project tag across every conversation (case-insensitive match). The new spelling
+    /// becomes canonical; if it already exists elsewhere its spelling is reused.
+    public func renameProjectTag(_ oldTag: String, to newTag: String) {
+        let trimmed = newTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let canonical = allProjectTags.first(where: {
+            $0.caseInsensitiveCompare(trimmed) == .orderedSame
+        }) ?? trimmed
+        for i in conversations.indices {
+            let tags = conversations[i].projectTagList
+            var changed = false
+            let renamed = tags.map { tag -> String in
+                if tag.caseInsensitiveCompare(oldTag) == .orderedSame {
+                    changed = true
+                    return canonical
+                }
+                return tag
+            }
+            if changed {
+                conversations[i].projectTags = Self.normalizedProjectTags(renamed)
+                persist(conversations[i])
+            }
+        }
+    }
+
+    /// Delete a project tag from every conversation (case-insensitive match).
+    public func deleteProjectTag(_ tag: String) {
+        let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        for i in conversations.indices {
+            let tags = conversations[i].projectTagList
+            let remaining = tags.filter {
+                $0.caseInsensitiveCompare(trimmed) != .orderedSame
+            }
+            if remaining.count != tags.count {
+                conversations[i].projectTags = Self.normalizedProjectTags(remaining)
+                persist(conversations[i])
+            }
+        }
+    }
+
     /// Reuses the spelling of an existing tag (case-insensitive), so "work" and "Work" never appear
     /// as two picker entries — the first-seen spelling wins everywhere.
     private func canonicalProjectTag(_ tag: String) -> String {

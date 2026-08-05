@@ -74,4 +74,66 @@ final class ProjectTagsTests: XCTestCase {
         XCTAssertEqual(chat.projectTags(for: first.id), ["Home"])
         XCTAssertEqual(chat.allProjectTags, ["Home", "Work"])
     }
+
+    func testRenameTagUpdatesEveryConversation() throws {
+        let (chat, dir) = makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let first = try XCTUnwrap(chat.newConversation())
+        let second = Conversation(
+            modelID: "test",
+            variantID: "v",
+            messages: [Message(role: .user, answer: "second thread")]
+        )
+        chat.conversations.insert(second, at: 0)
+        chat.toggleProjectTag("Work", on: first.id)
+        chat.toggleProjectTag("Work", on: second.id)
+
+        chat.renameProjectTag("work", to: "Job")
+        XCTAssertEqual(chat.projectTags(for: first.id), ["Job"])
+        XCTAssertEqual(chat.projectTags(for: second.id), ["Job"])
+        XCTAssertEqual(chat.allProjectTags, ["Job"])
+    }
+
+    func testRenameReusesExistingSpellingOnCollision() throws {
+        let (chat, dir) = makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let first = try XCTUnwrap(chat.newConversation())
+        let second = Conversation(
+            modelID: "test",
+            variantID: "v",
+            messages: [Message(role: .user, answer: "second thread")]
+        )
+        chat.conversations.insert(second, at: 0)
+        chat.toggleProjectTag("Work", on: first.id)
+        chat.toggleProjectTag("Home", on: second.id)
+
+        // Renaming "Work" to "home" collides with the existing "Home" tag: one canonical spelling.
+        chat.renameProjectTag("Work", to: "home")
+        XCTAssertEqual(chat.projectTags(for: first.id), ["Home"])
+        XCTAssertEqual(chat.projectTags(for: second.id), ["Home"])
+        XCTAssertEqual(chat.allProjectTags, ["Home"])
+        XCTAssertEqual(chat.projectTagCount("Home"), 2)
+    }
+
+    func testDeleteTagRemovesEverywhereAndUpdatesCounts() throws {
+        let (chat, dir) = makeStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let first = try XCTUnwrap(chat.newConversation())
+        let second = Conversation(
+            modelID: "test",
+            variantID: "v",
+            messages: [Message(role: .user, answer: "second thread")]
+        )
+        chat.conversations.insert(second, at: 0)
+        chat.toggleProjectTag("Work", on: first.id)
+        chat.toggleProjectTag("Home", on: first.id)
+        chat.toggleProjectTag("Work", on: second.id)
+        XCTAssertEqual(chat.projectTagCount("Work"), 2)
+
+        chat.deleteProjectTag("work")
+        XCTAssertEqual(chat.projectTags(for: first.id), ["Home"])
+        XCTAssertEqual(chat.projectTags(for: second.id), [])
+        XCTAssertEqual(chat.projectTagCount("Work"), 0)
+        XCTAssertEqual(chat.allProjectTags, ["Home"])
+    }
 }

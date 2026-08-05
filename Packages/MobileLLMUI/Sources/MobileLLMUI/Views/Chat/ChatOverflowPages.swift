@@ -106,6 +106,7 @@ struct BackgroundTasksPage: View {
                         Section("Active & waiting") {
                             ForEach(liveRuns, id: \.runID) { run in
                                 runRow(run)
+                                    .listRowBackground(Theme.surface)
                             }
                         }
                     }
@@ -113,6 +114,7 @@ struct BackgroundTasksPage: View {
                         Section("Paused") {
                             ForEach(resumableRuns, id: \.runID) { run in
                                 runRow(run)
+                                    .listRowBackground(Theme.surface)
                             }
                         }
                     }
@@ -127,6 +129,7 @@ struct BackgroundTasksPage: View {
                                         .font(.caption)
                                         .foregroundStyle(Theme.textSecondary)
                                 }
+                                .listRowBackground(Theme.surface)
                             }
                         }
                     }
@@ -134,7 +137,7 @@ struct BackgroundTasksPage: View {
                 #if os(iOS)
                 .listStyle(.insetGrouped)
                 #else
-                .listStyle(.sidebar)
+                .listStyle(.inset)
                 #endif
                 .scrollContentBackground(.hidden)
                 .background(Theme.bg)
@@ -183,12 +186,15 @@ struct BackgroundTasksPage: View {
 }
 
 /// Project tag picker (spec §20: Project is pure tag grouping, many-to-many). Existing tags toggle on
-/// tap; a new tag can be created inline and is selected immediately.
+/// tap; long-press / swipe renames or deletes a tag everywhere; a new tag can be created inline.
 struct ProjectTagsSheet: View {
     let chat: ChatStore
     let conversationID: UUID
     @Environment(\.dismiss) private var dismiss
     @State private var newTag = ""
+    @State private var renamingTag: String?
+    @State private var renameText = ""
+    @State private var deletingTag: String?
 
     private var selected: Set<String> {
         Set(chat.projectTags(for: conversationID).map { $0.lowercased() })
@@ -202,22 +208,34 @@ struct ProjectTagsSheet: View {
                         Text("No tags yet — create the first one below.")
                             .font(.caption)
                             .foregroundStyle(Theme.textSecondary)
+                            .listRowBackground(Theme.surface)
                     } else {
                         ForEach(chat.allProjectTags, id: \.self) { tag in
-                            Button {
-                                chat.toggleProjectTag(tag, on: conversationID)
-                            } label: {
-                                HStack {
-                                    Text(tag)
-                                        .foregroundStyle(Theme.textPrimary)
-                                    Spacer()
-                                    if selected.contains(tag.lowercased()) {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(Theme.accent)
+                            tagRow(tag)
+                                .listRowBackground(Theme.surface)
+                                .contextMenu {
+                                    Button {
+                                        renameText = tag
+                                        renamingTag = tag
+                                    } label: {
+                                        Label("Rename", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) {
+                                        deletingTag = tag
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
                                     }
                                 }
-                            }
-                            .buttonStyle(.plain)
+                                #if os(iOS)
+                                .swipeActions(edge: .trailing) {
+                                    Button("Delete", role: .destructive) { deletingTag = tag }
+                                    Button("Rename") {
+                                        renameText = tag
+                                        renamingTag = tag
+                                    }
+                                    .tint(Theme.accent)
+                                }
+                                #endif
                         }
                     }
                 }
@@ -228,22 +246,82 @@ struct ProjectTagsSheet: View {
                         Button("Add") { addTag() }
                             .disabled(normalizedNewTag.isEmpty)
                     }
+                    .listRowBackground(Theme.surface)
                 }
             }
             #if os(iOS)
             .listStyle(.insetGrouped)
             #else
-            .listStyle(.sidebar)
+            .listStyle(.inset)
             #endif
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
             .navigationTitle("Add to Project")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
+            .alert("Rename tag", isPresented: Binding(
+                get: { renamingTag != nil },
+                set: { if !$0 { renamingTag = nil } }
+            )) {
+                TextField("Tag name", text: $renameText)
+                Button("Cancel", role: .cancel) { renamingTag = nil }
+                Button("Save") {
+                    if let renamingTag {
+                        chat.renameProjectTag(renamingTag, to: renameText)
+                    }
+                    renamingTag = nil
+                }
+            }
+            .confirmationDialog(
+                "Delete this tag everywhere?",
+                isPresented: Binding(
+                    get: { deletingTag != nil },
+                    set: { if !$0 { deletingTag = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let deletingTag {
+                        chat.deleteProjectTag(deletingTag)
+                    }
+                    deletingTag = nil
+                }
+                Button("Cancel", role: .cancel) { deletingTag = nil }
+            } message: {
+                Text("The tag is removed from every conversation that uses it.")
+            }
         }
+    }
+
+    private func tagRow(_ tag: String) -> some View {
+        let isSelected = selected.contains(tag.lowercased())
+        return Button {
+            chat.toggleProjectTag(tag, on: conversationID)
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(tag)
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("\(chat.projectTagCount(tag)) chat\(chat.projectTagCount(tag) == 1 ? "" : "s")")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textTertiary)
+                }
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tag)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 
     private var normalizedNewTag: String {
