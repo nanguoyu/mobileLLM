@@ -37,7 +37,11 @@ final class LiveOnlineProviderSmokeTests: XCTestCase {
         let model = config.model ?? ""
         let provider = try ResponsesAPIModelProvider(
             configurationProvider: {
-                ResponsesAPIConfiguration(baseURL: config.baseURL, apiKey: config.apiKey)
+                ResponsesAPIConfiguration(
+                    baseURL: config.baseURL,
+                    apiKey: config.apiKey,
+                    reasoningEffort: .medium
+                )
             },
             session: .shared
         )
@@ -88,9 +92,11 @@ final class LiveOnlineProviderSmokeTests: XCTestCase {
         )
 
         let started = ContinuousClock.now
+        let sink = RecordingModelEventSink()
         let result = try await AgentModelExecutor().execute(
             provider: provider,
-            authorized: authorized
+            authorized: authorized,
+            eventSink: sink
         )
         let elapsed = started.duration(to: .now)
 
@@ -109,6 +115,7 @@ final class LiveOnlineProviderSmokeTests: XCTestCase {
         let summary = XCTAttachment(string: """
         elapsed_seconds=\(Double(elapsed.components.seconds))
         answer_length=\(answerText.utf8.count)
+        reasoning_emitted=\(await sink.events().contains { if case .visibleReasoningDelta = $0 { true } else { false } })
         input_tokens=\(completion.usage.inputTokens)
         output_tokens=\(completion.usage.outputTokens)
         active_ms=\(completion.usage.activeMilliseconds)
@@ -123,6 +130,113 @@ final class LiveOnlineProviderSmokeTests: XCTestCase {
             elapsed,
             .seconds(60),
             "reasoning-disabled online replies should be fast, took \(elapsed)"
+        )
+    }
+
+    /// The 2026-standard path: reasoning ENABLED with medium effort. Verifies the configured gateway
+    /// accepts `reasoning.effort` and still returns a real answer (not just reasoning).
+    func testLiveResponsesWithMediumEffortReturnsAnswer() async throws {
+        let config = try loadConfig()
+        let model = config.model ?? ""
+        let provider = try ResponsesAPIModelProvider(
+            configurationProvider: {
+                ResponsesAPIConfiguration(
+                    baseURL: config.baseURL,
+                    apiKey: config.apiKey,
+                    reasoningEffort: .medium
+                )
+            },
+            session: .shared
+        )
+        let fixture = try ModelFixture(
+            location: .remote,
+            thinkingMode: .enabled,
+            providerID: ResponsesAPIModelProvider.providerID,
+            remoteDestination: "openai.responses:\(ResponsesAPIConfiguration.defaultServiceID):\(model)",
+            modelID: model,
+            userMessage: "Explain how sleep affects memory. Reply in one short paragraph."
+        )
+        let cloudPolicy = try AgentModelPolicy(
+            localOnly: false,
+            allowedSelections: [fixture.request.selection],
+            strategy: .pinned,
+            requiredCapabilities: AgentModelCapabilitySet([])
+        )
+        let cloudContext = try ModelPreparationContext(
+            conversationID: fixture.context.conversationID,
+            modelPolicy: cloudPolicy,
+            capabilityGrant: fixture.context.capabilityGrant,
+            authorizationPayload: fixture.context.authorizationPayload,
+            maximumRequestBytes: fixture.context.maximumRequestBytes,
+            maximumResponseBytes: fixture.context.maximumResponseBytes,
+            timeoutMilliseconds: fixture.context.timeoutMilliseconds
+        )
+        let prepared = try await AgentModelRequestPreparer().prepare(
+            provider: provider,
+            request: fixture.request,
+            context: cloudContext
+        )
+        let policy = TestApprovalPolicyEngine()
+        let authorization = try await policy.bindLocalPolicy(
+            prepared: prepared.preparedRequest.externalOperation,
+            approvalID: ApprovalID(rawValue: ModelFixture.uuid(6)),
+            trustedRunAuthority: fixture.authority,
+            at: AgentTimestamp(rawValue: 1_000)
+        )
+        let authorized = AuthorizedAgentModelAttempt(
+            preparedAttempt: prepared,
+            request: try AuthorizedModelRequest(
+                request: fixture.request,
+                authorization: authorization,
+                clock: FixedAuthorizationClock(),
+                policyValidator: policy,
+                attemptLedger: TestAttemptLedger()
+            )
+        )
+
+        let started = ContinuousClock.now
+        let sink = RecordingModelEventSink()
+        let result = try await AgentModelExecutor().execute(
+            provider: provider,
+            authorized: authorized,
+            eventSink: sink
+        )
+        let elapsed = started.duration(to: .now)
+
+        guard case .completed(let completion) = result.outcome,
+              case .finalAnswer(let answer) = completion.action
+        else {
+            let detail = result.outcome
+            let attachment = XCTAttachment(string: "elapsed=\(elapsed) outcome=\(detail)")
+            attachment.name = "live-online-medium-effort-failure"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            return XCTFail("live medium-effort request did not complete: \(detail)")
+        }
+
+        let answerText = answer.text ?? ""
+        let events = await sink.events()
+        let reasoningEmitted = events.contains {
+            if case .visibleReasoningDelta = $0 { return true }
+            return false
+        }
+        let summary = XCTAttachment(string: """
+        elapsed_seconds=\(Double(elapsed.components.seconds))
+        answer_length=\(answerText.utf8.count)
+        reasoning_emitted=\(reasoningEmitted)
+        input_tokens=\(completion.usage.inputTokens)
+        output_tokens=\(completion.usage.outputTokens)
+        answer_prefix=\(String(answerText.prefix(120)))
+        """)
+        summary.name = "live-online-medium-effort"
+        summary.lifetime = .keepAlways
+        add(summary)
+
+        XCTAssertFalse(answerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        XCTAssertLessThan(
+            elapsed,
+            .seconds(60),
+            "medium-effort online replies should complete quickly, took \(elapsed)"
         )
     }
 }
