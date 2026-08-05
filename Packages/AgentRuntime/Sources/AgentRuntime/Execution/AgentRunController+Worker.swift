@@ -779,7 +779,8 @@ extension AgentRunController {
         _ = try durableLedger.reserving(reservation)
         let decodeLease = try await arbiter.acquireDecode(
             selection: frozen.modelSelection,
-            rootLease: rootLease
+            rootLease: rootLease,
+            requiresResidency: prepared.providerDescriptor.location == .onDevice
         )
         let startID = ExecutionStableID.event(
             runID: facts.projection.runID,

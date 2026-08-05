@@ -21,187 +21,3299 @@
     "deadRule": "registryInvalid"
   },
   "domains": [
-    { "table": "commandAdmission", "name": "wireValidity", "values": ["valid", "unsupportedVersion", "malformed"] },
-    { "table": "commandAdmission", "name": "runLookup", "values": ["found", "missing"] },
-    { "table": "commandAdmission", "name": "deduplication", "values": ["unseen", "identicalReplay", "conflictingReuse"] },
-    { "table": "commandAdmission", "name": "terminality", "values": ["nonterminal", "terminal"] },
-    { "table": "commandAdmission", "name": "expectedVersion", "values": ["matching", "stale"] },
-
-    { "table": "pauseCancelRouting", "name": "state", "values": ["created", "preparing", "waitingForModel", "generating", "validatingAction", "waitingForApproval", "executingTools", "waitingForUser", "synthesizing", "pausing", "paused", "waitingForForeground", "waitingForReconciliation", "completed", "failed", "cancelled"] },
-    { "table": "pauseCancelRouting", "name": "command", "values": ["pause", "cancel"] },
-    { "table": "pauseCancelRouting", "name": "guard", "values": ["safeBoundary", "cancellableWork", "noncancellableExternalIntent", "unresolvedExternalOutcome"] },
-
-    { "table": "resumeRouting", "name": "state", "values": ["created", "preparing", "waitingForModel", "generating", "validatingAction", "waitingForApproval", "executingTools", "waitingForUser", "synthesizing", "pausing", "paused", "waitingForForeground", "waitingForReconciliation", "completed", "failed", "cancelled"] },
-    { "table": "resumeRouting", "name": "guard", "values": ["ready", "foregroundUnavailable", "dependencyUnavailable"] },
-
-    { "table": "approvalCommandRouting", "name": "state", "values": ["created", "preparing", "waitingForModel", "generating", "validatingAction", "waitingForApproval", "executingTools", "waitingForUser", "synthesizing", "pausing", "paused", "waitingForForeground", "waitingForReconciliation", "completed", "failed", "cancelled"] },
-    { "table": "approvalCommandRouting", "name": "guard", "values": ["exactApproved", "conversationReadApproved", "denied", "cancelled", "expired", "invalidScope", "planChanged", "systemPermissionReady", "systemPermissionPromptForeground", "systemPermissionPromptBackground", "systemPermissionDenied"] },
-
-    { "table": "responseCommandRouting", "name": "state", "values": ["created", "preparing", "waitingForModel", "generating", "validatingAction", "waitingForApproval", "executingTools", "waitingForUser", "synthesizing", "pausing", "paused", "waitingForForeground", "waitingForReconciliation", "completed", "failed", "cancelled"] },
-    { "table": "responseCommandRouting", "name": "guard", "values": ["valid", "targetMismatch", "schemaInvalid"] },
-
-    { "table": "reconciliationCommandRouting", "name": "state", "values": ["created", "preparing", "waitingForModel", "generating", "validatingAction", "waitingForApproval", "executingTools", "waitingForUser", "synthesizing", "pausing", "paused", "waitingForForeground", "waitingForReconciliation", "completed", "failed", "cancelled"] },
-    { "table": "reconciliationCommandRouting", "name": "guard", "values": ["succeededProof", "failedProof", "abandonedConfirmed", "targetMismatch", "proofInsufficient"] },
-
-    { "table": "trustedProgressRouting", "name": "state", "values": ["created", "preparing", "waitingForModel", "generating", "validatingAction", "waitingForApproval", "executingTools", "waitingForUser", "synthesizing", "pausing", "paused", "waitingForForeground", "waitingForReconciliation", "completed", "failed", "cancelled"] },
-    { "table": "trustedProgressRouting", "name": "trigger", "values": ["beginPreparation", "contextCommitted", "recoveredToolBatchPending", "recoveredToolBatchFailed", "modelLeaseGranted", "modelAttemptCompleted", "modelRetryScheduled", "finalAnswerCommitted", "toolBatchNeedsApproval", "toolBatchAuthorized", "userInputRequested", "repairScheduled", "repairExhausted", "nextToolNeedsApproval", "toolBatchCompleted", "toolBatchStopped", "externalOutcomeUnknown", "foregroundLost", "systemPermissionResolved"] },
-    { "table": "trustedProgressRouting", "name": "callbackGuard", "values": ["valid", "duplicateOutcome", "staleVersion", "targetMismatch", "budgetUnavailable", "dependencyUnavailable", "externalIntentOutstanding", "retryBudgetRemaining", "retryBudgetExhausted", "effectOutcomeUncertain", "foregroundUnavailable", "systemPermissionGranted", "systemPermissionDenied", "systemPermissionPromptRequiredInBackground"] },
-
-    { "table": "quiescenceRouting", "name": "state", "values": ["created", "preparing", "waitingForModel", "generating", "validatingAction", "waitingForApproval", "executingTools", "waitingForUser", "synthesizing", "pausing", "paused", "waitingForForeground", "waitingForReconciliation", "completed", "failed", "cancelled"] },
-    { "table": "quiescenceRouting", "name": "quiescenceOutcome", "values": ["userPause", "foregroundLost", "backgroundExpired", "cancelled", "resourcePressurePaused", "resourcePressureForeground", "externalOutcomeUncertain"] },
-    { "table": "quiescenceRouting", "name": "callbackGuard", "values": ["valid", "duplicateOutcome", "staleVersion", "targetMismatch", "externalIntentOutstanding"] },
-
-    { "table": "terminalFailureRouting", "name": "state", "values": ["created", "preparing", "waitingForModel", "generating", "validatingAction", "waitingForApproval", "executingTools", "waitingForUser", "synthesizing", "pausing", "paused", "waitingForForeground", "waitingForReconciliation", "completed", "failed", "cancelled"] },
-    { "table": "terminalFailureRouting", "name": "failureReason", "values": ["budgetExceeded", "noProgress", "permissionDenied", "toolUnavailable", "modelUnavailable", "contextUnsatisfiable", "internalFailure"] },
-    { "table": "terminalFailureRouting", "name": "callbackGuard", "values": ["valid", "duplicateOutcome", "staleVersion", "targetMismatch", "externalIntentOutstanding"] }
+    {
+      "table": "commandAdmission",
+      "name": "wireValidity",
+      "values": [
+        "valid",
+        "unsupportedVersion",
+        "malformed"
+      ]
+    },
+    {
+      "table": "commandAdmission",
+      "name": "runLookup",
+      "values": [
+        "found",
+        "missing"
+      ]
+    },
+    {
+      "table": "commandAdmission",
+      "name": "deduplication",
+      "values": [
+        "unseen",
+        "identicalReplay",
+        "conflictingReuse"
+      ]
+    },
+    {
+      "table": "commandAdmission",
+      "name": "terminality",
+      "values": [
+        "nonterminal",
+        "terminal"
+      ]
+    },
+    {
+      "table": "commandAdmission",
+      "name": "expectedVersion",
+      "values": [
+        "matching",
+        "stale"
+      ]
+    },
+    {
+      "table": "pauseCancelRouting",
+      "name": "state",
+      "values": [
+        "created",
+        "preparing",
+        "waitingForModel",
+        "generating",
+        "validatingAction",
+        "waitingForApproval",
+        "executingTools",
+        "waitingForUser",
+        "synthesizing",
+        "pausing",
+        "paused",
+        "waitingForForeground",
+        "waitingForReconciliation",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "table": "pauseCancelRouting",
+      "name": "command",
+      "values": [
+        "pause",
+        "cancel"
+      ]
+    },
+    {
+      "table": "pauseCancelRouting",
+      "name": "guard",
+      "values": [
+        "safeBoundary",
+        "cancellableWork",
+        "noncancellableExternalIntent",
+        "unresolvedExternalOutcome"
+      ]
+    },
+    {
+      "table": "resumeRouting",
+      "name": "state",
+      "values": [
+        "created",
+        "preparing",
+        "waitingForModel",
+        "generating",
+        "validatingAction",
+        "waitingForApproval",
+        "executingTools",
+        "waitingForUser",
+        "synthesizing",
+        "pausing",
+        "paused",
+        "waitingForForeground",
+        "waitingForReconciliation",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "table": "resumeRouting",
+      "name": "guard",
+      "values": [
+        "ready",
+        "foregroundUnavailable",
+        "dependencyUnavailable"
+      ]
+    },
+    {
+      "table": "approvalCommandRouting",
+      "name": "state",
+      "values": [
+        "created",
+        "preparing",
+        "waitingForModel",
+        "generating",
+        "validatingAction",
+        "waitingForApproval",
+        "executingTools",
+        "waitingForUser",
+        "synthesizing",
+        "pausing",
+        "paused",
+        "waitingForForeground",
+        "waitingForReconciliation",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "table": "approvalCommandRouting",
+      "name": "guard",
+      "values": [
+        "exactApproved",
+        "conversationReadApproved",
+        "denied",
+        "cancelled",
+        "expired",
+        "invalidScope",
+        "planChanged",
+        "systemPermissionReady",
+        "systemPermissionPromptForeground",
+        "systemPermissionPromptBackground",
+        "systemPermissionDenied"
+      ]
+    },
+    {
+      "table": "approvalCommandRouting",
+      "name": "operationKind",
+      "values": [
+        "tool",
+        "modelProvider"
+      ]
+    },
+    {
+      "table": "responseCommandRouting",
+      "name": "state",
+      "values": [
+        "created",
+        "preparing",
+        "waitingForModel",
+        "generating",
+        "validatingAction",
+        "waitingForApproval",
+        "executingTools",
+        "waitingForUser",
+        "synthesizing",
+        "pausing",
+        "paused",
+        "waitingForForeground",
+        "waitingForReconciliation",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "table": "responseCommandRouting",
+      "name": "guard",
+      "values": [
+        "valid",
+        "targetMismatch",
+        "schemaInvalid"
+      ]
+    },
+    {
+      "table": "reconciliationCommandRouting",
+      "name": "state",
+      "values": [
+        "created",
+        "preparing",
+        "waitingForModel",
+        "generating",
+        "validatingAction",
+        "waitingForApproval",
+        "executingTools",
+        "waitingForUser",
+        "synthesizing",
+        "pausing",
+        "paused",
+        "waitingForForeground",
+        "waitingForReconciliation",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "table": "reconciliationCommandRouting",
+      "name": "guard",
+      "values": [
+        "succeededProof",
+        "failedProof",
+        "abandonedConfirmed",
+        "targetMismatch",
+        "proofInsufficient"
+      ]
+    },
+    {
+      "table": "trustedProgressRouting",
+      "name": "state",
+      "values": [
+        "created",
+        "preparing",
+        "waitingForModel",
+        "generating",
+        "validatingAction",
+        "waitingForApproval",
+        "executingTools",
+        "waitingForUser",
+        "synthesizing",
+        "pausing",
+        "paused",
+        "waitingForForeground",
+        "waitingForReconciliation",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "table": "trustedProgressRouting",
+      "name": "trigger",
+      "values": [
+        "beginPreparation",
+        "contextCommitted",
+        "recoveredToolBatchPending",
+        "recoveredToolBatchFailed",
+        "modelLeaseGranted",
+        "modelAttemptCompleted",
+        "modelRetryScheduled",
+        "finalAnswerCommitted",
+        "toolBatchNeedsApproval",
+        "toolBatchAuthorized",
+        "userInputRequested",
+        "repairScheduled",
+        "repairExhausted",
+        "nextToolNeedsApproval",
+        "toolBatchCompleted",
+        "toolBatchStopped",
+        "externalOutcomeUnknown",
+        "foregroundLost",
+        "systemPermissionResolved",
+        "modelNeedsApproval"
+      ]
+    },
+    {
+      "table": "trustedProgressRouting",
+      "name": "callbackGuard",
+      "values": [
+        "valid",
+        "duplicateOutcome",
+        "staleVersion",
+        "targetMismatch",
+        "budgetUnavailable",
+        "dependencyUnavailable",
+        "externalIntentOutstanding",
+        "retryBudgetRemaining",
+        "retryBudgetExhausted",
+        "effectOutcomeUncertain",
+        "foregroundUnavailable",
+        "systemPermissionGranted",
+        "systemPermissionDenied",
+        "systemPermissionPromptRequiredInBackground"
+      ]
+    },
+    {
+      "table": "quiescenceRouting",
+      "name": "state",
+      "values": [
+        "created",
+        "preparing",
+        "waitingForModel",
+        "generating",
+        "validatingAction",
+        "waitingForApproval",
+        "executingTools",
+        "waitingForUser",
+        "synthesizing",
+        "pausing",
+        "paused",
+        "waitingForForeground",
+        "waitingForReconciliation",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "table": "quiescenceRouting",
+      "name": "quiescenceOutcome",
+      "values": [
+        "userPause",
+        "foregroundLost",
+        "backgroundExpired",
+        "cancelled",
+        "resourcePressurePaused",
+        "resourcePressureForeground",
+        "externalOutcomeUncertain"
+      ]
+    },
+    {
+      "table": "quiescenceRouting",
+      "name": "callbackGuard",
+      "values": [
+        "valid",
+        "duplicateOutcome",
+        "staleVersion",
+        "targetMismatch",
+        "externalIntentOutstanding"
+      ]
+    },
+    {
+      "table": "terminalFailureRouting",
+      "name": "state",
+      "values": [
+        "created",
+        "preparing",
+        "waitingForModel",
+        "generating",
+        "validatingAction",
+        "waitingForApproval",
+        "executingTools",
+        "waitingForUser",
+        "synthesizing",
+        "pausing",
+        "paused",
+        "waitingForForeground",
+        "waitingForReconciliation",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "table": "terminalFailureRouting",
+      "name": "failureReason",
+      "values": [
+        "budgetExceeded",
+        "noProgress",
+        "permissionDenied",
+        "toolUnavailable",
+        "modelUnavailable",
+        "contextUnsatisfiable",
+        "internalFailure"
+      ]
+    },
+    {
+      "table": "terminalFailureRouting",
+      "name": "callbackGuard",
+      "values": [
+        "valid",
+        "duplicateOutcome",
+        "staleVersion",
+        "targetMismatch",
+        "externalIntentOutstanding"
+      ]
+    }
   ],
   "enumerationEvidence": [
-    { "table": "commandAdmission", "cellCount": 72, "ruleCount": 8, "winningRuleCount": 8 },
-    { "table": "pauseCancelRouting", "cellCount": 128, "ruleCount": 33, "winningRuleCount": 33 },
-    { "table": "resumeRouting", "cellCount": 48, "ruleCount": 3, "winningRuleCount": 3 },
-    { "table": "approvalCommandRouting", "cellCount": 176, "ruleCount": 12, "winningRuleCount": 12 },
-    { "table": "responseCommandRouting", "cellCount": 48, "ruleCount": 4, "winningRuleCount": 4 },
-    { "table": "reconciliationCommandRouting", "cellCount": 80, "ruleCount": 6, "winningRuleCount": 6 },
-    { "table": "trustedProgressRouting", "cellCount": 4256, "ruleCount": 32, "winningRuleCount": 32 },
-    { "table": "quiescenceRouting", "cellCount": 560, "ruleCount": 12, "winningRuleCount": 12 },
-    { "table": "terminalFailureRouting", "cellCount": 560, "ruleCount": 15, "winningRuleCount": 15 }
+    {
+      "table": "commandAdmission",
+      "cellCount": 72,
+      "ruleCount": 8,
+      "winningRuleCount": 8
+    },
+    {
+      "table": "pauseCancelRouting",
+      "cellCount": 128,
+      "ruleCount": 33,
+      "winningRuleCount": 33
+    },
+    {
+      "table": "resumeRouting",
+      "cellCount": 48,
+      "ruleCount": 3,
+      "winningRuleCount": 3
+    },
+    {
+      "table": "approvalCommandRouting",
+      "cellCount": 352,
+      "ruleCount": 17,
+      "winningRuleCount": 17
+    },
+    {
+      "table": "responseCommandRouting",
+      "cellCount": 48,
+      "ruleCount": 4,
+      "winningRuleCount": 4
+    },
+    {
+      "table": "reconciliationCommandRouting",
+      "cellCount": 80,
+      "ruleCount": 6,
+      "winningRuleCount": 6
+    },
+    {
+      "table": "trustedProgressRouting",
+      "cellCount": 4480,
+      "ruleCount": 34,
+      "winningRuleCount": 34
+    },
+    {
+      "table": "quiescenceRouting",
+      "cellCount": 560,
+      "ruleCount": 12,
+      "winningRuleCount": 12
+    },
+    {
+      "table": "terminalFailureRouting",
+      "cellCount": 560,
+      "ruleCount": 15,
+      "winningRuleCount": 15
+    }
   ],
-  "requirementIDs": ["AH-INFRA-004"],
-  "testIDs": ["AHT-INFRA-003"],
+  "requirementIDs": [
+    "AH-INFRA-004"
+  ],
+  "testIDs": [
+    "AHT-INFRA-003"
+  ],
   "entries": [
-    { "id": "AH-TRANSITION-ADMISSION-001", "table": "commandAdmission", "priority": 1000, "conditions": { "wireValidity": "malformed" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "malformedCommandEnvelope" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-ADMISSION-002", "table": "commandAdmission", "priority": 1000, "conditions": { "wireValidity": "unsupportedVersion" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "unsupportedProtocolVersion" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-ADMISSION-003", "table": "commandAdmission", "priority": 900, "conditions": { "runLookup": "missing" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "runNotFound" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-ADMISSION-004", "table": "commandAdmission", "priority": 800, "conditions": { "deduplication": "conflictingReuse" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "duplicateCommandConflict" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-ADMISSION-005", "table": "commandAdmission", "priority": 700, "conditions": { "deduplication": "identicalReplay" }, "outcome": { "disposition": "replayOriginalReceipt", "nextState": null, "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-ADMISSION-006", "table": "commandAdmission", "priority": 600, "conditions": { "terminality": "terminal" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "terminalRunImmutable" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-ADMISSION-007", "table": "commandAdmission", "priority": 500, "conditions": { "expectedVersion": "stale" }, "outcome": { "disposition": "stale", "nextState": null, "terminalReason": null, "diagnostic": "staleExpectedVersion" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-ADMISSION-008", "table": "commandAdmission", "priority": 0, "conditions": {}, "outcome": { "disposition": "proceed", "nextState": null, "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-001", "table": "pauseCancelRouting", "priority": 600, "conditions": { "command": "cancel", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "reconciliationRequiredBeforeCancellation" }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-002", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "preparing", "command": "pause" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-003", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "waitingForModel", "command": "pause" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-004", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "generating", "command": "pause" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-005", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "validatingAction", "command": "pause" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-006", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "executingTools", "command": "pause" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-007", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "synthesizing", "command": "pause" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-008", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "preparing", "command": "pause", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-009", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "waitingForModel", "command": "pause", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-010", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "generating", "command": "pause", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-011", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "validatingAction", "command": "pause", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-012", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "executingTools", "command": "pause", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-013", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "synthesizing", "command": "pause", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-014", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "preparing", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-015", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "waitingForModel", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-016", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "generating", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-017", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "validatingAction", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-018", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "executingTools", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-019", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "synthesizing", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-020", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "pausing", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "pausing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-021", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "preparing", "command": "cancel", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-022", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "waitingForModel", "command": "cancel", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-023", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "generating", "command": "cancel", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-024", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "validatingAction", "command": "cancel", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-025", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "executingTools", "command": "cancel", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-026", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "synthesizing", "command": "cancel", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-027", "table": "pauseCancelRouting", "priority": 700, "conditions": { "state": "pausing", "command": "cancel", "guard": "unresolvedExternalOutcome" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-028", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "created", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "cancelled", "terminalReason": "cancelledByUser", "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-003"], "testIDs": ["AHT-RUN-001", "AHT-RUN-002"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-029", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "waitingForApproval", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "cancelled", "terminalReason": "cancelledByUser", "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-003"], "testIDs": ["AHT-RUN-001", "AHT-RUN-002"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-030", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "waitingForUser", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "cancelled", "terminalReason": "cancelledByUser", "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-003"], "testIDs": ["AHT-RUN-001", "AHT-RUN-002"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-031", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "paused", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "cancelled", "terminalReason": "cancelledByUser", "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-003"], "testIDs": ["AHT-RUN-001", "AHT-RUN-002"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-032", "table": "pauseCancelRouting", "priority": 500, "conditions": { "state": "waitingForForeground", "command": "cancel" }, "outcome": { "disposition": "accepted", "nextState": "cancelled", "terminalReason": "cancelledByUser", "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-003"], "testIDs": ["AHT-RUN-001", "AHT-RUN-002"] },
-    { "id": "AH-TRANSITION-PAUSE-CANCEL-033", "table": "pauseCancelRouting", "priority": 0, "conditions": {}, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "invalidPauseOrCancelForState" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-
-    { "id": "AH-TRANSITION-RESUME-001", "table": "resumeRouting", "priority": 500, "conditions": { "state": "paused", "guard": "ready" }, "outcome": { "disposition": "accepted", "nextState": "preparing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-RESUME-002", "table": "resumeRouting", "priority": 500, "conditions": { "state": "waitingForForeground", "guard": "ready" }, "outcome": { "disposition": "accepted", "nextState": "preparing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-RESUME-003", "table": "resumeRouting", "priority": 0, "conditions": {}, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "resumePreconditionFailed" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-001", "table": "approvalCommandRouting", "priority": 500, "conditions": { "state": "waitingForApproval", "guard": "exactApproved" }, "outcome": { "disposition": "accepted", "nextState": "executingTools", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-APPROVAL-001"], "testIDs": ["AHT-RUN-001", "AHT-AUTH-001"] },
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-002", "table": "approvalCommandRouting", "priority": 500, "conditions": { "state": "waitingForApproval", "guard": "conversationReadApproved" }, "outcome": { "disposition": "accepted", "nextState": "executingTools", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-APPROVAL-001"], "testIDs": ["AHT-RUN-001", "AHT-AUTH-001"] },
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-003", "table": "approvalCommandRouting", "priority": 500, "conditions": { "state": "waitingForApproval", "guard": "systemPermissionReady" }, "outcome": { "disposition": "accepted", "nextState": "executingTools", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-APPROVAL-003"], "testIDs": ["AHT-RUN-001", "AHT-AUTH-003"] },
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-004", "table": "approvalCommandRouting", "priority": 500, "conditions": { "state": "waitingForApproval", "guard": "denied" }, "outcome": { "disposition": "accepted", "nextState": "synthesizing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-005", "table": "approvalCommandRouting", "priority": 500, "conditions": { "state": "waitingForApproval", "guard": "cancelled" }, "outcome": { "disposition": "accepted", "nextState": "synthesizing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-006", "table": "approvalCommandRouting", "priority": 500, "conditions": { "state": "waitingForApproval", "guard": "systemPermissionPromptForeground" }, "outcome": { "disposition": "accepted", "nextState": "waitingForApproval", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-APPROVAL-003"], "testIDs": ["AHT-RUN-001", "AHT-AUTH-003"] },
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-007", "table": "approvalCommandRouting", "priority": 500, "conditions": { "state": "waitingForApproval", "guard": "systemPermissionPromptBackground" }, "outcome": { "disposition": "accepted", "nextState": "waitingForForeground", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-APPROVAL-003"], "testIDs": ["AHT-RUN-001", "AHT-AUTH-003"] },
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-008", "table": "approvalCommandRouting", "priority": 700, "conditions": { "guard": "expired" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "approvalExpired" }, "requirementIDs": ["AH-APPROVAL-001"], "testIDs": ["AHT-AUTH-001"] },
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-009", "table": "approvalCommandRouting", "priority": 700, "conditions": { "guard": "invalidScope" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "approvalScopeInvalid" }, "requirementIDs": ["AH-APPROVAL-001"], "testIDs": ["AHT-AUTH-001"] },
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-010", "table": "approvalCommandRouting", "priority": 700, "conditions": { "guard": "planChanged" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "preparedPlanChanged" }, "requirementIDs": ["AH-APPROVAL-001", "AH-TOOLS-003"], "testIDs": ["AHT-AUTH-001"] },
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-011", "table": "approvalCommandRouting", "priority": 700, "conditions": { "guard": "systemPermissionDenied" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "systemPermissionDenied" }, "requirementIDs": ["AH-APPROVAL-003"], "testIDs": ["AHT-AUTH-003"] },
-    { "id": "AH-TRANSITION-APPROVAL-COMMAND-012", "table": "approvalCommandRouting", "priority": 0, "conditions": {}, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "invalidApprovalCommandForState" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-
-    { "id": "AH-TRANSITION-RESPONSE-COMMAND-001", "table": "responseCommandRouting", "priority": 700, "conditions": { "guard": "targetMismatch" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "interactionTargetMismatch" }, "requirementIDs": ["AH-RUN-004"], "testIDs": ["AHT-RUN-003"] },
-    { "id": "AH-TRANSITION-RESPONSE-COMMAND-002", "table": "responseCommandRouting", "priority": 700, "conditions": { "guard": "schemaInvalid" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "interactionResponseSchemaInvalid" }, "requirementIDs": ["AH-RUN-004"], "testIDs": ["AHT-RUN-003"] },
-    { "id": "AH-TRANSITION-RESPONSE-COMMAND-003", "table": "responseCommandRouting", "priority": 500, "conditions": { "state": "waitingForUser", "guard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "waitingForModel", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-004"], "testIDs": ["AHT-RUN-001", "AHT-RUN-003"] },
-    { "id": "AH-TRANSITION-RESPONSE-COMMAND-004", "table": "responseCommandRouting", "priority": 0, "conditions": {}, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "invalidResponseForState" }, "requirementIDs": ["AH-RUN-004"], "testIDs": ["AHT-RUN-003"] },
-
-    { "id": "AH-TRANSITION-RECONCILE-COMMAND-001", "table": "reconciliationCommandRouting", "priority": 700, "conditions": { "guard": "targetMismatch" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "reconciliationTargetMismatch" }, "requirementIDs": ["AH-RUN-005"], "testIDs": ["AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-RECONCILE-COMMAND-002", "table": "reconciliationCommandRouting", "priority": 700, "conditions": { "guard": "proofInsufficient" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "reconciliationProofInsufficient" }, "requirementIDs": ["AH-RUN-005"], "testIDs": ["AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-RECONCILE-COMMAND-003", "table": "reconciliationCommandRouting", "priority": 500, "conditions": { "state": "waitingForReconciliation", "guard": "succeededProof" }, "outcome": { "disposition": "accepted", "nextState": "synthesizing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-RECONCILE-COMMAND-004", "table": "reconciliationCommandRouting", "priority": 500, "conditions": { "state": "waitingForReconciliation", "guard": "failedProof" }, "outcome": { "disposition": "accepted", "nextState": "synthesizing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-RECONCILE-COMMAND-005", "table": "reconciliationCommandRouting", "priority": 500, "conditions": { "state": "waitingForReconciliation", "guard": "abandonedConfirmed" }, "outcome": { "disposition": "accepted", "nextState": "failed", "terminalReason": "externalResultUncertain", "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-RECONCILE-COMMAND-006", "table": "reconciliationCommandRouting", "priority": 0, "conditions": {}, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "reconciliationRequired" }, "requirementIDs": ["AH-RUN-005"], "testIDs": ["AHT-RECONCILE-001"] },
-
-    { "id": "AH-TRANSITION-PROGRESS-001", "table": "trustedProgressRouting", "priority": 1000, "conditions": { "callbackGuard": "duplicateOutcome" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "duplicateOutcome" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-002", "table": "trustedProgressRouting", "priority": 1000, "conditions": { "callbackGuard": "staleVersion" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "staleCallbackVersion" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-003", "table": "trustedProgressRouting", "priority": 1000, "conditions": { "callbackGuard": "targetMismatch" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "callbackTargetMismatch" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-004", "table": "trustedProgressRouting", "priority": 1000, "conditions": { "callbackGuard": "budgetUnavailable" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "budgetUnavailable" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-005", "table": "trustedProgressRouting", "priority": 1000, "conditions": { "callbackGuard": "dependencyUnavailable" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "dependencyUnavailable" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-006", "table": "trustedProgressRouting", "priority": 1000, "conditions": { "callbackGuard": "externalIntentOutstanding" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "externalIntentOutstanding" }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-007", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "created", "trigger": "beginPreparation", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "preparing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-008", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "preparing", "trigger": "contextCommitted", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "waitingForModel", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-031", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "preparing", "trigger": "recoveredToolBatchPending", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "executingTools", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-032", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "preparing", "trigger": "recoveredToolBatchFailed", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "synthesizing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-009", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "waitingForModel", "trigger": "modelLeaseGranted", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "generating", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-010", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "synthesizing", "trigger": "modelLeaseGranted", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "generating", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-011", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "generating", "trigger": "modelAttemptCompleted", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "validatingAction", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-012", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "generating", "trigger": "modelRetryScheduled", "callbackGuard": "retryBudgetRemaining" }, "outcome": { "disposition": "accepted", "nextState": "waitingForModel", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-013", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "validatingAction", "trigger": "finalAnswerCommitted", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "completed", "terminalReason": "completed", "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-003"], "testIDs": ["AHT-RUN-001", "AHT-RUN-002"] },
-    { "id": "AH-TRANSITION-PROGRESS-014", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "validatingAction", "trigger": "toolBatchNeedsApproval", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "waitingForApproval", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-015", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "validatingAction", "trigger": "toolBatchAuthorized", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "executingTools", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-016", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "validatingAction", "trigger": "userInputRequested", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "waitingForUser", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-004"], "testIDs": ["AHT-RUN-001", "AHT-RUN-003"] },
-    { "id": "AH-TRANSITION-PROGRESS-017", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "validatingAction", "trigger": "repairScheduled", "callbackGuard": "retryBudgetRemaining" }, "outcome": { "disposition": "accepted", "nextState": "waitingForModel", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-018", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "validatingAction", "trigger": "repairExhausted", "callbackGuard": "retryBudgetExhausted" }, "outcome": { "disposition": "accepted", "nextState": "failed", "terminalReason": "internalFailure", "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-019", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "executingTools", "trigger": "nextToolNeedsApproval", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "waitingForApproval", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-020", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "executingTools", "trigger": "toolBatchCompleted", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "waitingForModel", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-021", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "executingTools", "trigger": "toolBatchStopped", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "synthesizing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-022", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "executingTools", "trigger": "externalOutcomeUnknown", "callbackGuard": "effectOutcomeUncertain" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-023", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "preparing", "trigger": "foregroundLost", "callbackGuard": "foregroundUnavailable" }, "outcome": { "disposition": "accepted", "nextState": "waitingForForeground", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-024", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "waitingForModel", "trigger": "foregroundLost", "callbackGuard": "foregroundUnavailable" }, "outcome": { "disposition": "accepted", "nextState": "waitingForForeground", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-025", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "generating", "trigger": "foregroundLost", "callbackGuard": "foregroundUnavailable" }, "outcome": { "disposition": "accepted", "nextState": "waitingForForeground", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-026", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "synthesizing", "trigger": "foregroundLost", "callbackGuard": "foregroundUnavailable" }, "outcome": { "disposition": "accepted", "nextState": "waitingForForeground", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-PROGRESS-027", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "waitingForApproval", "trigger": "systemPermissionResolved", "callbackGuard": "systemPermissionPromptRequiredInBackground" }, "outcome": { "disposition": "accepted", "nextState": "waitingForForeground", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-APPROVAL-003"], "testIDs": ["AHT-RUN-001", "AHT-AUTH-003"] },
-    { "id": "AH-TRANSITION-PROGRESS-028", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "waitingForForeground", "trigger": "systemPermissionResolved", "callbackGuard": "systemPermissionGranted" }, "outcome": { "disposition": "accepted", "nextState": "preparing", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-APPROVAL-003"], "testIDs": ["AHT-RUN-001", "AHT-AUTH-003"] },
-    { "id": "AH-TRANSITION-PROGRESS-029", "table": "trustedProgressRouting", "priority": 500, "conditions": { "state": "waitingForForeground", "trigger": "systemPermissionResolved", "callbackGuard": "systemPermissionDenied" }, "outcome": { "disposition": "accepted", "nextState": "failed", "terminalReason": "permissionDenied", "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-APPROVAL-003"], "testIDs": ["AHT-RUN-001", "AHT-AUTH-003"] },
-    { "id": "AH-TRANSITION-PROGRESS-030", "table": "trustedProgressRouting", "priority": 0, "conditions": {}, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "invalidTrustedProgress" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-
-    { "id": "AH-TRANSITION-QUIESCENCE-001", "table": "quiescenceRouting", "priority": 1000, "conditions": { "callbackGuard": "duplicateOutcome" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "duplicateQuiescenceOutcome" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-QUIESCENCE-002", "table": "quiescenceRouting", "priority": 1000, "conditions": { "callbackGuard": "staleVersion" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "staleQuiescenceVersion" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-QUIESCENCE-003", "table": "quiescenceRouting", "priority": 1000, "conditions": { "callbackGuard": "targetMismatch" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "quiescenceTargetMismatch" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-QUIESCENCE-004", "table": "quiescenceRouting", "priority": 1000, "conditions": { "callbackGuard": "externalIntentOutstanding" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "externalIntentMustBecomeUncertain" }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-QUIESCENCE-005", "table": "quiescenceRouting", "priority": 500, "conditions": { "state": "pausing", "quiescenceOutcome": "userPause", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "paused", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-QUIESCENCE-006", "table": "quiescenceRouting", "priority": 500, "conditions": { "state": "pausing", "quiescenceOutcome": "foregroundLost", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "waitingForForeground", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-QUIESCENCE-007", "table": "quiescenceRouting", "priority": 500, "conditions": { "state": "pausing", "quiescenceOutcome": "backgroundExpired", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "waitingForForeground", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-QUIESCENCE-008", "table": "quiescenceRouting", "priority": 500, "conditions": { "state": "pausing", "quiescenceOutcome": "cancelled", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "cancelled", "terminalReason": "cancelledByUser", "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-003"], "testIDs": ["AHT-RUN-001", "AHT-RUN-002"] },
-    { "id": "AH-TRANSITION-QUIESCENCE-009", "table": "quiescenceRouting", "priority": 500, "conditions": { "state": "pausing", "quiescenceOutcome": "resourcePressurePaused", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "paused", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-QUIESCENCE-010", "table": "quiescenceRouting", "priority": 500, "conditions": { "state": "pausing", "quiescenceOutcome": "resourcePressureForeground", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "waitingForForeground", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-QUIESCENCE-011", "table": "quiescenceRouting", "priority": 500, "conditions": { "state": "pausing", "quiescenceOutcome": "externalOutcomeUncertain", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "waitingForReconciliation", "terminalReason": null, "diagnostic": null }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-QUIESCENCE-012", "table": "quiescenceRouting", "priority": 0, "conditions": {}, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "invalidQuiescenceOutcome" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-
-    { "id": "AH-TRANSITION-FAILURE-001", "table": "terminalFailureRouting", "priority": 1200, "conditions": { "callbackGuard": "duplicateOutcome" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "duplicateFailureOutcome" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-FAILURE-002", "table": "terminalFailureRouting", "priority": 1200, "conditions": { "callbackGuard": "staleVersion" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "staleFailureVersion" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-FAILURE-003", "table": "terminalFailureRouting", "priority": 1200, "conditions": { "callbackGuard": "targetMismatch" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "failureTargetMismatch" }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-FAILURE-004", "table": "terminalFailureRouting", "priority": 1200, "conditions": { "callbackGuard": "externalIntentOutstanding" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "uncertainExternalIntentCannotFailClosed" }, "requirementIDs": ["AH-RUN-001", "AH-RUN-005"], "testIDs": ["AHT-RUN-001", "AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-FAILURE-005", "table": "terminalFailureRouting", "priority": 1000, "conditions": { "state": "waitingForReconciliation" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "explicitReconciliationRequired" }, "requirementIDs": ["AH-RUN-005"], "testIDs": ["AHT-RECONCILE-001"] },
-    { "id": "AH-TRANSITION-FAILURE-006", "table": "terminalFailureRouting", "priority": 1000, "conditions": { "state": "completed" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "terminalRunImmutable" }, "requirementIDs": ["AH-RUN-003"], "testIDs": ["AHT-RUN-002"] },
-    { "id": "AH-TRANSITION-FAILURE-007", "table": "terminalFailureRouting", "priority": 1000, "conditions": { "state": "failed" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "terminalRunImmutable" }, "requirementIDs": ["AH-RUN-003"], "testIDs": ["AHT-RUN-002"] },
-    { "id": "AH-TRANSITION-FAILURE-008", "table": "terminalFailureRouting", "priority": 1000, "conditions": { "state": "cancelled" }, "outcome": { "disposition": "rejected", "nextState": null, "terminalReason": null, "diagnostic": "terminalRunImmutable" }, "requirementIDs": ["AH-RUN-003"], "testIDs": ["AHT-RUN-002"] },
-    { "id": "AH-TRANSITION-FAILURE-009", "table": "terminalFailureRouting", "priority": 500, "conditions": { "failureReason": "budgetExceeded", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "failed", "terminalReason": "budgetExceeded", "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-FAILURE-010", "table": "terminalFailureRouting", "priority": 500, "conditions": { "failureReason": "noProgress", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "failed", "terminalReason": "noProgress", "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-FAILURE-011", "table": "terminalFailureRouting", "priority": 500, "conditions": { "failureReason": "permissionDenied", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "failed", "terminalReason": "permissionDenied", "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-FAILURE-012", "table": "terminalFailureRouting", "priority": 500, "conditions": { "failureReason": "toolUnavailable", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "failed", "terminalReason": "toolUnavailable", "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-FAILURE-013", "table": "terminalFailureRouting", "priority": 500, "conditions": { "failureReason": "modelUnavailable", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "failed", "terminalReason": "modelUnavailable", "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-FAILURE-014", "table": "terminalFailureRouting", "priority": 500, "conditions": { "failureReason": "contextUnsatisfiable", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "failed", "terminalReason": "contextUnsatisfiable", "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] },
-    { "id": "AH-TRANSITION-FAILURE-015", "table": "terminalFailureRouting", "priority": 500, "conditions": { "failureReason": "internalFailure", "callbackGuard": "valid" }, "outcome": { "disposition": "accepted", "nextState": "failed", "terminalReason": "internalFailure", "diagnostic": null }, "requirementIDs": ["AH-RUN-001"], "testIDs": ["AHT-RUN-001"] }
+    {
+      "id": "AH-TRANSITION-ADMISSION-001",
+      "table": "commandAdmission",
+      "priority": 1000,
+      "conditions": {
+        "wireValidity": "malformed"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "malformedCommandEnvelope"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-ADMISSION-002",
+      "table": "commandAdmission",
+      "priority": 1000,
+      "conditions": {
+        "wireValidity": "unsupportedVersion"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "unsupportedProtocolVersion"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-ADMISSION-003",
+      "table": "commandAdmission",
+      "priority": 900,
+      "conditions": {
+        "runLookup": "missing"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "runNotFound"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-ADMISSION-004",
+      "table": "commandAdmission",
+      "priority": 800,
+      "conditions": {
+        "deduplication": "conflictingReuse"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "duplicateCommandConflict"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-ADMISSION-005",
+      "table": "commandAdmission",
+      "priority": 700,
+      "conditions": {
+        "deduplication": "identicalReplay"
+      },
+      "outcome": {
+        "disposition": "replayOriginalReceipt",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-ADMISSION-006",
+      "table": "commandAdmission",
+      "priority": 600,
+      "conditions": {
+        "terminality": "terminal"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "terminalRunImmutable"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-ADMISSION-007",
+      "table": "commandAdmission",
+      "priority": 500,
+      "conditions": {
+        "expectedVersion": "stale"
+      },
+      "outcome": {
+        "disposition": "stale",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "staleExpectedVersion"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-ADMISSION-008",
+      "table": "commandAdmission",
+      "priority": 0,
+      "conditions": {},
+      "outcome": {
+        "disposition": "proceed",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-001",
+      "table": "pauseCancelRouting",
+      "priority": 600,
+      "conditions": {
+        "command": "cancel",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "reconciliationRequiredBeforeCancellation"
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-002",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "preparing",
+        "command": "pause"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-003",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForModel",
+        "command": "pause"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-004",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "generating",
+        "command": "pause"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-005",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "validatingAction",
+        "command": "pause"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-006",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "executingTools",
+        "command": "pause"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-007",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "synthesizing",
+        "command": "pause"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-008",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "preparing",
+        "command": "pause",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-009",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "waitingForModel",
+        "command": "pause",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-010",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "generating",
+        "command": "pause",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-011",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "validatingAction",
+        "command": "pause",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-012",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "executingTools",
+        "command": "pause",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-013",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "synthesizing",
+        "command": "pause",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-014",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "preparing",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-015",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForModel",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-016",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "generating",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-017",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "validatingAction",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-018",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "executingTools",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-019",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "synthesizing",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-020",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "pausing",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "pausing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-021",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "preparing",
+        "command": "cancel",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-022",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "waitingForModel",
+        "command": "cancel",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-023",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "generating",
+        "command": "cancel",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-024",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "validatingAction",
+        "command": "cancel",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-025",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "executingTools",
+        "command": "cancel",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-026",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "synthesizing",
+        "command": "cancel",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-027",
+      "table": "pauseCancelRouting",
+      "priority": 700,
+      "conditions": {
+        "state": "pausing",
+        "command": "cancel",
+        "guard": "unresolvedExternalOutcome"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-028",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "created",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "cancelled",
+        "terminalReason": "cancelledByUser",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RUN-002"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-029",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForApproval",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "cancelled",
+        "terminalReason": "cancelledByUser",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RUN-002"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-030",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForUser",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "cancelled",
+        "terminalReason": "cancelledByUser",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RUN-002"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-031",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "paused",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "cancelled",
+        "terminalReason": "cancelledByUser",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RUN-002"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-032",
+      "table": "pauseCancelRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForForeground",
+        "command": "cancel"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "cancelled",
+        "terminalReason": "cancelledByUser",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RUN-002"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PAUSE-CANCEL-033",
+      "table": "pauseCancelRouting",
+      "priority": 0,
+      "conditions": {},
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "invalidPauseOrCancelForState"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RESUME-001",
+      "table": "resumeRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "paused",
+        "guard": "ready"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "preparing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RESUME-002",
+      "table": "resumeRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForForeground",
+        "guard": "ready"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "preparing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RESUME-003",
+      "table": "resumeRouting",
+      "priority": 0,
+      "conditions": {},
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "resumePreconditionFailed"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-001",
+      "table": "approvalCommandRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "exactApproved"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "executingTools",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-APPROVAL-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-AUTH-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-002",
+      "table": "approvalCommandRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "conversationReadApproved"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "executingTools",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-APPROVAL-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-AUTH-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-003",
+      "table": "approvalCommandRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "systemPermissionReady"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "executingTools",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-APPROVAL-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-AUTH-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-004",
+      "table": "approvalCommandRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "denied"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "synthesizing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-005",
+      "table": "approvalCommandRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "cancelled"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "synthesizing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-006",
+      "table": "approvalCommandRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "systemPermissionPromptForeground"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForApproval",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-APPROVAL-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-AUTH-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-007",
+      "table": "approvalCommandRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "systemPermissionPromptBackground"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForForeground",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-APPROVAL-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-AUTH-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-008",
+      "table": "approvalCommandRouting",
+      "priority": 700,
+      "conditions": {
+        "guard": "expired"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "approvalExpired"
+      },
+      "requirementIDs": [
+        "AH-APPROVAL-001"
+      ],
+      "testIDs": [
+        "AHT-AUTH-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-009",
+      "table": "approvalCommandRouting",
+      "priority": 700,
+      "conditions": {
+        "guard": "invalidScope"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "approvalScopeInvalid"
+      },
+      "requirementIDs": [
+        "AH-APPROVAL-001"
+      ],
+      "testIDs": [
+        "AHT-AUTH-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-010",
+      "table": "approvalCommandRouting",
+      "priority": 700,
+      "conditions": {
+        "guard": "planChanged"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "preparedPlanChanged"
+      },
+      "requirementIDs": [
+        "AH-APPROVAL-001",
+        "AH-TOOLS-003"
+      ],
+      "testIDs": [
+        "AHT-AUTH-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-011",
+      "table": "approvalCommandRouting",
+      "priority": 700,
+      "conditions": {
+        "guard": "systemPermissionDenied"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "systemPermissionDenied"
+      },
+      "requirementIDs": [
+        "AH-APPROVAL-003"
+      ],
+      "testIDs": [
+        "AHT-AUTH-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-012",
+      "table": "approvalCommandRouting",
+      "priority": 0,
+      "conditions": {},
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "invalidApprovalCommandForState"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RESPONSE-COMMAND-001",
+      "table": "responseCommandRouting",
+      "priority": 700,
+      "conditions": {
+        "guard": "targetMismatch"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "interactionTargetMismatch"
+      },
+      "requirementIDs": [
+        "AH-RUN-004"
+      ],
+      "testIDs": [
+        "AHT-RUN-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RESPONSE-COMMAND-002",
+      "table": "responseCommandRouting",
+      "priority": 700,
+      "conditions": {
+        "guard": "schemaInvalid"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "interactionResponseSchemaInvalid"
+      },
+      "requirementIDs": [
+        "AH-RUN-004"
+      ],
+      "testIDs": [
+        "AHT-RUN-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RESPONSE-COMMAND-003",
+      "table": "responseCommandRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForUser",
+        "guard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForModel",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-004"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RUN-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RESPONSE-COMMAND-004",
+      "table": "responseCommandRouting",
+      "priority": 0,
+      "conditions": {},
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "invalidResponseForState"
+      },
+      "requirementIDs": [
+        "AH-RUN-004"
+      ],
+      "testIDs": [
+        "AHT-RUN-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RECONCILE-COMMAND-001",
+      "table": "reconciliationCommandRouting",
+      "priority": 700,
+      "conditions": {
+        "guard": "targetMismatch"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "reconciliationTargetMismatch"
+      },
+      "requirementIDs": [
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RECONCILE-COMMAND-002",
+      "table": "reconciliationCommandRouting",
+      "priority": 700,
+      "conditions": {
+        "guard": "proofInsufficient"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "reconciliationProofInsufficient"
+      },
+      "requirementIDs": [
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RECONCILE-COMMAND-003",
+      "table": "reconciliationCommandRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForReconciliation",
+        "guard": "succeededProof"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "synthesizing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RECONCILE-COMMAND-004",
+      "table": "reconciliationCommandRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForReconciliation",
+        "guard": "failedProof"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "synthesizing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RECONCILE-COMMAND-005",
+      "table": "reconciliationCommandRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForReconciliation",
+        "guard": "abandonedConfirmed"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "externalResultUncertain",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-RECONCILE-COMMAND-006",
+      "table": "reconciliationCommandRouting",
+      "priority": 0,
+      "conditions": {},
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "reconciliationRequired"
+      },
+      "requirementIDs": [
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-001",
+      "table": "trustedProgressRouting",
+      "priority": 1000,
+      "conditions": {
+        "callbackGuard": "duplicateOutcome"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "duplicateOutcome"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-002",
+      "table": "trustedProgressRouting",
+      "priority": 1000,
+      "conditions": {
+        "callbackGuard": "staleVersion"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "staleCallbackVersion"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-003",
+      "table": "trustedProgressRouting",
+      "priority": 1000,
+      "conditions": {
+        "callbackGuard": "targetMismatch"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "callbackTargetMismatch"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-004",
+      "table": "trustedProgressRouting",
+      "priority": 1000,
+      "conditions": {
+        "callbackGuard": "budgetUnavailable"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "budgetUnavailable"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-005",
+      "table": "trustedProgressRouting",
+      "priority": 1000,
+      "conditions": {
+        "callbackGuard": "dependencyUnavailable"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "dependencyUnavailable"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-006",
+      "table": "trustedProgressRouting",
+      "priority": 1000,
+      "conditions": {
+        "callbackGuard": "externalIntentOutstanding"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "externalIntentOutstanding"
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-007",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "created",
+        "trigger": "beginPreparation",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "preparing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-008",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "preparing",
+        "trigger": "contextCommitted",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForModel",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-031",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "preparing",
+        "trigger": "recoveredToolBatchPending",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "executingTools",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-032",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "preparing",
+        "trigger": "recoveredToolBatchFailed",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "synthesizing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-009",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForModel",
+        "trigger": "modelLeaseGranted",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "generating",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-010",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "synthesizing",
+        "trigger": "modelLeaseGranted",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "generating",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-011",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "generating",
+        "trigger": "modelAttemptCompleted",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "validatingAction",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-012",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "generating",
+        "trigger": "modelRetryScheduled",
+        "callbackGuard": "retryBudgetRemaining"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForModel",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-013",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "validatingAction",
+        "trigger": "finalAnswerCommitted",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "completed",
+        "terminalReason": "completed",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RUN-002"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-014",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "validatingAction",
+        "trigger": "toolBatchNeedsApproval",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForApproval",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-015",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "validatingAction",
+        "trigger": "toolBatchAuthorized",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "executingTools",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-016",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "validatingAction",
+        "trigger": "userInputRequested",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForUser",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-004"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RUN-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-017",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "validatingAction",
+        "trigger": "repairScheduled",
+        "callbackGuard": "retryBudgetRemaining"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForModel",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-018",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "validatingAction",
+        "trigger": "repairExhausted",
+        "callbackGuard": "retryBudgetExhausted"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "internalFailure",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-019",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "executingTools",
+        "trigger": "nextToolNeedsApproval",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForApproval",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-020",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "executingTools",
+        "trigger": "toolBatchCompleted",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForModel",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-021",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "executingTools",
+        "trigger": "toolBatchStopped",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "synthesizing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-022",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "executingTools",
+        "trigger": "externalOutcomeUnknown",
+        "callbackGuard": "effectOutcomeUncertain"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-023",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "preparing",
+        "trigger": "foregroundLost",
+        "callbackGuard": "foregroundUnavailable"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForForeground",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-024",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForModel",
+        "trigger": "foregroundLost",
+        "callbackGuard": "foregroundUnavailable"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForForeground",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-025",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "generating",
+        "trigger": "foregroundLost",
+        "callbackGuard": "foregroundUnavailable"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForForeground",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-026",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "synthesizing",
+        "trigger": "foregroundLost",
+        "callbackGuard": "foregroundUnavailable"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForForeground",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-027",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForApproval",
+        "trigger": "systemPermissionResolved",
+        "callbackGuard": "systemPermissionPromptRequiredInBackground"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForForeground",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-APPROVAL-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-AUTH-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-028",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForForeground",
+        "trigger": "systemPermissionResolved",
+        "callbackGuard": "systemPermissionGranted"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "preparing",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-APPROVAL-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-AUTH-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-029",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForForeground",
+        "trigger": "systemPermissionResolved",
+        "callbackGuard": "systemPermissionDenied"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "permissionDenied",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-APPROVAL-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-AUTH-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-030",
+      "table": "trustedProgressRouting",
+      "priority": 0,
+      "conditions": {},
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "invalidTrustedProgress"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-001",
+      "table": "quiescenceRouting",
+      "priority": 1000,
+      "conditions": {
+        "callbackGuard": "duplicateOutcome"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "duplicateQuiescenceOutcome"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-002",
+      "table": "quiescenceRouting",
+      "priority": 1000,
+      "conditions": {
+        "callbackGuard": "staleVersion"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "staleQuiescenceVersion"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-003",
+      "table": "quiescenceRouting",
+      "priority": 1000,
+      "conditions": {
+        "callbackGuard": "targetMismatch"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "quiescenceTargetMismatch"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-004",
+      "table": "quiescenceRouting",
+      "priority": 1000,
+      "conditions": {
+        "callbackGuard": "externalIntentOutstanding"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "externalIntentMustBecomeUncertain"
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-005",
+      "table": "quiescenceRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "pausing",
+        "quiescenceOutcome": "userPause",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "paused",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-006",
+      "table": "quiescenceRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "pausing",
+        "quiescenceOutcome": "foregroundLost",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForForeground",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-007",
+      "table": "quiescenceRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "pausing",
+        "quiescenceOutcome": "backgroundExpired",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForForeground",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-008",
+      "table": "quiescenceRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "pausing",
+        "quiescenceOutcome": "cancelled",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "cancelled",
+        "terminalReason": "cancelledByUser",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RUN-002"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-009",
+      "table": "quiescenceRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "pausing",
+        "quiescenceOutcome": "resourcePressurePaused",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "paused",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-010",
+      "table": "quiescenceRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "pausing",
+        "quiescenceOutcome": "resourcePressureForeground",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForForeground",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-011",
+      "table": "quiescenceRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "pausing",
+        "quiescenceOutcome": "externalOutcomeUncertain",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForReconciliation",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-QUIESCENCE-012",
+      "table": "quiescenceRouting",
+      "priority": 0,
+      "conditions": {},
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "invalidQuiescenceOutcome"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-001",
+      "table": "terminalFailureRouting",
+      "priority": 1200,
+      "conditions": {
+        "callbackGuard": "duplicateOutcome"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "duplicateFailureOutcome"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-002",
+      "table": "terminalFailureRouting",
+      "priority": 1200,
+      "conditions": {
+        "callbackGuard": "staleVersion"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "staleFailureVersion"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-003",
+      "table": "terminalFailureRouting",
+      "priority": 1200,
+      "conditions": {
+        "callbackGuard": "targetMismatch"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "failureTargetMismatch"
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-004",
+      "table": "terminalFailureRouting",
+      "priority": 1200,
+      "conditions": {
+        "callbackGuard": "externalIntentOutstanding"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "uncertainExternalIntentCannotFailClosed"
+      },
+      "requirementIDs": [
+        "AH-RUN-001",
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RUN-001",
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-005",
+      "table": "terminalFailureRouting",
+      "priority": 1000,
+      "conditions": {
+        "state": "waitingForReconciliation"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "explicitReconciliationRequired"
+      },
+      "requirementIDs": [
+        "AH-RUN-005"
+      ],
+      "testIDs": [
+        "AHT-RECONCILE-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-006",
+      "table": "terminalFailureRouting",
+      "priority": 1000,
+      "conditions": {
+        "state": "completed"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "terminalRunImmutable"
+      },
+      "requirementIDs": [
+        "AH-RUN-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-002"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-007",
+      "table": "terminalFailureRouting",
+      "priority": 1000,
+      "conditions": {
+        "state": "failed"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "terminalRunImmutable"
+      },
+      "requirementIDs": [
+        "AH-RUN-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-002"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-008",
+      "table": "terminalFailureRouting",
+      "priority": 1000,
+      "conditions": {
+        "state": "cancelled"
+      },
+      "outcome": {
+        "disposition": "rejected",
+        "nextState": null,
+        "terminalReason": null,
+        "diagnostic": "terminalRunImmutable"
+      },
+      "requirementIDs": [
+        "AH-RUN-003"
+      ],
+      "testIDs": [
+        "AHT-RUN-002"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-009",
+      "table": "terminalFailureRouting",
+      "priority": 500,
+      "conditions": {
+        "failureReason": "budgetExceeded",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "budgetExceeded",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-010",
+      "table": "terminalFailureRouting",
+      "priority": 500,
+      "conditions": {
+        "failureReason": "noProgress",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "noProgress",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-011",
+      "table": "terminalFailureRouting",
+      "priority": 500,
+      "conditions": {
+        "failureReason": "permissionDenied",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "permissionDenied",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-012",
+      "table": "terminalFailureRouting",
+      "priority": 500,
+      "conditions": {
+        "failureReason": "toolUnavailable",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "toolUnavailable",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-013",
+      "table": "terminalFailureRouting",
+      "priority": 500,
+      "conditions": {
+        "failureReason": "modelUnavailable",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "modelUnavailable",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-014",
+      "table": "terminalFailureRouting",
+      "priority": 500,
+      "conditions": {
+        "failureReason": "contextUnsatisfiable",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "contextUnsatisfiable",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-FAILURE-015",
+      "table": "terminalFailureRouting",
+      "priority": 500,
+      "conditions": {
+        "failureReason": "internalFailure",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "internalFailure",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-033",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "waitingForModel",
+        "trigger": "modelNeedsApproval",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForApproval",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-PROGRESS-034",
+      "table": "trustedProgressRouting",
+      "priority": 500,
+      "conditions": {
+        "state": "synthesizing",
+        "trigger": "modelNeedsApproval",
+        "callbackGuard": "valid"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForApproval",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-013",
+      "table": "approvalCommandRouting",
+      "priority": 600,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "exactApproved",
+        "operationKind": "modelProvider"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForModel",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-APPROVAL-001"
+      ],
+      "testIDs": [
+        "AHT-AUTH-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-014",
+      "table": "approvalCommandRouting",
+      "priority": 600,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "conversationReadApproved",
+        "operationKind": "modelProvider"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForModel",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-APPROVAL-001"
+      ],
+      "testIDs": [
+        "AHT-AUTH-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-015",
+      "table": "approvalCommandRouting",
+      "priority": 600,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "systemPermissionReady",
+        "operationKind": "modelProvider"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "waitingForModel",
+        "terminalReason": null,
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-APPROVAL-003"
+      ],
+      "testIDs": [
+        "AHT-AUTH-003"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-016",
+      "table": "approvalCommandRouting",
+      "priority": 600,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "denied",
+        "operationKind": "modelProvider"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "permissionDenied",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    },
+    {
+      "id": "AH-TRANSITION-APPROVAL-COMMAND-017",
+      "table": "approvalCommandRouting",
+      "priority": 600,
+      "conditions": {
+        "state": "waitingForApproval",
+        "guard": "cancelled",
+        "operationKind": "modelProvider"
+      },
+      "outcome": {
+        "disposition": "accepted",
+        "nextState": "failed",
+        "terminalReason": "permissionDenied",
+        "diagnostic": null
+      },
+      "requirementIDs": [
+        "AH-RUN-001"
+      ],
+      "testIDs": [
+        "AHT-RUN-001"
+      ]
+    }
   ]
 }

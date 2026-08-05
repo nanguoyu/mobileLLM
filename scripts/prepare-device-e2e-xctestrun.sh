@@ -63,12 +63,11 @@ if not targets:
     sys.exit(1)
 
 for target in targets:
-    # Test bundle process: lets DeviceE2ETestSupport re-inject into app.launchEnvironment.
+    # Test bundle process only. DeviceE2ETestSupport reads these and forwards them into the app's
+    # launchEnvironment itself, so the key never rides a second xctestrun channel and the app's normal
+    # DEBUG seeding path stays the single consumer.
     target_env = target.setdefault("EnvironmentVariables", {})
     target_env.update(injected)
-    # Target app process: the DEBUG app seeds Keychain + settings directly from these.
-    app_env = target.setdefault("UITargetAppEnvironmentVariables", {})
-    app_env.update(injected)
 
 with open(dst, "wb") as f:
     plistlib.dump(run, f, sort_keys=False)

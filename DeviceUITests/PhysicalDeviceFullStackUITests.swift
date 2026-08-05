@@ -891,11 +891,23 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         guard header.waitForExistence(timeout: 10) else {
             throw DeviceE2EHarnessError.precondition("Active-model header disappeared")
         }
-        let label = header.label
-        XCTAssertTrue(
-            label.hasPrefix("Online ·"),
-            "Header did not switch to the online model: \(label)"
-        )
+        let headerText = header.staticTexts.firstMatch
+        guard headerText.waitForExistence(timeout: 5) else {
+            throw DeviceE2EHarnessError.precondition("Active-model header text is missing")
+        }
+        let deadline = Date().addingTimeInterval(10)
+        var value = headerText.label
+        while Date() < deadline, !value.hasPrefix("Online ·") {
+            Thread.sleep(forTimeInterval: 0.2)
+            value = headerText.label
+        }
+        if !value.hasPrefix("Online ·") {
+            attachDiagnostics(app, name: "online-header-not-switched")
+            throw DeviceE2EHarnessError.precondition(
+                "Header did not switch to the online model: \(value); "
+                    + "runtime=\(diagnosticValue("device-e2e.runtime", in: app))"
+            )
+        }
     }
 
     @MainActor

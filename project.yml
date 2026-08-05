@@ -126,6 +126,10 @@ targets:
         SWIFT_VERSION: "6.0"
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTED_PLATFORMS: iphoneos
+    preBuildScripts:
+      - name: Embed OpenAI test config
+        script: scripts/embed-openai-test-config.sh
+        basedOnDependencyAnalysis: false
     dependencies:
       - target: mobileLLM
 

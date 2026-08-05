@@ -284,6 +284,36 @@ final class ResourceArbiterTests: XCTestCase {
         XCTAssertEqual(driverSnapshot.lifecycleViolations, 0)
     }
 
+    func testOnlineDecodeSkipsResidencyDriverEntirely() async throws {
+        let driver = ScriptedModelResidencyDriver()
+        let arbiter = ResourceArbiter(driver: driver)
+        let online = try resourceModel("online")
+        let root = try await arbiter.acquireRoot(runID: resourceRun(701), admissionSequence: 1)
+
+        // The online provider is not in the local residency registry: acquiring its decode lane must
+        // not call the driver at all, and cancelling must not drain a nonexistent local model.
+        let decode = try await arbiter.acquireDecode(
+            selection: online,
+            rootLease: root,
+            requiresResidency: false
+        )
+        await expectAsyncValue(.released) {
+            await arbiter.cancelDrainAndReleaseDecode(decode)
+        }
+        await expectAsyncValue(.released) { await arbiter.releaseRoot(root) }
+
+        let driverSnapshot = await driver.snapshot()
+        XCTAssertTrue(
+            driverSnapshot.calls.isEmpty,
+            "online decode must never touch the local residency driver"
+        )
+        XCTAssertNil(driverSnapshot.residentSelection)
+        XCTAssertEqual(driverSnapshot.maxOperationsInFlight, 0)
+        XCTAssertEqual(driverSnapshot.maxResidentSelections, 0)
+        let arbiterSnapshot = await arbiter.snapshot()
+        XCTAssertEqual(arbiterSnapshot.metrics.residencyTransitions, 0)
+    }
+
     func testStaleSwitchCompletionCannotCommitAfterRootRelease() async throws {
         let firstModel = try resourceModel("stale-switch-first")
         let secondModel = try resourceModel("stale-switch-second")

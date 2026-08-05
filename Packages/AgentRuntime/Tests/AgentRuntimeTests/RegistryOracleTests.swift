@@ -6,7 +6,7 @@ import Foundation
 import XCTest
 
 final class RegistryOracleTests: XCTestCase {
-    func testCompiledReducerMatchesAllFiveThousandNineHundredTwentyEightRegistryCells() throws {
+    func testCompiledReducerMatchesAllSixThousandThreeHundredTwentyEightRegistryCells() throws {
         let registry: DecisionRegistry = try loadRegistry(named: "run-transitions.v1.json")
         XCTAssertEqual(registry.completeness, "complete")
 
@@ -14,10 +14,10 @@ final class RegistryOracleTests: XCTestCase {
             "commandAdmission": 72,
             "pauseCancelRouting": 128,
             "resumeRouting": 48,
-            "approvalCommandRouting": 176,
+            "approvalCommandRouting": 352,
             "responseCommandRouting": 48,
             "reconciliationCommandRouting": 80,
-            "trustedProgressRouting": 4_256,
+            "trustedProgressRouting": 4_480,
             "quiescenceRouting": 560,
             "terminalFailureRouting": 560,
         ]
@@ -78,10 +78,10 @@ final class RegistryOracleTests: XCTestCase {
                 XCTAssertEqual(winningRuleIDs, Set(rules.map(\.id)), "dead rule in \(table)")
             }
 
-            XCTAssertEqual(totalCells, 5_928)
+            XCTAssertEqual(totalCells, 6_328)
             XCTAssertEqual(allWinningRuleIDs, Set(registry.entries.map(\.id)))
-            XCTAssertEqual(allWinningRuleIDs.count, 125)
-            XCTAssertEqual(acceptedSelfTransitions, 4)
+            XCTAssertEqual(allWinningRuleIDs.count, 132)
+            XCTAssertEqual(acceptedSelfTransitions, 5)
         }
     }
 
@@ -113,6 +113,8 @@ final class RegistryOracleTests: XCTestCase {
                 Set(AgentResumeGuard.allCases.map(\.rawValue))
             case ("approvalCommandRouting", "guard"):
                 Set(AgentApprovalCommandGuard.allCases.map(\.rawValue))
+            case ("approvalCommandRouting", "operationKind"):
+                Set(AgentApprovalOperationKind.allCases.map(\.rawValue))
             case ("responseCommandRouting", "guard"):
                 Set(AgentResponseCommandGuard.allCases.map(\.rawValue))
             case ("reconciliationCommandRouting", "guard"):
@@ -205,7 +207,8 @@ final class RegistryOracleTests: XCTestCase {
             return .approvalCommand(
                 AgentApprovalCommandInput(
                     state: try value("state", AgentRunState.self),
-                    guardCondition: try value("guard", AgentApprovalCommandGuard.self)
+                    guardCondition: try value("guard", AgentApprovalCommandGuard.self),
+                    operationKind: try value("operationKind", AgentApprovalOperationKind.self)
                 )
             )
         case "responseCommandRouting":

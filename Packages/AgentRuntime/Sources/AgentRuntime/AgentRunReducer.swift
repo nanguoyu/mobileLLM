@@ -114,9 +114,18 @@ public enum AgentRunReducer {
         }
         switch input.guardCondition {
         case .exactApproved, .conversationReadApproved, .systemPermissionReady:
-            return .accepted(.executingTools)
+            // Models are not optional tools: an approved online-model request resumes the model path.
+            switch input.operationKind {
+            case .modelProvider: return .accepted(.waitingForModel)
+            case .tool: return .accepted(.executingTools)
+            }
         case .denied, .cancelled:
-            return .accepted(.synthesizing)
+            switch input.operationKind {
+            case .modelProvider:
+                return .accepted(.failed, terminalReason: .permissionDenied)
+            case .tool:
+                return .accepted(.synthesizing)
+            }
         case .systemPermissionPromptForeground:
             return .accepted(.waitingForApproval)
         case .systemPermissionPromptBackground:
@@ -178,6 +187,9 @@ public enum AgentRunReducer {
         case (.waitingForModel, .modelLeaseGranted, .valid),
              (.synthesizing, .modelLeaseGranted, .valid):
             return .accepted(.generating)
+        case (.waitingForModel, .modelNeedsApproval, .valid),
+             (.synthesizing, .modelNeedsApproval, .valid):
+            return .accepted(.waitingForApproval)
         case (.generating, .modelAttemptCompleted, .valid):
             return .accepted(.validatingAction)
         case (.generating, .modelRetryScheduled, .retryBudgetRemaining):

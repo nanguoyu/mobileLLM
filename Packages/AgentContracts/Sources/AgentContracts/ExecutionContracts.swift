@@ -52,7 +52,8 @@ public enum AgentRunTransitionMatrix {
             [.waitingForModel, .executingTools, .synthesizing, .waitingForForeground,
              .waitingForReconciliation, .pausing, .failed]
         case .waitingForModel:
-            [.generating, .waitingForForeground, .waitingForReconciliation, .pausing, .failed]
+            [.generating, .waitingForApproval, .waitingForForeground,
+             .waitingForReconciliation, .pausing, .failed]
         case .generating:
             [.waitingForModel, .validatingAction, .waitingForForeground,
              .waitingForReconciliation, .pausing, .failed]
@@ -60,13 +61,15 @@ public enum AgentRunTransitionMatrix {
             [.waitingForModel, .waitingForApproval, .executingTools, .waitingForUser,
              .waitingForReconciliation, .pausing, .completed, .failed]
         case .waitingForApproval:
-            [.executingTools, .synthesizing, .waitingForForeground, .cancelled, .failed]
+            [.executingTools, .synthesizing, .waitingForModel, .waitingForForeground,
+             .cancelled, .failed]
         case .executingTools:
             [.waitingForModel, .waitingForApproval, .waitingForReconciliation,
              .synthesizing, .pausing, .failed]
         case .waitingForUser: [.waitingForModel, .cancelled, .failed]
         case .synthesizing:
-            [.generating, .waitingForForeground, .waitingForReconciliation, .pausing, .failed]
+            [.generating, .waitingForApproval, .waitingForForeground,
+             .waitingForReconciliation, .pausing, .failed]
         case .pausing:
             [.paused, .waitingForForeground, .waitingForReconciliation, .cancelled, .failed]
         case .paused: [.preparing, .cancelled, .failed]

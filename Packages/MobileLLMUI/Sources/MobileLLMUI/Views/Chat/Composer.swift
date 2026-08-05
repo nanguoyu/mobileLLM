@@ -191,7 +191,10 @@ struct Composer: View {
     }
 
     private var placeholder: String {
-        "Message \(chat.activeModel?.model.displayName ?? "the model")…"
+        let name = chat.onlineModelID.map(OnlineModelIdentity.displayLabel)
+            ?? chat.activeModel?.model.displayName
+            ?? "the model"
+        return "Message \(name)…"
     }
 
     // MARK: Dictation

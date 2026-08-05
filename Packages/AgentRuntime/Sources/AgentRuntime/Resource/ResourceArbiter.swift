@@ -34,6 +34,9 @@ struct ModelDecodeLease: Hashable, Sendable {
     let runID: AgentRunID
     let admissionSequence: UInt64
     let selection: AgentModelSelection
+    /// Whether this decode owns a local-model residency. Online providers own none, so their lease
+    /// must never touch the residency driver (the selection is not in the local registry).
+    let requiresResidency: Bool
     fileprivate let arbiterID: UUID
     fileprivate let rootToken: UUID
     fileprivate let token: UUID
@@ -43,7 +46,8 @@ struct ModelDecodeLease: Hashable, Sendable {
         rootLease: RootExecutionLease,
         selection: AgentModelSelection,
         token: UUID,
-        residencyGeneration: UInt64
+        residencyGeneration: UInt64,
+        requiresResidency: Bool
     ) {
         runID = rootLease.runID
         admissionSequence = rootLease.admissionSequence
@@ -52,6 +56,7 @@ struct ModelDecodeLease: Hashable, Sendable {
         rootToken = rootLease.token
         self.token = token
         self.residencyGeneration = residencyGeneration
+        self.requiresResidency = requiresResidency
     }
 }
 
@@ -211,7 +216,8 @@ actor ResourceArbiter {
     /// Acquires the single decode permit, loading or switching residency when required.
     func acquireDecode(
         selection: AgentModelSelection,
-        rootLease: RootExecutionLease
+        rootLease: RootExecutionLease,
+        requiresResidency: Bool = true
     ) async throws -> ModelDecodeLease {
         try validateCurrentRoot(rootLease)
         if let residencyFault {
@@ -223,12 +229,14 @@ actor ResourceArbiter {
         if activeTransition != nil {
             throw ResourceArbiterError.residencyTransitionInProgress
         }
-        if let deferral = admissionDeferral(for: pressure) {
-            throw ResourceArbiterError.admissionDeferred(deferral)
-        }
-
         let generation: UInt64
-        if residentSelection == selection {
+        if !requiresResidency {
+            // Online inference owns no device weights and no decode lane into a local engine: device
+            // thermal/memory pressure must not gate it, and there is no residency to prepare.
+            generation = residencyGeneration
+        } else if let deferral = admissionDeferral(for: pressure) {
+            throw ResourceArbiterError.admissionDeferred(deferral)
+        } else if residentSelection == selection {
             generation = residencyGeneration
         } else {
             generation = try await prepareResidency(selection, for: rootLease)
@@ -239,7 +247,8 @@ actor ResourceArbiter {
             rootLease: rootLease,
             selection: selection,
             token: UUID(),
-            residencyGeneration: generation
+            residencyGeneration: generation,
+            requiresResidency: requiresResidency
         )
         decodeOwner = DecodeOwner(lease: lease)
         decodeGrants &+= 1
@@ -271,6 +280,12 @@ actor ResourceArbiter {
         if releasedDecodeTokens.contains(lease.token) { return .alreadyReleased }
         guard decodeOwner?.lease.token == lease.token else { return .wrongLease }
         guard activeTransition == nil else { return .transitionInProgress }
+        // Online leases never entered the residency driver, so there is nothing to drain or cancel.
+        if !lease.requiresResidency {
+            decodeOwner = nil
+            releasedDecodeTokens.insert(lease.token)
+            return .released
+        }
 
         let transition = beginTransition(
             operation: .cancelAndDrain,

@@ -13,8 +13,8 @@ final class ExecutionContractMatrixTests: XCTestCase {
                 .waitingForForeground, .waitingForReconciliation, .pausing, .failed,
             ],
             .waitingForModel: [
-                .waitingForModel, .generating, .waitingForForeground, .waitingForReconciliation,
-                .pausing, .failed,
+                .waitingForModel, .generating, .waitingForApproval, .waitingForForeground,
+                .waitingForReconciliation, .pausing, .failed,
             ],
             .generating: [
                 .generating, .waitingForModel, .validatingAction, .waitingForForeground,
@@ -25,8 +25,8 @@ final class ExecutionContractMatrixTests: XCTestCase {
                 .waitingForUser, .waitingForReconciliation, .pausing, .completed, .failed,
             ],
             .waitingForApproval: [
-                .waitingForApproval, .executingTools, .synthesizing, .waitingForForeground,
-                .cancelled, .failed,
+                .waitingForApproval, .executingTools, .synthesizing, .waitingForModel,
+                .waitingForForeground, .cancelled, .failed,
             ],
             .executingTools: [
                 .executingTools, .waitingForModel, .waitingForApproval,
@@ -34,8 +34,8 @@ final class ExecutionContractMatrixTests: XCTestCase {
             ],
             .waitingForUser: [.waitingForUser, .waitingForModel, .cancelled, .failed],
             .synthesizing: [
-                .synthesizing, .generating, .waitingForForeground, .waitingForReconciliation,
-                .pausing, .failed,
+                .synthesizing, .generating, .waitingForApproval, .waitingForForeground,
+                .waitingForReconciliation, .pausing, .failed,
             ],
             .pausing: [
                 .pausing, .paused, .waitingForForeground, .waitingForReconciliation,

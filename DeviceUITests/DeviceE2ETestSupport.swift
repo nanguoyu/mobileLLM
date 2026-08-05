@@ -20,6 +20,20 @@ private func loadOpenAITestConfig() -> (
     var baseURL = env["MOBILELLM_OPENAI_BASE_URL"]
     var model = env["MOBILELLM_OPENAI_MODEL"]
     if apiKey == nil || baseURL == nil || model == nil {
+        // Build-time embedded copy of ~/.mobilellm/openai.json (scripts/embed-openai-test-config.sh).
+        // This is the ONLY source that works on-device, where the test process cannot read the Mac
+        // home directory.
+        if let url = Bundle(for: DeviceE2ETestCase.self)
+            .url(forResource: "openai-config", withExtension: "json"),
+            let data = try? Data(contentsOf: url),
+            let config = try? JSONDecoder().decode(OpenAILocalTestConfig.self, from: data)
+        {
+            apiKey = apiKey ?? config.apiKey
+            baseURL = baseURL ?? config.baseURL
+            model = model ?? config.model
+        }
+    }
+    if apiKey == nil || baseURL == nil || model == nil {
         #if os(macOS)
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".mobilellm/openai.json")

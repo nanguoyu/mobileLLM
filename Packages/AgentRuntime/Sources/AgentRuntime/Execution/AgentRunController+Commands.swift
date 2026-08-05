@@ -933,15 +933,91 @@ extension AgentRunController {
         } catch {
             return try rejected(command, history: history, code: "execution.approval-scope")
         }
-        let next: AgentRunState = decision == .approved ? .executingTools : .synthesizing
+        let prepared = approval.request.prepared
+        let isModelApproval = prepared.plan.kind == .modelProvider
+        // An approved MODEL request resumes the model path (the worker re-runs the exact prepared
+        // attempt, now bound to the receipt); a tool approval resumes tool execution.
+        let approvedNext: AgentRunState
+        if isModelApproval {
+            let purpose = history.manifestEvents.count > history.modelOutcomes.count
+                ? history.manifestEvents.last?.3
+                : nil
+            approvedNext = purpose == .toolFreeSynthesis ? .synthesizing : .waitingForModel
+        } else {
+            approvedNext = .executingTools
+        }
+        // Models are not optional tools: denying an online-model request ends the run instead of
+        // synthesizing without it.
+        if isModelApproval, decision != .approved {
+            let failure = try AgentFailure(
+                code: decision == .denied
+                    ? "execution.model-approval-denied"
+                    : "execution.model-approval-cancelled",
+                classification: .permissionRelated,
+                safeMessage: decision == .denied
+                    ? "The online model request was denied."
+                    : "The online model request was cancelled.",
+                retryAdvice: .never,
+                externalEffect: .confirmedNone,
+                requiredUserAction: .none,
+                details: ["model": prepared.plan.subjectID],
+                redaction: Self.publicRedaction
+            )
+            let batch = try await commitEvents(
+                runID: command.runID,
+                identity: .command(command.commandID)
+            ) { builder in
+                var events: [AgentEventEnvelope] = [
+                    try builder.append(
+                        id: ExecutionStableID.commandEvent(
+                            runID: command.runID, commandID: command.commandID, ordinal: 0
+                        ),
+                        event: .approvalDecided(receipt),
+                        redaction: Self.publicRedaction
+                    ),
+                    try builder.append(
+                        id: ExecutionStableID.commandEvent(
+                            runID: command.runID, commandID: command.commandID, ordinal: 1
+                        ),
+                        event: .diagnostic(failure),
+                        redaction: Self.publicRedaction
+                    ),
+                ]
+                let terminal = try self.status(
+                    after: builder,
+                    state: .failed,
+                    terminalReason: .permissionDenied,
+                    failure: failure
+                )
+                let result = try AgentResult(
+                    requestID: builder.requestID,
+                    executionHandleID: builder.handleID,
+                    runID: command.runID,
+                    status: terminal,
+                    answer: nil,
+                    usage: builder.usage
+                )
+                events.append(try builder.append(
+                    id: ExecutionStableID.commandEvent(
+                        runID: command.runID, commandID: command.commandID, ordinal: 2
+                    ),
+                    event: .terminal(result),
+                    transitionTo: .failed,
+                    redaction: Self.publicRedaction
+                ))
+                return events
+            }
+            return try accepted(command, status: try statusFrom(batch))
+        }
+        let next: AgentRunState = decision == .approved ? approvedNext : .synthesizing
         let invocationDescription: String
-        if let invocationID = approval.request.prepared.invocationID {
+        if let invocationID = prepared.invocationID {
             invocationDescription = invocationID.description
         } else {
             invocationDescription = "none"
         }
         let descriptorDescription: String
-        if let descriptorID = approval.request.prepared.plan.descriptorID {
+        if let descriptorID = prepared.plan.descriptorID {
             descriptorDescription = descriptorID
         } else {
             descriptorDescription = "none"
@@ -986,7 +1062,8 @@ extension AgentRunController {
                     redaction: Self.publicRedaction
                 ))
             }
-            let status = try self.status(after: builder, state: next)
+            let blocking: AgentBlockingReason? = next == .waitingForModel ? .modelResource : nil
+            let status = try self.status(after: builder, state: next, blockingReason: blocking)
             events.append(try builder.append(
                 id: ExecutionStableID.commandEvent(
                     runID: command.runID,

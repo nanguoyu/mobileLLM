@@ -121,14 +121,27 @@ public enum AgentApprovalCommandGuard: String, CaseIterable, Hashable, Codable, 
     case systemPermissionDenied
 }
 
+/// What kind of prepared operation an approval command concerns. Models are not optional tools: an
+/// approved online-model request resumes the model path, and a denial ends the run.
+public enum AgentApprovalOperationKind: String, CaseIterable, Hashable, Codable, Sendable {
+    case tool
+    case modelProvider
+}
+
 /// Complete finite-domain input for approval-command routing.
 public struct AgentApprovalCommandInput: Hashable, Codable, Sendable {
     public let state: AgentRunState
     public let guardCondition: AgentApprovalCommandGuard
+    public let operationKind: AgentApprovalOperationKind
 
-    public init(state: AgentRunState, guardCondition: AgentApprovalCommandGuard) {
+    public init(
+        state: AgentRunState,
+        guardCondition: AgentApprovalCommandGuard,
+        operationKind: AgentApprovalOperationKind = .tool
+    ) {
         self.state = state
         self.guardCondition = guardCondition
+        self.operationKind = operationKind
     }
 }
 
@@ -177,6 +190,8 @@ public enum AgentTrustedProgressTrigger: String, CaseIterable, Hashable, Codable
     case recoveredToolBatchPending
     case recoveredToolBatchFailed
     case modelLeaseGranted
+    /// A model attempt (online provider) reached its data-egress approval gate.
+    case modelNeedsApproval
     case modelAttemptCompleted
     case modelRetryScheduled
     case finalAnswerCommitted
