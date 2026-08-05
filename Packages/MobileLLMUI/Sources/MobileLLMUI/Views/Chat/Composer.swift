@@ -323,8 +323,8 @@ struct Composer: View {
     private var plusMenu: some View {
         Menu {
             if thinkingCapable {
-                Toggle(isOn: Binding(get: { chat.thinkingEnabled },
-                                     set: { chat.thinkingEnabled = $0 })) {
+                Toggle(isOn: Binding(get: { chat.composerThinkingEnabled },
+                                     set: { chat.composerThinkingEnabled = $0 })) {
                     Label("Thinking", systemImage: "brain")
                 }
             }
@@ -355,7 +355,9 @@ struct Composer: View {
                 } label: { Label("Paste Image", systemImage: "doc.on.clipboard") }
             }
         } label: {
-            let active = chat.toolsEnabled || (thinkingCapable && chat.thinkingEnabled) || chat.activeSkill != nil
+            let active = chat.toolsEnabled
+                || (thinkingCapable && chat.composerThinkingEnabled)
+                || chat.activeSkill != nil
             Image(systemName: "plus")
                 .font(.body.weight(.medium))
                 .foregroundStyle(active ? Theme.accent : Theme.textTertiary)

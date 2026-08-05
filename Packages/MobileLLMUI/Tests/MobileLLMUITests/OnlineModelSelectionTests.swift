@@ -174,4 +174,50 @@ final class OnlineModelSelectionTests: XCTestCase {
         settings.contextLength = 400_000
         XCTAssertEqual(chat.contextUsage().cap, OnlineModelIdentity.maximumContextTokens)
     }
+
+    /// "Allow reasoning" is a per-conversation override: the composer toggle writes the thread's own
+    /// value (defaulting to the service setting) instead of mutating the global service config.
+    func testOnlineReasoningIsPerConversation() {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "online-reason-\(UUID().uuidString)")!)
+        settings.upsertOnlineService(OnlineService(
+            id: OnlineService.defaultID,
+            name: "Gateway",
+            baseURL: "https://gateway.example.com/v1",
+            modelID: "gateway-model",
+            isEnabled: true,
+            reasoningEnabled: true   // service default = reasoning on
+        ))
+        let chat = ChatStore(
+            engine: MockLLMEngine(script: .init()),
+            store: store,
+            settings: settings,
+            activeModel: nil
+        )
+
+        // Fresh online thread: no override yet, so it follows the service default.
+        let convo = chat.newConversation()
+        XCTAssertEqual(chat.composerThinkingEnabled, true)
+        XCTAssertNil(convo?.onlineReasoningEnabled)
+
+        // Toggle in the composer persists ONLY this thread's override.
+        chat.composerThinkingEnabled = false
+        XCTAssertEqual(chat.onlineReasoningEnabled, false)
+        XCTAssertEqual(chat.activeConversation?.onlineReasoningEnabled, false)
+        XCTAssertEqual(
+            settings.onlineActiveService?.reasoningEnabled,
+            true,
+            "the per-conversation toggle must not change the service default"
+        )
+
+        // Make the first thread non-empty so the next New Chat creates a fresh thread, which must
+        // start from the service default again (no override carried over).
+        if let idx = chat.conversations.firstIndex(where: { $0.id == chat.activeID }) {
+            chat.conversations[idx].messages.append(Message(role: .user, answer: "hi"))
+        }
+        chat.newConversation()
+        XCTAssertEqual(chat.composerThinkingEnabled, true)
+        XCTAssertNil(chat.activeConversation?.onlineReasoningEnabled)
+    }
 }

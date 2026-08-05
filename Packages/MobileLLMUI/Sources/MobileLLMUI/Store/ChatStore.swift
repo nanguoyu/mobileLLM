@@ -315,6 +315,38 @@ public final class ChatStore {
     /// Stable id of the active online service (Keychain account + approval destination scope).
     public var onlineServiceID: String? { settings.onlineServiceID }
 
+    /// Whether the ACTIVE thread remembers an online service identity.
+    public var isOnlineThread: Bool {
+        guard let convo = activeConversation else { return false }
+        return OnlineModelIdentity.serviceParts(fromConversationModelID: convo.modelID) != nil
+    }
+
+    /// Effective online reasoning for the next send: the thread's explicit per-conversation override,
+    /// else the active service's "Allow reasoning" default.
+    public var onlineReasoningEnabled: Bool {
+        guard isOnlineActive else { return false }
+        if let convo = activeConversation, let override = convo.onlineReasoningEnabled {
+            return override
+        }
+        return settings.onlineActiveService?.reasoningEnabled ?? false
+    }
+
+    /// The single composer thinking control: online threads persist their own override on the
+    /// conversation record; local threads keep the session toggle.
+    public var composerThinkingEnabled: Bool {
+        get { isOnlineActive ? onlineReasoningEnabled : thinkingEnabled }
+        set {
+            if isOnlineActive, let convo = activeConversation,
+               let idx = conversations.firstIndex(where: { $0.id == convo.id })
+            {
+                conversations[idx].onlineReasoningEnabled = newValue
+                persist(conversations[idx])
+            } else {
+                thinkingEnabled = newValue
+            }
+        }
+    }
+
     /// Whether the next turn routes to the online provider. First-class model choice: it needs no local
     /// weights and no `activeModel`, so a device with zero installed models can still chat online.
     public var isOnlineActive: Bool { onlineModelID != nil }

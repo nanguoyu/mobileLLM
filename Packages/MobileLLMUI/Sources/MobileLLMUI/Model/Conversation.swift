@@ -147,11 +147,15 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
     /// nil; a legacy conversation materializes the current global template exactly once on its first
     /// agent-runtime run, then persists the marker.
     public var toolPolicy: ConversationToolPolicy?
+    /// Per-thread override for ONLINE service reasoning (nil = follow the service's "Allow reasoning"
+    /// setting). Synthesized Codable decodes a missing key as nil, so old records are unaffected.
+    public var onlineReasoningEnabled: Bool?
 
     public init(id: UUID = UUID(), title: String = "New Chat", createdAt: Date = Date(),
                 updatedAt: Date = Date(), systemPromptID: String? = nil, modelID: String,
                 variantID: String, messages: [Message] = [], pinned: Bool = false,
-                skillID: UUID? = nil, toolPolicy: ConversationToolPolicy? = nil) {
+                skillID: UUID? = nil, toolPolicy: ConversationToolPolicy? = nil,
+                onlineReasoningEnabled: Bool? = nil) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
@@ -163,6 +167,7 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
         self.pinned = pinned
         self.skillID = skillID
         self.toolPolicy = toolPolicy
+        self.onlineReasoningEnabled = onlineReasoningEnabled
     }
 
     /// A one-line preview for the conversation list (last user or assistant text).
