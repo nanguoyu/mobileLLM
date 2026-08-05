@@ -14,14 +14,9 @@ private struct BottomOffsetKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
-/// Tracks the thread content's own height so autoscroll can tell "content fits the viewport" apart from
-/// "scrolled to the bottom of overflowing content" — scrollTo on under-filled content makes the whole
-/// view judder on every token instead of scrolling.
-private struct ContentHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
+/// Tracks the content's top edge so auto-follow can tell "the user scrolled" (the top moves with
+/// them) from "content grew at the bottom" (the top stays put until we re-pin). The sentinel is a
+/// permanent VStack sibling, never a lazy child, so it always reports.
 /// The message list + streaming surface (DESIGN §4). User turns are right-aligned bubbles; assistant
 /// turns are full-width document text. History ALWAYS renders (a suspended/absent model never hides the
 /// thread); a distinct loading state owns a cold-start load; sticky-bottom autoscroll with a "⌄ new"
@@ -42,17 +37,6 @@ struct ChatThreadView: View {
     @State private var atBottom = true
     /// The bottom marker's current Y in the scroll view's coordinate space.
     @State private var bottomMaxY: CGFloat = 0
-    /// The thread content's total height (drives `overflowing` and growth detection).
-    @State private var contentHeight: CGFloat = 0
-    /// The thread content's total height at the last moment we were pinned at the bottom. A taller
-    /// value later means content grew (safe to follow); an unchanged value while the bottom marker
-    /// moves means the USER scrolled away (never fight it).
-    @State private var lastPinnedContentHeight: CGFloat = 0
-    /// True while the user is actively dragging the thread. Auto-follow is suspended during the drag
-    /// so a token landing mid-gesture can never yank the user back to the bottom.
-    @State private var userInteracting = false
-    /// True once the thread content is taller than the viewport — the precondition for follow-scrolling.
-    @State private var overflowing = false
     @State private var editing: Message?
     @State private var editText = ""
     /// A mid-history regenerate awaiting confirmation (nil = none pending).
@@ -130,17 +114,28 @@ struct ChatThreadView: View {
         GeometryReader { outer in
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: Theme.Space.lg) {
-                        ForEach(convo.messages) { message in
-                            row(message).id(message.id)
+                    VStack(alignment: .leading, spacing: 0) {
+                        LazyVStack(alignment: .leading, spacing: Theme.Space.lg) {
+                            ForEach(convo.messages) { message in
+                                row(message).id(message.id)
+                            }
+                            if let agentRuns,
+                               let run = agentRuns.presentation(for: convo.id),
+                               run.needsPanel
+                            {
+                                AgentRunPanel(store: agentRuns, conversationID: convo.id)
+                                    .id("agent-run-\(run.runID.description)")
+                            }
                         }
-                        if let agentRuns,
-                           let run = agentRuns.presentation(for: convo.id),
-                           run.needsPanel
-                        {
-                            AgentRunPanel(store: agentRuns, conversationID: convo.id)
-                                .id("agent-run-\(run.runID.description)")
-                        }
+                        .padding(Theme.Space.lg)
+                        .frame(maxWidth: Theme.Layout.readingColumn, alignment: .leading)
+                        .frame(maxWidth: .infinity)
+
+                        // The bottom marker is deliberately OUTSIDE the lazy stack: a lazy child far
+                        // below the viewport gets unloaded, which silently stops its preference from
+                        // firing and freezes auto-follow (the thread appears stuck at the top). As a
+                        // permanent sibling it always reports its position, so follow and the
+                        // "Scroll to latest" pill stay live at every scroll offset.
                         Color.clear
                             .frame(height: 1)
                             .id(bottomID)
@@ -149,34 +144,18 @@ struct ChatThreadView: View {
                                                        value: geo.frame(in: .named("thread")).maxY)
                             })
                     }
-                    .padding(Theme.Space.lg)
-                    .frame(maxWidth: Theme.Layout.readingColumn, alignment: .leading)
                     .frame(maxWidth: .infinity)
-                    .background(GeometryReader { g in
-                        Color.clear.preference(key: ContentHeightKey.self, value: g.size.height)
-                    })
                 }
+                // Platform-native bottom anchoring (iOS 17+): while the scroll view is at the bottom,
+                // content growth keeps the bottom edge pinned without any per-token manual scrolling.
+                // The user can still scroll away; the pill below reflects that state.
+                .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)   // drag the thread down to dismiss the keyboard
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 8)
-                        .onChanged { _ in userInteracting = true }
-                        .onEnded { _ in
-                            userInteracting = false
-                            if bottomMaxY > outer.size.height + 40 {
-                                atBottom = false
-                            }
-                        }
-                )
                 .coordinateSpace(name: "thread")
                 .background(Theme.bg)
                 .onPreferenceChange(BottomOffsetKey.self) { maxY in
                     bottomMaxY = maxY
-                    followIfNeeded(proxy, viewportHeight: outer.size.height)
-                }
-                .onPreferenceChange(ContentHeightKey.self) { h in
-                    contentHeight = h
-                    overflowing = h > outer.size.height + 1
-                    followIfNeeded(proxy, viewportHeight: outer.size.height)
+                    atBottom = maxY <= outer.size.height + 40
                 }
                 .onChange(of: convo.messages.count) { _, _ in scrollToBottom(proxy, animated: false) }
                 .onChange(of: chat.activeID) { _, _ in scrollToBottom(proxy, animated: false) }
@@ -269,38 +248,7 @@ struct ChatThreadView: View {
         } else {
             proxy.scrollTo(bottomID, anchor: .bottom)
         }
-        // We just pinned the thread; remember the content height so the next preference pass can tell
-        // "content grew" (follow again) from "user scrolled away" (leave them alone).
-        lastPinnedContentHeight = contentHeight
         atBottom = true
-    }
-
-    /// The single follow decision: re-pin the bottom when NEW CONTENT pushed the marker down while the
-    /// user was at the bottom, and stay away when the user scrolled. Called from both preference
-    /// callbacks. The decision is deferred one runloop turn because the bottom-marker and content-size
-    /// preferences land in the SAME layout pass in unspecified order; by the next turn both values are
-    /// current, so "content grew" can be told apart from "user scrolled away" deterministically.
-    private func followIfNeeded(_ proxy: ScrollViewProxy, viewportHeight: CGFloat) {
-        if bottomMaxY <= viewportHeight + 40 {
-            atBottom = true
-            lastPinnedContentHeight = contentHeight
-            return
-        }
-        guard atBottom, overflowing else {
-            atBottom = false
-            return
-        }
-        let contentHeightAtDecision = contentHeight
-        let lastPinnedAtDecision = lastPinnedContentHeight
-        Task { @MainActor in
-            guard !userInteracting else { return }
-            if contentHeight > lastPinnedAtDecision + 1 {
-                scrollToBottom(proxy, animated: false)
-            } else if contentHeight == contentHeightAtDecision {
-                // No content change arrived in this pass: the user scrolled away, so stop following.
-                atBottom = false
-            }
-        }
     }
 
     // MARK: Edit & resend

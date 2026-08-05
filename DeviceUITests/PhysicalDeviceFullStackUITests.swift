@@ -2107,6 +2107,66 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         )
         XCTAssertFalse(evidence.answer.isEmpty)
     }
+
+    /// The stream must follow the latest output INTO the visible viewport: while generation continues,
+    /// the bottom of the live answer stays above the composer instead of scrolling off-screen.
+    @MainActor
+    func test15OnlineStreamFollowsLatestOutputIntoView() throws {
+        let app = try launchApp()
+        try configureTools(master: false, enabled: [], in: app)
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let field = app.textFields["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        field.tap()
+        field.typeText("Write a detailed 800-word essay about sleep and memory, with at least ten "
+            + "paragraphs. Do not stop early.")
+        let send = app.buttons["Send"]
+        XCTAssertTrue(waitForEnabled(send, timeout: 20))
+        send.tap()
+
+        let answers = app.descendants(matching: .any).matching(identifier: "assistant.answer")
+        let streamStart = Date()
+        var sawStreaming = false
+        while Date().timeIntervalSince(streamStart) < 240 {
+            if app.buttons["Stop"].exists,
+               let last = answers.allElementsBoundByIndex.last
+            {
+                let value = (last.value as? String) ?? last.label
+                if value.trimmingCharacters(in: .whitespacesAndNewlines).count > 40 {
+                    sawStreaming = true
+                    break
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        XCTAssertTrue(sawStreaming, "online answer must stream before commit")
+
+        // Over the next several seconds of growth, the live answer's bottom must stay at/above the
+        // composer's top edge (the settings row occupies the small strip between thread and composer).
+        let composerFrame = field.frame
+        var latestMaxY: CGFloat = 0
+        var allVisible = true
+        let checkDeadline = Date().addingTimeInterval(8)
+        while Date() < checkDeadline {
+            Thread.sleep(forTimeInterval: 1)
+            guard let last = answers.allElementsBoundByIndex.last else { continue }
+            latestMaxY = last.frame.maxY
+            if latestMaxY > composerFrame.minY + 12 {
+                allVisible = false
+            }
+        }
+        let pillPresent = app.buttons.matching(
+            NSPredicate(format: "label == %@", "Scroll to latest")
+        ).firstMatch.exists
+        let stillStreaming = app.buttons["Stop"].exists
+        XCTAssertTrue(
+            allVisible,
+            "stream must follow the latest text into view; answer bottom \(latestMaxY), "
+                + "composer top \(composerFrame.minY), pill=\(pillPresent), streaming=\(stillStreaming)"
+        )
+    }
 }
 
 private extension XCUIElementQuery {
