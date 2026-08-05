@@ -328,6 +328,34 @@ struct Composer: View {
                     Label("Thinking", systemImage: "brain")
                 }
             }
+            if let options = contextOptions {
+                Menu {
+                    Button {
+                        chat.setConversationContextLength(nil)
+                    } label: {
+                        if chat.conversationContextOverride == nil {
+                            Label("Follow settings (\(Format.shortCount(contextDefault)))",
+                                  systemImage: "checkmark")
+                        } else {
+                            Text("Follow settings (\(Format.shortCount(contextDefault)))")
+                        }
+                    }
+                    Divider()
+                    ForEach(options, id: \.self) { n in
+                        Button {
+                            chat.setConversationContextLength(n)
+                        } label: {
+                            if chat.conversationContextOverride == n {
+                                Label(Format.shortCount(n), systemImage: "checkmark")
+                            } else {
+                                Text(Format.shortCount(n))
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Context", systemImage: "text.alignleft")
+                }
+            }
             toolMenu
             if chat.skillStore != nil { skillMenu }
             if canAttachImages {
@@ -368,6 +396,19 @@ struct Composer: View {
         .menuIndicator(.hidden)
         .accessibilityLabel("Chat options")
         .accessibilityHint("Thinking, tools and image attachments")
+    }
+
+    /// Context rungs offered for the ACTIVE conversation: online services get their own ladder; local
+    /// models get their model-specific ladder (hidden when no local model identity exists).
+    private var contextOptions: [Int]? {
+        if chat.isOnlineActive { return OnlineModelIdentity.contextLadder }
+        guard let model = chat.activeModel?.model else { return nil }
+        return ContextPolicy.options(for: model)
+    }
+
+    /// The global default this conversation falls back to when no per-conversation override is set.
+    private var contextDefault: Int {
+        chat.isOnlineActive ? settings.onlineContextLength : settings.contextLength
     }
 
     // MARK: Tool selection

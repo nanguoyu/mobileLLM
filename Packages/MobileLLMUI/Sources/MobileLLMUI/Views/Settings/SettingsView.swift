@@ -319,7 +319,7 @@ struct SettingsView: View {
             ? OnlineModelIdentity.contextLadder
             : (model.map { ContextPolicy.options(for: $0) } ?? ContextPolicy.ladder)
         let shown = online
-            ? min(settings.contextLength, OnlineModelIdentity.maximumContextTokens)
+            ? min(settings.onlineContextLength, OnlineModelIdentity.maximumContextTokens)
             : (model.map { ContextPolicy.effective(requested: settings.contextLength, model: $0) }
                 ?? settings.contextLength)
         VStack(alignment: .leading, spacing: 4) {
@@ -328,7 +328,9 @@ struct SettingsView: View {
                 Spacer()
                 Menu {
                     ForEach(options, id: \.self) { n in
-                        Button { settings.contextLength = n } label: {
+                        Button {
+                            if online { settings.onlineContextLength = n } else { settings.contextLength = n }
+                        } label: {
                             // The dot is the point: it says which rungs this device can actually hold.
                             Label(Format.shortCount(n), systemImage: fitSymbol(n))
                         }

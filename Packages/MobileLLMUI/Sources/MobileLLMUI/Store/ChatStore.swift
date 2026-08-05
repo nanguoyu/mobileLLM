@@ -347,6 +347,25 @@ public final class ChatStore {
         }
     }
 
+    /// The active thread's per-conversation context override (nil = follow the global setting).
+    public var conversationContextOverride: Int? { activeConversation?.contextLength }
+
+    /// Context request for the next LOCAL run: thread override, else the global local setting.
+    public var localContextRequest: Int { conversationContextOverride ?? settings.contextLength }
+
+    /// Context request for the next ONLINE run: thread override, else the global online setting.
+    public var onlineContextRequest: Int {
+        conversationContextOverride ?? settings.onlineContextLength
+    }
+
+    /// Persist a per-conversation context override (nil = follow the global setting again).
+    public func setConversationContextLength(_ value: Int?) {
+        guard let convo = activeConversation,
+              let idx = conversations.firstIndex(where: { $0.id == convo.id }) else { return }
+        conversations[idx].contextLength = value
+        persist(conversations[idx])
+    }
+
     /// Whether the next turn routes to the online provider. First-class model choice: it needs no local
     /// weights and no `activeModel`, so a device with zero installed models can still chat online.
     public var isOnlineActive: Bool { onlineModelID != nil }
@@ -1644,9 +1663,11 @@ public final class ChatStore {
         if isOnlineActive {
             // Online providers are not bounded by device RAM: the setting is the cap (up to the service
             // window) instead of a local checkpoint's native context.
-            cap = min(settings.contextLength, OnlineModelIdentity.maximumContextTokens)
+            cap = min(onlineContextRequest, OnlineModelIdentity.maximumContextTokens)
+        } else if let model = activeModel?.model {
+            cap = ContextPolicy.effective(requested: localContextRequest, model: model)
         } else {
-            cap = settings.effectiveContext(for: activeModel?.model)
+            cap = localContextRequest
         }
         guard let convo = activeConversation else { return (0, cap) }
         // CJK-aware throughout (`TokenEstimate`) so a Chinese thread's meter isn't ~3× under. The active

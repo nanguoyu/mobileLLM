@@ -458,7 +458,7 @@ private func makeAgentSnapshot(
         variant: identity.variant,
         weightsDirectory: identity.weightsDirectory,
         thinkingEnabled: container.chat.thinkingEnabled,
-        contextLength: container.settings.contextLength,
+        contextLength: container.chat.localContextRequest,
         maxTokens: container.settings.maxTokens,
         temperature: container.settings.temperature,
         topP: container.settings.topP,
@@ -481,7 +481,8 @@ private func makeAgentSnapshot(
         onlineModelEnabled: container.settings.openAIOnlineEnabled,
         onlineModelID: onlineModelID,
         onlineServiceID: container.chat.onlineServiceID,
-        onlineReasoningEnabled: container.chat.onlineReasoningEnabled
+        onlineReasoningEnabled: container.chat.onlineReasoningEnabled,
+        onlineContextLength: container.chat.onlineContextRequest
     )
 }
 

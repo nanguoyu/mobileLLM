@@ -57,6 +57,8 @@ public struct AgentRunRequestSnapshot: Sendable {
     /// Per-service opt-in for the service's own reasoning phase (explicit user setting, not the
     /// composer toggle, which has no meaning for online providers).
     public let onlineReasoningEnabled: Bool
+    /// Per-kind context window for online runs (independent of the local `contextLength`).
+    public let onlineContextLength: Int
 
     public init(
         conversationID: UUID,
@@ -88,7 +90,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         onlineModelEnabled: Bool,
         onlineModelID: String?,
         onlineServiceID: String?,
-        onlineReasoningEnabled: Bool
+        onlineReasoningEnabled: Bool,
+        onlineContextLength: Int
     ) {
         self.conversationID = conversationID
         self.userTurnID = userTurnID
@@ -120,6 +123,7 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.onlineModelID = onlineModelID
         self.onlineServiceID = onlineServiceID
         self.onlineReasoningEnabled = onlineReasoningEnabled
+        self.onlineContextLength = onlineContextLength
     }
 }
 
@@ -188,7 +192,7 @@ struct AppFrozenInputBuilder: Sendable {
         // Online providers report their own ceilings (200k context); clamping to a local checkpoint's
         // native context would silently shorten an online run the user asked to keep long.
         let effectiveContext = online
-            ? UInt64(snapshot.contextLength)
+            ? UInt64(snapshot.onlineContextLength)
             : UInt64(ContextPolicy.effective(requested: snapshot.contextLength, model: snapshot.model))
         let contextBudget = try ContextTokenBudget(
             maximumContextTokens: effectiveContext,
@@ -299,7 +303,7 @@ struct AppFrozenInputBuilder: Sendable {
         let online = Self.isOnline(snapshot: snapshot)
         let runID = AgentRunID(rawValue: UUID())
         let effectiveContext = online
-            ? UInt64(snapshot.contextLength)
+            ? UInt64(snapshot.onlineContextLength)
             : UInt64(ContextPolicy.effective(requested: snapshot.contextLength, model: snapshot.model))
         let budget = try AgentBudget.firstReleaseDefaults(
             contextTokensPerAttempt: effectiveContext,

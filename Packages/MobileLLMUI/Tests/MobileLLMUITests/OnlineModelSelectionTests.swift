@@ -168,10 +168,10 @@ final class OnlineModelSelectionTests: XCTestCase {
             activeModel: nil
         )
 
-        settings.contextLength = 32_768
+        settings.onlineContextLength = 32_768
         XCTAssertEqual(chat.contextUsage().cap, 32_768)
 
-        settings.contextLength = 400_000
+        settings.onlineContextLength = 400_000
         XCTAssertEqual(chat.contextUsage().cap, OnlineModelIdentity.maximumContextTokens)
     }
 
@@ -219,5 +219,58 @@ final class OnlineModelSelectionTests: XCTestCase {
         chat.newConversation()
         XCTAssertEqual(chat.composerThinkingEnabled, true)
         XCTAssertNil(chat.activeConversation?.onlineReasoningEnabled)
+    }
+
+    /// Context length is a per-conversation override for BOTH online and local threads: the override
+    /// persists on the conversation, new threads fall back to the global default, and local runs are
+    /// still clamped by the checkpoint's native context.
+    func testConversationContextOverridePersistsPerThread() {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let settings = makeOnlineSettings()
+        let chat = ChatStore(
+            engine: MockLLMEngine(script: .init()),
+            store: store,
+            settings: settings,
+            activeModel: nil
+        )
+        chat.newConversation()
+
+        XCTAssertEqual(chat.onlineContextRequest, 32_768, "online default is 32K, not the local 8K")
+        chat.setConversationContextLength(65_536)
+        XCTAssertEqual(chat.conversationContextOverride, 65_536)
+        XCTAssertEqual(chat.onlineContextRequest, 65_536)
+        XCTAssertEqual(chat.contextUsage().cap, 65_536)
+
+        // A fresh thread starts from the global default again.
+        if let idx = chat.conversations.firstIndex(where: { $0.id == chat.activeID }) {
+            chat.conversations[idx].messages.append(Message(role: .user, answer: "hi"))
+        }
+        chat.newConversation()
+        XCTAssertNil(chat.conversationContextOverride)
+        XCTAssertEqual(chat.onlineContextRequest, 32_768)
+
+        // Local thread: override is clamped by the model's native context.
+        let localSettings = AppSettings(defaults: UserDefaults(suiteName: "local-ctx-\(UUID().uuidString)")!)
+        localSettings.contextLength = 8_192
+        let localChat = ChatStore(
+            engine: MockLLMEngine(script: .init()),
+            store: store,
+            settings: localSettings,
+            activeModel: LoadedModel(
+                model: LLMCatalog.bonsai8b,
+                variant: LLMCatalog.bonsai8b.defaultVariantValue
+            )
+        )
+        localChat.newConversation()
+        localChat.setConversationContextLength(4_096)
+        XCTAssertEqual(localChat.localContextRequest, 4_096)
+        XCTAssertEqual(localChat.contextUsage().cap, 4_096)
+        localChat.setConversationContextLength(65_536)
+        XCTAssertEqual(
+            localChat.contextUsage().cap,
+            ContextPolicy.effective(requested: 65_536, model: LLMCatalog.bonsai8b),
+            "local context stays clamped by the checkpoint's native window"
+        )
     }
 }

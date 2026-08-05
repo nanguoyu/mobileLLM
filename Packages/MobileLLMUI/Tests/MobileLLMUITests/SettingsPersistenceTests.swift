@@ -142,6 +142,18 @@ final class SettingsPersistenceTests: XCTestCase {
         XCTAssertEqual(reloaded.onlineServices.first?.id, "svc-openai")
     }
 
+    /// Online context is its own preference (default 32K, not the local 8K) and persists independently.
+    func testOnlineContextLengthPersistsIndependently() {
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.onlineContextLength, 32_768)
+
+        settings.contextLength = 4_096
+        settings.onlineContextLength = 65_536
+        let reloaded = AppSettings(defaults: defaults)
+        XCTAssertEqual(reloaded.contextLength, 4_096)
+        XCTAssertEqual(reloaded.onlineContextLength, 65_536)
+    }
+
     /// A pre-D2 snapshot (no tool fields at all) decodes to the defaults: the privacy-sensitive tools off,
     /// both engines on — so an upgraded install behaves exactly like a fresh one, and the surrounding
     /// settings are untouched (all-or-nothing decode).

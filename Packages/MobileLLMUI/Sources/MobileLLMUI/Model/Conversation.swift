@@ -150,12 +150,15 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
     /// Per-thread override for ONLINE service reasoning (nil = follow the service's "Allow reasoning"
     /// setting). Synthesized Codable decodes a missing key as nil, so old records are unaffected.
     public var onlineReasoningEnabled: Bool?
+    /// Per-thread context-window override in tokens (nil = follow the app's global setting — the
+    /// local `contextLength` or the online `onlineContextLength`). Missing key decodes as nil.
+    public var contextLength: Int?
 
     public init(id: UUID = UUID(), title: String = "New Chat", createdAt: Date = Date(),
                 updatedAt: Date = Date(), systemPromptID: String? = nil, modelID: String,
                 variantID: String, messages: [Message] = [], pinned: Bool = false,
                 skillID: UUID? = nil, toolPolicy: ConversationToolPolicy? = nil,
-                onlineReasoningEnabled: Bool? = nil) {
+                onlineReasoningEnabled: Bool? = nil, contextLength: Int? = nil) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
@@ -168,6 +171,7 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
         self.skillID = skillID
         self.toolPolicy = toolPolicy
         self.onlineReasoningEnabled = onlineReasoningEnabled
+        self.contextLength = contextLength
     }
 
     /// A one-line preview for the conversation list (last user or assistant text).

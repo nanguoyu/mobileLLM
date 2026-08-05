@@ -159,6 +159,9 @@ public final class AppSettings {
     public var repetitionPenalty: Double { didSet { persist() } }
     public var maxTokens: Int { didSet { persist() } }
     public var contextLength: Int { didSet { persist() } }
+    /// Context window for ONLINE services. Device RAM isn't the binding constraint (the service owns
+    /// the KV cache), so this is independent of `contextLength` and defaults to a larger window.
+    public var onlineContextLength: Int { didSet { persist() } }
     /// KV-cache quantization width; 0 = unquantized (advanced).
     public var kvBits: Int { didSet { persist() } }
 
@@ -239,6 +242,7 @@ public final class AppSettings {
         repetitionPenalty = snap?.repetitionPenalty ?? 1.05
         maxTokens = snap?.maxTokens ?? 1024
         contextLength = snap?.contextLength ?? 8192
+        onlineContextLength = snap?.onlineContextLength ?? 32_768
         kvBits = snap?.kvBits ?? 4
         appearance = snap?.appearance ?? .system
         loading = false
@@ -375,6 +379,7 @@ public final class AppSettings {
         var repetitionPenalty: Double
         var maxTokens: Int
         var contextLength: Int
+        var onlineContextLength: Int? = nil
         var kvBits: Int
         var appearance: AppearanceMode
     }
@@ -398,7 +403,8 @@ public final class AppSettings {
                             onlineServices: onlineServices,
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
-                            contextLength: contextLength, kvBits: kvBits, appearance: appearance)
+                            contextLength: contextLength, onlineContextLength: onlineContextLength,
+                            kvBits: kvBits, appearance: appearance)
         if let data = try? JSONEncoder().encode(snap) { defaults.set(data, forKey: key) }
     }
 
@@ -435,6 +441,7 @@ public final class AppSettings {
         repetitionPenalty = 1.05
         maxTokens = 1024
         contextLength = 8192
+        onlineContextLength = 32_768
         kvBits = 4
         appearance = .system
         loading = false
