@@ -49,13 +49,14 @@ struct AgentRunBadge: View {
     }
 }
 
-/// The top-level agent interaction surface inside one chat thread: a compact activity row that
-/// expands into steps, approval and reconciliation cards, user-input prompts, and Pause/Resume/Stop.
+/// The agent interaction surface inside one chat thread, modeled on Codex/Claude Code: a compact
+/// activity row showing the CURRENT action, expanding into one row per tool call (each row shows the
+/// exact arguments and result and expands for the full detail). Approvals, questions, and
+/// reconciliation live in ``AgentDockedBar`` above the composer, not inside the thread.
 struct AgentRunPanel: View {
     let store: AgentRunStore
     let conversationID: UUID
     @State private var expanded = false
-    @State private var userResponse = ""
 
     private var run: AgentRunPresentation? { store.presentation(for: conversationID) }
 
@@ -65,15 +66,6 @@ struct AgentRunPanel: View {
                 activityRow(run)
                 if expanded {
                     stepsList(run)
-                }
-                if let approval = run.pendingApproval {
-                    approvalCard(approval, run: run)
-                }
-                if let request = run.pendingUserInput {
-                    userInputCard(request, run: run)
-                }
-                if run.state == .waitingForReconciliation, let invocation = run.blockingReason {
-                    reconciliationCard(invocation, run: run)
                 }
                 controls(run)
             }
@@ -100,10 +92,12 @@ struct AgentRunPanel: View {
                     Text(activityTitle(run))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.textPrimary)
-                    Text(activitySubtitle(run))
-                        .font(.caption)
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
+                    if !activitySubtitle(run).isEmpty {
+                        Text(activitySubtitle(run))
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.down")
@@ -137,6 +131,8 @@ struct AgentRunPanel: View {
         .frame(width: 20, height: 20)
     }
 
+    /// The activity row is the CURRENT action, not a run-lifecycle label: "Using web search",
+    /// "Typing…", "Approval needed", "Completed". Codex/Claude Code never surface pipeline stages.
     private func activityTitle(_ run: AgentRunPresentation) -> String {
         if let failure = run.failureMessage,
            run.state == .failed || run.terminalReason == .completedWithFailures
@@ -149,216 +145,59 @@ struct AgentRunPanel: View {
         case .waitingForReconciliation: return "External result uncertain"
         case .paused: return "Run paused"
         case .waitingForForeground: return "Run backgrounded"
-        case .generating, .synthesizing: return "Generating…"
-        case .executingTools: return "Running tools…"
         case .completed where run.terminalReason == .completedWithFailures: return "Completed with issues"
         case .completed: return "Completed"
         case .failed: return "Failed"
         case .cancelled: return "Stopped"
-        default: return "Agent run in progress"
+        default:
+            if let tool = runningToolStep(run) {
+                return "Using \(AgentRunStore.readableToolName(tool.title))"
+            }
+            if !run.provisionalText.isEmpty { return "Typing…" }
+            return "Working…"
         }
     }
 
     private func activitySubtitle(_ run: AgentRunPresentation) -> String {
+        if let tool = runningToolStep(run) {
+            let preview = AgentRunStore.actionPreview(
+                toolName: tool.title,
+                argumentsJSON: tool.detail
+            )
+            if !preview.isEmpty { return preview }
+        }
         if !run.isTerminal, !run.provisionalText.isEmpty { return "Typing…" }
         switch run.blockingReason {
-        case .approval(let id): return "Approve or deny below"
+        case .approval: return "Approve or deny below"
         case .userInput: return "Reply below"
-        case .reconciliation: return "Confirm what happened"
+        case .reconciliation: return "Confirm below"
         case .paused: return "Resume to continue"
         case .foreground: return "Return to the app to resume"
         case .modelResource: return "Waiting for the model"
-        case nil: return "\(run.steps.count) step\(run.steps.count == 1 ? "" : "s")"
+        case nil:
+            if run.isTerminal, !run.steps.isEmpty {
+                return "\(run.steps.count) action\(run.steps.count == 1 ? "" : "s")"
+            }
+            return ""
+        }
+    }
+
+    private func runningToolStep(_ run: AgentRunPresentation) -> AgentRunStep? {
+        run.steps.last {
+            $0.kind == .toolCall && ($0.status == .running || $0.status == .pending)
         }
     }
 
     // MARK: Steps
 
     private func stepsList(_ run: AgentRunPresentation) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+        VStack(alignment: .leading, spacing: 2) {
             ForEach(run.steps) { step in
-                HStack(alignment: .top, spacing: Theme.Space.xs) {
-                    stepIcon(step)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(stepTitle(step))
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(Theme.textPrimary)
-                        if !step.detail.isEmpty {
-                            Text(step.detail)
-                                .font(.caption2)
-                                .foregroundStyle(Theme.textSecondary)
-                                .textSelection(.enabled)
-                        }
-                        if let resultText = step.resultText, !resultText.isEmpty {
-                            Text(resultText)
-                                .font(.caption2)
-                                .foregroundStyle(Theme.textSecondary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.vertical, 2)
+                AgentRunStepRow(step: step, terminal: run.isTerminal)
             }
         }
         .padding(.top, Theme.Space.xs)
     }
-
-    private func stepTitle(_ step: AgentRunStep) -> String {
-        guard step.kind == .toolCall else { return step.title }
-        let pretty = step.title.replacingOccurrences(of: "_", with: " ").capitalized
-        return (step.status == .running || step.status == .pending) ? "Using \(pretty)" : pretty
-    }
-
-    private func stepIcon(_ step: AgentRunStep) -> some View {
-        stepIcon(step, terminal: run?.isTerminal ?? false)
-    }
-
-    private func stepIcon(_ step: AgentRunStep, terminal: Bool) -> some View {
-        Group {
-            switch step.status {
-            case .succeeded: Image(systemName: "checkmark").foregroundStyle(Theme.fitGreen)
-            case .failed: Image(systemName: "xmark").foregroundStyle(Theme.danger)
-            case .uncertain: Image(systemName: "questionmark").foregroundStyle(Theme.fitAmber)
-            case .waiting: Image(systemName: "hourglass").foregroundStyle(Theme.accent)
-            case .running where terminal:
-                // A committed terminal event settles every in-flight step; spinners after "Completed"
-                // would contradict the visible outcome.
-                Image(systemName: "checkmark").foregroundStyle(Theme.fitGreen)
-            case .running: ProgressView().controlSize(.mini).tint(Theme.accent)
-            case .pending: Image(systemName: "circle.dashed").foregroundStyle(Theme.textTertiary)
-            }
-        }
-        .font(.caption2)
-        .frame(width: 14, height: 14)
-    }
-
-    // MARK: Approval card
-
-    private func approvalCard(_ approval: AgentApprovalCard, run: AgentRunPresentation) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            Label("Approve \(approval.toolName)?", systemImage: approval.isExternalWrite ? "externaldrive.fill.badge.exclamationmark" : "eye.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary)
-            if let destination = approval.destination {
-                row("Destination", destination)
-            }
-            if !approval.preview.isEmpty {
-                Text(approval.preview)
-                    .font(.caption)
-                    .foregroundStyle(Theme.textPrimary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(Theme.Space.sm)
-                    .background(Theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-                    .textSelection(.enabled)
-            }
-            if !approval.dataCategories.isEmpty {
-                row("Data", approval.dataCategories.joined(separator: ", "))
-            }
-            HStack(spacing: Theme.Space.sm) {
-                Button {
-                    Task { await store.decideApproval(conversationID: conversationID, approvalID: approval.approvalID, approved: false) }
-                } label: {
-                    Text("Deny").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(StudioButtonStyle(.secondary))
-                .accessibilityLabel("Deny \(approval.toolName)")
-
-                Button {
-                    Task { await store.decideApproval(conversationID: conversationID, approvalID: approval.approvalID, approved: true) }
-                } label: {
-                    Text(approval.isExternalWrite || approval.isConversationScoped
-                         ? "Approve once" : "Approve").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(StudioButtonStyle(.primary))
-                .accessibilityLabel("Approve \(approval.toolName)")
-            }
-            Text(approval.isConversationScoped
-                 ? "Approving authorizes this model for the rest of this conversation. Denying continues without it."
-                 : "Approving authorizes only this exact prepared operation. Denying continues without it.")
-                .font(.caption2)
-                .foregroundStyle(Theme.textTertiary)
-        }
-        .padding(Theme.Space.sm)
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-    }
-
-    // MARK: User input
-
-    private func userInputCard(_ request: UserInputRequest, run: AgentRunPresentation) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            Label("The agent needs an answer", systemImage: "questionmark.bubble.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary)
-            Text(request.prompt)
-                .font(.caption)
-                .foregroundStyle(Theme.textPrimary)
-                .textSelection(.enabled)
-            HStack(spacing: Theme.Space.sm) {
-                TextField("Your answer…", text: $userResponse, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.subheadline)
-                    .lineLimit(1 ... 4)
-                    .padding(Theme.Space.sm)
-                    .background(Theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-                    .onSubmit { sendResponse() }
-                Button(action: sendResponse) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(userResponse.isEmpty ? Theme.textTertiary : Theme.accent)
-                }
-                .buttonStyle(.plain)
-                .disabled(userResponse.isEmpty)
-                .accessibilityLabel("Send answer to agent")
-            }
-        }
-        .padding(Theme.Space.sm)
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-    }
-
-    private func sendResponse() {
-        let text = userResponse
-        userResponse = ""
-        Task { await store.respond(conversationID: conversationID, text: text) }
-    }
-
-    // MARK: Reconciliation
-
-    private func reconciliationCard(_ reason: AgentBlockingReason, run: AgentRunPresentation) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            Label("Did the external action happen?", systemImage: "exclamationmark.triangle.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary)
-            Text("The tool stopped before its outcome could be proven. The run will not replay it. Tell the agent what actually happened.")
-                .font(.caption)
-                .foregroundStyle(Theme.textSecondary)
-            if case .reconciliation(let invocationID) = reason {
-                HStack(spacing: Theme.Space.sm) {
-                    Button("It succeeded") {
-                        Task { await store.reconcile(conversationID: conversationID, invocationID: invocationID, decision: .succeeded) }
-                    }
-                    .buttonStyle(StudioButtonStyle(.primary))
-                    Button("It failed") {
-                        Task { await store.reconcile(conversationID: conversationID, invocationID: invocationID, decision: .failed) }
-                    }
-                    .buttonStyle(StudioButtonStyle(.secondary))
-                    Button("Abandon", role: .destructive) {
-                        Task { await store.reconcile(conversationID: conversationID, invocationID: invocationID, decision: .abandoned) }
-                    }
-                    .buttonStyle(StudioButtonStyle(.secondary))
-                }
-            }
-        }
-        .padding(Theme.Space.sm)
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-    }
-
-    // MARK: Provisional output
 
     // MARK: Controls
 
@@ -390,19 +229,115 @@ struct AgentRunPanel: View {
             }
         }
     }
+}
 
-    private func row(_ title: String, _ value: String) -> some View {
-        HStack(alignment: .top, spacing: Theme.Space.xs) {
-            Text(title)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(Theme.textTertiary)
-                .frame(width: 84, alignment: .leading)
-            Text(value)
-                .font(.caption)
-                .foregroundStyle(Theme.textPrimary)
-                .textSelection(.enabled)
-            Spacer(minLength: 0)
+/// One expandable action row. Collapsed: icon + readable name + one-line preview of the concrete
+/// arguments ("Search: current year"). Expanded: the full arguments and the tool's result.
+private struct AgentRunStepRow: View {
+    let step: AgentRunStep
+    let terminal: Bool
+    @State private var expanded = false
+
+    private var isTool: Bool { step.kind == .toolCall }
+
+    private var title: String {
+        guard isTool else { return step.title }
+        let name = AgentRunStore.readableToolName(step.title)
+        return (step.status == .running || step.status == .pending) ? "Using \(name)" : name
+    }
+
+    private var preview: String {
+        if isTool {
+            return AgentRunStore.actionPreview(toolName: step.title, argumentsJSON: step.detail)
         }
-        .accessibilityElement(children: .combine)
+        return step.detail
+    }
+
+    private var hasExpandedContent: Bool {
+        !step.detail.isEmpty || !(step.resultText ?? "").isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Button {
+                withAnimation(Motion.spring) { expanded.toggle() }
+            } label: {
+                HStack(alignment: .top, spacing: Theme.Space.xs) {
+                    stepIcon
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(title)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(Theme.textPrimary)
+                        if !preview.isEmpty {
+                            Text(preview)
+                                .font(.caption2)
+                                .foregroundStyle(Theme.textSecondary)
+                                .lineLimit(expanded ? nil : 1)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.textTertiary)
+                        .rotationEffect(.degrees(expanded ? 180 : 0))
+                        .opacity(hasExpandedContent ? 1 : 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!hasExpandedContent)
+            .accessibilityLabel(title)
+            .accessibilityHint(hasExpandedContent ? "Show details" : "")
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 4) {
+                    if !step.detail.isEmpty {
+                        detailBlock(isTool ? "Arguments" : "Details", step.detail)
+                    }
+                    if let resultText = step.resultText, !resultText.isEmpty {
+                        detailBlock("Result", resultText)
+                    }
+                }
+                .padding(.leading, Theme.Space.lg + Theme.Space.xs)
+                .transition(.opacity)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private var stepIcon: some View {
+        Group {
+            switch step.status {
+            case .succeeded: Image(systemName: "checkmark").foregroundStyle(Theme.fitGreen)
+            case .failed: Image(systemName: "xmark").foregroundStyle(Theme.danger)
+            case .uncertain: Image(systemName: "questionmark").foregroundStyle(Theme.fitAmber)
+            case .waiting: Image(systemName: "hourglass").foregroundStyle(Theme.accent)
+            case .running where terminal:
+                // A committed terminal event settles every in-flight step; spinners after "Completed"
+                // would contradict the visible outcome.
+                Image(systemName: "checkmark").foregroundStyle(Theme.fitGreen)
+            case .running: ProgressView().controlSize(.mini).tint(Theme.accent)
+            case .pending: Image(systemName: "circle.dashed").foregroundStyle(Theme.textTertiary)
+            }
+        }
+        .font(.caption2)
+        .frame(width: 14, height: 14)
+    }
+
+    private func detailBlock(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Theme.textTertiary)
+            Text(value)
+                .font(.caption2)
+                .foregroundStyle(Theme.textSecondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Theme.Space.sm)
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+        }
     }
 }

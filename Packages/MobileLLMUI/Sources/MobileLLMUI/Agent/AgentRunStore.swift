@@ -361,11 +361,12 @@ public final class AgentRunStore {
             }
         case .approvalRequested(let request):
             let plan = request.prepared.plan
+            let displayName = Self.approvalToolDisplayName(plan)
             run = run.replacing(
                 blockingReason: .approval(approvalID: request.id),
                 pendingApproval: AgentApprovalCard(
                     approvalID: request.id,
-                    toolName: plan.descriptorID ?? plan.subjectID,
+                    toolName: displayName,
                     destination: plan.destination.map { "\($0.kind.rawValue) \($0.normalizedIdentity)" },
                     preview: plan.userPreview.isEmpty ? plan.subjectID : plan.userPreview,
                     dataCategories: plan.dataCategories.map(\.rawValue),
@@ -376,7 +377,7 @@ public final class AgentRunStore {
             )
             steps.append(step(
                 kind: .approval,
-                title: "Approval needed: \(plan.descriptorID ?? plan.subjectID)",
+                title: "Approval needed: \(displayName)",
                 detail: plan.userPreview,
                 status: .waiting,
                 sequence: record.sequence
@@ -753,6 +754,88 @@ public final class AgentRunStore {
         return failure.safeMessage
     }
 
+}
+
+// MARK: - Readable action presentation (AgentRunPanel / AgentDockedBar)
+
+@MainActor
+extension AgentRunStore {
+    /// "web_search" → "Web search", "create_calendar_event" → "Create calendar event": the exact
+    /// user-visible verb used by Codex-style action rows.
+    static func readableToolName(_ raw: String) -> String {
+        let spaced = raw.replacingOccurrences(of: "_", with: " ")
+        guard let first = spaced.first else { return spaced }
+        return String(first).uppercased() + spaced.dropFirst()
+    }
+
+    /// Codex-style one-line action preview for a tool call, e.g. "Search: current year",
+    /// "Compute: 1234567 * 7654321", "Remember: the sky is blue". Falls back to the compact
+    /// canonical arguments when the tool has no friendly mapping.
+    static func actionPreview(toolName: String, argumentsJSON: String?) -> String {
+        guard let json = argumentsJSON, !json.isEmpty else {
+            return ""
+        }
+        guard let data = json.data(using: .utf8),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { return compactJSON(json) }
+        func value(_ keys: [String]) -> String? {
+            for key in keys {
+                if let v = object[key] {
+                    let text = String(describing: v)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !text.isEmpty { return text }
+                }
+            }
+            return nil
+        }
+        let fallback = compactJSON(json)
+        switch toolName {
+        case "web_search":
+            return value(["query"]).map { "Search: \($0)" } ?? fallback
+        case "calculator":
+            return value(["expression"]).map { "Compute: \($0)" } ?? fallback
+        case "remember":
+            return value(["text", "originalUserText"]).map { "Remember: \($0)" } ?? fallback
+        case "recall":
+            return value(["query"]).map { "Recall: \($0)" } ?? fallback
+        case "wikipedia":
+            return value(["query", "term", "title"]).map { "Look up: \($0)" } ?? fallback
+        case "fetch_webpage":
+            return value(["url", "address"]).map { "Fetch: \($0)" } ?? fallback
+        case "create_calendar_event":
+            return value(["title"]).map { "Add event: \($0)" } ?? fallback
+        case "create_reminder":
+            return value(["title"]).map { "Remind: \($0)" } ?? fallback
+        case "list_calendar_events":
+            return value(["daysAhead"]).map { "List events: next \($0) day(s)" } ?? "List upcoming events"
+        case "current_datetime", "current_location":
+            return ""
+        default:
+            return fallback
+        }
+    }
+
+    /// Approval-card title for one prepared plan: the model name for online inference, otherwise the
+    /// readable tool name. Never the internal descriptor identity.
+    static func approvalToolDisplayName(_ plan: ExternalOperationPlan) -> String {
+        if plan.kind == .modelProvider {
+            if let identity = plan.destination?.normalizedIdentity,
+               let model = identity.split(separator: ":").last, !model.isEmpty
+            {
+                return String(model)
+            }
+            return "online model"
+        }
+        let raw = plan.subjectID.split(separator: ":").last.map(String.init) ?? plan.subjectID
+        return readableToolName(raw)
+    }
+
+    private static func compactJSON(_ json: String) -> String {
+        let compact = json
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return compact.count <= 120 ? compact : String(compact.prefix(117)) + "…"
+    }
 }
 
 /// Discriminator for live-only token deltas forwarded to the chat streaming surface.

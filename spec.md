@@ -949,8 +949,13 @@ There is one chat UI, with progressive disclosure:
 
 - ordinary local answers render exactly like ordinary chat;
 - the composer displays the conversation's allowed and pinned tool state;
-- complex runs expose a compact activity row that expands into steps;
-- approval cards show the tool, destination, exact action preview, data being sent/read, and grant scope;
+- complex runs expose a compact activity row titled by the CURRENT action ("Using web search",
+  "Typing…", "Approval needed"), never by an internal pipeline stage; expanding it shows one row per
+  tool call, each row displaying the concrete arguments as a one-line preview ("Search: current
+  year") and expanding for the full arguments and result;
+- approval, question, and reconciliation surfaces are docked immediately ABOVE the composer input and
+  appear only while the run is waiting on the user (Codex/Claude Code pattern); each shows the tool or
+  model name, destination, exact action preview, data being sent/read, and grant scope;
 - a persistent bottom control bar (above the composer input) shows the conversation's approval mode and
   reasoning effort, both switchable in place without opening a menu;
 - the conversation's top-right toolbar action is a Settings button (not New Chat) that opens the

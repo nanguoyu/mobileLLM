@@ -44,6 +44,11 @@ struct ChatDetailView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
                     ConversationModeBar(chat: container.chat)
+                    if let agentRuns = container.agentRuns,
+                       let activeID = container.chat.activeID
+                    {
+                        AgentDockedBar(store: agentRuns, conversationID: activeID)
+                    }
                     Composer(chat: container.chat,
                              settings: container.settings,
                              // Online reasoning is per-conversation (the composer toggle persists a thread
