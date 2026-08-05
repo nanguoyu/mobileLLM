@@ -13,7 +13,6 @@ struct ConversationModeBar: View {
     var body: some View {
         HStack(spacing: Theme.Space.md) {
             Menu {
-                approvalOption("Follow default (Safe preset)", mode: nil)
                 approvalOption("Ask", mode: .ask)
                 approvalOption("Safe preset", mode: .safePreset)
                 approvalOption("Full access", mode: .fullAccess)
@@ -60,12 +59,7 @@ struct ConversationModeBar: View {
 
     @ViewBuilder
     private func approvalOption(_ title: String, mode: AgentApprovalMode?) -> some View {
-        let isSelected: Bool
-        if let mode {
-            isSelected = chat.effectiveApprovalMode == mode
-        } else {
-            isSelected = chat.conversationApprovalMode == nil
-        }
+        let isSelected = mode.map { chat.effectiveApprovalMode == $0 } ?? false
         return Button {
             chat.conversationApprovalMode = mode
         } label: {

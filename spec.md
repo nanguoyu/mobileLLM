@@ -745,8 +745,10 @@ must all produce it rather than implementing parallel approval formats.
   - `fullAccess`: auto-approve every operation inside the run capability ceiling without prompting.
 
   A conversation without a stored override follows the product default (Safe preset). The UI exposes
-  the three explicit modes plus a "Follow default" choice; selecting Ask writes an explicit
-  conversation-scoped override rather than clearing one.
+  exactly the three explicit modes (Safe preset / Ask / Full access) — "follow default" is the absence
+  of an override, never a fourth radio-style mode. The settings sheet offers a "Reset to default"
+  action that clears an existing override; selecting any explicit mode writes a conversation-scoped
+  override that stays pinned even if the product default later changes.
 
   The three modes apply identically to EVERY boundary-crossing operation — local tools and in-app
   access, private/system data, online-model inference, MCP, file/artifact export — regardless of

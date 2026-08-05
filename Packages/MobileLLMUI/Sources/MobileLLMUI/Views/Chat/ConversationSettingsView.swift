@@ -96,14 +96,32 @@ struct ConversationSettingsView: View {
     private var approvalSection: some View {
         VStack(alignment: .leading, spacing: Theme.Space.md) {
             sectionTitle("Approval")
-            approvalOption("Follow default (Safe preset)", mode: nil,
-                           detail: "Use the product default — currently Safe preset")
             approvalOption("Ask", mode: .ask,
                            detail: "Approve per policy: external reads and online inference on first use")
             approvalOption("Safe preset", mode: .safePreset,
                            detail: "Auto-approve in-app/reads and online model; ask for writes and dangerous actions")
             approvalOption("Full access", mode: .fullAccess,
                            detail: "Auto-approve everything inside the run ceiling")
+            if chat.conversationApprovalMode != nil {
+                Divider()
+                Button(role: .destructive) {
+                    chat.conversationApprovalMode = nil
+                } label: {
+                    HStack(spacing: Theme.Space.sm) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .foregroundStyle(Theme.textTertiary)
+                        Text("Reset to default (Safe preset)")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.textPrimary)
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .accessibilityIdentifier("approval.reset-default")
+            }
+            Text("A conversation without an override follows the product default — currently Safe "
+                 + "preset.")
+                .font(.caption).foregroundStyle(Theme.textTertiary)
         }
         .padding(Theme.Space.md)
         .studioCard()
@@ -114,12 +132,7 @@ struct ConversationSettingsView: View {
         mode: AgentApprovalMode?,
         detail: String
     ) -> some View {
-        let isSelected: Bool
-        if let mode {
-            isSelected = chat.effectiveApprovalMode == mode
-        } else {
-            isSelected = chat.conversationApprovalMode == nil
-        }
+        let isSelected = mode.map { chat.effectiveApprovalMode == $0 } ?? false
         return Button {
             chat.conversationApprovalMode = mode
         } label: {
