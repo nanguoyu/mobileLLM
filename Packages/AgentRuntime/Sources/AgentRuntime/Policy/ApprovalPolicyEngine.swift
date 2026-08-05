@@ -40,6 +40,32 @@ public extension ApprovalPolicyEngine {
             at: timestamp
         )
     }
+
+    /// Binds a durable authorization for an operation auto-approved by the run's approval mode
+    /// (fullAccess / safePreset). Unlike `bindLocalPolicy`, this is valid for ANY effect class — the
+    /// mode already decided to skip the user prompt — while the prepared request and run ceiling still
+    /// enforce the exact scope and authority.
+    func bindApprovalMode(
+        prepared: PreparedExternalOperationRequest,
+        approvalID: ApprovalID,
+        trustedRunAuthority: TrustedRunAuthority,
+        at timestamp: AgentTimestamp
+    ) async throws -> AuthorizedExternalOperationRequest {
+        let receipt = try ApprovalReceipt(
+            id: approvalID,
+            prepared: prepared,
+            decision: .approved,
+            scope: .exactInvocation,
+            policyVersion: policyVersion,
+            decidedAt: timestamp
+        )
+        return try await bind(
+            prepared: prepared,
+            receipt: receipt,
+            trustedRunAuthority: trustedRunAuthority,
+            at: timestamp
+        )
+    }
 }
 
 public enum ApprovalPolicyEngineError: Error, Hashable, Sendable {

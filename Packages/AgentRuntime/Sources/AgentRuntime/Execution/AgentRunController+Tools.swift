@@ -391,7 +391,7 @@ extension AgentRunController {
         let authorization: AuthorizedExternalOperationRequest
         switch evaluation.authorization.decision {
         case .authorizeLocalPolicy:
-            authorization = try await policyEngine.bindLocalPolicy(
+            authorization = try await policyEngine.bindApprovalMode(
                 prepared: prepared.externalOperation,
                 approvalID: approvalID,
                 trustedRunAuthority: authority,

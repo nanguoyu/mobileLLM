@@ -193,6 +193,10 @@ extension AgentRunController {
         if error is AgentContractError {
             return ["detail": String(describing: error)]
         }
+        if error is ApprovalPolicyEngineError {
+            // Typed policy failures carry only stable case names, never prompts or external content.
+            return ["detail": String(describing: error)]
+        }
         return [:]
     }
 
@@ -725,7 +729,7 @@ extension AgentRunController {
             let authorization: AuthorizedExternalOperationRequest
             switch evaluation.authorization.decision {
             case .authorizeLocalPolicy:
-                authorization = try await policyEngine.bindLocalPolicy(
+                authorization = try await policyEngine.bindApprovalMode(
                     prepared: external,
                     approvalID: approvalID,
                     trustedRunAuthority: authority,
@@ -1685,10 +1689,20 @@ extension AgentRunController {
                 "A dependency pinned by this run is unavailable."
             )
         default:
+            let code = Self.redactedWorkerErrorCode(error)
+            let detail = Self.redactedWorkerErrorDetails(error)["detail"]
+            let suffix: String
+            if let detail {
+                suffix = " (\(code): \(detail))"
+            } else if code != "non-execution-error" {
+                suffix = " (\(code))"
+            } else {
+                suffix = ""
+            }
             classification = (
                 .internalFailure,
                 "execution.worker-failed",
-                "The agent runtime could not continue this run."
+                "The agent runtime could not continue this run\(suffix)."
             )
         }
         try await failRun(

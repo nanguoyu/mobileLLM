@@ -331,6 +331,41 @@ final class ApprovalPolicyEngineTests: XCTestCase {
         XCTAssertEqual(otherConversationEvaluation.authorization.decision, .requireApproval)
     }
 
+    /// Mode auto-approval must be BINDABLE for non-local effects (online model, network reads under
+    /// fullAccess/safePreset): `bindLocalPolicy` intentionally stays local-only, so the mode path uses
+    /// `bindApprovalMode`, which still records a durable exact-invocation authorization.
+    func testApprovalModeBindingWorksForNonLocalEffects() async throws {
+        let fixture = try Fixture(
+            effect: .externalCommunication,
+            planKind: .modelProvider,
+            destinationKind: .modelProvider,
+            destinationIdentity: "openai.responses:svc-1:model-a"
+        )
+        let engine = try makeApprovalEngine()
+
+        do {
+            _ = try await engine.bindLocalPolicy(
+                prepared: fixture.prepared,
+                approvalID: fixture.approvalID,
+                trustedRunAuthority: fixture.trustedAuthority,
+                at: fixture.now
+            )
+            XCTFail("bindLocalPolicy must reject non-local effects")
+        } catch ApprovalPolicyEngineError.notLocallyAuthorizable {
+            // Expected: local-policy binding is deliberately local-only.
+        }
+
+        let authorized = try await engine.bindApprovalMode(
+            prepared: fixture.prepared,
+            approvalID: fixture.approvalID,
+            trustedRunAuthority: fixture.trustedAuthority,
+            at: fixture.now
+        )
+        XCTAssertEqual(authorized.prepared, fixture.prepared)
+        XCTAssertEqual(authorized.authorization.decision, .approved)
+        XCTAssertEqual(authorized.authorization.scope, .exactInvocation)
+    }
+
     func testExpiredWrongPolicyAndMissingTrustNeverAuthorize() throws {
         let fixture = try Fixture(effect: .networkRead)
         let engine = try makeApprovalEngine()
