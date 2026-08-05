@@ -567,6 +567,55 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         )
     }
 
+    // TEST-ID: AHT-MODEL-ONLINE
+    @MainActor
+    func test29OnlineModelApprovalAndCompletion() throws {
+        let app = try launchApp()
+        try openNewChat(in: app)
+        // The online service is a first-class model choice: pick it from the switcher and send without
+        // loading or activating any local weights.
+        try selectOnlineModel(in: app)
+
+        let marker = uniqueMarker("ONLINE")
+        let evidence = try send(
+            marker + "\nReply with exactly ONLINE-OK and nothing else.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+
+        var failures: [String] = []
+        if evidence.answer.isEmpty {
+            failures.append("Online answer is empty")
+        } else if !evidence.answer.contains("ONLINE-OK") {
+            failures.append("Online answer did not echo the marker: \(String(reflecting: evidence.answer))")
+        }
+        let diagnostics = diagnosticValue("device-e2e.agent", in: app)
+        if !diagnostics.contains("run=completed") {
+            failures.append("Agent run did not project completed; diagnostics: \(diagnostics)")
+        }
+        if diagnostics.contains("run=failed") || diagnostics.contains("run=cancelled") {
+            failures.append("Agent run failed/cancelled; diagnostics: \(diagnostics)")
+        }
+        if !evidence.stats.contains("stop:") {
+            failures.append("Online stats lack a stop reason: \(evidence.stats)")
+        }
+        let summary = XCTAttachment(string: """
+        marker=\(marker)
+        answer=\(evidence.answer)
+        stats=\(evidence.stats)
+        wall_seconds=\(String(format: "%.2f", evidence.wallSeconds))
+        diagnostics=\(diagnostics)
+        failures=\(failures.isEmpty ? "none" : failures.joined(separator: "\n- "))
+        """)
+        summary.name = "online-model-approval-and-completion"
+        summary.lifetime = .keepAlways
+        add(summary)
+
+        XCTAssertTrue(
+            failures.isEmpty,
+            "Online model path had \(failures.count) failure(s):\n- " + failures.joined(separator: "\n- ")
+        )
+    }
+
     @MainActor
     func test26AgentRuntimeWiresRunsAndRecoveryInbox() throws {
         let app = try prepare(.bonsai, tools: false, selected: [], thinking: false)
@@ -810,6 +859,43 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try activate(model, in: app)
         return app
+    }
+
+    /// Model switcher → "Online · <service model>" row. Requires the test runner to have injected the
+    /// key/base URL/model (DeviceE2ETestSupport reads ~/.mobilellm/openai.json); the row only appears
+    /// when a key is stored and a model id is set.
+    @MainActor
+    private func selectOnlineModel(in app: XCUIApplication) throws {
+        let header = app.buttons["Active model"]
+        guard header.waitForExistence(timeout: 15), header.isHittable else {
+            throw DeviceE2EHarnessError.precondition("Active-model header is not actionable")
+        }
+        header.tap()
+        guard app.navigationBars["Switch model"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("Model switcher did not open")
+        }
+        let row = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Online ·")
+        ).firstMatch
+        guard row.waitForExistence(timeout: 10), row.isHittable else {
+            attachDiagnostics(app, name: "online-row-missing")
+            throw DeviceE2EHarnessError.precondition(
+                "Online model row is missing from the switcher; "
+                    + "runtime=\(diagnosticValue("device-e2e.runtime", in: app))"
+            )
+        }
+        row.tap()
+        guard app.navigationBars["Switch model"].waitForNonExistence(timeout: 10) else {
+            throw DeviceE2EHarnessError.precondition("Model switcher did not dismiss after online selection")
+        }
+        guard header.waitForExistence(timeout: 10) else {
+            throw DeviceE2EHarnessError.precondition("Active-model header disappeared")
+        }
+        let label = header.label
+        XCTAssertTrue(
+            label.hasPrefix("Online ·"),
+            "Header did not switch to the online model: \(label)"
+        )
     }
 
     @MainActor

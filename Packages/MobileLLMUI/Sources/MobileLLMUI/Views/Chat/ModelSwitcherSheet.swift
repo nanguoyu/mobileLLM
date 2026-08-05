@@ -24,18 +24,36 @@ struct ModelSwitcherSheet: View {
         return all.filter { $0.1.id == activeID } + all.filter { $0.1.id != activeID }
     }
 
+    /// The configured online service model id, when the key is present and a model id is set. The
+    /// online selection is first-class: it needs no installed weights, so it must appear even on a
+    /// device with zero local models.
+    private var onlineServiceModel: String? {
+        guard let model = container.settings.openAIModelID,
+              !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              (try? container.openAICredentials.loadAPIKey()) != nil
+        else { return nil }
+        return model.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     var body: some View {
         NavigationStack {
             Group {
-                if installed.isEmpty {
+                if onlineServiceModel == nil && installed.isEmpty {
                     ChatPlaceholder(icon: "square.and.arrow.down",
                                     title: "No models installed",
                                     message: "Download a model to start chatting on-device.",
                                     actionTitle: "Open Models", action: { dismiss(); onOpenModels() })
                 } else {
                     List {
-                        ForEach(installed, id: \.1.id) { model, variant in
-                            row(model, variant)
+                        if let serviceModel = onlineServiceModel {
+                            Section("Online") { onlineRow(serviceModel) }
+                        }
+                        if !installed.isEmpty {
+                            Section("On-device") {
+                                ForEach(installed, id: \.1.id) { model, variant in
+                                    row(model, variant)
+                                }
+                            }
                         }
                     }
                     .scrollContentBackground(.hidden)
@@ -67,11 +85,40 @@ struct ModelSwitcherSheet: View {
         }
     }
 
+    private func onlineRow(_ serviceModel: String) -> some View {
+        let isActive = container.settings.openAIOnlineEnabled
+        return Button {
+            container.settings.openAIOnlineEnabled = true
+            dismiss()
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(OnlineModelIdentity.displayLabel(serviceModel))
+                        .font(.subheadline.weight(.medium)).foregroundStyle(Theme.textPrimary)
+                    Text("Responses API · data egress · no local weights")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
+                }
+                Spacer()
+                if isActive {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(isActive ? Theme.accentSoft : Color.clear)
+        .accessibilityLabel(OnlineModelIdentity.displayLabel(serviceModel))
+        .accessibilityValue(isActive ? "Active" : "")
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
+    }
+
     private func row(_ model: LLMModel, _ variant: LLMVariant) -> some View {
         let isActive = container.models.active?.variant.id == variant.id
         let isActivating = activating == variant.id || container.models.activatingVariantID == variant.id
         let presentation = container.models.fitPresentation(model, variant, context: container.settings.contextLength)
         return Button {
+            // Model selection is exclusive: picking an on-device model turns the online service off.
+            container.settings.openAIOnlineEnabled = false
             activating = variant.id
             container.activate(model, variant: variant)
         } label: {

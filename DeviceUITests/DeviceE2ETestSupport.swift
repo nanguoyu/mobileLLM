@@ -153,6 +153,10 @@ class DeviceE2ETestCase: XCTestCase {
         // injected through launchEnvironment so simulator and physical-device apps never need manual
         // entry. The DEBUG app seeds the key into its own Keychain.
         let openAI = loadOpenAITestConfig()
+        // Debug-only breadcrumb: confirms the runner read ~/.mobilellm/openai.json (flags + model only,
+        // never the key).
+        print("[DeviceE2E] openai runner config: key=\(openAI.apiKey?.isEmpty == false) "
+            + "baseURL=\(openAI.baseURL ?? "nil") model=\(openAI.model ?? "nil")")
         if let key = openAI.apiKey, !key.isEmpty {
             app.launchEnvironment["MOBILELLM_OPENAI_API_KEY"] = key
         }
@@ -400,26 +404,9 @@ class DeviceE2ETestCase: XCTestCase {
         }
         while true {
             // The list must be on top before we scan for rows: while the detail sheet is up the rows
-            // are covered and a scan would wrongly conclude there are no servers left.
-            guard app.buttons["Add a server"].waitForExistence(timeout: 8) else {
-                // A removal can dismiss back to the Tools sheet instead of the list; re-enter it.
-                if app.navigationBars["Tools"].waitForExistence(timeout: 5) {
-                    let mcpRow = app.buttons.matching(
-                        NSPredicate(format: "label CONTAINS %@", "MCP servers")
-                    ).firstMatch
-                    guard scrollToHittable(mcpRow, in: firstHittableScrollView(in: app)) else {
-                        throw DeviceE2EHarnessError.precondition(
-                            "MCP servers row disappeared during cleanup"
-                        )
-                    }
-                    mcpRow.tap()
-                    guard app.navigationBars["MCP servers"].waitForExistence(timeout: 15) else {
-                        throw DeviceE2EHarnessError.precondition("MCP servers sheet did not reopen")
-                    }
-                    continue
-                }
-                throw DeviceE2EHarnessError.precondition("MCP servers list did not reappear after removal")
-            }
+            // are covered and a scan would wrongly conclude there are no servers left. Removal can
+            // land on the detail's Done, back on the list, or back at the Tools sheet; settle each.
+            try settleMCPList(in: app)
             let serverRow = app.buttons.matching(
                 NSPredicate(format: "label CONTAINS %@", "://")
             ).firstMatch
@@ -453,6 +440,37 @@ class DeviceE2ETestCase: XCTestCase {
             throw DeviceE2EHarnessError.precondition("Tools settings did not close after MCP cleanup")
         }
         try goToChatList(in: app)
+    }
+
+    /// Brings the MCP servers LIST sheet back on top: taps the detail's Done when a server detail is
+    /// still up, re-enters from the Tools sheet when removal dismissed the whole flow, and otherwise
+    /// waits for the list to settle.
+    @MainActor
+    private func settleMCPList(in app: XCUIApplication) throws {
+        let deadline = Date().addingTimeInterval(25)
+        while Date() < deadline {
+            if app.buttons["Add a server"].exists { return }
+            if app.buttons["Remove server"].exists {
+                let detailDone = app.navigationBars["MCP servers"].buttons["Done"].firstMatch
+                if detailDone.exists, detailDone.isHittable {
+                    detailDone.tap()
+                }
+                Thread.sleep(forTimeInterval: 0.5)
+                continue
+            }
+            if app.navigationBars["Tools"].exists {
+                let mcpRow = app.buttons.matching(
+                    NSPredicate(format: "label CONTAINS %@", "MCP servers")
+                ).firstMatch
+                if scrollToHittable(mcpRow, in: firstHittableScrollView(in: app)) {
+                    mcpRow.tap()
+                }
+                Thread.sleep(forTimeInterval: 0.5)
+                continue
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        throw DeviceE2EHarnessError.precondition("MCP servers list did not reappear after removal")
     }
 
     @MainActor

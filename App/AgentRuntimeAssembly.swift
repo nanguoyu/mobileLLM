@@ -175,16 +175,17 @@ struct AppFrozenInputBuilder: Sendable {
         artifactReferences: [ArtifactReference],
         historyArtifacts: [UUID: [ArtifactReference]] = [:]
     ) throws -> FrozenAgentRunInputs {
-        let registration = try registration(snapshot: snapshot)
-        let effectiveContext = UInt64(
-            ContextPolicy.effective(requested: snapshot.contextLength, model: snapshot.model)
-        )
+        let online = Self.isOnline(snapshot: snapshot)
+        // Online providers report their own ceilings (200k context); clamping to a local checkpoint's
+        // native context would silently shorten an online run the user asked to keep long.
+        let effectiveContext = online
+            ? UInt64(snapshot.contextLength)
+            : UInt64(ContextPolicy.effective(requested: snapshot.contextLength, model: snapshot.model))
         let contextBudget = try ContextTokenBudget(
             maximumContextTokens: effectiveContext,
             reservedOutputTokens: 1_024,
             maximumToolSchemaTokens: 1_024
         )
-        let online = Self.isOnline(snapshot: snapshot)
         // Online providers never advertise `.reasoning` (compatible gateways decide internally), so an
         // explicit `.enabled` request would fail capability validation. `.automatic` lets the provider
         // keep its default while still honoring an explicit user "off".
@@ -288,9 +289,9 @@ struct AppFrozenInputBuilder: Sendable {
         let selection = try selection(snapshot: snapshot)
         let online = Self.isOnline(snapshot: snapshot)
         let runID = AgentRunID(rawValue: UUID())
-        let effectiveContext = UInt64(
-            ContextPolicy.effective(requested: snapshot.contextLength, model: snapshot.model)
-        )
+        let effectiveContext = online
+            ? UInt64(snapshot.contextLength)
+            : UInt64(ContextPolicy.effective(requested: snapshot.contextLength, model: snapshot.model))
         let budget = try AgentBudget.firstReleaseDefaults(
             contextTokensPerAttempt: effectiveContext,
             outputTokens: UInt64(snapshot.maxTokens),

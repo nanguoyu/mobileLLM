@@ -63,7 +63,8 @@ struct ChatThreadView: View {
                 centeredOrScrolling { NoModelState(onOpenModels: onOpenModels) }
             } else {
                 centeredOrScrolling {
-                    EmptyChatState(modelName: chat.activeModel?.model.displayName ?? "your model",
+                    EmptyChatState(modelName: chat.onlineModelID.map(OnlineModelIdentity.displayLabel)
+                                   ?? chat.activeModel?.model.displayName ?? "your model",
                                    onExample: { prompt in
                                        chat.draft = prompt
                                        chat.send()

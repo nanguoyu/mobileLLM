@@ -78,6 +78,9 @@ struct DeviceE2EDiagnosticsOverlay: View {
             "resident=\(container.models.engineResident)",
             "phase=\(phase)",
             "thermal=\(thermalState)",
+            "openaiModel=\(container.settings.openAIModelID ?? "none")",
+            "openaiEnabled=\(container.settings.openAIOnlineEnabled)",
+            "openaiKey=\((try? container.openAICredentials.loadAPIKey()) == nil ? "missing" : "stored")",
         ].joined(separator: ";")
     }
 

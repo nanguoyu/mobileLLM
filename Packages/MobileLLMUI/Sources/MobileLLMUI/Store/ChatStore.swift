@@ -307,11 +307,46 @@ public final class ChatStore {
         return conversations.first { $0.id == activeID }
     }
 
+    /// The online service model when the user selected it AND a model id is configured. The API key is
+    /// not checked here (Settings only enables the toggle once a key exists, and removing the key turns
+    /// it off); a run that somehow reaches generation without a key fails closed in the provider.
+    public var onlineModelID: String? {
+        guard settings.openAIOnlineEnabled,
+              let model = settings.openAIModelID,
+              !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        return model.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Whether the next turn routes to the online provider. First-class model choice: it needs no local
+    /// weights and no `activeModel`, so a device with zero installed models can still chat online.
+    public var isOnlineActive: Bool { onlineModelID != nil }
+
     public var isStreaming: Bool { streaming != nil }
-    public var hasModel: Bool { activeModel != nil }
+    public var hasModel: Bool { activeModel != nil || isOnlineActive }
     public var canSend: Bool {
         !conversationEraseInProgress && hasModel && streaming == nil
             && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingImages.isEmpty)
+    }
+
+    /// Header/switcher label for whatever will answer the next turn.
+    public var activeModelLabel: String {
+        if let model = onlineModelID { return OnlineModelIdentity.displayLabel(model) }
+        return activeModel?.subtitle ?? "No model"
+    }
+
+    /// The durable generation identity for the current selection: online when active, else the local
+    /// model. Also used to stamp conversations so a thread remembers its model across relaunch.
+    private func currentGenerationModel() -> GenerationModel? {
+        if let model = onlineModelID {
+            return GenerationModel(
+                modelID: OnlineModelIdentity.conversationModelID(model),
+                variantID: OnlineModelIdentity.variantID,
+                displayName: OnlineModelIdentity.displayLabel(model),
+                engine: .online
+            )
+        }
+        return activeModel.map(GenerationModel.init)
     }
 
     // MARK: - Composer attachments
@@ -361,17 +396,18 @@ public final class ChatStore {
            let i = conversations.firstIndex(where: { $0.id == existing.id }) {
             // Reusing a leftover empty thread must also refresh its model seed — it may have been
             // created under a different model, and a stale seed survives relaunch as a surprise switch.
-            if let m = activeModel {
-                conversations[i].modelID = m.model.id
-                conversations[i].variantID = m.variant.id
+            if let generation = currentGenerationModel() {
+                conversations[i].modelID = generation.modelID
+                conversations[i].variantID = generation.variantID
                 persist(conversations[i])
             }
             materializeToolPolicyIfNeeded(at: i)
             activeID = existing.id
             return conversations[i]
         }
-        let convo = Conversation(modelID: activeModel?.model.id ?? settings.defaultModelID,
-                                 variantID: activeModel?.variant.id ?? "",
+        let seed = currentGenerationModel()
+        let convo = Conversation(modelID: seed?.modelID ?? settings.defaultModelID,
+                                 variantID: seed?.variantID ?? "",
                                  toolPolicy: globalToolTemplate())
         conversations.insert(convo, at: 0)
         activeID = convo.id
@@ -460,6 +496,13 @@ public final class ChatStore {
     /// alone, and an empty legacy variant id means "any installed variant of this model".
     public func restoreConversationModelIfNeeded() {
         guard streaming == nil, let convo = activeConversation, !convo.modelID.isEmpty else { return }
+        // An online thread remembers the service model id; reopen it by arming the same selection.
+        // No local weights are involved, so there is nothing to load or restore.
+        if let serviceModel = OnlineModelIdentity.serviceModel(fromConversationModelID: convo.modelID) {
+            settings.openAIOnlineEnabled = true
+            settings.openAIModelID = serviceModel
+            return
+        }
         let modelDiffers = convo.modelID != activeModel?.model.id
         let variantDiffers: Bool
         if !convo.variantID.isEmpty,
@@ -628,14 +671,16 @@ public final class ChatStore {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let stagedImages = pendingImages
         let images = stagedImages.map(\.data)
-        guard !text.isEmpty || !images.isEmpty, activeModel != nil, streaming == nil else { return }
+        guard !text.isEmpty || !images.isEmpty, hasModel, streaming == nil else { return }
 
         // Image capability belongs to the exact variant, not merely to the engine family: a text-only GGUF
         // (for example Bonsai 8B) runs on llama.cpp but has no vision projector. Reject before clearing the
         // composer or creating provisional messages, otherwise that path silently sends an all-text prompt
         // and loses the user's staged image. Draft + images remain intact for a retry after switching.
         if !images.isEmpty,
-           activeModel?.variant.engine != .llamaCpp || activeModel?.variant.supportsVisionInput != true {
+           isOnlineActive
+                || activeModel?.variant.engine != .llamaCpp
+                || activeModel?.variant.supportsVisionInput != true {
             showToast(Toast("This model can't read images — switch to an image-capable model and try again.",
                             kind: .warning, autoDismiss: 5))
             return
@@ -670,9 +715,9 @@ public final class ChatStore {
         }
         // Stamp the model that's actually answering on EVERY send — the record tracks the thread's
         // CURRENT model, so reopening the app restores what you were really using, not the first pick.
-        if let m = activeModel {
-            conversations[idx].modelID = m.model.id
-            conversations[idx].variantID = m.variant.id
+        if let generation = currentGenerationModel() {
+            conversations[idx].modelID = generation.modelID
+            conversations[idx].variantID = generation.variantID
         }
         let assistant = Message(role: .assistant, answer: "", parentID: user.id)
         conversations[idx].messages.append(assistant)
@@ -732,10 +777,16 @@ public final class ChatStore {
                     }
                     return
                 }
-                // Cold launch restores model identity only; the first agent turn loads weights here.
-                guard await self?.ensureModelReady?() ?? true,
-                      self?.activeModel != nil
-                else {
+                // Online runs need no local weights: the provider is remote and the run ceiling already
+                // carries the exact modelProvider destination. Local runs load lazily as before.
+                let online = self?.isOnlineActive ?? false
+                let ready: Bool
+                if online {
+                    ready = true
+                } else {
+                    ready = await self?.ensureModelReady?() ?? true
+                }
+                guard ready, online || self?.activeModel != nil else {
                     self?.agentLastSendError = "model readiness failed before agent send"
                     self?.finalizeAgentRun(
                         conversationID: conversationID,
@@ -808,7 +859,7 @@ public final class ChatStore {
             )
         }
         if !toolRuns.isEmpty { message.toolRuns = toolRuns }
-        if let model = activeModel { message.generatedBy = GenerationModel(model) }
+        if let generation = currentGenerationModel() { message.generatedBy = generation }
         if let usage = agentRuns?.presentation(for: conversationID)?.usage {
             let outputTokens = usage.quantities[.outputTokens]
             let activeMilliseconds = usage.quantities[.activeMilliseconds]

@@ -405,12 +405,37 @@ private func makeAgentSnapshot(
     downloadBase: URL,
     onlineConfigBox: OpenAIOnlineConfigurationBox
 ) -> AgentRunRequestSnapshot? {
-    guard let active = container.chat.activeModel else { return nil }
     // Keep the provider's config box in step with Settings before the snapshot freezes the selection.
     onlineConfigBox.update(
         baseURL: container.settings.openAIBaseURL,
         modelID: container.settings.openAIModelID
     )
+    let onlineModelID = container.chat.onlineModelID
+    // Online runs need no local weights, so a device with zero installed models can still send. The
+    // fallback identity only feeds context-policy bookkeeping; the run selection is the online provider
+    // and the runtime never touches its weights directory.
+    let identity: (model: LLMModel, variant: LLMVariant, weightsDirectory: URL)
+    if let active = container.chat.activeModel {
+        identity = (
+            active.model,
+            active.variant,
+            ModelDownloader(downloadBase: downloadBase)
+                .localURL(repoId: active.variant.source.huggingFaceRepo)
+        )
+    } else if let onlineModelID,
+              let fallback = container.models.model(id: container.settings.defaultModelID)
+                ?? LLMCatalog.all.first
+    {
+        let variant = fallback.defaultVariantValue
+        identity = (
+            fallback,
+            variant,
+            ModelDownloader(downloadBase: downloadBase)
+                .localURL(repoId: variant.source.huggingFaceRepo)
+        )
+    } else {
+        return nil
+    }
     return AgentRunRequestSnapshot(
         conversationID: conversationID,
         userTurnID: userTurnID,
@@ -420,10 +445,9 @@ private func makeAgentSnapshot(
         systemPrompt: container.settings.systemPrompt,
         memoryFacts: container.chat.memoryBook?.facts ?? [],
         activeSkill: container.chat.activeSkill,
-        model: active.model,
-        variant: active.variant,
-        weightsDirectory: ModelDownloader(downloadBase: downloadBase)
-            .localURL(repoId: active.variant.source.huggingFaceRepo),
+        model: identity.model,
+        variant: identity.variant,
+        weightsDirectory: identity.weightsDirectory,
         thinkingEnabled: container.chat.thinkingEnabled,
         contextLength: container.settings.contextLength,
         maxTokens: container.settings.maxTokens,
@@ -446,7 +470,7 @@ private func makeAgentSnapshot(
             : [],
         toolPolicy: container.chat.activeConversation?.toolPolicy,
         onlineModelEnabled: container.settings.openAIOnlineEnabled,
-        onlineModelID: container.settings.openAIModelID
+        onlineModelID: onlineModelID
     )
 }
 

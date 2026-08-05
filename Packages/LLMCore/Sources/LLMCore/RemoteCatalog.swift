@@ -371,6 +371,9 @@ public enum RemoteCatalog {
             // .llamaCpp — the OS's system model has no repo to discover, let alone a config to resolve.
             // If one ever reaches here, "unresolved" is the honest answer; there is nothing to fetch.
             return ResolvedArchitecture(architecture: fallback, isResolved: false)
+        case .online:
+            // Unreachable for remote discovery; an online service has no architecture to resolve.
+            return ResolvedArchitecture(architecture: fallback, isResolved: false)
         }
     }
 
