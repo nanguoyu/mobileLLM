@@ -289,7 +289,26 @@ final class OnlineModelSelectionTests: XCTestCase {
         chat.newConversation()
 
         XCTAssertEqual(chat.conversationTemperature, settings.temperature, accuracy: 0.0001)
-        XCTAssertEqual(chat.conversationMaxTokens, settings.maxTokens)
+        XCTAssertEqual(
+            chat.conversationMaxTokens,
+            settings.onlineMaxTokens,
+            "online threads default to the online output budget, not the local one"
+        )
+
+        // A local thread follows the local global default; the same per-conversation override
+        // mechanism applies to both paths.
+        let localSettings = AppSettings(defaults: UserDefaults(suiteName: "local-sampling-\(UUID().uuidString)")!)
+        let localChat = ChatStore(
+            engine: MockLLMEngine(script: .init()),
+            store: store,
+            settings: localSettings,
+            activeModel: LoadedModel(
+                model: LLMCatalog.bonsai8b,
+                variant: LLMCatalog.bonsai8b.defaultVariantValue
+            )
+        )
+        localChat.newConversation()
+        XCTAssertEqual(localChat.conversationMaxTokens, localSettings.maxTokens)
 
         chat.setConversationTemperature(0.2)
         chat.setConversationMaxTokens(2_048)

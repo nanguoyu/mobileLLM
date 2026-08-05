@@ -406,7 +406,8 @@ public final class ChatStore {
     }
 
     public var conversationMaxTokens: Int {
-        conversationSamplingOverride?.maxTokens ?? settings.maxTokens
+        conversationSamplingOverride?.maxTokens
+            ?? (isOnlineActive ? settings.onlineMaxTokens : settings.maxTokens)
     }
 
     /// Set one per-conversation sampling field; nil restores "follow the global setting".

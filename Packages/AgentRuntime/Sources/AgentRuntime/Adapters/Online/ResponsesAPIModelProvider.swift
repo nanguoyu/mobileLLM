@@ -179,85 +179,118 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             urlRequest.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
             return urlRequest
         }
-        func fetch(_ body: Data) async throws -> (Data, HTTPURLResponse?) {
-            var request = makeRequest()
-            request.httpBody = body
-            let (data, response) = try await session.data(for: request)
+        let emitReasoning = request.generationParameters.thinkingMode != .disabled
+        func attempt(
+            _ body: Data,
+            allowEffortFallback: Bool
+        ) async throws -> (parsed: ParsedResponse, streamed: Bool, data: Data) {
+            var urlRequest = makeRequest()
+            urlRequest.httpBody = body
+            let (bytes, response) = try await session.bytes(for: urlRequest)
             try Task.checkCancellation()
-            return (data, response as? HTTPURLResponse)
+            let http = response as? HTTPURLResponse
+            guard http?.statusCode == 200 else {
+                var data = Data()
+                for try await byte in bytes { data.append(byte) }
+                // Some gateways reject the reasoning-effort field entirely (HTTP 400 mentioning
+                // "reasoning"); retry once with the field omitted rather than failing the turn.
+                if allowEffortFallback, http?.statusCode == 400,
+                   let errorText = String(data: data, encoding: .utf8),
+                   errorText.localizedCaseInsensitiveContains("reasoning")
+                {
+                    let fallbackBody = try Self.requestBody(
+                        request: request,
+                        baseURL: configuration.baseURL,
+                        reasoningEffort: configuration.reasoningEffort,
+                        omitReasoning: true,
+                        stream: true
+                    )
+                    if fallbackBody != body {
+                        return try await attempt(fallbackBody, allowEffortFallback: false)
+                    }
+                }
+                throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
+            }
+            let contentType = (http?.value(forHTTPHeaderField: "Content-Type") ?? "")
+                .lowercased()
+            if contentType.contains("text/event-stream") {
+                let parsed = try await Self.consumeEventStream(
+                    bytes,
+                    emitter: emitter,
+                    emitReasoning: emitReasoning
+                )
+                return (parsed, true, Data())
+            }
+            var data = Data()
+            for try await byte in bytes { data.append(byte) }
+            return (try Self.parseResponse(data), false, data)
         }
 
         let started = ContinuousClock.now
         let firstBody = try Self.requestBody(
             request: request,
             baseURL: configuration.baseURL,
-            reasoningEffort: configuration.reasoningEffort
+            reasoningEffort: configuration.reasoningEffort,
+            stream: true
         )
-        var (data, http) = try await fetch(firstBody)
-        if http?.statusCode != 200 {
-            // Some gateways reject the reasoning-effort field entirely (HTTP 400 mentioning
-            // "reasoning"); retry once with the field omitted rather than failing the turn.
-            if http?.statusCode == 400,
-               let errorText = String(data: data, encoding: .utf8),
-               errorText.localizedCaseInsensitiveContains("reasoning")
+        var (parsed, streamed, data) = try await attempt(firstBody, allowEffortFallback: true)
+
+        if !streamed {
+            // Non-streaming fallback keeps the budget/truncation + reasoning-only retries.
+            if parsed.isTruncated,
+               request.generationParameters.maximumOutputTokens < 16_384
             {
-                let fallbackBody = try Self.requestBody(
+                let bumped = min(
+                    max(request.generationParameters.maximumOutputTokens, 4_096),
+                    16_384
+                )
+                let retryBody = try Self.requestBody(
                     request: request,
                     baseURL: configuration.baseURL,
-                    reasoningEffort: configuration.reasoningEffort,
-                    omitReasoning: true
+                    maxOutputTokensOverride: bumped,
+                    stream: true
                 )
-                if fallbackBody != firstBody {
-                    (data, http) = try await fetch(fallbackBody)
+                let (retried, retriedStreamed, retriedData) = try await attempt(
+                    retryBody,
+                    allowEffortFallback: false
+                )
+                if !retried.isTruncated || retried.text.utf8.count > parsed.text.utf8.count {
+                    parsed = retried
+                    streamed = retriedStreamed
+                    data = retriedData
                 }
             }
-        }
-        guard http?.statusCode == 200 else {
-            throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
-        }
-        var parsed = try Self.parseResponse(data)
-
-        // The service hit its output-token cap: retry once with a higher budget and the SAME reasoning
-        // mode (no semantic change — just more room to finish the answer).
-        if parsed.isTruncated,
-           request.generationParameters.maximumOutputTokens < 16_384
-        {
-            let bumped = min(
-                max(request.generationParameters.maximumOutputTokens, 4_096),
-                16_384
-            )
-            let retryBody = try Self.requestBody(
-                request: request,
-                baseURL: configuration.baseURL,
-                maxOutputTokensOverride: bumped
-            )
-            let (data, http) = try await fetch(retryBody)
-            guard http?.statusCode == 200 else {
-                throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
-            }
-            let retried = try Self.parseResponse(data)
-            // Prefer a complete answer; otherwise keep whichever text is longer.
-            if !retried.isTruncated || retried.text.utf8.count > parsed.text.utf8.count {
+            if parsed.text.isEmpty, parsed.calls.isEmpty, parsed.hasReasoning, emitReasoning {
+                let retryBody = try Self.requestBody(
+                    request: request,
+                    baseURL: configuration.baseURL,
+                    reasoningDisabled: true,
+                    stream: true
+                )
+                let (retried, retriedStreamed, retriedData) = try await attempt(
+                    retryBody,
+                    allowEffortFallback: false
+                )
                 parsed = retried
+                streamed = retriedStreamed
+                data = retriedData
             }
-        }
-
-        // Reasoning-first services can consume the whole output budget and return ONLY reasoning.
-        // Retry once with service-side reasoning disabled before giving up — the user asked for an
-        // answer, and a reasoning-only response is not one.
-        if parsed.text.isEmpty, parsed.calls.isEmpty, parsed.hasReasoning,
-           request.generationParameters.thinkingMode != .disabled
-        {
+        } else if parsed.text.isEmpty, parsed.calls.isEmpty, parsed.hasReasoning, emitReasoning {
+            // Streamed reasoning-only: reasoning was already shown live; retry once without reasoning
+            // so the ANSWER streams too (no duplication of answer text).
             let retryBody = try Self.requestBody(
                 request: request,
                 baseURL: configuration.baseURL,
-                reasoningDisabled: true
+                reasoningDisabled: true,
+                stream: true
             )
-            let (data, http) = try await fetch(retryBody)
-            guard http?.statusCode == 200 else {
-                throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
-            }
-            parsed = try Self.parseResponse(data)
+            let (retried, retriedStreamed, retriedData) = try await attempt(
+                retryBody,
+                allowEffortFallback: false
+            )
+            parsed = retried
+            streamed = retriedStreamed
+            data = retriedData
         }
         try Task.checkCancellation()
         let elapsedMilliseconds = UInt64(
@@ -271,15 +304,15 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         )
         try await emitter.emit(.usage(usage), responseBytes: 0)
 
-        // One shared reasoning disclosure (spec §15.3): surface visible online reasoning exactly like
-        // local <think> output. Never emitted when reasoning was disabled.
-        if !parsed.reasoning.isEmpty,
-           request.generationParameters.thinkingMode != .disabled
-        {
-            try await emitter.emit(.reasoningDelta(parsed.reasoning), responseBytes: 0)
-        }
-        if !parsed.text.isEmpty {
-            try await emitter.emit(.answerDelta(parsed.text), responseBytes: 0)
+        if !streamed {
+            // Non-streaming path emits the whole reasoning/answer after the request completes;
+            // the streaming path already emitted them delta by delta.
+            if !parsed.reasoning.isEmpty, emitReasoning {
+                try await emitter.emit(.reasoningDelta(parsed.reasoning), responseBytes: 0)
+            }
+            if !parsed.text.isEmpty {
+                try await emitter.emit(.answerDelta(parsed.text), responseBytes: 0)
+            }
         }
 
         let action: AgentAction
@@ -309,6 +342,147 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         )
     }
 
+    // MARK: - Event-stream consumption
+
+    private static func consumeEventStream(
+        _ bytes: URLSession.AsyncBytes,
+        emitter: AgentModelBoundaryEmitter,
+        emitReasoning: Bool
+    ) async throws -> ParsedResponse {
+        var reasoning = ""
+        var text = ""
+        var calls: [ParsedCall] = []
+        var callName: String?
+        var callArguments = ""
+        var hasReasoningOutput = false
+        var isTruncated = false
+        var usage = ParsedUsage(inputTokens: 0, outputTokens: 0)
+
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("data:") else { continue }
+            let payload = String(trimmed.dropFirst(5))
+                .trimmingCharacters(in: .whitespaces)
+            guard !payload.isEmpty, payload != "[DONE]",
+                  let value = try? AgentWireDecoder.decode(
+                      JSONValue.self,
+                      from: Data(payload.utf8),
+                      limits: .inlineValue
+                  ),
+                  case .object(let event) = value,
+                  case .string(let type)? = event["type"]
+            else { continue }
+
+            switch type {
+            case "response.output_item.added":
+                if case .object(let item)? = event["item"] {
+                    if item["type"] == .string("function_call"),
+                       case .string(let name)? = item["name"]
+                    {
+                        callName = name
+                        callArguments = ""
+                    } else if item["type"] == .string("reasoning") {
+                        hasReasoningOutput = true
+                    }
+                }
+            case "response.reasoning_text.delta", "response.reasoning_summary_text.delta":
+                if case .string(let delta)? = event["delta"], !delta.isEmpty {
+                    reasoning += delta
+                    if emitReasoning {
+                        try await emitter.emit(.reasoningDelta(delta), responseBytes: 0)
+                    }
+                }
+            case "response.output_text.delta":
+                if case .string(let delta)? = event["delta"], !delta.isEmpty {
+                    text += delta
+                    try await emitter.emit(.answerDelta(delta), responseBytes: 0)
+                }
+            case "response.function_call_arguments.delta":
+                if case .string(let delta)? = event["delta"] {
+                    callArguments += delta
+                }
+            case "response.output_item.done":
+                if case .object(let item)? = event["item"],
+                   item["type"] == .string("function_call")
+                {
+                    let name: String
+                    if case .string(let eventName)? = item["name"] {
+                        name = eventName
+                    } else {
+                        name = callName ?? ""
+                    }
+                    if !name.isEmpty {
+                        calls.append(ParsedCall(name: name, argumentsJSON: callArguments))
+                    }
+                    callName = nil
+                    callArguments = ""
+                }
+            case "response.completed":
+                if case .object(let usageObject)? = event["usage"] {
+                    usage = ParsedUsage(
+                        inputTokens: Self.unsignedNumber(usageObject["input_tokens"]) ?? 0,
+                        outputTokens: Self.unsignedNumber(usageObject["output_tokens"]) ?? 0
+                    )
+                }
+                if case .string(let status)? = event["status"], status != "completed" {
+                    isTruncated = true
+                }
+                if case .object(let incomplete)? = event["incomplete_details"],
+                   case .string(let reason)? = incomplete["reason"]
+                {
+                    isTruncated = reason == "max_output_tokens"
+                        || reason == "length"
+                        || reason == "incomplete"
+                }
+            case "response.failed":
+                let message: String
+                if case .object(let error)? = event["error"],
+                   case .string(let errorMessage)? = error["message"]
+                {
+                    message = errorMessage
+                } else {
+                    message = "The online model stream failed."
+                }
+                throw AgentModelProviderFailure(try Self.streamFailure(message))
+            default:
+                break
+            }
+        }
+        return ParsedResponse(
+            text: text,
+            reasoning: reasoning,
+            calls: calls,
+            usage: usage,
+            hasReasoning: hasReasoningOutput,
+            isTruncated: isTruncated
+        )
+    }
+
+    private static func unsignedNumber(_ value: JSONValue?) -> UInt64? {
+        switch value {
+        case .unsignedInteger(let v): v
+        case .integer(let v): v >= 0 ? UInt64(v) : nil
+        case .number(let v): v >= 0 ? UInt64(v) : nil
+        default: nil
+        }
+    }
+
+    private static func streamFailure(_ message: String) throws -> AgentFailure {
+        try AgentFailure(
+            code: "model.online.stream",
+            classification: .transient,
+            safeMessage: message,
+            retryAdvice: AgentRetryAdvice(
+                automaticallyRetryable: true,
+                maximumAdditionalAttempts: 1
+            ),
+            externalEffect: .confirmedNone,
+            requiredUserAction: .none,
+            redaction: RedactionMetadata(classification: .publicMetadata, policyVersion: 1)
+        )
+    }
+
     // MARK: - Pure request/response mapping (unit-tested)
 
     static func requestBody(
@@ -317,7 +491,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         reasoningDisabled: Bool? = nil,
         maxOutputTokensOverride: UInt64? = nil,
         reasoningEffort: ReasoningEffort? = nil,
-        omitReasoning: Bool = false
+        omitReasoning: Bool = false,
+        stream: Bool = false
     ) throws -> Data {
         let parameters = request.generationParameters
         let (instructions, input) = try messagesPayload(request.messages)
@@ -353,6 +528,9 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         // that supports the Responses API shape.
         if !tools.isEmpty {
             fields["tools"] = .array(tools)
+        }
+        if stream {
+            fields["stream"] = .bool(true)
         }
         let body: JSONValue = .object(fields)
         return try body.canonicalData()

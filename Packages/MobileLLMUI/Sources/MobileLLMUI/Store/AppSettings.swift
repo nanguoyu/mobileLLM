@@ -158,6 +158,9 @@ public final class AppSettings {
     public var topK: Int { didSet { persist() } }
     public var repetitionPenalty: Double { didSet { persist() } }
     public var maxTokens: Int { didSet { persist() } }
+    /// Output-token budget for ONLINE runs (independent of the local `maxTokens`). Long answers and
+    /// reasoning need more room than the local 1K default; 4096 keeps truncation rare.
+    public var onlineMaxTokens: Int { didSet { persist() } }
     public var contextLength: Int { didSet { persist() } }
     /// Context window for ONLINE services. Device RAM isn't the binding constraint (the service owns
     /// the KV cache), so this is independent of `contextLength` and defaults to a larger window.
@@ -241,6 +244,7 @@ public final class AppSettings {
         topK = snap?.topK ?? 20
         repetitionPenalty = snap?.repetitionPenalty ?? 1.05
         maxTokens = snap?.maxTokens ?? 1024
+        onlineMaxTokens = snap?.onlineMaxTokens ?? 4096
         contextLength = snap?.contextLength ?? 8192
         onlineContextLength = snap?.onlineContextLength ?? 32_768
         kvBits = snap?.kvBits ?? 4
@@ -378,6 +382,7 @@ public final class AppSettings {
         var topK: Int
         var repetitionPenalty: Double
         var maxTokens: Int
+        var onlineMaxTokens: Int? = nil
         var contextLength: Int
         var onlineContextLength: Int? = nil
         var kvBits: Int
@@ -403,6 +408,7 @@ public final class AppSettings {
                             onlineServices: onlineServices,
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
+                            onlineMaxTokens: onlineMaxTokens,
                             contextLength: contextLength, onlineContextLength: onlineContextLength,
                             kvBits: kvBits, appearance: appearance)
         if let data = try? JSONEncoder().encode(snap) { defaults.set(data, forKey: key) }
@@ -440,6 +446,7 @@ public final class AppSettings {
         topK = 20
         repetitionPenalty = 1.05
         maxTokens = 1024
+        onlineMaxTokens = 4096
         contextLength = 8192
         onlineContextLength = 32_768
         kvBits = 4

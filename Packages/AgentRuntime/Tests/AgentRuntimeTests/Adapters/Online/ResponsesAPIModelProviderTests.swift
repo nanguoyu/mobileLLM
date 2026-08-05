@@ -824,4 +824,120 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         XCTAssertEqual(answer.text, "OK")
         XCTAssertEqual(MockResponsesURLProtocol.requestCount, 2)
     }
+
+    func testGenerateStreamsReasoningAndAnswerDeltas() async throws {
+        let streamBody = """
+        data: {"type":"response.reasoning_text.delta","delta":"think "}
+
+        data: {"type":"response.reasoning_text.delta","delta":"ing"}
+
+        data: {"type":"response.output_text.delta","delta":"Hel"}
+
+        data: {"type":"response.output_text.delta","delta":"lo"}
+
+        data: {"type":"response.completed","status":"completed","usage":{"input_tokens":2,"output_tokens":2}}
+
+        """
+        MockResponsesURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "text/event-stream"]
+            )!
+            return (response, Data(streamBody.utf8))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockResponsesURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockResponsesURLProtocol.handler = nil
+            MockResponsesURLProtocol.capturedRequest = nil
+            MockResponsesURLProtocol.requestCount = 0
+        }
+
+        let provider = try ResponsesAPIModelProvider(
+            configurationProvider: {
+                ResponsesAPIConfiguration(
+                    baseURL: "https://gateway.example/v1",
+                    apiKey: "sk-test",
+                    reasoningEffort: .medium
+                )
+            },
+            session: session
+        )
+        let fixture = try ModelFixture(
+            location: .remote,
+            thinkingMode: .enabled,
+            providerID: ResponsesAPIModelProvider.providerID,
+            remoteDestination: "openai.responses:responses-api-key:fixture-model"
+        )
+        let cloudPolicy = try AgentModelPolicy(
+            localOnly: false,
+            allowedSelections: [fixture.request.selection],
+            strategy: .pinned,
+            requiredCapabilities: AgentModelCapabilitySet([])
+        )
+        let cloudContext = try ModelPreparationContext(
+            conversationID: fixture.context.conversationID,
+            modelPolicy: cloudPolicy,
+            capabilityGrant: fixture.context.capabilityGrant,
+            authorizationPayload: fixture.context.authorizationPayload,
+            maximumRequestBytes: fixture.context.maximumRequestBytes,
+            maximumResponseBytes: fixture.context.maximumResponseBytes,
+            timeoutMilliseconds: fixture.context.timeoutMilliseconds
+        )
+        let prepared = try await AgentModelRequestPreparer().prepare(
+            provider: provider,
+            request: fixture.request,
+            context: cloudContext
+        )
+        let policy = TestApprovalPolicyEngine()
+        let authorization = try await policy.bindLocalPolicy(
+            prepared: prepared.preparedRequest.externalOperation,
+            approvalID: ApprovalID(rawValue: ModelFixture.uuid(5)),
+            trustedRunAuthority: fixture.authority,
+            at: AgentTimestamp(rawValue: 1_000)
+        )
+        let authorized = AuthorizedAgentModelAttempt(
+            preparedAttempt: prepared,
+            request: try AuthorizedModelRequest(
+                request: fixture.request,
+                authorization: authorization,
+                clock: FixedAuthorizationClock(),
+                policyValidator: policy,
+                attemptLedger: TestAttemptLedger()
+            )
+        )
+        let sink = RecordingModelEventSink()
+
+        let result = try await AgentModelExecutor().execute(
+            provider: provider,
+            authorized: authorized,
+            eventSink: sink
+        )
+
+        guard case .completed(let completion) = result.outcome,
+              case .finalAnswer(let answer) = completion.action
+        else { return XCTFail("expected final answer, got \(result.outcome)") }
+        XCTAssertEqual(answer.text, "Hello")
+        XCTAssertEqual(completion.usage.inputTokens, 2)
+        XCTAssertEqual(completion.usage.outputTokens, 2)
+
+        let events = await sink.events()
+        XCTAssertEqual(
+            events.filter {
+                if case .visibleReasoningDelta = $0 { return true }
+                return false
+            },
+            [.visibleReasoningDelta("think "), .visibleReasoningDelta("ing")]
+        )
+        XCTAssertEqual(
+            events.filter {
+                if case .provisionalAnswerDelta = $0 { return true }
+                return false
+            },
+            [.provisionalAnswerDelta("Hel"), .provisionalAnswerDelta("lo")]
+        )
+    }
 }

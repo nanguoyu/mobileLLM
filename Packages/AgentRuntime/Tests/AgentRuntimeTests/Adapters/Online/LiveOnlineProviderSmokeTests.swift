@@ -133,6 +133,128 @@ final class LiveOnlineProviderSmokeTests: XCTestCase {
         )
     }
 
+    /// The user-facing promise is token-by-token UI streaming: deltas must arrive BEFORE the full
+    /// answer is known and their concatenation must equal the committed answer. This test asks for a
+    /// longer reply so the gateway has to emit multiple `output_text.delta` chunks; a service that
+    /// buffers the whole response (or an SSE parser that waits for completion) fails here even though
+    /// the final answer is correct.
+    func testLiveResponsesStreamAnswerDeltasIncrementally() async throws {
+        let config = try loadConfig()
+        let model = config.model ?? ""
+        let provider = try ResponsesAPIModelProvider(
+            configurationProvider: {
+                ResponsesAPIConfiguration(
+                    baseURL: config.baseURL,
+                    apiKey: config.apiKey,
+                    reasoningEffort: .medium
+                )
+            },
+            session: .shared
+        )
+        let fixture = try ModelFixture(
+            location: .remote,
+            thinkingMode: .disabled,
+            providerID: ResponsesAPIModelProvider.providerID,
+            remoteDestination: "openai.responses:\(ResponsesAPIConfiguration.defaultServiceID):\(model)",
+            modelID: model,
+            userMessage: "Explain how sleep affects memory. Write at least three sentences."
+        )
+        let cloudPolicy = try AgentModelPolicy(
+            localOnly: false,
+            allowedSelections: [fixture.request.selection],
+            strategy: .pinned,
+            requiredCapabilities: AgentModelCapabilitySet([])
+        )
+        let cloudContext = try ModelPreparationContext(
+            conversationID: fixture.context.conversationID,
+            modelPolicy: cloudPolicy,
+            capabilityGrant: fixture.context.capabilityGrant,
+            authorizationPayload: fixture.context.authorizationPayload,
+            maximumRequestBytes: fixture.context.maximumRequestBytes,
+            maximumResponseBytes: fixture.context.maximumResponseBytes,
+            timeoutMilliseconds: fixture.context.timeoutMilliseconds
+        )
+        let prepared = try await AgentModelRequestPreparer().prepare(
+            provider: provider,
+            request: fixture.request,
+            context: cloudContext
+        )
+        let policy = TestApprovalPolicyEngine()
+        let authorization = try await policy.bindLocalPolicy(
+            prepared: prepared.preparedRequest.externalOperation,
+            approvalID: ApprovalID(rawValue: ModelFixture.uuid(7)),
+            trustedRunAuthority: fixture.authority,
+            at: AgentTimestamp(rawValue: 1_000)
+        )
+        let authorized = AuthorizedAgentModelAttempt(
+            preparedAttempt: prepared,
+            request: try AuthorizedModelRequest(
+                request: fixture.request,
+                authorization: authorization,
+                clock: FixedAuthorizationClock(),
+                policyValidator: policy,
+                attemptLedger: TestAttemptLedger()
+            )
+        )
+
+        let started = ContinuousClock.now
+        let sink = RecordingModelEventSink()
+        let result = try await AgentModelExecutor().execute(
+            provider: provider,
+            authorized: authorized,
+            eventSink: sink
+        )
+        let elapsed = started.duration(to: .now)
+
+        guard case .completed(let completion) = result.outcome,
+              case .finalAnswer(let answer) = completion.action
+        else {
+            let detail = result.outcome
+            let attachment = XCTAttachment(string: "elapsed=\(elapsed) outcome=\(detail)")
+            attachment.name = "live-online-stream-failure"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            return XCTFail("live online streaming request did not complete: \(detail)")
+        }
+
+        let events = await sink.events()
+        let answerDeltas = events.compactMap { event -> String? in
+            guard case .provisionalAnswerDelta(let delta) = event else { return nil }
+            return delta
+        }
+        let streamed = answerDeltas.joined()
+        let answerText = answer.text ?? ""
+        let summary = XCTAttachment(string: """
+        elapsed_seconds=\(Double(elapsed.components.seconds))
+        answer_length=\(answerText.utf8.count)
+        answer_delta_count=\(answerDeltas.count)
+        streamed_matches_final=\(streamed == answerText)
+        input_tokens=\(completion.usage.inputTokens)
+        output_tokens=\(completion.usage.outputTokens)
+        answer_prefix=\(String(answerText.prefix(120)))
+        """)
+        summary.name = "live-online-stream-deltas"
+        summary.lifetime = .keepAlways
+        add(summary)
+
+        XCTAssertFalse(answerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        XCTAssertGreaterThanOrEqual(
+            answerDeltas.count,
+            2,
+            "expected multiple answer deltas from the live SSE stream, got \(answerDeltas.count)"
+        )
+        XCTAssertEqual(
+            streamed,
+            answerText,
+            "streamed delta concatenation must equal the committed answer"
+        )
+        XCTAssertLessThan(
+            elapsed,
+            .seconds(60),
+            "online streaming replies should complete quickly, took \(elapsed)"
+        )
+    }
+
     /// The 2026-standard path: reasoning ENABLED with medium effort. Verifies the configured gateway
     /// accepts `reasoning.effort` and still returns a real answer (not just reasoning).
     func testLiveResponsesWithMediumEffortReturnsAnswer() async throws {
