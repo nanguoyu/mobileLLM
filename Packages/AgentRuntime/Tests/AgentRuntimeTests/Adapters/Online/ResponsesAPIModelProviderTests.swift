@@ -40,13 +40,28 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
             AgentModelMessage(role: .assistant, content: "ok", isUntrustedData: false),
             AgentModelMessage(role: .tool, content: "42", isUntrustedData: true),
         ]
-        let payload = try ResponsesAPIModelProvider.messagesPayload(messages)
-        XCTAssertEqual(payload.count, 4)
-        guard case .object(let system) = payload[0] else { return XCTFail("system") }
-        XCTAssertEqual(system["role"], .string("system"))
-        guard case .object(let tool) = payload[3] else { return XCTFail("tool") }
+        let (instructions, input) = try ResponsesAPIModelProvider.messagesPayload(messages)
+        XCTAssertEqual(instructions, "sys")
+        XCTAssertEqual(input.count, 3)
+        guard case .object(let user) = input[0] else { return XCTFail("user") }
+        XCTAssertEqual(user["role"], .string("user"))
+        guard case .array(let userContent)? = user["content"],
+              case .object(let userPart) = userContent[0],
+              userPart["type"] == .string("input_text"),
+              userPart["text"] == .string("hi")
+        else { return XCTFail("user content item") }
+        guard case .object(let assistant) = input[1] else { return XCTFail("assistant") }
+        XCTAssertEqual(assistant["role"], .string("assistant"))
+        guard case .array(let assistantContent)? = assistant["content"],
+              case .object(let assistantPart) = assistantContent[0],
+              assistantPart["type"] == .string("output_text")
+        else { return XCTFail("assistant content item") }
+        guard case .object(let tool) = input[2] else { return XCTFail("tool") }
         XCTAssertEqual(tool["role"], .string("user"))
-        XCTAssertEqual(tool["content"], .string("Tool result: 42"))
+        guard case .array(let toolContent)? = tool["content"],
+              case .object(let toolPart) = toolContent[0],
+              toolPart["text"] == .string("Tool result: 42")
+        else { return XCTFail("tool result item") }
     }
 
     func testRequestBodyCarriesModelAndMessages() throws {
@@ -62,8 +77,9 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         )
         guard case .object(let object) = value else { return XCTFail("body object") }
         XCTAssertEqual(object["model"], .string("fixture-model"))
-        guard case .array(let messages)? = object["messages"] else { return XCTFail("messages") }
-        XCTAssertEqual(messages.count, 1)
+        XCTAssertNil(object["messages"], "the Responses API wire format must not use messages")
+        guard case .array(let input)? = object["input"] else { return XCTFail("input") }
+        XCTAssertEqual(input.count, 1)
     }
 
     func testRequestBodyOmitsToolsWhenNoneAreAdvertised() throws {
@@ -79,6 +95,38 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         )
         guard case .object(let object) = value else { return XCTFail("body object") }
         XCTAssertNil(object["tools"], "empty tool arrays are omitted for gateway compatibility")
+    }
+
+    func testRequestBodyDisablesReasoningWhenThinkingIsOff() throws {
+        let fixture = try ModelFixture(thinkingMode: .disabled)
+        let data = try ResponsesAPIModelProvider.requestBody(
+            request: fixture.request,
+            baseURL: "https://gateway.example/v1"
+        )
+        let value = try AgentWireDecoder.decode(
+            JSONValue.self,
+            from: data,
+            limits: .inlineValue
+        )
+        guard case .object(let object) = value,
+              case .object(let reasoning)? = object["reasoning"],
+              reasoning["enabled"] == .bool(false)
+        else { return XCTFail("expected reasoning.enabled=false") }
+    }
+
+    func testRequestBodyLeavesReasoningDefaultWhenThinkingIsOn() throws {
+        let fixture = try ModelFixture(thinkingMode: .enabled)
+        let data = try ResponsesAPIModelProvider.requestBody(
+            request: fixture.request,
+            baseURL: "https://gateway.example/v1"
+        )
+        let value = try AgentWireDecoder.decode(
+            JSONValue.self,
+            from: data,
+            limits: .inlineValue
+        )
+        guard case .object(let object) = value else { return XCTFail("body object") }
+        XCTAssertNil(object["reasoning"], "thinking enabled must keep the gateway default")
     }
 
     func testRequestBodyIncludesToolsWhenAdvertised() throws {

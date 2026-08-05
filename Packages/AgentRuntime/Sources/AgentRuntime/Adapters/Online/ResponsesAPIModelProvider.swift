@@ -182,13 +182,26 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
 
     static func requestBody(request: AgentModelRequest, baseURL: String) throws -> Data {
         let parameters = request.generationParameters
+        let (instructions, input) = try messagesPayload(request.messages)
         var fields: [String: JSONValue] = [
             "model": .string(request.selection.modelID.rawValue),
-            "messages": .array(try messagesPayload(request.messages)),
+            "input": .array(input),
             "temperature": .number(parameters.temperature),
             "top_p": .number(parameters.topP),
             "max_output_tokens": .unsignedInteger(parameters.maximumOutputTokens),
         ]
+        // The Responses API carries the system prompt as a top-level `instructions` string, not as an
+        // input item; some gateways reject `messages` outright on /responses.
+        if !instructions.isEmpty {
+            fields["instructions"] = .string(instructions)
+        }
+        // Some gateways (e.g. reasoning-first small models) default to a long reasoning phase that can
+        // consume the whole output budget before any answer token. When the user asked for no thinking,
+        // ask the service to disable reasoning explicitly; `.automatic`/`.enabled` keep the gateway
+        // default and stay compatible with services that reject unknown reasoning fields.
+        if parameters.thinkingMode == .disabled {
+            fields["reasoning"] = .object(["enabled": .bool(false)])
+        }
         let tools = try toolsPayload(request.advertisedTools)
         // Some compatible gateways reject an empty array; omitting it is equivalent for every client
         // that supports the Responses API shape.
@@ -199,20 +212,39 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         return try body.canonicalData()
     }
 
-    static func messagesPayload(_ messages: [AgentModelMessage]) throws -> [JSONValue] {
-        messages.map { message in
-            let role: String = switch message.role {
-            case .system: "system"
-            case .user: "user"
-            case .assistant: "assistant"
-            case .tool: "user"   // native tool_call_id is not carried by the compiled message; relay as
-                                 // a user-role result so the loop still sees the outcome.
+    /// Splits the compiled conversation into the Responses API wire shape: a top-level `instructions`
+    /// string for system content and `input` items for everything else. Tool results are relayed as
+    /// user-role text because the compiled message does not carry the native `call_id`.
+    static func messagesPayload(_ messages: [AgentModelMessage]) throws -> (instructions: String, input: [JSONValue]) {
+        let instructions = messages
+            .filter { $0.role == .system }
+            .map(\.content)
+            .joined(separator: "\n")
+        let input = messages
+            .filter { $0.role != .system }
+            .map { message -> JSONValue in
+                let role: String = switch message.role {
+                case .system: "system"   // unreachable: filtered above, kept exhaustive
+                case .user: "user"
+                case .assistant: "assistant"
+                case .tool: "user"       // native tool_call_id is not carried by the compiled message;
+                                         // relay as a user-role result so the loop still sees it.
+                }
+                let content = message.role == .tool
+                    ? "Tool result: \(message.content)"
+                    : message.content
+                let partType = role == "assistant" ? "output_text" : "input_text"
+                return .object([
+                    "role": .string(role),
+                    "content": .array([
+                        .object([
+                            "type": .string(partType),
+                            "text": .string(content),
+                        ]),
+                    ]),
+                ])
             }
-            let content = message.role == .tool
-                ? "Tool result: \(message.content)"
-                : message.content
-            return .object(["role": .string(role), "content": .string(content)])
-        }
+        return (instructions, input)
     }
 
     static func toolsPayload(_ descriptors: [AgentToolDescriptor]) throws -> [JSONValue] {
