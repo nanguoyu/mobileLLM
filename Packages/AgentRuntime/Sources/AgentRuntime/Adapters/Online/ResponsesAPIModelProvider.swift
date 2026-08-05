@@ -180,6 +180,34 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         }
         var parsed = try Self.parseResponse(data)
 
+        // The service hit its output-token cap: retry once with a higher budget and the SAME reasoning
+        // mode (no semantic change — just more room to finish the answer).
+        if parsed.isTruncated,
+           request.generationParameters.maximumOutputTokens < 16_384
+        {
+            let bumped = min(
+                max(request.generationParameters.maximumOutputTokens, 4_096),
+                16_384
+            )
+            var retryRequest = makeRequest()
+            retryRequest.httpBody = try Self.requestBody(
+                request: request,
+                baseURL: configuration.baseURL,
+                maxOutputTokensOverride: bumped
+            )
+            let (data, response) = try await session.data(for: retryRequest)
+            try Task.checkCancellation()
+            let http = response as? HTTPURLResponse
+            guard http?.statusCode == 200 else {
+                throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
+            }
+            let retried = try Self.parseResponse(data)
+            // Prefer a complete answer; otherwise keep whichever text is longer.
+            if !retried.isTruncated || retried.text.utf8.count > parsed.text.utf8.count {
+                parsed = retried
+            }
+        }
+
         // Reasoning-first services can consume the whole output budget and return ONLY reasoning.
         // Retry once with service-side reasoning disabled before giving up — the user asked for an
         // answer, and a reasoning-only response is not one.
@@ -248,7 +276,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
     static func requestBody(
         request: AgentModelRequest,
         baseURL: String,
-        reasoningDisabled: Bool? = nil
+        reasoningDisabled: Bool? = nil,
+        maxOutputTokensOverride: UInt64? = nil
     ) throws -> Data {
         let parameters = request.generationParameters
         let (instructions, input) = try messagesPayload(request.messages)
@@ -257,7 +286,9 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             "input": .array(input),
             "temperature": .number(parameters.temperature),
             "top_p": .number(parameters.topP),
-            "max_output_tokens": .unsignedInteger(parameters.maximumOutputTokens),
+            "max_output_tokens": .unsignedInteger(
+                maxOutputTokensOverride ?? parameters.maximumOutputTokens
+            ),
         ]
         // The Responses API carries the system prompt as a top-level `instructions` string, not as an
         // input item; some gateways reject `messages` outright on /responses.
@@ -348,6 +379,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         let usage: ParsedUsage
         /// True when the service emitted a reasoning item but no answer (budget consumed by thinking).
         let hasReasoning: Bool
+        /// True when the service reported an incomplete/truncated completion (max_output_tokens hit).
+        let isTruncated: Bool
     }
 
     static func parseResponse(_ data: Data) throws -> ParsedResponse {
@@ -368,6 +401,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         var text = ""
         var calls: [ParsedCall] = []
         var hasReasoning = false
+        var isTruncated = false
         if case .object(let root) = value,
            case .array(let output)? = root["output"]
         {
@@ -396,11 +430,29 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 }
             }
         }
+        if case .object(let root) = value {
+            if case .string(let status)? = root["status"], status != "completed" {
+                isTruncated = true
+            }
+            if case .object(let incomplete)? = root["incomplete_details"],
+               case .string(let reason)? = incomplete["reason"]
+            {
+                isTruncated = reason == "max_output_tokens"
+                    || reason == "length"
+                    || reason == "incomplete"
+            }
+        }
         let usage = ParsedUsage(
             inputTokens: number(["usage", "input_tokens"]) ?? 0,
             outputTokens: number(["usage", "output_tokens"]) ?? 0
         )
-        return ParsedResponse(text: text, calls: calls, usage: usage, hasReasoning: hasReasoning)
+        return ParsedResponse(
+            text: text,
+            calls: calls,
+            usage: usage,
+            hasReasoning: hasReasoning,
+            isTruncated: isTruncated
+        )
     }
 
     private static func normalize(
