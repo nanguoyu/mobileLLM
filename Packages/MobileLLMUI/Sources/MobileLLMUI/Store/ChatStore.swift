@@ -1608,7 +1608,14 @@ public final class ChatStore {
     /// Tokens currently used by the active thread's context vs the cap (composer meter; DESIGN §4).
     public func contextUsage() -> (used: Int, cap: Int) {
         // The meter must show the cap the engine actually runs at, not the requested one.
-        let cap = settings.effectiveContext(for: activeModel?.model)
+        let cap: Int
+        if isOnlineActive {
+            // Online providers are not bounded by device RAM: the setting is the cap (up to the service
+            // window) instead of a local checkpoint's native context.
+            cap = min(settings.contextLength, OnlineModelIdentity.maximumContextTokens)
+        } else {
+            cap = settings.effectiveContext(for: activeModel?.model)
+        }
         guard let convo = activeConversation else { return (0, cap) }
         // CJK-aware throughout (`TokenEstimate`) so a Chinese thread's meter isn't ~3× under. The active
         // skill's instructions AND the memory block ride the composed system prompt, so they're counted

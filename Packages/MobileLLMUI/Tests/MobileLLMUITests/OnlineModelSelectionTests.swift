@@ -154,4 +154,24 @@ final class OnlineModelSelectionTests: XCTestCase {
         XCTAssertEqual(chat.onlineModelID, "model-a")
         XCTAssertEqual(chat.activeModelLabel, "Online · A")
     }
+
+    /// The context meter for online runs uses the setting up to the service window, not a local
+    /// checkpoint's native context (device RAM is not the online constraint).
+    func testOnlineContextMeterUsesSettingUpToServiceWindow() {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let settings = makeOnlineSettings()
+        let chat = ChatStore(
+            engine: MockLLMEngine(script: .init()),
+            store: store,
+            settings: settings,
+            activeModel: nil
+        )
+
+        settings.contextLength = 32_768
+        XCTAssertEqual(chat.contextUsage().cap, 32_768)
+
+        settings.contextLength = 400_000
+        XCTAssertEqual(chat.contextUsage().cap, OnlineModelIdentity.maximumContextTokens)
+    }
 }

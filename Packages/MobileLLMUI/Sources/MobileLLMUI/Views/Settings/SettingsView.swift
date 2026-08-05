@@ -313,10 +313,15 @@ struct SettingsView: View {
     /// trained for, and each rung carries the fit dot for this device — because the ceiling that actually
     /// binds is RAM, not the checkpoint. (A 9B trained to 256K still only fits ~16K on an 8 GB phone.)
     @ViewBuilder private var contextRow: some View {
+        let online = container.chat.isOnlineActive
         let model = contextModel
-        let options = model.map { ContextPolicy.options(for: $0) } ?? ContextPolicy.ladder
-        let shown = model.map { ContextPolicy.effective(requested: settings.contextLength, model: $0) }
-            ?? settings.contextLength
+        let options = online
+            ? OnlineModelIdentity.contextLadder
+            : (model.map { ContextPolicy.options(for: $0) } ?? ContextPolicy.ladder)
+        let shown = online
+            ? min(settings.contextLength, OnlineModelIdentity.maximumContextTokens)
+            : (model.map { ContextPolicy.effective(requested: settings.contextLength, model: $0) }
+                ?? settings.contextLength)
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text("Context length").font(.subheadline).foregroundStyle(Theme.textSecondary)
@@ -349,6 +354,8 @@ struct SettingsView: View {
     /// Green / amber / red per rung. `.tight` alone isn't the answer — it's returned both for "runs, but
     /// deep into the budget" and for "that context is way over the ceiling", so ask `ContextPolicy.fits`.
     private func fitSymbol(_ n: Int) -> String {
+        // Online inference owns no device KV cache: every rung up to the service window fits.
+        if container.chat.isOnlineActive { return "circle.fill" }
         guard let model = contextModel else { return "circle" }
         let device = container.models.device
         let variant = AppSettings.preferredVariant(for: model, device: device,
@@ -361,6 +368,11 @@ struct SettingsView: View {
     }
 
     private var contextFootnote: String {
+        if container.chat.isOnlineActive {
+            let window = Format.shortCount(OnlineModelIdentity.maximumContextTokens)
+            return "Online services use the setting as-is, up to the service window (\(window)); device "
+                + "RAM doesn't bind it. Longer context costs more tokens on the service."
+        }
         guard let model = contextModel else {
             return "How much conversation the model can see at once."
         }

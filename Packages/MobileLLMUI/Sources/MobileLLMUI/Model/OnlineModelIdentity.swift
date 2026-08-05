@@ -12,6 +12,11 @@ public enum OnlineModelIdentity {
     public static let providerID = "openai.responses"
     /// Stable variant id pinned for every online selection (the service model id is the real identity).
     public static let variantID = "responses.default"
+    /// The provider's advertised maximum context window (must match ResponsesAPIModelProvider).
+    public static let maximumContextTokens = 200_000
+    /// Context rungs offered for online services: the device's RAM is not the binding constraint, so
+    /// the ladder goes up to the service window (powers of two, plus the service max).
+    public static let contextLadder = [4_096, 8_192, 16_384, 32_768, 65_536, 131_072, maximumContextTokens]
     /// Conversation-level model-id prefix; service id and model follow the colons.
     public static let conversationModelIDPrefix = "online.responses:"
 

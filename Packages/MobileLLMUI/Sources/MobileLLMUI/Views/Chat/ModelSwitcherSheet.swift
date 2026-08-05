@@ -92,6 +92,9 @@ struct ModelSwitcherSheet: View {
         let isActive = container.settings.onlineActiveService?.id == service.id
         return Button {
             container.settings.setOnlineServiceEnabled(id: service.id, enabled: true)
+            // Online is a first-class selection: drop the local identity/weights so the UI never shows
+            // two active models at once.
+            Task { await container.models.deactivate() }
             dismiss()
         } label: {
             HStack {
@@ -116,7 +119,9 @@ struct ModelSwitcherSheet: View {
     }
 
     private func row(_ model: LLMModel, _ variant: LLMVariant) -> some View {
-        let isActive = container.models.active?.variant.id == variant.id
+        // When the online service is armed, no on-device model is the active selection.
+        let isActive = !container.chat.isOnlineActive
+            && container.models.active?.variant.id == variant.id
         let isActivating = activating == variant.id || container.models.activatingVariantID == variant.id
         let presentation = container.models.fitPresentation(model, variant, context: container.settings.contextLength)
         return Button {
