@@ -739,9 +739,14 @@ must all produce it rather than implementing parallel approval formats.
 
   - `ask` (default): follow the defaults above.
   - `safePreset`: auto-approve in-app reads/writes and bounded network/private-data reads, plus
-    online-model inference within an already-approved conversation scope; external writes, unknown
+    online-model inference (same service destination and data category); external writes, unknown
     external, destructive, financial, and code-execution operations still ask.
   - `fullAccess`: auto-approve every operation inside the run capability ceiling without prompting.
+
+  The three modes apply identically to EVERY boundary-crossing operation — local tools and in-app
+  access, private/system data, online-model inference, MCP, file/artifact export — regardless of
+  whether the underlying provider is on-device or remote. There is no separate local-versus-online
+  approval policy.
 
   A mode decides whether the user is ASKED, never whether an operation is authorized: the run capability
   ceiling, the `prepare -> authorize -> execute` transaction, durable authorization records, and
