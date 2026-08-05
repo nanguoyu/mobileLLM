@@ -737,11 +737,16 @@ must all produce it rather than implementing parallel approval formats.
   per-invocation approval.
 - Approval runs under one of three per-conversation modes, adjustable at any time and frozen per run:
 
-  - `ask` (default): follow the defaults above.
-  - `safePreset`: auto-approve in-app reads/writes and bounded network/private-data reads, plus
-    online-model inference (same service destination and data category); external writes, unknown
+  - `safePreset` (default): auto-approve in-app reads/writes and bounded network/private-data reads,
+    plus online-model inference (same service destination and data category); external writes, unknown
     external, destructive, financial, and code-execution operations still ask.
+  - `ask`: follow the defaults above (external reads and online-model inference approve on first use
+    in the conversation).
   - `fullAccess`: auto-approve every operation inside the run capability ceiling without prompting.
+
+  A conversation without a stored override follows the product default (Safe preset). The UI exposes
+  the three explicit modes plus a "Follow default" choice; selecting Ask writes an explicit
+  conversation-scoped override rather than clearing one.
 
   The three modes apply identically to EVERY boundary-crossing operation — local tools and in-app
   access, private/system data, online-model inference, MCP, file/artifact export — regardless of

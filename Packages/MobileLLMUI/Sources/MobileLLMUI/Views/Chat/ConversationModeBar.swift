@@ -13,7 +13,8 @@ struct ConversationModeBar: View {
     var body: some View {
         HStack(spacing: Theme.Space.md) {
             Menu {
-                approvalOption("Ask", mode: nil)
+                approvalOption("Follow default (Safe preset)", mode: nil)
+                approvalOption("Ask", mode: .ask)
                 approvalOption("Safe preset", mode: .safePreset)
                 approvalOption("Full access", mode: .fullAccess)
             } label: {
@@ -50,7 +51,7 @@ struct ConversationModeBar: View {
     }
 
     private var approvalLabel: String {
-        switch chat.conversationApprovalMode ?? .ask {
+        switch chat.effectiveApprovalMode {
         case .ask: "Approval: Ask"
         case .safePreset: "Approval: Safe preset"
         case .fullAccess: "Approval: Full access"
@@ -59,10 +60,16 @@ struct ConversationModeBar: View {
 
     @ViewBuilder
     private func approvalOption(_ title: String, mode: AgentApprovalMode?) -> some View {
-        Button {
+        let isSelected: Bool
+        if let mode {
+            isSelected = chat.effectiveApprovalMode == mode
+        } else {
+            isSelected = chat.conversationApprovalMode == nil
+        }
+        return Button {
             chat.conversationApprovalMode = mode
         } label: {
-            if (chat.conversationApprovalMode ?? .ask) == (mode ?? .ask) {
+            if isSelected {
                 Label(title, systemImage: "checkmark")
             } else {
                 Text(title)

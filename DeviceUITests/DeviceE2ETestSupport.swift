@@ -156,9 +156,9 @@ class DeviceE2ETestCase: XCTestCase {
 
     @MainActor
     func launchApp(visionFixture: Bool = false) throws -> XCUIApplication {
-        #if targetEnvironment(simulator)
-        throw XCTSkip("DeviceE2E must run on a physical iPhone")
-        #endif
+        // Simulator runs are supported by this harness (iPhone Simulator is a first-class target).
+        // Cases that genuinely need a physical device — installed local weights, TCC, real thermal
+        // state, camera — skip themselves at their own precondition instead of blocking the shell.
         let app = XCUIApplication()
         app.launchEnvironment["MOBILELLM_DEVICE_E2E"] = "1"
         app.launchEnvironment["MOBILELLM_DEVICE_E2E_FIXTURE"] = visionFixture ? "1" : "0"
@@ -234,6 +234,55 @@ class DeviceE2ETestCase: XCTestCase {
         ).firstMatch
         XCTAssertFalse(warning.exists,
                        "Free-memory estimates are advisory and must not block activation", file: file, line: line)
+    }
+
+    /// Model switcher → "Online · <service model>" row. Requires the test runner to have injected the
+    /// key/base URL/model (loadOpenAITestConfig reads ~/.mobilellm/openai.json); the row only appears
+    /// when a key is stored and a model id is set.
+    @MainActor
+    func selectOnlineModel(in app: XCUIApplication) throws {
+        let header = app.buttons["Active model"]
+        guard header.waitForExistence(timeout: 15), header.isHittable else {
+            throw DeviceE2EHarnessError.precondition("Active-model header is not actionable")
+        }
+        header.tap()
+        guard app.navigationBars["Switch model"].waitForExistence(timeout: 15) else {
+            throw DeviceE2EHarnessError.precondition("Model switcher did not open")
+        }
+        let row = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Online ·")
+        ).firstMatch
+        guard row.waitForExistence(timeout: 10), row.isHittable else {
+            attachDiagnostics(app, name: "online-row-missing")
+            throw DeviceE2EHarnessError.precondition(
+                "Online model row is missing from the switcher; "
+                    + "runtime=\(diagnosticValue("device-e2e.runtime", in: app))"
+            )
+        }
+        row.tap()
+        guard app.navigationBars["Switch model"].waitForNonExistence(timeout: 10) else {
+            throw DeviceE2EHarnessError.precondition("Model switcher did not dismiss after online selection")
+        }
+        guard header.waitForExistence(timeout: 10) else {
+            throw DeviceE2EHarnessError.precondition("Active-model header disappeared")
+        }
+        let headerText = header.staticTexts.firstMatch
+        guard headerText.waitForExistence(timeout: 5) else {
+            throw DeviceE2EHarnessError.precondition("Active-model header text is missing")
+        }
+        let deadline = Date().addingTimeInterval(10)
+        var value = headerText.label
+        while Date() < deadline, !value.hasPrefix("Online ·") {
+            Thread.sleep(forTimeInterval: 0.2)
+            value = headerText.label
+        }
+        if !value.hasPrefix("Online ·") {
+            attachDiagnostics(app, name: "online-header-not-switched")
+            throw DeviceE2EHarnessError.precondition(
+                "Header did not switch to the online model: \(value); "
+                    + "runtime=\(diagnosticValue("device-e2e.runtime", in: app))"
+            )
+        }
     }
 
     @MainActor
@@ -500,10 +549,17 @@ class DeviceE2ETestCase: XCTestCase {
         }
         let row = app.buttons[model.switcherLabel]
         guard row.waitForExistence(timeout: 20) else {
+            #if targetEnvironment(simulator)
+            throw XCTSkip(
+                "\(model.displayName) requires installed local weights; "
+                    + "they are not present on this simulator"
+            )
+            #else
             attachDiagnostics(app, name: "missing-\(model.modelID)")
             throw DeviceE2EHarnessError.precondition(
                 "Required installed variant is missing: \(model.switcherLabel)"
             )
+            #endif
         }
         row.tap()
 
@@ -724,7 +780,8 @@ class DeviceE2ETestCase: XCTestCase {
                                     previousStatsCount: Int,
                                     startedAt: Date,
                                     timeout: TimeInterval? = nil,
-                                    acceptedStops: [String] = ["eos", "stopSequence", "maxTokens"])
+                                    acceptedStops: [String] = ["eos", "stopSequence", "maxTokens"],
+                                    assertStatsModel: Bool = true)
         throws -> GenerationEvidence {
         let agentRuntime = diagnosticValue("device-e2e.agent", in: app)
         XCTAssertTrue(
@@ -789,7 +846,9 @@ class DeviceE2ETestCase: XCTestCase {
                                           reasoning: reasoning,
                                           wallSeconds: Date().timeIntervalSince(startedAt))
         attachGenerationEvidence(evidence, app: app, name: model.modelID + "-manual")
-        XCTAssertTrue(stats.hasPrefix(model.displayName + " ·"), "Wrong model in stats: \(stats)")
+        if assertStatsModel {
+            XCTAssertTrue(stats.hasPrefix(model.displayName + " ·"), "Wrong model in stats: \(stats)")
+        }
         XCTAssertTrue(acceptedStops.contains { stats.contains("stop: \($0)") },
                       "Unexpected stop reason: \(stats)")
         return evidence
@@ -1032,13 +1091,20 @@ class DeviceE2ETestCase: XCTestCase {
         return element.exists && element.isEnabled && element.isHittable
     }
 
-    /// The durable agent runtime pauses a network tool on first use in a conversation and presents an
-    /// approval card (spec §15.2). Approve it when it appears; local tools never trigger this.
+    /// The durable agent runtime pauses a boundary-crossing operation and presents an approval card
+    /// (spec §15.2) when the conversation is not in Safe preset / Full access. Approve it when it
+    /// appears. The timeout is intentionally SHORT: generation loops call this on every poll, so a
+    /// card that appears a moment later is caught by the next iteration. A long default would stall
+    /// every no-card generation (e.g. Safe preset online inference) for the full timeout after the
+    /// answer had already finished.
     @MainActor
-    func approvePendingAgentApprovalIfNeeded(in app: XCUIApplication, timeout: TimeInterval = 60) {
+    func approvePendingAgentApprovalIfNeeded(in app: XCUIApplication, timeout: TimeInterval = 2) {
         let approve = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Approve")
         ).firstMatch
+        // No card visible right now → nothing to do; the outer generation loop re-checks each poll,
+        // so a card that appears later is still caught without stalling card-free runs.
+        guard approve.exists else { return }
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if approve.exists, approve.isHittable {

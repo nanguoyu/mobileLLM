@@ -168,8 +168,8 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
     public var contextLength: Int?
     /// Per-thread sampling overrides (nil = follow global Settings). Missing key decodes as nil.
     public var sampling: ConversationSampling?
-    /// Per-thread approval mode (nil = `.ask`). Adjustable at any time from the composer menu; frozen
-    /// into each run. Missing key decodes as nil.
+    /// Per-thread approval-mode override (nil = follow the product default Safe preset). Adjustable
+    /// at any time from the composer menu; frozen into each run. Missing key decodes as nil.
     public var approvalMode: AgentApprovalMode?
     /// Per-thread reasoning effort (nil = `.medium`). Applies when reasoning is enabled. Missing key
     /// decodes as nil.

@@ -861,55 +861,6 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         return app
     }
 
-    /// Model switcher → "Online · <service model>" row. Requires the test runner to have injected the
-    /// key/base URL/model (DeviceE2ETestSupport reads ~/.mobilellm/openai.json); the row only appears
-    /// when a key is stored and a model id is set.
-    @MainActor
-    private func selectOnlineModel(in app: XCUIApplication) throws {
-        let header = app.buttons["Active model"]
-        guard header.waitForExistence(timeout: 15), header.isHittable else {
-            throw DeviceE2EHarnessError.precondition("Active-model header is not actionable")
-        }
-        header.tap()
-        guard app.navigationBars["Switch model"].waitForExistence(timeout: 15) else {
-            throw DeviceE2EHarnessError.precondition("Model switcher did not open")
-        }
-        let row = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Online ·")
-        ).firstMatch
-        guard row.waitForExistence(timeout: 10), row.isHittable else {
-            attachDiagnostics(app, name: "online-row-missing")
-            throw DeviceE2EHarnessError.precondition(
-                "Online model row is missing from the switcher; "
-                    + "runtime=\(diagnosticValue("device-e2e.runtime", in: app))"
-            )
-        }
-        row.tap()
-        guard app.navigationBars["Switch model"].waitForNonExistence(timeout: 10) else {
-            throw DeviceE2EHarnessError.precondition("Model switcher did not dismiss after online selection")
-        }
-        guard header.waitForExistence(timeout: 10) else {
-            throw DeviceE2EHarnessError.precondition("Active-model header disappeared")
-        }
-        let headerText = header.staticTexts.firstMatch
-        guard headerText.waitForExistence(timeout: 5) else {
-            throw DeviceE2EHarnessError.precondition("Active-model header text is missing")
-        }
-        let deadline = Date().addingTimeInterval(10)
-        var value = headerText.label
-        while Date() < deadline, !value.hasPrefix("Online ·") {
-            Thread.sleep(forTimeInterval: 0.2)
-            value = headerText.label
-        }
-        if !value.hasPrefix("Online ·") {
-            attachDiagnostics(app, name: "online-header-not-switched")
-            throw DeviceE2EHarnessError.precondition(
-                "Header did not switch to the online model: \(value); "
-                    + "runtime=\(diagnosticValue("device-e2e.runtime", in: app))"
-            )
-        }
-    }
-
     @MainActor
     private func forgetAllMemories(in app: XCUIApplication) throws {
         try goToSettings(in: app)
@@ -1498,6 +1449,230 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         XCTAssertTrue(failures.isEmpty,
                       "\(model.displayName) background lifecycle had \(failures.count) independent "
                           + "failure(s):\n- " + failures.joined(separator: "\n- "))
+    }
+}
+
+/// Simulator-first online-model matrix (iPhone Simulator focus). Requires the test runner to inject
+/// the OpenAI-compatible config (~/.mobilellm/openai.json via launchEnvironment) and to opt in with
+/// MOBILELLM_E2E_ALLOW_SIMULATOR=1. No local weights are needed: every case selects the online model
+/// and drives the same production agent-runtime path the physical-device matrix uses.
+final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
+
+    @MainActor
+    func test01OnlineModelIsSendableWithoutAnyLocalWeights() throws {
+        let app = try launchApp()
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let runtime = diagnosticValue("device-e2e.runtime", in: app)
+        XCTAssertTrue(runtime.contains("resident=false"),
+                      "online selection must not allocate local weights: \(runtime)")
+        let field = app.textFields["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        field.tap()
+        field.typeText("hello")
+        XCTAssertTrue(waitForEnabled(app.buttons["Send"], timeout: 20),
+                      "online model must make the composer sendable without any local model")
+    }
+
+    @MainActor
+    func test02OnlineAnswerStreamsLiveThenCommits() throws {
+        let app = try launchApp()
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let field = app.textFields["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        let copyCount = app.buttons.matching(identifier: "Copy answer").count
+        let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
+        field.tap()
+        field.typeText("Write a five-sentence paragraph about sleep and memory.")
+        let send = app.buttons["Send"]
+        XCTAssertTrue(waitForEnabled(send, timeout: 20))
+        send.tap()
+
+        // Token-by-token promise: answer text must grow BEFORE the committed stats appear. The
+        // default Safe preset auto-approves online inference, so no approval card interrupts.
+        var sawLiveText = false
+        let answers = app.descendants(matching: .any).matching(identifier: "assistant.answer")
+        let deadline = Date().addingTimeInterval(240)
+        while Date() < deadline {
+            if app.buttons.matching(identifier: "Copy answer").count > copyCount { break }
+            if app.buttons["Stop"].exists,
+               let last = answers.allElementsBoundByIndex.last
+            {
+                let value = (last.value as? String) ?? last.label
+                if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    sawLiveText = true
+                    break
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        XCTAssertTrue(sawLiveText,
+                      "online answer must stream token-by-token before the run commits")
+
+        let evidence = try waitForCommittedGeneration(
+            model: .bonsai, in: app,
+            previousCopyCount: copyCount,
+            previousStatsCount: statsCount,
+            startedAt: Date(),
+            timeout: 300,
+            assertStatsModel: false
+        )
+        XCTAssertFalse(evidence.answer.isEmpty)
+        let diagnostics = diagnosticValue("device-e2e.agent", in: app)
+        XCTAssertTrue(diagnostics.contains("run=completed"),
+                      "agent run must complete: \(diagnostics)")
+    }
+
+    @MainActor
+    func test03OnlineReasoningStreamsIntoSharedDisclosure() throws {
+        let app = try launchApp()
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let field = app.textFields["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        let copyCount = app.buttons.matching(identifier: "Copy answer").count
+        let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
+        field.tap()
+        field.typeText("Think step by step: multiply 123 by 4 and show each step before the final number.")
+        let send = app.buttons["Send"]
+        XCTAssertTrue(waitForEnabled(send, timeout: 20))
+        send.tap()
+
+        // The default Safe preset auto-approves online inference, so the reasoning phase surfaces
+        // the shared Thinking… disclosure while streaming without an approval card.
+        let thinking = app.buttons["Thinking…"]
+        XCTAssertTrue(thinking.waitForExistence(timeout: 180),
+                      "online reasoning must surface the shared Thinking… disclosure")
+        thinking.tap()
+
+        let evidence = try waitForCommittedGeneration(
+            model: .bonsai, in: app,
+            previousCopyCount: copyCount,
+            previousStatsCount: statsCount,
+            startedAt: Date(),
+            timeout: 300,
+            assertStatsModel: false
+        )
+        XCTAssertFalse(evidence.answer.isEmpty)
+        // The disclosure auto-collapses to "Thought for Ns" once the answer starts; expand it so the
+        // committed reasoning text is actually in the accessibility tree.
+        let finishedThought = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Thought for ")
+        ).lastMatch
+        if finishedThought.waitForExistence(timeout: 10) {
+            finishedThought.tap()
+        }
+        let reasoning = app.descendants(matching: .any)
+            .matching(identifier: "assistant.reasoning").allElementsBoundByIndex.last
+        let capturedReasoning = reasoning.flatMap { ($0.value as? String) ?? $0.label }
+        XCTAssertFalse(capturedReasoning?.isEmpty ?? true,
+                       "committed online reasoning must be captured in the shared disclosure")
+    }
+
+    @MainActor
+    func test04OnlineMultiTurnContext() throws {
+        let app = try launchApp()
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let nonce = "NOVA-\(Int.random(in: 10_000...99_999))"
+        let first = try send(
+            "Remember the nonce \(nonce). Reply with only that nonce and nothing else.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        let second = try send(
+            "Reply with only the nonce from my prior message.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        XCTAssertEqual(first.answer, nonce)
+        XCTAssertEqual(second.answer, nonce, "online model lost immediate multi-turn context")
+    }
+
+    @MainActor
+    func test05OnlineAskModeApprovesOnceThenFullAccessAutoRuns() throws {
+        let app = try launchApp()
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        // This case is the approval-specific one: pin Ask explicitly (the product default is Safe
+        // preset) so the first online inference pauses for an approval card.
+        let approvalBar = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Approval:")
+        ).firstMatch
+        XCTAssertTrue(approvalBar.waitForExistence(timeout: 15))
+        approvalBar.tap()
+        let ask = app.buttons["Ask"]
+        XCTAssertTrue(ask.waitForExistence(timeout: 5))
+        ask.tap()
+
+        let field = app.textFields["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        let copyCount = app.buttons.matching(identifier: "Copy answer").count
+        let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
+        field.tap()
+        field.typeText("Reply with exactly ONE word: APPROVED")
+        let send = app.buttons["Send"]
+        XCTAssertTrue(waitForEnabled(send, timeout: 20))
+        send.tap()
+
+        // In Ask mode the first online inference must pause for an approval card.
+        let approve = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Approve")
+        ).firstMatch
+        XCTAssertTrue(approve.waitForExistence(timeout: 60),
+                      "Ask mode must pause online inference for approval")
+        approve.tap()
+        let first = try waitForCommittedGeneration(
+            model: .bonsai, in: app,
+            previousCopyCount: copyCount,
+            previousStatsCount: statsCount,
+            startedAt: Date(),
+            timeout: 300,
+            assertStatsModel: false
+        )
+        XCTAssertFalse(first.answer.isEmpty)
+
+        // Switch the persistent bottom bar to Full access: the next turn completes without a card.
+        let askApprovalBar = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Approval: Ask")
+        ).firstMatch
+        XCTAssertTrue(askApprovalBar.waitForExistence(timeout: 10))
+        askApprovalBar.tap()
+        let fullAccess = app.buttons["Full access"]
+        XCTAssertTrue(fullAccess.waitForExistence(timeout: 5))
+        fullAccess.tap()
+
+        let copy2 = app.buttons.matching(identifier: "Copy answer").count
+        let stats2 = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
+        field.tap()
+        field.typeText("Reply with exactly ONE word: RELEASED")
+        XCTAssertTrue(waitForEnabled(send, timeout: 20))
+        send.tap()
+
+        var sawApprovalCard = false
+        let noCardDeadline = Date().addingTimeInterval(30)
+        while Date() < noCardDeadline {
+            if approve.exists {
+                sawApprovalCard = true
+                break
+            }
+            if app.buttons.matching(identifier: "Copy answer").count > copy2 { break }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        XCTAssertFalse(sawApprovalCard, "Full access must not pause for approval")
+        let second = try waitForCommittedGeneration(
+            model: .bonsai, in: app,
+            previousCopyCount: copy2,
+            previousStatsCount: stats2,
+            startedAt: Date(),
+            timeout: 300,
+            assertStatsModel: false
+        )
+        XCTAssertFalse(second.answer.isEmpty)
     }
 }
 

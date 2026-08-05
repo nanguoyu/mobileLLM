@@ -96,7 +96,10 @@ struct ConversationSettingsView: View {
     private var approvalSection: some View {
         VStack(alignment: .leading, spacing: Theme.Space.md) {
             sectionTitle("Approval")
-            approvalOption("Ask", mode: nil, detail: "Follow the spec approval defaults")
+            approvalOption("Follow default (Safe preset)", mode: nil,
+                           detail: "Use the product default — currently Safe preset")
+            approvalOption("Ask", mode: .ask,
+                           detail: "Approve per policy: external reads and online inference on first use")
             approvalOption("Safe preset", mode: .safePreset,
                            detail: "Auto-approve in-app/reads and online model; ask for writes and dangerous actions")
             approvalOption("Full access", mode: .fullAccess,
@@ -111,12 +114,17 @@ struct ConversationSettingsView: View {
         mode: AgentApprovalMode?,
         detail: String
     ) -> some View {
-        Button {
+        let isSelected: Bool
+        if let mode {
+            isSelected = chat.effectiveApprovalMode == mode
+        } else {
+            isSelected = chat.conversationApprovalMode == nil
+        }
+        return Button {
             chat.conversationApprovalMode = mode
         } label: {
             HStack(alignment: .top, spacing: Theme.Space.sm) {
-                Image(systemName: (chat.conversationApprovalMode ?? .ask) == (mode ?? .ask)
-                      ? "checkmark.circle.fill" : "circle")
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.subheadline).foregroundStyle(Theme.textPrimary)

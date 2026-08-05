@@ -366,8 +366,8 @@ public final class ChatStore {
         persist(conversations[idx])
     }
 
-    /// The active thread's approval mode (nil = `.ask`). Changing it applies from the next send; the
-    /// mode is frozen into each run.
+    /// The active thread's stored approval-mode override (nil = follow the product default).
+    /// Changing it applies from the next send; the mode is frozen into each run.
     public var conversationApprovalMode: AgentApprovalMode? {
         get { activeConversation?.approvalMode }
         set {
@@ -376,6 +376,13 @@ public final class ChatStore {
             conversations[idx].approvalMode = newValue
             persist(conversations[idx])
         }
+    }
+
+    /// The effective approval mode for the next send: thread override, else the product default
+    /// Safe preset (spec §15.2) — safe in-app/read/online operations run without prompts, while
+    /// writes, unknown-external, destructive, financial, and code-execution still ask.
+    public var effectiveApprovalMode: AgentApprovalMode {
+        conversationApprovalMode ?? .safePreset
     }
 
     /// The active thread's reasoning effort (nil = medium). Applies whenever reasoning is enabled.

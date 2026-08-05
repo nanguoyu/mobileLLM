@@ -490,7 +490,7 @@ private func makeAgentSnapshot(
         onlineContextLength: container.chat.onlineContextRequest,
         onlineOutputBudgetAuto: container.chat.isOnlineOutputBudgetAuto,
         onlineMaximumOutputTokens: container.settings.onlineActiveService?.maximumOutputTokens,
-        approvalMode: container.chat.conversationApprovalMode ?? .ask,
+        approvalMode: container.chat.effectiveApprovalMode,
         onlineReasoningEffort: container.chat.effectiveReasoningEffort
     )
 }

@@ -342,7 +342,8 @@ final class OnlineModelSelectionTests: XCTestCase {
         XCTAssertEqual(chat.conversationMaxTokens, settings.onlineContextLength)
     }
 
-    /// Approval mode is per-conversation (nil = ask) and persists on the thread record.
+    /// Approval mode is per-conversation (nil = follow the product default Safe preset) and persists
+    /// on the thread record.
     func testConversationApprovalModePersistsPerThread() {
         let (store, dir) = tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -354,9 +355,12 @@ final class OnlineModelSelectionTests: XCTestCase {
         )
         chat.newConversation()
 
-        XCTAssertNil(chat.conversationApprovalMode, "new conversations default to ask")
+        XCTAssertNil(chat.conversationApprovalMode, "new conversations have no stored override")
+        XCTAssertEqual(chat.effectiveApprovalMode, .safePreset,
+                       "the product default is Safe preset (spec §15.2)")
         chat.conversationApprovalMode = .fullAccess
         XCTAssertEqual(chat.conversationApprovalMode, .fullAccess)
+        XCTAssertEqual(chat.effectiveApprovalMode, .fullAccess)
         XCTAssertEqual(chat.activeConversation?.approvalMode, .fullAccess)
 
         chat.conversationApprovalMode = .safePreset
@@ -364,6 +368,8 @@ final class OnlineModelSelectionTests: XCTestCase {
 
         chat.conversationApprovalMode = nil
         XCTAssertNil(chat.conversationApprovalMode)
+        XCTAssertEqual(chat.effectiveApprovalMode, .safePreset,
+                       "clearing the override returns to the Safe preset default")
     }
 
     /// Reasoning effort is per-conversation (nil = medium default) and persists on the thread record.
