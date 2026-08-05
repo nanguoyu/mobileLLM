@@ -15,6 +15,10 @@ public struct OnlineService: Sendable, Hashable, Codable, Identifiable {
     public var modelID: String?
     /// True = this service is the active online model. The settings layer keeps at most one enabled.
     public var isEnabled: Bool
+    /// Whether the service is allowed to run its own reasoning/thinking phase. Defaults to false:
+    /// reasoning-first services (e.g. DeepSeek v4) can burn the whole output budget before an answer,
+    /// which reads as slow or "no output". Explicit user opt-in per service.
+    public var reasoningEnabled: Bool
 
     /// The id used by the single-service era (and by the Mac-local config / test env seeding). Keeping
     /// it lets an upgraded install reuse the key already stored under this Keychain account.
@@ -25,13 +29,27 @@ public struct OnlineService: Sendable, Hashable, Codable, Identifiable {
         name: String,
         baseURL: String,
         modelID: String? = nil,
-        isEnabled: Bool = false
+        isEnabled: Bool = false,
+        reasoningEnabled: Bool = false
     ) {
         self.id = id
         self.name = name
         self.baseURL = baseURL
         self.modelID = modelID
         self.isEnabled = isEnabled
+        self.reasoningEnabled = reasoningEnabled
+    }
+
+    /// Hand-written so snapshots persisted before `reasoningEnabled` still decode (the synthesized
+    /// decoder would throw on the missing key and take every other setting down with it).
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        baseURL = try container.decode(String.self, forKey: .baseURL)
+        modelID = try container.decodeIfPresent(String.self, forKey: .modelID)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        reasoningEnabled = try container.decodeIfPresent(Bool.self, forKey: .reasoningEnabled) ?? false
     }
 
     /// A copy with the enabled flag replaced.

@@ -480,7 +480,8 @@ private func makeAgentSnapshot(
         toolPolicy: container.chat.activeConversation?.toolPolicy,
         onlineModelEnabled: container.settings.openAIOnlineEnabled,
         onlineModelID: onlineModelID,
-        onlineServiceID: container.chat.onlineServiceID
+        onlineServiceID: container.chat.onlineServiceID,
+        onlineReasoningEnabled: container.settings.onlineActiveService?.reasoningEnabled ?? false
     )
 }
 

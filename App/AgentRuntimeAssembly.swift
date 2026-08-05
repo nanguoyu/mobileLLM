@@ -54,6 +54,9 @@ public struct AgentRunRequestSnapshot: Sendable {
     public let onlineModelID: String?
     /// Stable id of the active online service (approval destination scope + Keychain account).
     public let onlineServiceID: String?
+    /// Per-service opt-in for the service's own reasoning phase (explicit user setting, not the
+    /// composer toggle, which has no meaning for online providers).
+    public let onlineReasoningEnabled: Bool
 
     public init(
         conversationID: UUID,
@@ -84,7 +87,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         toolPolicy: ConversationToolPolicy?,
         onlineModelEnabled: Bool,
         onlineModelID: String?,
-        onlineServiceID: String?
+        onlineServiceID: String?,
+        onlineReasoningEnabled: Bool
     ) {
         self.conversationID = conversationID
         self.userTurnID = userTurnID
@@ -115,6 +119,7 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.onlineModelEnabled = onlineModelEnabled
         self.onlineModelID = onlineModelID
         self.onlineServiceID = onlineServiceID
+        self.onlineReasoningEnabled = onlineReasoningEnabled
     }
 }
 
@@ -190,11 +195,11 @@ struct AppFrozenInputBuilder: Sendable {
             reservedOutputTokens: 1_024,
             maximumToolSchemaTokens: 1_024
         )
-        // Online providers never advertise `.reasoning` (compatible gateways decide internally), so an
-        // explicit `.enabled` request would fail capability validation. `.automatic` lets the provider
-        // keep its default while still honoring an explicit user "off".
+        // Online reasoning is an explicit per-service setting: `.enabled` lets the service run its own
+        // thinking phase (the provider then omits the reasoning field), `.disabled` asks the service
+        // to skip it for fast, deterministic replies.
         let thinkingMode: AgentModelThinkingMode = online
-            ? (snapshot.thinkingEnabled ? .automatic : .disabled)
+            ? (snapshot.onlineReasoningEnabled ? .enabled : .disabled)
             : (snapshot.thinkingEnabled ? .enabled : .disabled)
         let generationParameters = try AgentModelGenerationParameters(
             maximumOutputTokens: UInt64(snapshot.maxTokens),

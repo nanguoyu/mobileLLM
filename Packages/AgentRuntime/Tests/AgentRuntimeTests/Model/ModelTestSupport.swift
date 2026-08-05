@@ -25,7 +25,9 @@ struct ModelFixture {
         reportsCost: Bool = false,
         offset: Int = 0,
         providerID: String? = nil,
-        remoteDestination: String? = nil
+        remoteDestination: String? = nil,
+        modelID: String? = nil,
+        userMessage: String? = nil
     ) throws {
         let version = SemanticVersion("1.0.0")!
         let resolvedProviderID = providerID ?? "local.scripted.\(offset)"
@@ -51,7 +53,7 @@ struct ModelFixture {
         )
         let selection = AgentModelSelection(
             providerID: descriptor.id,
-            modelID: try AgentModelID("fixture-model"),
+            modelID: try AgentModelID(modelID ?? "fixture-model"),
             variantID: try AgentModelVariantID("fixture-variant"),
             capabilityVersion: version
         )
@@ -71,7 +73,7 @@ struct ModelFixture {
             messages: [
                 AgentModelMessage(
                     role: .user,
-                    content: "hello",
+                    content: userMessage ?? "hello",
                     isUntrustedData: false,
                     artifacts: messageArtifacts
                 ),

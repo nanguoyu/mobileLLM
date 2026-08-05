@@ -640,6 +640,11 @@ extension AgentRunController {
             referencedSecretIDs: [],
             redaction: try RedactionMetadata(classification: .sensitive, policyVersion: 1)
         )
+        let provider = try modelProviders.provider(for: frozen.modelSelection)
+        // Local decodes are bounded tightly (a stuck engine should fail fast); online providers make a
+        // real network round trip that legitimately runs minutes for long answers, so the per-attempt
+        // ceiling is generous and the run budget still bounds the whole run (15 minutes by default).
+        let attemptTimeoutCap: UInt64 = provider.descriptor.location == .remote ? 300_000 : 60_000
         let prepContext = try ModelPreparationContext(
             conversationID: facts.submission!.request.payload.conversationID,
             modelPolicy: facts.submission!.request.payload.modelPolicy,
@@ -648,11 +653,10 @@ extension AgentRunController {
             maximumRequestBytes: UInt64(max(4, authPayload.data.count)),
             maximumResponseBytes: max(1, facts.submission!.request.payload.budget.limits[.persistedOutputBytes]),
             timeoutMilliseconds: max(1, min(
-                60_000,
+                attemptTimeoutCap,
                 facts.submission!.request.payload.budget.limits[.activeMilliseconds]
             ))
         )
-        let provider = try modelProviders.provider(for: frozen.modelSelection)
         let prepared = try await AgentModelRequestPreparer().prepare(
             provider: provider,
             request: modelRequest,

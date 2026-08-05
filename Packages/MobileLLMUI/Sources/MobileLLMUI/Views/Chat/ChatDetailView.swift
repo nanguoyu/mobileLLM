@@ -43,7 +43,11 @@ struct ChatDetailView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Composer(chat: container.chat,
                          settings: container.settings,
-                         thinkingCapable: chat.activeModel?.model.architecture.thinkingCapable ?? true,
+                         // Online reasoning is a per-service setting (Settings → Online models), not
+                         // the composer toggle; hide the toggle so it can't claim to control something
+                         // it doesn't.
+                         thinkingCapable: !chat.isOnlineActive
+                            && (chat.activeModel?.model.architecture.thinkingCapable ?? true),
                          canAttachImages: container.models.activeSupportsImageInput,
                          isLoadingModel: container.models.switching,
                          onOpenModels: onOpenModels,

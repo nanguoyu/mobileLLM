@@ -129,6 +129,24 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         XCTAssertNil(object["reasoning"], "thinking enabled must keep the gateway default")
     }
 
+    func testRequestBodyStaysNeutralForAutomaticThinking() throws {
+        // `.automatic` is not produced by the app for online runs anymore (the per-service reasoning
+        // toggle maps to `.enabled`/`.disabled`); if it ever appears, the provider must not invent a
+        // reasoning directive.
+        let fixture = try ModelFixture(thinkingMode: .automatic)
+        let data = try ResponsesAPIModelProvider.requestBody(
+            request: fixture.request,
+            baseURL: "https://gateway.example/v1"
+        )
+        let value = try AgentWireDecoder.decode(
+            JSONValue.self,
+            from: data,
+            limits: .inlineValue
+        )
+        guard case .object(let object) = value else { return XCTFail("body object") }
+        XCTAssertNil(object["reasoning"], "automatic thinking must stay neutral")
+    }
+
     func testRequestBodyIncludesToolsWhenAdvertised() throws {
         let descriptor = try ModelFixture.tool(name: "calculator")
         let fixture = try ModelFixture(advertisedTools: [descriptor])

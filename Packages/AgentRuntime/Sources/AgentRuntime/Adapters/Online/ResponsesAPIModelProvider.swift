@@ -25,6 +25,20 @@ public struct ResponsesAPIConfiguration: Sendable, Equatable {
     }
 }
 
+/// Per-run attempt timeout derived from the prepared plan (the run budget), keyed by request id so the
+/// URLSession deadline is never a second hardcoded guess. An actor keeps this async-safe.
+private actor ResponsesAPITimeoutStore {
+    private var values: [AgentRequestID: TimeInterval] = [:]
+
+    func store(_ timeout: TimeInterval, for requestID: AgentRequestID) {
+        values[requestID] = timeout
+    }
+
+    func take(for requestID: AgentRequestID) -> TimeInterval? {
+        values.removeValue(forKey: requestID)
+    }
+}
+
 /// An `AgentModelProvider` that calls an OpenAI-compatible `/responses` endpoint. The whole request is
 /// one prepared, authorized external operation (data egress, spec §15.1): every generation runs inside
 /// the model boundary with exact destination, data category, and response accounting.
@@ -36,6 +50,9 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
     /// provider never retains the key in memory beyond one request; returning nil fails closed.
     private let configurationProvider: @Sendable () -> ResponsesAPIConfiguration?
     private let session: URLSession
+    /// Per-run attempt timeout derived from the prepared plan (the run budget), so the URLSession
+    /// deadline is never a second hardcoded guess. Keyed by request id; cleared after each generate.
+    private let timeouts = ResponsesAPITimeoutStore()
 
     public convenience init(
         configuration: ResponsesAPIConfiguration,
@@ -68,7 +85,9 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         try AgentModelCapabilities(
             maximumContextTokens: 200_000,
             maximumOutputTokens: 16_384,
-            features: AgentModelCapabilitySet([.nativeToolCalling, .multipleToolCalls]),
+            features: AgentModelCapabilitySet([
+                .nativeToolCalling, .multipleToolCalls, .reasoning,
+            ]),
             toolCallingMode: .nativeStructured,
             cancellationGranularity: .token,
             resourceConstraints: ModelResourceConstraints(
@@ -107,6 +126,12 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             idempotency: .nonIdempotent,
             userPreview: "Send this conversation to \(modelName)"
         )
+        // The plan timeout is the run-budget-derived ceiling for THIS attempt; the URLSession must
+        // honor the same number instead of a fixed constant.
+        await timeouts.store(
+            TimeInterval(context.timeoutMilliseconds) / 1_000,
+            for: request.requestID
+        )
         let external = try PreparedExternalOperationRequest(
             requestID: request.requestID,
             runID: request.runID,
@@ -140,13 +165,18 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         )
         var urlRequest = URLRequest(url: baseURL.appending(path: "responses"))
         urlRequest.httpMethod = "POST"
-        urlRequest.timeoutInterval = 60
+        let timeout = await timeouts.take(for: request.requestID) ?? 60
+        urlRequest.timeoutInterval = timeout
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         urlRequest.httpBody = body
 
+        let started = ContinuousClock.now
         let (data, response) = try await session.data(for: urlRequest)
         try Task.checkCancellation()
+        let elapsedMilliseconds = UInt64(
+            (started.duration(to: .now) / .milliseconds(1))
+        )
         let http = response as? HTTPURLResponse
         guard http?.statusCode == 200 else {
             throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
@@ -155,7 +185,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         let usage = try AgentModelUsage(
             inputTokens: parsed.usage.inputTokens,
             outputTokens: parsed.usage.outputTokens,
-            activeMilliseconds: 0,
+            activeMilliseconds: elapsedMilliseconds,
             peakMemoryBytes: 0
         )
         try await emitter.emit(.usage(usage), responseBytes: 0)
@@ -208,10 +238,11 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         if !instructions.isEmpty {
             fields["instructions"] = .string(instructions)
         }
-        // Some gateways (e.g. reasoning-first small models) default to a long reasoning phase that can
-        // consume the whole output budget before any answer token. When the user asked for no thinking,
-        // ask the service to disable reasoning explicitly; `.automatic`/`.enabled` keep the gateway
-        // default and stay compatible with services that reject unknown reasoning fields.
+        // Reasoning-first services (e.g. DeepSeek v4) default to a long reasoning phase that can
+        // consume the whole output budget before any answer token. The app maps its per-service
+        // "Allow reasoning" toggle to `.enabled`/`.disabled`: disabled asks the service to skip
+        // reasoning (fast, deterministic), enabled omits the field so the service keeps its default.
+        // `.automatic` (not produced by the app today) stays neutral.
         if parameters.thinkingMode == .disabled {
             fields["reasoning"] = .object(["enabled": .bool(false)])
         }
@@ -429,7 +460,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         try AgentFailure(
             code: "model.online.empty",
             classification: .permanent,
-            safeMessage: "The online model returned no output.",
+            safeMessage: "The online model returned no answer text. It may have spent its output "
+                + "budget on service-side reasoning; turn thinking off or raise Max tokens and retry.",
             retryAdvice: .never,
             externalEffect: .confirmedNone,
             requiredUserAction: .none,
