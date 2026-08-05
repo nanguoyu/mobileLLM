@@ -1945,6 +1945,168 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
             statsBefore + 1
         )
     }
+
+    /// Regenerate must keep the user's prompt bubble visible (only the assistant turn is replaced),
+    /// then stream and commit a fresh answer — the thread must never appear to wipe history while the
+    /// context meter still counts it.
+    @MainActor
+    func test12OnlineRegenerateKeepsUserMessageAndStreamsFreshAnswer() throws {
+        let app = try launchApp()
+        try configureTools(master: false, enabled: [], in: app)
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let marker = uniqueMarker("REGEN")
+        let first = try send(
+            "\(marker)\nReply with exactly the word FIRST and nothing else.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        XCTAssertFalse(first.answer.isEmpty)
+
+        let userBubbles = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "You said")
+        )
+        let userText = ((userBubbles.allElementsBoundByIndex.last?.value) as? String) ?? ""
+        XCTAssertTrue(userText.contains(marker), "user bubble must carry the prompt: \(userText)")
+
+        let regenerate = app.buttons.matching(identifier: "Regenerate answer").lastMatch
+        XCTAssertTrue(regenerate.waitForExistence(timeout: 10))
+        regenerate.tap()
+
+        // Immediately after the tap the user's prompt must still be rendered. A fresh run replaces
+        // only the assistant turn; history must never blank out.
+        let stillThere = ((userBubbles.allElementsBoundByIndex.last?.value) as? String) ?? ""
+        XCTAssertEqual(stillThere, userText,
+                       "regenerate must keep the user's message visible")
+
+        let copyCount = app.buttons.matching(identifier: "Copy answer").count
+        let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
+        let evidence = try waitForCommittedGeneration(
+            model: .bonsai, in: app,
+            previousCopyCount: copyCount,
+            previousStatsCount: statsCount,
+            startedAt: Date(),
+            timeout: 300,
+            assertStatsModel: false
+        )
+        XCTAssertFalse(evidence.answer.isEmpty)
+        let finalUserText = ((userBubbles.allElementsBoundByIndex.last?.value) as? String) ?? ""
+        XCTAssertEqual(finalUserText, userText,
+                       "user's message must survive the regenerated turn")
+    }
+
+    /// Multi-turn regenerate: replacing the LAST assistant turn must keep BOTH user prompts visible,
+    /// not blank the thread.
+    @MainActor
+    func test13OnlineRegenerateLastTurnKeepsMultiTurnHistory() throws {
+        let app = try launchApp()
+        try configureTools(master: false, enabled: [], in: app)
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let firstMarker = uniqueMarker("REGEN_A")
+        let secondMarker = uniqueMarker("REGEN_B")
+        let first = try send(
+            "\(firstMarker)\nReply with exactly TURN1 and nothing else.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        let second = try send(
+            "\(secondMarker)\nReply with exactly TURN2 and nothing else.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        XCTAssertFalse(first.answer.isEmpty)
+        XCTAssertFalse(second.answer.isEmpty)
+
+        let userBubbles = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "You said")
+        )
+        let textsBefore = userBubbles.allElementsBoundByIndex.compactMap {
+            ($0.value as? String) ?? ""
+        }
+        XCTAssertEqual(textsBefore.count, 2)
+        XCTAssertTrue(textsBefore[0].contains(firstMarker))
+        XCTAssertTrue(textsBefore[1].contains(secondMarker))
+
+        let regenerate = app.buttons.matching(identifier: "Regenerate answer").lastMatch
+        XCTAssertTrue(regenerate.waitForExistence(timeout: 10))
+        regenerate.tap()
+
+        let textsAfter = userBubbles.allElementsBoundByIndex.compactMap {
+            ($0.value as? String) ?? ""
+        }
+        XCTAssertEqual(textsAfter, textsBefore,
+                       "regenerate must keep every user prompt in a multi-turn thread")
+
+        let copyCount = app.buttons.matching(identifier: "Copy answer").count
+        let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
+        let evidence = try waitForCommittedGeneration(
+            model: .bonsai, in: app,
+            previousCopyCount: copyCount,
+            previousStatsCount: statsCount,
+            startedAt: Date(),
+            timeout: 300,
+            assertStatsModel: false
+        )
+        XCTAssertFalse(evidence.answer.isEmpty)
+        let textsFinal = userBubbles.allElementsBoundByIndex.compactMap {
+            ($0.value as? String) ?? ""
+        }
+        XCTAssertEqual(textsFinal, textsBefore)
+    }
+
+    /// Regenerating an EARLIER turn confirms the discard of later turns; the earlier user prompt must
+    /// stay visible and only the later turns may disappear (by design).
+    @MainActor
+    func test14OnlineRegenerateEarlierTurnKeepsItsUserPrompt() throws {
+        let app = try launchApp()
+        try configureTools(master: false, enabled: [], in: app)
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let firstMarker = uniqueMarker("REGEN_X")
+        let secondMarker = uniqueMarker("REGEN_Y")
+        _ = try send(
+            "\(firstMarker)\nReply with exactly TURN1 and nothing else.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        _ = try send(
+            "\(secondMarker)\nReply with exactly TURN2 and nothing else.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+
+        let regenerateFirst = app.buttons.matching(identifier: "Regenerate answer").firstMatch
+        XCTAssertTrue(regenerateFirst.waitForExistence(timeout: 10))
+        regenerateFirst.tap()
+
+        let confirm = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Discard ")
+        ).firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10),
+                      "regenerating an earlier turn must confirm discarding later turns")
+        confirm.tap()
+
+        let userBubbles = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "You said")
+        )
+        let textsAfter = userBubbles.allElementsBoundByIndex.compactMap {
+            ($0.value as? String) ?? ""
+        }
+        XCTAssertEqual(textsAfter.count, 1,
+                       "later turns are discarded by design, but the regenerated turn's prompt stays")
+        XCTAssertTrue(textsAfter[0].contains(firstMarker))
+
+        let copyCount = app.buttons.matching(identifier: "Copy answer").count
+        let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
+        let evidence = try waitForCommittedGeneration(
+            model: .bonsai, in: app,
+            previousCopyCount: copyCount,
+            previousStatsCount: statsCount,
+            startedAt: Date(),
+            timeout: 300,
+            assertStatsModel: false
+        )
+        XCTAssertFalse(evidence.answer.isEmpty)
+    }
 }
 
 private extension XCUIElementQuery {

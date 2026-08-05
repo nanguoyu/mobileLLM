@@ -43,12 +43,15 @@ struct ChatDetailView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
-                    ConversationModeBar(chat: container.chat)
+                    // The approval/question bar docks ABOVE the settings row: when it appears, the
+                    // effort/approval row and composer stay anchored to the bottom instead of being
+                    // pushed upward by the card.
                     if let agentRuns = container.agentRuns,
                        let activeID = container.chat.activeID
                     {
                         AgentDockedBar(store: agentRuns, conversationID: activeID)
                     }
+                    ConversationModeBar(chat: container.chat)
                     Composer(chat: container.chat,
                              settings: container.settings,
                              // Online reasoning is per-conversation (the composer toggle persists a thread
