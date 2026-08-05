@@ -42,8 +42,22 @@ public enum OpenAILocalConfigLoader {
     /// macOS-only convenience: read the developer's file if present; iOS always returns nil (tests
     /// inject through environment variables instead).
     public static func loadDefault() -> OpenAILocalConfig? {
-        guard let url = defaultURL else { return nil }
-        return try? load(from: url)
+        #if os(macOS)
+        // The live home file wins on the Mac so editing ~/.mobilellm/openai.json takes effect without
+        // a rebuild.
+        if let home = defaultURL, let config = try? load(from: home) { return config }
+        #endif
+        #if DEBUG
+        // DEBUG builds embed the developer config into the app bundle (scripts/embed-openai-app-config.sh),
+        // so a phone app launched BY HAND — with no test-launch environment — still seeds the correct
+        // base URL, model id, and Keychain key at startup.
+        if let url = Bundle.main.url(forResource: "openai-config", withExtension: "json"),
+           let config = try? load(from: url)
+        {
+            return config
+        }
+        #endif
+        return nil
     }
 
     /// Environment overrides win over the file so CI and one-off runs never need to edit the file.

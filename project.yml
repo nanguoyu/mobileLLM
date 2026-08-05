@@ -77,6 +77,10 @@ targets:
         INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "mobileLLM lets the model add and read calendar events while answering you, and only if you select the calendar tool."
         INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "mobileLLM lets the model create reminders while answering you, and only if you select the reminders tool."
         INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "mobileLLM lets the model use your approximate location while answering you, and only if you select the location tool."
+    preBuildScripts:
+      - name: Embed OpenAI app config (DEBUG)
+        script: scripts/embed-openai-app-config.sh
+        basedOnDependencyAnalysis: false
     dependencies:
       - package: MobileLLMUI
       - package: LLMEngineMLX

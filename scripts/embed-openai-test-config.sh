@@ -36,5 +36,5 @@ model = os.environ.get("MOBILELLM_OPENAI_MODEL", "").strip() or str(config.get("
 os.makedirs(os.path.dirname(destination), exist_ok=True)
 with open(destination, "w", encoding="utf-8") as f:
     json.dump({"apiKey": key, "baseURL": base_url, "model": model}, f)
-print("embedded OpenAI test config (model=%s)" % model)
+print("embedded OpenAI test config")
 PY
