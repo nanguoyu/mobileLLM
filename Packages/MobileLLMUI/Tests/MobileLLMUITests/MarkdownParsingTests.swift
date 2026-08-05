@@ -122,4 +122,47 @@ final class MarkdownParsingTests: XCTestCase {
         if case .code = kinds[4] {} else { XCTFail("block 4 should be code") }
         if case .table = kinds[5] {} else { XCTFail("block 5 should be a table") }
     }
+
+    // MARK: Table layout
+
+    func testColumnWidthsAreProportionalAndFitTotal() {
+        let widths = MarkdownTable.columnWidths(
+            header: ["A", "Long header column"],
+            rows: [["x", "A very long cell that should receive more space than the short column"]],
+            totalWidth: 300,
+            spacing: 8,
+            horizontalPadding: 16
+        )
+        XCTAssertEqual(widths.count, 2)
+        XCTAssertTrue(widths[1] > widths[0],
+                      "the wider column must receive more of the available width")
+        let total = widths.reduce(0, +)
+        XCTAssertGreaterThan(total, 0)
+        XCTAssertLessThanOrEqual(total, 300 - 16 - 8,
+                                 "columns must fit the content width without horizontal scrolling")
+    }
+
+    func testColumnWidthsHandleEmptyAndRaggedTables() {
+        let empty = MarkdownTable.columnWidths(
+            header: [],
+            rows: [],
+            totalWidth: 200,
+            spacing: 8,
+            horizontalPadding: 16
+        )
+        XCTAssertEqual(empty.count, 1)
+        XCTAssertGreaterThan(empty[0], 0)
+
+        let ragged = MarkdownTable.columnWidths(
+            header: ["Only"],
+            rows: [["a", "extra", "third"], ["b"]],
+            totalWidth: 200,
+            spacing: 8,
+            horizontalPadding: 16
+        )
+        XCTAssertEqual(ragged.count, 3, "missing cells must still reserve a column")
+        XCTAssertGreaterThan(ragged[0], 0)
+        XCTAssertGreaterThan(ragged[1], 0)
+        XCTAssertGreaterThan(ragged[2], 0)
+    }
 }

@@ -328,42 +328,87 @@ struct MarkdownQuote: View {
     }
 }
 
-/// A GFM table in a horizontally scrollable card (never forces the thread to scroll sideways). Header
-/// row is emphasized; cells use monospaced digits so numeric columns line up.
+/// A GFM table that fits the thread width: columns share the available width proportionally to their
+/// content, long text wraps in place, and the card height grows to show every row fully. The thread is
+/// never forced to scroll sideways for a table.
 struct MarkdownTable: View {
     let header: [String]
     let rows: [[String]]
+    /// The table's actual available width, measured from the thread (the GeometryReader lives in the
+    /// background so it never greedily expands the card's height).
+    @State private var availableWidth: CGFloat = 0
 
     private var columns: Int { max(1, max(header.count, rows.map(\.count).max() ?? 0)) }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            Grid(alignment: .leadingFirstTextBaseline,
-                 horizontalSpacing: Theme.Space.lg, verticalSpacing: Theme.Space.sm) {
-                GridRow {
-                    ForEach(Array(0..<columns), id: \.self) { c in
-                        cell(header.indices.contains(c) ? header[c] : "", header: true)
-                    }
-                }
-                Divider().overlay(Theme.hairline).gridCellColumns(columns)
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            if availableWidth > 0 {
+                let widths = Self.columnWidths(
+                    header: header,
+                    rows: rows,
+                    totalWidth: availableWidth,
+                    spacing: Theme.Space.lg,
+                    horizontalPadding: Theme.Space.md * 2
+                )
+                tableRow(header, widths: widths, header: true)
+                Divider().overlay(Theme.hairline)
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    GridRow {
-                        ForEach(Array(0..<columns), id: \.self) { c in
-                            cell(row.indices.contains(c) ? row[c] : "", header: false)
-                        }
-                    }
+                    tableRow(row, widths: widths, header: false)
                 }
             }
-            .padding(Theme.Space.md)
         }
+        .padding(Theme.Space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { availableWidth = g.size.width }
+                .onChange(of: g.size.width) { _, new in availableWidth = new }
+        })
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous).strokeBorder(Theme.hairline))
     }
 
-    private func cell(_ raw: String, header: Bool) -> some View {
+    /// Proportional column widths: each column gets weight from the longest text it contains (header
+    /// included), so wide columns receive more of the available width and short ones stay compact.
+    /// Pure and unit-testable.
+    static func columnWidths(
+        header: [String],
+        rows: [[String]],
+        totalWidth: CGFloat,
+        spacing: CGFloat,
+        horizontalPadding: CGFloat
+    ) -> [CGFloat] {
+        let columnCount = max(1, max(header.count, rows.map(\.count).max() ?? 0))
+        var weights: [CGFloat] = []
+        for c in 0..<columnCount {
+            let headerWeight = CGFloat(header.indices.contains(c) ? header[c].count : 0) + 1
+            let rowWeight = rows
+                .compactMap { $0.indices.contains(c) ? CGFloat($0[c].count) : nil }
+                .max() ?? 0
+            weights.append(max(1, headerWeight + rowWeight))
+        }
+        let sum = weights.reduce(0, +)
+        guard sum > 0 else { return [] }
+        let spacingTotal = spacing * CGFloat(max(0, columnCount - 1))
+        let content = max(0, totalWidth - spacingTotal - horizontalPadding)
+        return weights.map { content * $0 / sum }
+    }
+
+    private func tableRow(_ cells: [String], widths: [CGFloat], header: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.lg) {
+            ForEach(Array(0..<columns), id: \.self) { c in
+                cell(cells.indices.contains(c) ? cells[c] : "",
+                     width: widths.indices.contains(c) ? widths[c] : 0,
+                     header: header)
+            }
+        }
+    }
+
+    private func cell(_ raw: String, width: CGFloat, header: Bool) -> some View {
         Text(MarkdownInline.attributed(raw))
             .font(.callout.monospacedDigit().weight(header ? .semibold : .regular))
             .foregroundStyle(header ? Theme.textPrimary : Theme.textSecondary)
+            .frame(width: max(0, width), alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
