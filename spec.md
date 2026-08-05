@@ -958,10 +958,23 @@ There is one chat UI, with progressive disclosure:
   model name, destination, exact action preview, data being sent/read, and grant scope;
 - a persistent bottom control bar (above the composer input) shows the conversation's approval mode and
   reasoning effort, both switchable in place without opening a menu;
-- the conversation's top-right toolbar action is a Settings button (not New Chat) that opens the
-  per-conversation settings panel: reasoning on/off + effort, approval mode, context length, and sampling
-  (including the online output budget with Auto), with reserved sections for future folder/file access
-  and a shell terminal window;
+- the conversation's top-right toolbar action is an overflow menu (•••), not New Chat. It groups
+  conversation actions (Rename, Delete, Add to Project), workspace pages (Workflow, Terminal, Files,
+  Background tasks), and Settings. Every item opens its own page: data pages use Push navigation,
+  light forms (rename, project picker) use dialogs or sheets, and Settings opens the per-conversation
+  settings panel (reasoning on/off + effort, approval mode, context length, sampling including the
+  online output budget with Auto, and reserved sections for future folder/file access and a shell
+  terminal window);
+- capabilities that are not yet implemented still get a real page with an explicit empty-state UX
+  ("not enabled yet", what enabling will require) — never a disabled menu item pretending the page
+  does not exist;
+- Project is a pure tag grouping for conversations (many-to-many): Add to Project opens a tag picker,
+  and the conversation list can filter or group by project;
+- workflow presentation is MESSAGE-ANCHORED: a workflow initiated at a message renders a live record
+  row directly below that message while it runs (Claude Code style) and a clickable completed record
+  (e.g. "workflow: 完成任务 B") after it finishes; the record opens that workflow's summary page.
+  The top-right Workflow entry shows only the LIVE summary of workflows currently running in this
+  conversation; with no running workflow it is visible but disabled;
 - New Chat remains available from the conversation list and the keyboard shortcut (macOS ⌘N);
 - waiting states clearly distinguish user input, approval, foreground, model, and resource waits;
 - submitting text to an active `InteractionRequestRecord` sends a Respond command and does not create a new root run;
@@ -978,6 +991,12 @@ and evidence. It does not invent, request, or persist private hidden chain-of-th
 Approval previews, destinations, data categories, and destructive warnings must remain fully accessible with
 VoiceOver and at the largest Dynamic Type sizes; critical text may scroll but may not truncate. Primary approval and
 denial actions require distinct labels, stable focus order, and protection against accidental double activation.
+
+The workflow summary page follows the Claude Code subagent pattern: a tree of run nodes, each showing
+status (running spinner / completed / failed / waiting for approval), elapsed time (live while running),
+consumed input/output tokens, tool-invocation count, and an expandable step list reusing the agent
+activity panel's step rows. Progress may add a mini per-node activity timeline (one dot per tool call)
+once the workflow runtime lands; the page must not show anything while no workflow is running.
 
 ## 21. Agent Sandbox Runtime compatibility seam
 
@@ -1089,6 +1108,12 @@ The first release has no `SubagentSpawner` implementation and advertises no spaw
 - pass local model generation through the same single-resource arbiter;
 - remain visible as child runs in the journal.
 
+Workflow triggering is harness-supported: the harness starts a multi-subagent workflow when the user
+asks for multi-agent work in a message, and the `/workflow` slash command is the deterministic,
+guaranteed trigger. Every workflow is anchored to the message that initiated it, records that anchor
+durably, and spawns child runs under the reserved parent-run identity so the journal can reconstruct
+the full tree after relaunch.
+
 ## 23. Dynamic Workflows compatibility seam
 
 A future workflow runtime may create, sequence, branch, repeat, and verify `AgentRequest` values. It must be a separate
@@ -1107,7 +1132,15 @@ The current harness reserves only what that orchestrator will need:
 
 The future workflow script or graph must not receive direct filesystem, network, tool, or sandbox authority. It
 coordinates agents; agents act through the same policy-controlled runtime. No workflow table, interpreter, general
-dependency scheduler, or workflow UI is added in this release.
+dependency scheduler, or workflow interpreter is added in this release; the UI and record contracts below are
+fixed now so the future runtime plugs in without UI changes.
+
+Each workflow persists a record on its initiating message with: workflow id, title (e.g. "完成任务 B"),
+status (running / completed / failed / cancelled), start and end time, aggregated statistics (subagent
+count, elapsed time, input/output tokens, tool-invocation count), and a reference to the journal root
+run. While running, the record renders live below the initiating message and the top-right Workflow
+entry shows the real-time tree summary; after completion the record becomes the clickable archive entry
+that opens the same summary page in its completed state.
 
 ## 24. Security and privacy requirements
 
@@ -1422,7 +1455,8 @@ These decisions are intentionally deferred because the corresponding capability 
   deferred until the capability metadata, provider translation, step UI, and approval wiring land together;
 - the private sandbox runtime's transport, packaging, entitlements, and binary distribution;
 - subagent scheduling limits and local/remote concurrency;
-- workflow definition language, interpreter, DAG semantics, saved-workflow locations, and workflow UX;
+- workflow definition language, interpreter, DAG semantics, and saved-workflow locations (the
+  message-anchored workflow UI and record contracts are fixed in §20/§23 and are NOT deferred);
 - distributed or cross-device execution.
 
 Their future implementations must honor the contracts and authority boundaries established here.
