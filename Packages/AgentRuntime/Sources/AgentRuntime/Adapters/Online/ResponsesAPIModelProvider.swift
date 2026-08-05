@@ -159,29 +159,51 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         else {
             throw AgentModelProviderFailure(try Self.invalidBaseURLFailure())
         }
-        let body = try Self.requestBody(
-            request: request,
-            baseURL: configuration.baseURL
-        )
-        var urlRequest = URLRequest(url: baseURL.appending(path: "responses"))
-        urlRequest.httpMethod = "POST"
         let timeout = await timeouts.take(for: request.requestID) ?? 60
-        urlRequest.timeoutInterval = timeout
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
-        urlRequest.httpBody = body
+        func makeRequest() -> URLRequest {
+            var urlRequest = URLRequest(url: baseURL.appending(path: "responses"))
+            urlRequest.httpMethod = "POST"
+            urlRequest.timeoutInterval = timeout
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+            return urlRequest
+        }
 
         let started = ContinuousClock.now
+        var urlRequest = makeRequest()
+        urlRequest.httpBody = try Self.requestBody(request: request, baseURL: configuration.baseURL)
         let (data, response) = try await session.data(for: urlRequest)
         try Task.checkCancellation()
-        let elapsedMilliseconds = UInt64(
-            (started.duration(to: .now) / .milliseconds(1))
-        )
         let http = response as? HTTPURLResponse
         guard http?.statusCode == 200 else {
             throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
         }
-        let parsed = try Self.parseResponse(data)
+        var parsed = try Self.parseResponse(data)
+
+        // Reasoning-first services can consume the whole output budget and return ONLY reasoning.
+        // Retry once with service-side reasoning disabled before giving up — the user asked for an
+        // answer, and a reasoning-only response is not one.
+        if parsed.text.isEmpty, parsed.calls.isEmpty, parsed.hasReasoning,
+           request.generationParameters.thinkingMode != .disabled
+        {
+            var retryRequest = makeRequest()
+            retryRequest.httpBody = try Self.requestBody(
+                request: request,
+                baseURL: configuration.baseURL,
+                reasoningDisabled: true
+            )
+            let (data, response) = try await session.data(for: retryRequest)
+            try Task.checkCancellation()
+            let http = response as? HTTPURLResponse
+            guard http?.statusCode == 200 else {
+                throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
+            }
+            parsed = try Self.parseResponse(data)
+        }
+        try Task.checkCancellation()
+        let elapsedMilliseconds = UInt64(
+            (started.duration(to: .now) / .milliseconds(1))
+        )
         let usage = try AgentModelUsage(
             inputTokens: parsed.usage.inputTokens,
             outputTokens: parsed.usage.outputTokens,
@@ -223,7 +245,11 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
 
     // MARK: - Pure request/response mapping (unit-tested)
 
-    static func requestBody(request: AgentModelRequest, baseURL: String) throws -> Data {
+    static func requestBody(
+        request: AgentModelRequest,
+        baseURL: String,
+        reasoningDisabled: Bool? = nil
+    ) throws -> Data {
         let parameters = request.generationParameters
         let (instructions, input) = try messagesPayload(request.messages)
         var fields: [String: JSONValue] = [
@@ -243,7 +269,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         // "Allow reasoning" toggle to `.enabled`/`.disabled`: disabled asks the service to skip
         // reasoning (fast, deterministic), enabled omits the field so the service keeps its default.
         // `.automatic` (not produced by the app today) stays neutral.
-        if parameters.thinkingMode == .disabled {
+        let disableReasoning = reasoningDisabled ?? (parameters.thinkingMode == .disabled)
+        if disableReasoning {
             fields["reasoning"] = .object(["enabled": .bool(false)])
         }
         let tools = try toolsPayload(request.advertisedTools)
@@ -319,6 +346,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         let text: String
         let calls: [ParsedCall]
         let usage: ParsedUsage
+        /// True when the service emitted a reasoning item but no answer (budget consumed by thinking).
+        let hasReasoning: Bool
     }
 
     static func parseResponse(_ data: Data) throws -> ParsedResponse {
@@ -338,6 +367,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         }
         var text = ""
         var calls: [ParsedCall] = []
+        var hasReasoning = false
         if case .object(let root) = value,
            case .array(let output)? = root["output"]
         {
@@ -345,7 +375,9 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 guard case .object(let object) = item,
                       case .string(let type)? = object["type"]
                 else { continue }
-                if type == "message" {
+                if type == "reasoning" {
+                    hasReasoning = true
+                } else if type == "message" {
                     if case .array(let content)? = object["content"] {
                         for part in content {
                             guard case .object(let partObject) = part,
@@ -368,7 +400,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             inputTokens: number(["usage", "input_tokens"]) ?? 0,
             outputTokens: number(["usage", "output_tokens"]) ?? 0
         )
-        return ParsedResponse(text: text, calls: calls, usage: usage)
+        return ParsedResponse(text: text, calls: calls, usage: usage, hasReasoning: hasReasoning)
     }
 
     private static func normalize(
