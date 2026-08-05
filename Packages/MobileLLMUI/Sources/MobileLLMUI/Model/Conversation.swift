@@ -126,6 +126,19 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
 
 /// A chat thread (DESIGN §2.4). Persisted one-record-per-file by `ConversationStore`; a lightweight
 /// `ConversationIndexEntry` mirrors it in `index.json` for fast list rendering.
+/// Per-thread sampling overrides: a nil field means "follow the global Settings value".
+public struct ConversationSampling: Codable, Sendable, Equatable {
+    public var temperature: Double?
+    public var topP: Double?
+    public var maxTokens: Int?
+
+    public init(temperature: Double? = nil, topP: Double? = nil, maxTokens: Int? = nil) {
+        self.temperature = temperature
+        self.topP = topP
+        self.maxTokens = maxTokens
+    }
+}
+
 public struct Conversation: Identifiable, Codable, Sendable, Equatable {
     public let id: UUID
     public var title: String
@@ -153,12 +166,15 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
     /// Per-thread context-window override in tokens (nil = follow the app's global setting — the
     /// local `contextLength` or the online `onlineContextLength`). Missing key decodes as nil.
     public var contextLength: Int?
+    /// Per-thread sampling overrides (nil = follow global Settings). Missing key decodes as nil.
+    public var sampling: ConversationSampling?
 
     public init(id: UUID = UUID(), title: String = "New Chat", createdAt: Date = Date(),
                 updatedAt: Date = Date(), systemPromptID: String? = nil, modelID: String,
                 variantID: String, messages: [Message] = [], pinned: Bool = false,
                 skillID: UUID? = nil, toolPolicy: ConversationToolPolicy? = nil,
-                onlineReasoningEnabled: Bool? = nil, contextLength: Int? = nil) {
+                onlineReasoningEnabled: Bool? = nil, contextLength: Int? = nil,
+                sampling: ConversationSampling? = nil) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
@@ -172,6 +188,7 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
         self.toolPolicy = toolPolicy
         self.onlineReasoningEnabled = onlineReasoningEnabled
         self.contextLength = contextLength
+        self.sampling = sampling
     }
 
     /// A one-line preview for the conversation list (last user or assistant text).

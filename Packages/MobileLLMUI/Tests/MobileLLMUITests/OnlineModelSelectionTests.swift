@@ -181,13 +181,13 @@ final class OnlineModelSelectionTests: XCTestCase {
         let (store, dir) = tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         let settings = AppSettings(defaults: UserDefaults(suiteName: "online-reason-\(UUID().uuidString)")!)
+        settings.thinkingDefault = true   // the global default new conversations inherit
         settings.upsertOnlineService(OnlineService(
             id: OnlineService.defaultID,
             name: "Gateway",
             baseURL: "https://gateway.example.com/v1",
             modelID: "gateway-model",
-            isEnabled: true,
-            reasoningEnabled: true   // service default = reasoning on
+            isEnabled: true
         ))
         let chat = ChatStore(
             engine: MockLLMEngine(script: .init()),
@@ -196,7 +196,7 @@ final class OnlineModelSelectionTests: XCTestCase {
             activeModel: nil
         )
 
-        // Fresh online thread: no override yet, so it follows the service default.
+        // Fresh online thread: no override yet, so it follows the global Thinking default.
         let convo = chat.newConversation()
         XCTAssertEqual(chat.composerThinkingEnabled, true)
         XCTAssertNil(convo?.onlineReasoningEnabled)
@@ -206,13 +206,13 @@ final class OnlineModelSelectionTests: XCTestCase {
         XCTAssertEqual(chat.onlineReasoningEnabled, false)
         XCTAssertEqual(chat.activeConversation?.onlineReasoningEnabled, false)
         XCTAssertEqual(
-            settings.onlineActiveService?.reasoningEnabled,
+            settings.thinkingDefault,
             true,
-            "the per-conversation toggle must not change the service default"
+            "the per-conversation toggle must not change the global default"
         )
 
         // Make the first thread non-empty so the next New Chat creates a fresh thread, which must
-        // start from the service default again (no override carried over).
+        // start from the global default again (no override carried over).
         if let idx = chat.conversations.firstIndex(where: { $0.id == chat.activeID }) {
             chat.conversations[idx].messages.append(Message(role: .user, answer: "hi"))
         }
@@ -272,5 +272,36 @@ final class OnlineModelSelectionTests: XCTestCase {
             ContextPolicy.effective(requested: 65_536, model: LLMCatalog.bonsai8b),
             "local context stays clamped by the checkpoint's native window"
         )
+    }
+
+    /// Sampling (temperature / top-p / max tokens) is a per-conversation override: each field can be
+    /// pinned or reset to "follow the global setting" without touching the shared Settings.
+    func testConversationSamplingOverridesPersistPerThread() {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let settings = makeOnlineSettings()
+        let chat = ChatStore(
+            engine: MockLLMEngine(script: .init()),
+            store: store,
+            settings: settings,
+            activeModel: nil
+        )
+        chat.newConversation()
+
+        XCTAssertEqual(chat.conversationTemperature, settings.temperature, accuracy: 0.0001)
+        XCTAssertEqual(chat.conversationMaxTokens, settings.maxTokens)
+
+        chat.setConversationTemperature(0.2)
+        chat.setConversationMaxTokens(2_048)
+        XCTAssertEqual(chat.conversationTemperature, 0.2, accuracy: 0.0001)
+        XCTAssertEqual(chat.conversationMaxTokens, 2_048)
+        XCTAssertEqual(chat.conversationTopP, settings.topP, accuracy: 0.0001)
+        XCTAssertEqual(chat.conversationSamplingOverride?.temperature, 0.2)
+
+        // Resetting one field returns it to the global default while the other override survives.
+        chat.setConversationTemperature(nil)
+        XCTAssertEqual(chat.conversationTemperature, settings.temperature, accuracy: 0.0001)
+        XCTAssertEqual(chat.conversationMaxTokens, 2_048)
+        XCTAssertEqual(chat.conversationSamplingOverride?.maxTokens, 2_048)
     }
 }

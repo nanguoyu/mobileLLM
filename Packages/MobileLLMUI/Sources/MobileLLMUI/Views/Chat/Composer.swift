@@ -356,6 +356,81 @@ struct Composer: View {
                     Label("Context", systemImage: "text.alignleft")
                 }
             }
+            Menu {
+                Menu {
+                    Button {
+                        chat.setConversationTemperature(nil)
+                    } label: {
+                        if chat.conversationSamplingOverride?.temperature == nil {
+                            Label("Follow (\(String(format: "%.2f", settings.temperature)))",
+                                  systemImage: "checkmark")
+                        } else {
+                            Text("Follow (\(String(format: "%.2f", settings.temperature)))")
+                        }
+                    }
+                    Divider()
+                    ForEach([0.0, 0.2, 0.5, 0.7, 0.9, 1.0], id: \.self) { value in
+                        Button {
+                            chat.setConversationTemperature(value)
+                        } label: {
+                            if chat.conversationSamplingOverride?.temperature == value {
+                                Label(String(format: "%.2f", value), systemImage: "checkmark")
+                            } else {
+                                Text(String(format: "%.2f", value))
+                            }
+                        }
+                    }
+                } label: { Label("Temperature", systemImage: "thermometer") }
+
+                Menu {
+                    Button {
+                        chat.setConversationTopP(nil)
+                    } label: {
+                        if chat.conversationSamplingOverride?.topP == nil {
+                            Label("Follow (\(String(format: "%.2f", settings.topP)))",
+                                  systemImage: "checkmark")
+                        } else {
+                            Text("Follow (\(String(format: "%.2f", settings.topP)))")
+                        }
+                    }
+                    Divider()
+                    ForEach([0.8, 0.9, 0.95, 1.0], id: \.self) { value in
+                        Button {
+                            chat.setConversationTopP(value)
+                        } label: {
+                            if chat.conversationSamplingOverride?.topP == value {
+                                Label(String(format: "%.2f", value), systemImage: "checkmark")
+                            } else {
+                                Text(String(format: "%.2f", value))
+                            }
+                        }
+                    }
+                } label: { Label("Top-p", systemImage: "arrow.up.and.down") }
+
+                Menu {
+                    Button {
+                        chat.setConversationMaxTokens(nil)
+                    } label: {
+                        if chat.conversationSamplingOverride?.maxTokens == nil {
+                            Label("Follow (\(settings.maxTokens))", systemImage: "checkmark")
+                        } else {
+                            Text("Follow (\(settings.maxTokens))")
+                        }
+                    }
+                    Divider()
+                    ForEach([512, 1_024, 2_048, 4_096], id: \.self) { value in
+                        Button {
+                            chat.setConversationMaxTokens(value)
+                        } label: {
+                            if chat.conversationSamplingOverride?.maxTokens == value {
+                                Label("\(value)", systemImage: "checkmark")
+                            } else {
+                                Text("\(value)")
+                            }
+                        }
+                    }
+                } label: { Label("Max tokens", systemImage: "number") }
+            } label: { Label("Sampling", systemImage: "slider.horizontal.3") }
             toolMenu
             if chat.skillStore != nil { skillMenu }
             if canAttachImages {

@@ -322,13 +322,13 @@ public final class ChatStore {
     }
 
     /// Effective online reasoning for the next send: the thread's explicit per-conversation override,
-    /// else the active service's "Allow reasoning" default.
+    /// else the global Thinking default (same default local conversations start from).
     public var onlineReasoningEnabled: Bool {
         guard isOnlineActive else { return false }
         if let convo = activeConversation, let override = convo.onlineReasoningEnabled {
             return override
         }
-        return settings.onlineActiveService?.reasoningEnabled ?? false
+        return settings.thinkingDefault
     }
 
     /// The single composer thinking control: online threads persist their own override on the
@@ -363,6 +363,43 @@ public final class ChatStore {
         guard let convo = activeConversation,
               let idx = conversations.firstIndex(where: { $0.id == convo.id }) else { return }
         conversations[idx].contextLength = value
+        persist(conversations[idx])
+    }
+
+    /// The active thread's sampling overrides (nil field = follow the global setting).
+    public var conversationSamplingOverride: ConversationSampling? { activeConversation?.sampling }
+
+    public var conversationTemperature: Double {
+        conversationSamplingOverride?.temperature ?? settings.temperature
+    }
+
+    public var conversationTopP: Double {
+        conversationSamplingOverride?.topP ?? settings.topP
+    }
+
+    public var conversationMaxTokens: Int {
+        conversationSamplingOverride?.maxTokens ?? settings.maxTokens
+    }
+
+    /// Set one per-conversation sampling field; nil restores "follow the global setting".
+    public func setConversationTemperature(_ value: Double?) {
+        mutateConversationSampling { $0.temperature = value }
+    }
+
+    public func setConversationTopP(_ value: Double?) {
+        mutateConversationSampling { $0.topP = value }
+    }
+
+    public func setConversationMaxTokens(_ value: Int?) {
+        mutateConversationSampling { $0.maxTokens = value }
+    }
+
+    private func mutateConversationSampling(_ mutate: (inout ConversationSampling) -> Void) {
+        guard let convo = activeConversation,
+              let idx = conversations.firstIndex(where: { $0.id == convo.id }) else { return }
+        var sampling = conversations[idx].sampling ?? ConversationSampling()
+        mutate(&sampling)
+        conversations[idx].sampling = (sampling == ConversationSampling()) ? nil : sampling
         persist(conversations[idx])
     }
 

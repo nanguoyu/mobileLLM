@@ -126,7 +126,6 @@ private struct OnlineServiceEditorView: View {
     @State private var modelID = ""
     @State private var key = ""
     @State private var enabled = false
-    @State private var reasoningEnabled = false
     @State private var stored = false
     @State private var status = ""
 
@@ -164,16 +163,6 @@ private struct OnlineServiceEditorView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Active online model").font(.subheadline).foregroundStyle(Theme.textPrimary)
                         Text("The next message goes to this service instead of the on-device model.")
-                            .font(.caption).foregroundStyle(Theme.textTertiary)
-                    }
-                }
-                .tint(Theme.accent)
-
-                Toggle(isOn: $reasoningEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Allow reasoning").font(.subheadline).foregroundStyle(Theme.textPrimary)
-                        Text("Off keeps replies fast and deterministic. On lets the service spend time "
-                             + "thinking before answering.")
                             .font(.caption).foregroundStyle(Theme.textTertiary)
                     }
                 }
@@ -245,7 +234,6 @@ private struct OnlineServiceEditorView: View {
             baseURL = service.baseURL
             modelID = service.modelID ?? ""
             enabled = service.isEnabled
-            reasoningEnabled = service.reasoningEnabled
         } else {
             baseURL = settings.openAIBaseURL
             enabled = settings.onlineServices.isEmpty
@@ -275,8 +263,7 @@ private struct OnlineServiceEditorView: View {
             name: name,
             baseURL: normalized,
             modelID: trimmedModel.isEmpty ? nil : trimmedModel,
-            isEnabled: enabled,
-            reasoningEnabled: reasoningEnabled
+            isEnabled: enabled
         ))
         dismiss()
     }
