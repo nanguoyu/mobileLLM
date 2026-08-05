@@ -11,6 +11,7 @@ struct ChatDetailView: View {
     var onOpenModels: () -> Void
     @State private var showSwitcher = false
     @State private var showTools = false
+    @State private var showConversationSettings = false
     /// Net keyboard lift from UIKit's keyboardLayoutGuide (see KeyboardHeight.swift): 0 when hidden,
     /// keyboard height minus the home-indicator inset when up. Automatic avoidance is disabled below.
     @State private var keyboardOverlap: CGFloat = 0
@@ -41,19 +42,22 @@ struct ChatDetailView: View {
                        agentRuns: container.agentRuns)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                Composer(chat: container.chat,
-                         settings: container.settings,
-                         // Online reasoning is per-conversation (the composer toggle persists a thread
-                         // override, defaulting to the service's Allow-reasoning setting), so the
-                         // control is available for both local and online models.
-                         thinkingCapable: chat.isOnlineActive
-                            || (chat.activeModel?.model.architecture.thinkingCapable ?? true),
-                         canAttachImages: container.models.activeSupportsImageInput,
-                         isLoadingModel: container.models.switching,
-                         onOpenModels: onOpenModels,
-                         toolEventStore: container.toolEventStore,
-                         toolLocationProvider: container.toolLocationProvider,
-                         onOpenToolSettings: { showTools = true })
+                VStack(spacing: 0) {
+                    ConversationModeBar(chat: container.chat)
+                    Composer(chat: container.chat,
+                             settings: container.settings,
+                             // Online reasoning is per-conversation (the composer toggle persists a thread
+                             // override, defaulting to the global Thinking default), so the control is
+                             // available for both local and online models.
+                             thinkingCapable: chat.isOnlineActive
+                                || (chat.activeModel?.model.architecture.thinkingCapable ?? true),
+                             canAttachImages: container.models.activeSupportsImageInput,
+                             isLoadingModel: container.models.switching,
+                             onOpenModels: onOpenModels,
+                             toolEventStore: container.toolEventStore,
+                             toolLocationProvider: container.toolLocationProvider,
+                             onOpenToolSettings: { showTools = true })
+                }
                     .padding(.bottom, keyboardOverlap)
             }
             #if os(iOS)
@@ -79,9 +83,9 @@ struct ChatDetailView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { modelHeader }
             ToolbarItem(placement: .primaryAction) {
-                Button { chat.newConversation() } label: { Image(systemName: "square.and.pencil") }
-                    .accessibilityLabel("New chat")
-                    .keyboardShortcut("n", modifiers: .command)
+                Button { showConversationSettings = true } label: { Image(systemName: "gearshape") }
+                    .accessibilityLabel("Conversation settings")
+                    .keyboardShortcut(",", modifiers: .command)
             }
         }
         .sheet(isPresented: $showSwitcher) {
@@ -96,6 +100,9 @@ struct ChatDetailView: View {
             #if os(macOS)
             .frame(minWidth: 520, minHeight: 560)
             #endif
+        }
+        .sheet(isPresented: $showConversationSettings) {
+            ConversationSettingsView(container: container)
         }
         // Entering a conversation restores ITS model even when a platform-specific navigation path did
         // not route through select(). Cold launch itself leaves history unselected.

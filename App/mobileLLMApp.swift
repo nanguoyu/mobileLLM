@@ -410,13 +410,15 @@ private func makeAgentSnapshot(
         onlineConfigBox.update(
             serviceID: service.id,
             baseURL: service.baseURL,
-            modelID: service.modelID
+            modelID: service.modelID,
+            reasoningEffort: container.chat.effectiveReasoningEffort
         )
     } else {
         onlineConfigBox.update(
             serviceID: OnlineService.defaultID,
             baseURL: container.settings.openAIBaseURL,
-            modelID: nil
+            modelID: nil,
+            reasoningEffort: container.chat.effectiveReasoningEffort
         )
     }
     let onlineModelID = container.chat.onlineModelID
@@ -483,7 +485,8 @@ private func makeAgentSnapshot(
         onlineServiceID: container.chat.onlineServiceID,
         onlineReasoningEnabled: container.chat.onlineReasoningEnabled,
         onlineContextLength: container.chat.onlineContextRequest,
-        approvalMode: container.chat.conversationApprovalMode ?? .ask
+        approvalMode: container.chat.conversationApprovalMode ?? .ask,
+        onlineReasoningEffort: container.chat.effectiveReasoningEffort
     )
 }
 

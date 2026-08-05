@@ -61,6 +61,8 @@ public struct AgentRunRequestSnapshot: Sendable {
     public let onlineContextLength: Int
     /// Per-conversation approval mode frozen with this run.
     public let approvalMode: AgentApprovalMode
+    /// Per-conversation reasoning effort (nil = service default; medium is the product default).
+    public let onlineReasoningEffort: ReasoningEffort?
 
     public init(
         conversationID: UUID,
@@ -94,7 +96,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         onlineServiceID: String?,
         onlineReasoningEnabled: Bool,
         onlineContextLength: Int,
-        approvalMode: AgentApprovalMode
+        approvalMode: AgentApprovalMode,
+        onlineReasoningEffort: ReasoningEffort?
     ) {
         self.conversationID = conversationID
         self.userTurnID = userTurnID
@@ -128,6 +131,7 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.onlineReasoningEnabled = onlineReasoningEnabled
         self.onlineContextLength = onlineContextLength
         self.approvalMode = approvalMode
+        self.onlineReasoningEffort = onlineReasoningEffort
     }
 }
 
@@ -954,6 +958,7 @@ public final class OpenAIOnlineConfigurationBox: @unchecked Sendable {
     private var serviceID: String = ResponsesAPIConfiguration.defaultServiceID
     private var baseURL: String
     private var modelID: String?
+    private var reasoningEffort: ReasoningEffort?
     private let credentials: any OpenAICredentialStoring
 
     public init(
@@ -968,11 +973,17 @@ public final class OpenAIOnlineConfigurationBox: @unchecked Sendable {
     }
 
     /// Refresh non-secret settings before a submission (called on the main actor).
-    public func update(serviceID: String, baseURL: String, modelID: String?) {
+    public func update(
+        serviceID: String,
+        baseURL: String,
+        modelID: String?,
+        reasoningEffort: ReasoningEffort? = nil
+    ) {
         lock.withLock {
             self.serviceID = serviceID
             self.baseURL = baseURL
             self.modelID = modelID
+            self.reasoningEffort = reasoningEffort
         }
     }
 
@@ -986,7 +997,8 @@ public final class OpenAIOnlineConfigurationBox: @unchecked Sendable {
             return ResponsesAPIConfiguration(
                 serviceID: serviceID,
                 baseURL: baseURL,
-                apiKey: key
+                apiKey: key,
+                reasoningEffort: reasoningEffort
             )
         }
     }

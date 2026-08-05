@@ -11,18 +11,29 @@ public struct ResponsesAPIConfiguration: Sendable, Equatable {
     public let serviceID: String
     public let baseURL: String
     public let apiKey: String
+    /// Per-conversation reasoning effort (nil = service default; only sent when reasoning is enabled).
+    public let reasoningEffort: ReasoningEffort?
 
     public static let defaultServiceID = "responses-api-key"
 
     public init(
         serviceID: String = ResponsesAPIConfiguration.defaultServiceID,
         baseURL: String,
-        apiKey: String
+        apiKey: String,
+        reasoningEffort: ReasoningEffort? = nil
     ) {
         self.serviceID = serviceID
         self.baseURL = baseURL
         self.apiKey = apiKey
+        self.reasoningEffort = reasoningEffort
     }
+}
+
+/// Reasoning effort for reasoning-capable models (spec §15.3): low/medium/high, medium default.
+public enum ReasoningEffort: String, CaseIterable, Hashable, Codable, Sendable {
+    case low
+    case medium
+    case high
 }
 
 /// Per-run attempt timeout derived from the prepared plan (the run budget), keyed by request id so the
@@ -168,13 +179,39 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             urlRequest.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
             return urlRequest
         }
+        func fetch(_ body: Data) async throws -> (Data, HTTPURLResponse?) {
+            var request = makeRequest()
+            request.httpBody = body
+            let (data, response) = try await session.data(for: request)
+            try Task.checkCancellation()
+            return (data, response as? HTTPURLResponse)
+        }
 
         let started = ContinuousClock.now
-        var urlRequest = makeRequest()
-        urlRequest.httpBody = try Self.requestBody(request: request, baseURL: configuration.baseURL)
-        let (data, response) = try await session.data(for: urlRequest)
-        try Task.checkCancellation()
-        let http = response as? HTTPURLResponse
+        let firstBody = try Self.requestBody(
+            request: request,
+            baseURL: configuration.baseURL,
+            reasoningEffort: configuration.reasoningEffort
+        )
+        var (data, http) = try await fetch(firstBody)
+        if http?.statusCode != 200 {
+            // Some gateways reject the reasoning-effort field entirely (HTTP 400 mentioning
+            // "reasoning"); retry once with the field omitted rather than failing the turn.
+            if http?.statusCode == 400,
+               let errorText = String(data: data, encoding: .utf8),
+               errorText.localizedCaseInsensitiveContains("reasoning")
+            {
+                let fallbackBody = try Self.requestBody(
+                    request: request,
+                    baseURL: configuration.baseURL,
+                    reasoningEffort: configuration.reasoningEffort,
+                    omitReasoning: true
+                )
+                if fallbackBody != firstBody {
+                    (data, http) = try await fetch(fallbackBody)
+                }
+            }
+        }
         guard http?.statusCode == 200 else {
             throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
         }
@@ -189,15 +226,12 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 max(request.generationParameters.maximumOutputTokens, 4_096),
                 16_384
             )
-            var retryRequest = makeRequest()
-            retryRequest.httpBody = try Self.requestBody(
+            let retryBody = try Self.requestBody(
                 request: request,
                 baseURL: configuration.baseURL,
                 maxOutputTokensOverride: bumped
             )
-            let (data, response) = try await session.data(for: retryRequest)
-            try Task.checkCancellation()
-            let http = response as? HTTPURLResponse
+            let (data, http) = try await fetch(retryBody)
             guard http?.statusCode == 200 else {
                 throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
             }
@@ -214,15 +248,12 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         if parsed.text.isEmpty, parsed.calls.isEmpty, parsed.hasReasoning,
            request.generationParameters.thinkingMode != .disabled
         {
-            var retryRequest = makeRequest()
-            retryRequest.httpBody = try Self.requestBody(
+            let retryBody = try Self.requestBody(
                 request: request,
                 baseURL: configuration.baseURL,
                 reasoningDisabled: true
             )
-            let (data, response) = try await session.data(for: retryRequest)
-            try Task.checkCancellation()
-            let http = response as? HTTPURLResponse
+            let (data, http) = try await fetch(retryBody)
             guard http?.statusCode == 200 else {
                 throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
             }
@@ -240,6 +271,13 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         )
         try await emitter.emit(.usage(usage), responseBytes: 0)
 
+        // One shared reasoning disclosure (spec §15.3): surface visible online reasoning exactly like
+        // local <think> output. Never emitted when reasoning was disabled.
+        if !parsed.reasoning.isEmpty,
+           request.generationParameters.thinkingMode != .disabled
+        {
+            try await emitter.emit(.reasoningDelta(parsed.reasoning), responseBytes: 0)
+        }
         if !parsed.text.isEmpty {
             try await emitter.emit(.answerDelta(parsed.text), responseBytes: 0)
         }
@@ -277,7 +315,9 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         request: AgentModelRequest,
         baseURL: String,
         reasoningDisabled: Bool? = nil,
-        maxOutputTokensOverride: UInt64? = nil
+        maxOutputTokensOverride: UInt64? = nil,
+        reasoningEffort: ReasoningEffort? = nil,
+        omitReasoning: Bool = false
     ) throws -> Data {
         let parameters = request.generationParameters
         let (instructions, input) = try messagesPayload(request.messages)
@@ -301,8 +341,12 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         // reasoning (fast, deterministic), enabled omits the field so the service keeps its default.
         // `.automatic` (not produced by the app today) stays neutral.
         let disableReasoning = reasoningDisabled ?? (parameters.thinkingMode == .disabled)
-        if disableReasoning {
+        if omitReasoning {
+            // Gateway rejected the reasoning field: leave it absent entirely.
+        } else if disableReasoning {
             fields["reasoning"] = .object(["enabled": .bool(false)])
+        } else if let reasoningEffort {
+            fields["reasoning"] = .object(["effort": .string(reasoningEffort.rawValue)])
         }
         let tools = try toolsPayload(request.advertisedTools)
         // Some compatible gateways reject an empty array; omitting it is equivalent for every client
@@ -375,6 +419,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
 
     struct ParsedResponse: Sendable, Equatable {
         let text: String
+        let reasoning: String
         let calls: [ParsedCall]
         let usage: ParsedUsage
         /// True when the service emitted a reasoning item but no answer (budget consumed by thinking).
@@ -399,6 +444,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             }
         }
         var text = ""
+        var reasoning = ""
         var calls: [ParsedCall] = []
         var hasReasoning = false
         var isTruncated = false
@@ -411,6 +457,15 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 else { continue }
                 if type == "reasoning" {
                     hasReasoning = true
+                    if case .array(let content)? = object["content"] {
+                        for part in content {
+                            guard case .object(let partObject) = part,
+                                  partObject["type"] == .string("reasoning_text"),
+                                  case .string(let partText)? = partObject["text"]
+                            else { continue }
+                            reasoning += partText
+                        }
+                    }
                 } else if type == "message" {
                     if case .array(let content)? = object["content"] {
                         for part in content {
@@ -448,6 +503,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         )
         return ParsedResponse(
             text: text,
+            reasoning: reasoning,
             calls: calls,
             usage: usage,
             hasReasoning: hasReasoning,

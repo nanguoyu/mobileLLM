@@ -328,4 +328,24 @@ final class OnlineModelSelectionTests: XCTestCase {
         chat.conversationApprovalMode = nil
         XCTAssertNil(chat.conversationApprovalMode)
     }
+
+    /// Reasoning effort is per-conversation (nil = medium default) and persists on the thread record.
+    func testReasoningEffortPersistsPerThread() {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let chat = ChatStore(
+            engine: MockLLMEngine(script: .init()),
+            store: store,
+            settings: makeOnlineSettings(),
+            activeModel: nil
+        )
+        chat.newConversation()
+
+        XCTAssertEqual(chat.effectiveReasoningEffort, .medium, "medium is the spec default")
+        chat.conversationReasoningEffort = .high
+        XCTAssertEqual(chat.effectiveReasoningEffort, .high)
+        XCTAssertEqual(chat.activeConversation?.reasoningEffort, .high)
+        chat.conversationReasoningEffort = nil
+        XCTAssertEqual(chat.effectiveReasoningEffort, .medium)
+    }
 }

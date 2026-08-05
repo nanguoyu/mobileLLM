@@ -236,6 +236,54 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         XCTAssertTrue(parsed.isTruncated)
     }
 
+    func testParseResponseExtractsReasoningText() throws {
+        let json = """
+        {"usage":{"input_tokens":1,"output_tokens":7},
+         "output":[
+           {"type":"reasoning","content":[
+             {"type":"reasoning_text","text":"think "},
+             {"type":"reasoning_text","text":"hard"}
+           ]},
+           {"type":"message","role":"assistant","content":[
+             {"type":"output_text","text":"Answer"}
+           ]}
+         ]}
+        """
+        let parsed = try ResponsesAPIModelProvider.parseResponse(Data(json.utf8))
+        XCTAssertEqual(parsed.reasoning, "think hard")
+        XCTAssertEqual(parsed.text, "Answer")
+    }
+
+    func testRequestBodySendsEffortWhenReasoningEnabledAndOmitsOnFallback() throws {
+        let fixture = try ModelFixture(thinkingMode: .enabled)
+        let data = try ResponsesAPIModelProvider.requestBody(
+            request: fixture.request,
+            baseURL: "https://gateway.example/v1",
+            reasoningEffort: .medium
+        )
+        let value = try AgentWireDecoder.decode(
+            JSONValue.self,
+            from: data,
+            limits: .inlineValue
+        )
+        guard case .object(let object) = value else { return XCTFail("body object") }
+        XCTAssertEqual(object["reasoning"], .object(["effort": .string("medium")]))
+
+        let fallbackData = try ResponsesAPIModelProvider.requestBody(
+            request: fixture.request,
+            baseURL: "https://gateway.example/v1",
+            reasoningEffort: .medium,
+            omitReasoning: true
+        )
+        let fallbackValue = try AgentWireDecoder.decode(
+            JSONValue.self,
+            from: fallbackData,
+            limits: .inlineValue
+        )
+        guard case .object(let fallbackObject) = fallbackValue else { return XCTFail("body object") }
+        XCTAssertNil(fallbackObject["reasoning"], "fallback must omit the reasoning field entirely")
+    }
+
     func testGeneratePostsResponsesAndEmitsTextUsageCompletion() async throws {
         let responseJSON = """
         {"usage":{"input_tokens":12,"output_tokens":7},
@@ -665,6 +713,115 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
               case .finalAnswer(let answer) = completion.action
         else { return XCTFail("expected final answer, got \(result.outcome)") }
         XCTAssertEqual(answer.text, "Sleep doesn’t have to be perfect.")
+        XCTAssertEqual(MockResponsesURLProtocol.requestCount, 2)
+    }
+
+    func testGenerateFallsBackWhenGatewayRejectsEffortField() async throws {
+        MockResponsesURLProtocol.requestCount = 0
+        MockResponsesURLProtocol.handler = { request in
+            MockResponsesURLProtocol.requestCount += 1
+            let body = MockResponsesURLProtocol.requestBodyString(request)
+            if MockResponsesURLProtocol.requestCount == 1 {
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 400,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                return (response, Data(
+                    #"{"error":{"message":"unknown parameter: reasoning"}}"#.utf8
+                ))
+            }
+            XCTAssertFalse(
+                body.contains("reasoning"),
+                "the fallback must omit the reasoning field: \(body)"
+            )
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data("""
+            {"status":"completed",
+             "usage":{"input_tokens":2,"output_tokens":2},
+             "output":[{"type":"message","role":"assistant","content":[
+               {"type":"output_text","text":"OK"}
+             ]}]}
+            """.utf8))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockResponsesURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockResponsesURLProtocol.handler = nil
+            MockResponsesURLProtocol.capturedRequest = nil
+            MockResponsesURLProtocol.requestCount = 0
+        }
+
+        let provider = try ResponsesAPIModelProvider(
+            configurationProvider: {
+                ResponsesAPIConfiguration(
+                    baseURL: "https://gateway.example/v1",
+                    apiKey: "sk-test",
+                    reasoningEffort: .medium
+                )
+            },
+            session: session
+        )
+        let fixture = try ModelFixture(
+            location: .remote,
+            thinkingMode: .enabled,
+            providerID: ResponsesAPIModelProvider.providerID,
+            remoteDestination: "openai.responses:responses-api-key:fixture-model"
+        )
+        let cloudPolicy = try AgentModelPolicy(
+            localOnly: false,
+            allowedSelections: [fixture.request.selection],
+            strategy: .pinned,
+            requiredCapabilities: AgentModelCapabilitySet([])
+        )
+        let cloudContext = try ModelPreparationContext(
+            conversationID: fixture.context.conversationID,
+            modelPolicy: cloudPolicy,
+            capabilityGrant: fixture.context.capabilityGrant,
+            authorizationPayload: fixture.context.authorizationPayload,
+            maximumRequestBytes: fixture.context.maximumRequestBytes,
+            maximumResponseBytes: fixture.context.maximumResponseBytes,
+            timeoutMilliseconds: fixture.context.timeoutMilliseconds
+        )
+        let prepared = try await AgentModelRequestPreparer().prepare(
+            provider: provider,
+            request: fixture.request,
+            context: cloudContext
+        )
+        let policy = TestApprovalPolicyEngine()
+        let authorization = try await policy.bindLocalPolicy(
+            prepared: prepared.preparedRequest.externalOperation,
+            approvalID: ApprovalID(rawValue: ModelFixture.uuid(5)),
+            trustedRunAuthority: fixture.authority,
+            at: AgentTimestamp(rawValue: 1_000)
+        )
+        let authorized = AuthorizedAgentModelAttempt(
+            preparedAttempt: prepared,
+            request: try AuthorizedModelRequest(
+                request: fixture.request,
+                authorization: authorization,
+                clock: FixedAuthorizationClock(),
+                policyValidator: policy,
+                attemptLedger: TestAttemptLedger()
+            )
+        )
+
+        let result = try await AgentModelExecutor().execute(
+            provider: provider,
+            authorized: authorized
+        )
+
+        guard case .completed(let completion) = result.outcome,
+              case .finalAnswer(let answer) = completion.action
+        else { return XCTFail("expected final answer, got \(result.outcome)") }
+        XCTAssertEqual(answer.text, "OK")
         XCTAssertEqual(MockResponsesURLProtocol.requestCount, 2)
     }
 }

@@ -4,7 +4,6 @@ import SwiftUI
 import PhotosUI
 import AppUI
 import LLMCore
-import AgentContracts
 
 /// The chat composer (DESIGN §4): multiline auto-grow field, one morphing Send↔Stop button (no
 /// reflow), an inline 🧠 thinking toggle, a mic for dictation, an optional photo attach (vision models),
@@ -329,114 +328,6 @@ struct Composer: View {
                     Label("Thinking", systemImage: "brain")
                 }
             }
-            if let options = contextOptions {
-                Menu {
-                    Button {
-                        chat.setConversationContextLength(nil)
-                    } label: {
-                        if chat.conversationContextOverride == nil {
-                            Label("Follow settings (\(Format.shortCount(contextDefault)))",
-                                  systemImage: "checkmark")
-                        } else {
-                            Text("Follow settings (\(Format.shortCount(contextDefault)))")
-                        }
-                    }
-                    Divider()
-                    ForEach(options, id: \.self) { n in
-                        Button {
-                            chat.setConversationContextLength(n)
-                        } label: {
-                            if chat.conversationContextOverride == n {
-                                Label(Format.shortCount(n), systemImage: "checkmark")
-                            } else {
-                                Text(Format.shortCount(n))
-                            }
-                        }
-                    }
-                } label: {
-                    Label("Context", systemImage: "text.alignleft")
-                }
-            }
-            Menu {
-                Menu {
-                    Button {
-                        chat.setConversationTemperature(nil)
-                    } label: {
-                        if chat.conversationSamplingOverride?.temperature == nil {
-                            Label("Follow (\(String(format: "%.2f", settings.temperature)))",
-                                  systemImage: "checkmark")
-                        } else {
-                            Text("Follow (\(String(format: "%.2f", settings.temperature)))")
-                        }
-                    }
-                    Divider()
-                    ForEach([0.0, 0.2, 0.5, 0.7, 0.9, 1.0], id: \.self) { value in
-                        Button {
-                            chat.setConversationTemperature(value)
-                        } label: {
-                            if chat.conversationSamplingOverride?.temperature == value {
-                                Label(String(format: "%.2f", value), systemImage: "checkmark")
-                            } else {
-                                Text(String(format: "%.2f", value))
-                            }
-                        }
-                    }
-                } label: { Label("Temperature", systemImage: "thermometer") }
-
-                Menu {
-                    Button {
-                        chat.setConversationTopP(nil)
-                    } label: {
-                        if chat.conversationSamplingOverride?.topP == nil {
-                            Label("Follow (\(String(format: "%.2f", settings.topP)))",
-                                  systemImage: "checkmark")
-                        } else {
-                            Text("Follow (\(String(format: "%.2f", settings.topP)))")
-                        }
-                    }
-                    Divider()
-                    ForEach([0.8, 0.9, 0.95, 1.0], id: \.self) { value in
-                        Button {
-                            chat.setConversationTopP(value)
-                        } label: {
-                            if chat.conversationSamplingOverride?.topP == value {
-                                Label(String(format: "%.2f", value), systemImage: "checkmark")
-                            } else {
-                                Text(String(format: "%.2f", value))
-                            }
-                        }
-                    }
-                } label: { Label("Top-p", systemImage: "arrow.up.and.down") }
-
-                Menu {
-                    Button {
-                        chat.setConversationMaxTokens(nil)
-                    } label: {
-                        if chat.conversationSamplingOverride?.maxTokens == nil {
-                            Label("Follow (\(settings.maxTokens))", systemImage: "checkmark")
-                        } else {
-                            Text("Follow (\(settings.maxTokens))")
-                        }
-                    }
-                    Divider()
-                    ForEach([512, 1_024, 2_048, 4_096], id: \.self) { value in
-                        Button {
-                            chat.setConversationMaxTokens(value)
-                        } label: {
-                            if chat.conversationSamplingOverride?.maxTokens == value {
-                                Label("\(value)", systemImage: "checkmark")
-                            } else {
-                                Text("\(value)")
-                            }
-                        }
-                    }
-                } label: { Label("Max tokens", systemImage: "number") }
-            } label: { Label("Sampling", systemImage: "slider.horizontal.3") }
-            Menu {
-                approvalModeOption("Ask", mode: nil)
-                approvalModeOption("Safe preset", mode: .safePreset)
-                approvalModeOption("Full access", mode: .fullAccess)
-            } label: { Label("Approval", systemImage: "lock.shield") }
             toolMenu
             if chat.skillStore != nil { skillMenu }
             if canAttachImages {
@@ -477,32 +368,6 @@ struct Composer: View {
         .menuIndicator(.hidden)
         .accessibilityLabel("Chat options")
         .accessibilityHint("Thinking, tools and image attachments")
-    }
-
-    /// Context rungs offered for the ACTIVE conversation: online services get their own ladder; local
-    /// models get their model-specific ladder (hidden when no local model identity exists).
-    private var contextOptions: [Int]? {
-        if chat.isOnlineActive { return OnlineModelIdentity.contextLadder }
-        guard let model = chat.activeModel?.model else { return nil }
-        return ContextPolicy.options(for: model)
-    }
-
-    /// The global default this conversation falls back to when no per-conversation override is set.
-    private var contextDefault: Int {
-        chat.isOnlineActive ? settings.onlineContextLength : settings.contextLength
-    }
-
-    @ViewBuilder
-    private func approvalModeOption(_ title: String, mode: AgentApprovalMode?) -> some View {
-        Button {
-            chat.conversationApprovalMode = mode
-        } label: {
-            if chat.conversationApprovalMode == mode {
-                Label(title, systemImage: "checkmark")
-            } else {
-                Text(title)
-            }
-        }
     }
 
     // MARK: Tool selection

@@ -378,6 +378,22 @@ public final class ChatStore {
         }
     }
 
+    /// The active thread's reasoning effort (nil = medium). Applies whenever reasoning is enabled.
+    public var conversationReasoningEffort: ReasoningEffort? {
+        get { activeConversation?.reasoningEffort }
+        set {
+            guard let convo = activeConversation,
+                  let idx = conversations.firstIndex(where: { $0.id == convo.id }) else { return }
+            conversations[idx].reasoningEffort = newValue
+            persist(conversations[idx])
+        }
+    }
+
+    /// Effective effort for the next send: thread override, else medium (spec §15.3).
+    public var effectiveReasoningEffort: ReasoningEffort {
+        conversationReasoningEffort ?? .medium
+    }
+
     /// The active thread's sampling overrides (nil field = follow the global setting).
     public var conversationSamplingOverride: ConversationSampling? { activeConversation?.sampling }
 
