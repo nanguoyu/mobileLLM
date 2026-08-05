@@ -176,6 +176,16 @@ public struct ApprovalAuthorizationOutcome: Hashable, Codable, Sendable {
         self.diagnostic = diagnostic
         self.matchedRuleID = matchedRuleID
     }
+
+    /// Outcome used when the run's approval mode auto-authorizes (no user prompt). Still goes through
+    /// `bindLocalPolicy`, so a durable authorization is recorded inside the run ceiling.
+    public static func authorizedByApprovalMode() -> ApprovalAuthorizationOutcome {
+        ApprovalAuthorizationOutcome(
+            decision: .authorizeLocalPolicy,
+            grantScope: .none,
+            matchedRuleID: "AH-APPROVAL-MODE-AUTO"
+        )
+    }
 }
 
 public enum ApprovalPresentationDecision: String, CaseIterable, Hashable, Codable, Sendable {
@@ -195,6 +205,36 @@ public struct ApprovalPresentationOutcome: Hashable, Codable, Sendable {
     public let decision: ApprovalPresentationDecision
     public let runState: AgentRunState?
     public let matchedRuleID: String
+
+    fileprivate init(
+        decision: ApprovalPresentationDecision,
+        runState: AgentRunState? = nil,
+        matchedRuleID: String
+    ) {
+        self.decision = decision
+        self.runState = runState
+        self.matchedRuleID = matchedRuleID
+    }
+
+    public static func authorizedByApprovalMode() -> ApprovalPresentationOutcome {
+        ApprovalPresentationOutcome(
+            decision: .noPresentation,
+            matchedRuleID: "AH-APPROVAL-MODE-AUTO"
+        )
+    }
+
+    /// Whether a prepared plan counts as "safe" for the Safe preset: in-app reads/writes and bounded
+    /// network/private-data reads, plus online-model inference (externalCommunication to a model
+    /// provider). Everything else (external writes, unknown external, destructive, financial, code
+    /// execution) still asks.
+    public static func isSafePresetOperation(_ plan: ExternalOperationPlan) -> Bool {
+        let safeEffects: Set<AgentEffect> = [
+            .localPure, .localRead, .localWrite, .networkRead, .privateDataRead,
+        ]
+        if Set(plan.effects).isSubset(of: safeEffects) { return true }
+        return plan.effects == [.externalCommunication]
+            && plan.destination?.kind == .modelProvider
+    }
 }
 
 public enum SystemAccessState: String, CaseIterable, Hashable, Codable, Sendable {

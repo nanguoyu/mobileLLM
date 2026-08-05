@@ -304,4 +304,28 @@ final class OnlineModelSelectionTests: XCTestCase {
         XCTAssertEqual(chat.conversationMaxTokens, 2_048)
         XCTAssertEqual(chat.conversationSamplingOverride?.maxTokens, 2_048)
     }
+
+    /// Approval mode is per-conversation (nil = ask) and persists on the thread record.
+    func testConversationApprovalModePersistsPerThread() {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let chat = ChatStore(
+            engine: MockLLMEngine(script: .init()),
+            store: store,
+            settings: makeOnlineSettings(),
+            activeModel: nil
+        )
+        chat.newConversation()
+
+        XCTAssertNil(chat.conversationApprovalMode, "new conversations default to ask")
+        chat.conversationApprovalMode = .fullAccess
+        XCTAssertEqual(chat.conversationApprovalMode, .fullAccess)
+        XCTAssertEqual(chat.activeConversation?.approvalMode, .fullAccess)
+
+        chat.conversationApprovalMode = .safePreset
+        XCTAssertEqual(chat.activeConversation?.approvalMode, .safePreset)
+
+        chat.conversationApprovalMode = nil
+        XCTAssertNil(chat.conversationApprovalMode)
+    }
 }

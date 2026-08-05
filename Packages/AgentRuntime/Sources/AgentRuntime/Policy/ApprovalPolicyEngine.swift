@@ -9,6 +9,39 @@ public struct ApprovalPolicyEvaluation: Sendable {
     public let matchingReceipt: ApprovalReceipt?
 }
 
+public extension ApprovalPolicyEngine {
+    /// Evaluates one prepared operation under the run's frozen approval mode. Full access and the Safe
+    /// preset return an auto-authorization (the caller still records a durable local-policy bind);
+    /// `.ask` and anything not covered by the preset fall through to the normal policy evaluation.
+    func evaluate(
+        prepared: PreparedExternalOperationRequest,
+        trustedRunAuthority: TrustedRunAuthority?,
+        interaction: ApprovalInteractionContext,
+        candidateReceipts: [ApprovalReceipt],
+        at timestamp: AgentTimestamp,
+        approvalMode: AgentApprovalMode
+    ) -> ApprovalPolicyEvaluation {
+        let autoApprove = approvalMode == .fullAccess
+            || (approvalMode == .safePreset
+                && ApprovalPresentationOutcome.isSafePresetOperation(prepared.plan))
+        if autoApprove {
+            return ApprovalPolicyEvaluation(
+                authorization: ApprovalAuthorizationOutcome.authorizedByApprovalMode(),
+                presentation: ApprovalPresentationOutcome.authorizedByApprovalMode(),
+                matchingReceipt: nil
+            )
+        }
+        return evaluate(
+            prepared: prepared,
+            trustedRunAuthority: trustedRunAuthority,
+            feature: .enabled,
+            interaction: interaction,
+            candidateReceipts: candidateReceipts,
+            at: timestamp
+        )
+    }
+}
+
 public enum ApprovalPolicyEngineError: Error, Hashable, Sendable {
     case invalidPolicyVersion
     case missingEffects

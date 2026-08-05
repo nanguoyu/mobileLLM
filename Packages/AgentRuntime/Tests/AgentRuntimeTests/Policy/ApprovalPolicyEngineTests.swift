@@ -142,6 +142,105 @@ final class ApprovalPolicyEngineTests: XCTestCase {
         }
     }
 
+    func testFullAccessAutoAuthorizesEveryOperation() throws {
+        let engine = try makeApprovalEngine()
+        for effect in AgentEffect.allCases {
+            let fixture = try Fixture(effect: effect)
+            let evaluation = engine.evaluate(
+                prepared: fixture.prepared,
+                trustedRunAuthority: fixture.trustedAuthority,
+                interaction: .foregroundInteractive,
+                candidateReceipts: [],
+                at: fixture.now,
+                approvalMode: .fullAccess
+            )
+            XCTAssertEqual(
+                evaluation.authorization.decision,
+                .authorizeLocalPolicy,
+                "full access must auto-authorize \(effect.rawValue)"
+            )
+            XCTAssertEqual(evaluation.presentation.decision, .noPresentation)
+            XCTAssertNil(evaluation.matchingReceipt)
+        }
+    }
+
+    func testSafePresetAutoAuthorizesSafeOperationsAndAsksForUnsafe() throws {
+        let engine = try makeApprovalEngine()
+        for effect in [AgentEffect.localRead, .localWrite, .networkRead, .privateDataRead] {
+            let fixture = try Fixture(effect: effect)
+            let evaluation = engine.evaluate(
+                prepared: fixture.prepared,
+                trustedRunAuthority: fixture.trustedAuthority,
+                interaction: .foregroundInteractive,
+                candidateReceipts: [],
+                at: fixture.now,
+                approvalMode: .safePreset
+            )
+            XCTAssertEqual(
+                evaluation.authorization.decision,
+                .authorizeLocalPolicy,
+                "safe preset must auto-authorize \(effect.rawValue)"
+            )
+        }
+
+        // Online-model inference (externalCommunication to a model provider) is safe too.
+        let modelFixture = try Fixture(
+            effect: .externalCommunication,
+            planKind: .modelProvider,
+            destinationKind: .modelProvider,
+            destinationIdentity: "openai.responses:svc-1:model-a"
+        )
+        let modelEvaluation = engine.evaluate(
+            prepared: modelFixture.prepared,
+            trustedRunAuthority: modelFixture.trustedAuthority,
+            interaction: .foregroundInteractive,
+            candidateReceipts: [],
+            at: modelFixture.now,
+            approvalMode: .safePreset
+        )
+        XCTAssertEqual(modelEvaluation.authorization.decision, .authorizeLocalPolicy)
+
+        for effect in [AgentEffect.externalWrite, .unknownExternal, .destructive, .financial, .codeExecution] {
+            let fixture = try Fixture(effect: effect)
+            let evaluation = engine.evaluate(
+                prepared: fixture.prepared,
+                trustedRunAuthority: fixture.trustedAuthority,
+                interaction: .foregroundInteractive,
+                candidateReceipts: [],
+                at: fixture.now,
+                approvalMode: .safePreset
+            )
+            XCTAssertEqual(
+                evaluation.authorization.decision,
+                .requireApproval,
+                "safe preset must still ask for \(effect.rawValue)"
+            )
+        }
+    }
+
+    func testAskModeFallsThroughToDefaultPolicy() throws {
+        let fixture = try Fixture(effect: .networkRead)
+        let engine = try makeApprovalEngine()
+        let viaMode = engine.evaluate(
+            prepared: fixture.prepared,
+            trustedRunAuthority: fixture.trustedAuthority,
+            interaction: .foregroundInteractive,
+            candidateReceipts: [],
+            at: fixture.now,
+            approvalMode: .ask
+        )
+        let viaBase = engine.evaluate(
+            prepared: fixture.prepared,
+            trustedRunAuthority: fixture.trustedAuthority,
+            feature: .enabled,
+            interaction: .foregroundInteractive,
+            candidateReceipts: [],
+            at: fixture.now
+        )
+        XCTAssertEqual(viaMode.authorization.decision, viaBase.authorization.decision)
+        XCTAssertEqual(viaMode.authorization.decision, .requireApproval)
+    }
+
     func testExpiredWrongPolicyAndMissingTrustNeverAuthorize() throws {
         let fixture = try Fixture(effect: .networkRead)
         let engine = try makeApprovalEngine()
@@ -575,7 +674,10 @@ private struct Fixture {
         effect: AgentEffect,
         runOffset: Int = 0,
         conversationID: ConversationID? = nil,
-        plan suppliedPlan: ExternalOperationPlan? = nil
+        plan suppliedPlan: ExternalOperationPlan? = nil,
+        planKind: ExternalOperationKind? = nil,
+        destinationKind: ExternalDestination.Kind? = nil,
+        destinationIdentity: String? = nil
     ) throws {
         func id<Domain>(_ value: Int, as: Domain.Type) -> AgentIdentifier<Domain>
             where Domain: AgentIdentifierDomain
@@ -601,12 +703,14 @@ private struct Fixture {
         let destination: ExternalDestination? = effect == .localPure
             ? nil
             : try ExternalDestination(
-                kind: effect == .privateDataRead ? .privateDataStore : .networkEndpoint,
-                normalizedIdentity: effect == .privateDataRead ? "photos.library" : "https://example.com:443"
+                kind: destinationKind ?? (effect == .privateDataRead ? .privateDataStore : .networkEndpoint),
+                normalizedIdentity: destinationIdentity
+                    ?? (effect == .privateDataRead ? "photos.library" : "https://example.com:443")
             )
         let capabilitySet = AgentCapabilitySet([effect.minimumCapability].compactMap { $0 })
         plan = try suppliedPlan ?? ExternalOperationPlan(
-            kind: effect == .localPure ? .localPure : (effect == .privateDataRead ? .privateData : .tool),
+            kind: planKind
+                ?? (effect == .localPure ? .localPure : (effect == .privateDataRead ? .privateData : .tool)),
             subjectID: "fixture.operation",
             destination: destination,
             payloadDigest: payload.fingerprint,
@@ -616,10 +720,12 @@ private struct Fixture {
             maximumResponseBytes: 4_096,
             timeoutMilliseconds: 5_000,
             retryPolicy: .never,
-            idempotency: effect == .externalWrite || effect == .localWrite || effect == .unknownExternal
-                ? .nonIdempotent
-                : .pureRead,
-            userPreview: effect == .localPure ? "" : "Access example"
+            idempotency: [.localPure, .localRead, .networkRead, .privateDataRead].contains(effect)
+                ? .pureRead
+                : .nonIdempotent,
+            userPreview: effect == .localPure
+                ? ""
+                : (effect == .externalCommunication ? "Send this conversation to model" : "Access example")
         )
         let authorityScope = try AgentAuthorityScope(
             capabilities: plan.requiredCapabilities,

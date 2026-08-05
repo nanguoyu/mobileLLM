@@ -4,6 +4,7 @@ import SwiftUI
 import PhotosUI
 import AppUI
 import LLMCore
+import AgentContracts
 
 /// The chat composer (DESIGN §4): multiline auto-grow field, one morphing Send↔Stop button (no
 /// reflow), an inline 🧠 thinking toggle, a mic for dictation, an optional photo attach (vision models),
@@ -431,6 +432,11 @@ struct Composer: View {
                     }
                 } label: { Label("Max tokens", systemImage: "number") }
             } label: { Label("Sampling", systemImage: "slider.horizontal.3") }
+            Menu {
+                approvalModeOption("Ask", mode: nil)
+                approvalModeOption("Safe preset", mode: .safePreset)
+                approvalModeOption("Full access", mode: .fullAccess)
+            } label: { Label("Approval", systemImage: "lock.shield") }
             toolMenu
             if chat.skillStore != nil { skillMenu }
             if canAttachImages {
@@ -484,6 +490,19 @@ struct Composer: View {
     /// The global default this conversation falls back to when no per-conversation override is set.
     private var contextDefault: Int {
         chat.isOnlineActive ? settings.onlineContextLength : settings.contextLength
+    }
+
+    @ViewBuilder
+    private func approvalModeOption(_ title: String, mode: AgentApprovalMode?) -> some View {
+        Button {
+            chat.conversationApprovalMode = mode
+        } label: {
+            if chat.conversationApprovalMode == mode {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
     }
 
     // MARK: Tool selection

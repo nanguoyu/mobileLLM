@@ -59,6 +59,8 @@ public struct AgentRunRequestSnapshot: Sendable {
     public let onlineReasoningEnabled: Bool
     /// Per-kind context window for online runs (independent of the local `contextLength`).
     public let onlineContextLength: Int
+    /// Per-conversation approval mode frozen with this run.
+    public let approvalMode: AgentApprovalMode
 
     public init(
         conversationID: UUID,
@@ -91,7 +93,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         onlineModelID: String?,
         onlineServiceID: String?,
         onlineReasoningEnabled: Bool,
-        onlineContextLength: Int
+        onlineContextLength: Int,
+        approvalMode: AgentApprovalMode
     ) {
         self.conversationID = conversationID
         self.userTurnID = userTurnID
@@ -124,6 +127,7 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.onlineServiceID = onlineServiceID
         self.onlineReasoningEnabled = onlineReasoningEnabled
         self.onlineContextLength = onlineContextLength
+        self.approvalMode = approvalMode
     }
 }
 
@@ -418,7 +422,8 @@ struct AppFrozenInputBuilder: Sendable {
             capabilityCeiling: RunCapabilityCeiling(authority: ceilingAuthority),
             budget: budget,
             artifactReferences: artifactReferences,
-            provenance: AgentRequestProvenance(source: .user)
+            provenance: AgentRequestProvenance(source: .user),
+            approvalMode: snapshot.approvalMode
         )
     }
 }

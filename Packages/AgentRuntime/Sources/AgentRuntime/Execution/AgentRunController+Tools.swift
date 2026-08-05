@@ -368,10 +368,10 @@ extension AgentRunController {
         let evaluation = policyEngine.evaluate(
             prepared: prepared.externalOperation,
             trustedRunAuthority: authority,
-            feature: .enabled,
             interaction: interactionContext,
             candidateReceipts: history.approvals.values.compactMap(\.receipt) + reusable,
-            at: now
+            at: now,
+            approvalMode: request.approvalMode
         )
         let approvalID = ExecutionStableID.approval(
             runID: request.runID,

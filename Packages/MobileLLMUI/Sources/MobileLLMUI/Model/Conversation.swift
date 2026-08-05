@@ -168,13 +168,17 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
     public var contextLength: Int?
     /// Per-thread sampling overrides (nil = follow global Settings). Missing key decodes as nil.
     public var sampling: ConversationSampling?
+    /// Per-thread approval mode (nil = `.ask`). Adjustable at any time from the composer menu; frozen
+    /// into each run. Missing key decodes as nil.
+    public var approvalMode: AgentApprovalMode?
 
     public init(id: UUID = UUID(), title: String = "New Chat", createdAt: Date = Date(),
                 updatedAt: Date = Date(), systemPromptID: String? = nil, modelID: String,
                 variantID: String, messages: [Message] = [], pinned: Bool = false,
                 skillID: UUID? = nil, toolPolicy: ConversationToolPolicy? = nil,
                 onlineReasoningEnabled: Bool? = nil, contextLength: Int? = nil,
-                sampling: ConversationSampling? = nil) {
+                sampling: ConversationSampling? = nil,
+                approvalMode: AgentApprovalMode? = nil) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
@@ -189,6 +193,7 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
         self.onlineReasoningEnabled = onlineReasoningEnabled
         self.contextLength = contextLength
         self.sampling = sampling
+        self.approvalMode = approvalMode
     }
 
     /// A one-line preview for the conversation list (last user or assistant text).

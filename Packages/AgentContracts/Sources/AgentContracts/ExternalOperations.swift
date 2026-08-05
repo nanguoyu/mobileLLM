@@ -665,6 +665,18 @@ public enum ApprovalScope: String, CaseIterable, Hashable, Codable, Sendable {
     case conversation
 }
 
+/// Per-conversation approval mode frozen into a run (Codex/Claude-style controls). The run ceiling is
+/// always enforced regardless of mode; a mode only decides whether the user is ASKED, never whether an
+/// operation is authorized.
+public enum AgentApprovalMode: String, CaseIterable, Hashable, Codable, Sendable {
+    /// Follow the spec's approval defaults (ask per policy).
+    case ask
+    /// Auto-approve safe in-app/read operations and the online model; ask for writes/unknown/destructive.
+    case safePreset
+    /// Auto-approve everything inside the run ceiling without asking.
+    case fullAccess
+}
+
 /// Durable evidence that a bounded operation plan was approved or denied.
 public struct ApprovalReceipt: Hashable, Codable, Sendable {
     /// Stable approval identity.

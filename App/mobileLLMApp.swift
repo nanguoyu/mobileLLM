@@ -482,7 +482,8 @@ private func makeAgentSnapshot(
         onlineModelID: onlineModelID,
         onlineServiceID: container.chat.onlineServiceID,
         onlineReasoningEnabled: container.chat.onlineReasoningEnabled,
-        onlineContextLength: container.chat.onlineContextRequest
+        onlineContextLength: container.chat.onlineContextRequest,
+        approvalMode: container.chat.conversationApprovalMode ?? .ask
     )
 }
 

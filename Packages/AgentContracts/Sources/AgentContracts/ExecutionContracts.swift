@@ -538,6 +538,8 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
     public let labels: [AgentRequestLabel]
     /// Submission provenance and verification evidence.
     public let provenance: AgentRequestProvenance
+    /// Per-conversation approval mode frozen with this run (decides asking, never authority).
+    public let approvalMode: AgentApprovalMode
 
     /// Creates a root or strictly attenuated future-child request.
     public init(
@@ -556,7 +558,8 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
         artifactReferences: [ArtifactReference] = [],
         sandboxRequirement: SandboxRequirement? = nil,
         labels: some Sequence<AgentRequestLabel> = [],
-        provenance: AgentRequestProvenance
+        provenance: AgentRequestProvenance,
+        approvalMode: AgentApprovalMode = .ask
     ) throws {
         let normalizedLabels = Array(Set(labels)).sorted()
         try outputRequirement.validate()
@@ -602,6 +605,7 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
         self.sandboxRequirement = sandboxRequirement
         self.labels = normalizedLabels
         self.provenance = provenance
+        self.approvalMode = approvalMode
     }
 
     /// User instructions are ordinary chat text: line breaks and tabs are legitimate content, while
@@ -637,7 +641,9 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
                 artifactReferences: artifacts,
                 sandboxRequirement: container.decodeIfPresent(SandboxRequirement.self, forKey: .sandboxRequirement),
                 labels: labels,
-                provenance: container.decode(AgentRequestProvenance.self, forKey: .provenance)
+                provenance: container.decode(AgentRequestProvenance.self, forKey: .provenance),
+                approvalMode: container.decodeIfPresent(AgentApprovalMode.self, forKey: .approvalMode)
+                    ?? .ask
             )
             guard self.labels == labels else { throw AgentContractError.invalidName("noncanonical labels") }
         } catch {
@@ -651,6 +657,7 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
         case id, runID, conversationID, userTurnID, parent, role, instruction, outputRequirement
         case modelPolicy, capabilityCeiling, budget, contextReferences, artifactReferences
         case sandboxRequirement, labels, provenance
+        case approvalMode
     }
 }
 

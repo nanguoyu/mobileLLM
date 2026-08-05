@@ -706,10 +706,10 @@ extension AgentRunController {
             let evaluation = policyEngine.evaluate(
                 prepared: external,
                 trustedRunAuthority: authority,
-                feature: .enabled,
                 interaction: interactionContext,
                 candidateReceipts: history.approvals.values.compactMap(\.receipt) + reusable,
-                at: now
+                at: now,
+                approvalMode: facts.submission!.request.payload.approvalMode
             )
             if let persisted = history.approvals[approvalID]?.request,
                persisted.prepared != external

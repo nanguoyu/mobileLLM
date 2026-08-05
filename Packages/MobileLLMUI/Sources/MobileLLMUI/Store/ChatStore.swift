@@ -366,6 +366,18 @@ public final class ChatStore {
         persist(conversations[idx])
     }
 
+    /// The active thread's approval mode (nil = `.ask`). Changing it applies from the next send; the
+    /// mode is frozen into each run.
+    public var conversationApprovalMode: AgentApprovalMode? {
+        get { activeConversation?.approvalMode }
+        set {
+            guard let convo = activeConversation,
+                  let idx = conversations.firstIndex(where: { $0.id == convo.id }) else { return }
+            conversations[idx].approvalMode = newValue
+            persist(conversations[idx])
+        }
+    }
+
     /// The active thread's sampling overrides (nil field = follow the global setting).
     public var conversationSamplingOverride: ConversationSampling? { activeConversation?.sampling }
 
