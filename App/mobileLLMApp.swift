@@ -213,6 +213,7 @@ struct MobileLLMApp: App {
         let onlineConfigBox = OpenAIOnlineConfigurationBox(
             baseURL: container.settings.openAIBaseURL,
             modelID: container.settings.openAIModelID,
+            maximumOutputTokens: container.settings.onlineActiveService?.maximumOutputTokens,
             credentials: container.openAICredentials
         )
         #if DEBUG
@@ -411,14 +412,16 @@ private func makeAgentSnapshot(
             serviceID: service.id,
             baseURL: service.baseURL,
             modelID: service.modelID,
-            reasoningEffort: container.chat.effectiveReasoningEffort
+            reasoningEffort: container.chat.effectiveReasoningEffort,
+            maximumOutputTokens: service.maximumOutputTokens
         )
     } else {
         onlineConfigBox.update(
             serviceID: OnlineService.defaultID,
             baseURL: container.settings.openAIBaseURL,
             modelID: nil,
-            reasoningEffort: container.chat.effectiveReasoningEffort
+            reasoningEffort: container.chat.effectiveReasoningEffort,
+            maximumOutputTokens: nil
         )
     }
     let onlineModelID = container.chat.onlineModelID
@@ -485,6 +488,8 @@ private func makeAgentSnapshot(
         onlineServiceID: container.chat.onlineServiceID,
         onlineReasoningEnabled: container.chat.onlineReasoningEnabled,
         onlineContextLength: container.chat.onlineContextRequest,
+        onlineOutputBudgetAuto: container.chat.isOnlineOutputBudgetAuto,
+        onlineMaximumOutputTokens: container.settings.onlineActiveService?.maximumOutputTokens,
         approvalMode: container.chat.conversationApprovalMode ?? .ask,
         onlineReasoningEffort: container.chat.effectiveReasoningEffort
     )

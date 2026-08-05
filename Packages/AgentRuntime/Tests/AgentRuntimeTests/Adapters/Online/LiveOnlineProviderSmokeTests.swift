@@ -255,6 +255,88 @@ final class LiveOnlineProviderSmokeTests: XCTestCase {
         )
     }
 
+    /// Auto budget is the product default: the wire request OMITS max_output_tokens so the service
+    /// uses the selected model's own output maximum. This live check proves the configured gateway
+    /// accepts the omission (strict gateways fall back to an explicit ceiling inside the provider).
+    func testLiveResponsesAutoBudgetOmitsLimitAndReturnsAnswer() async throws {
+        let config = try loadConfig()
+        let model = config.model ?? ""
+        let provider = try ResponsesAPIModelProvider(
+            configurationProvider: {
+                ResponsesAPIConfiguration(
+                    baseURL: config.baseURL,
+                    apiKey: config.apiKey,
+                    reasoningEffort: .medium
+                )
+            },
+            session: .shared
+        )
+        let fixture = try ModelFixture(
+            location: .remote,
+            thinkingMode: .disabled,
+            maximumOutputTokens: 4_096,
+            outputBudgetMode: .auto,
+            providerID: ResponsesAPIModelProvider.providerID,
+            remoteDestination: "openai.responses:\(ResponsesAPIConfiguration.defaultServiceID):\(model)",
+            modelID: model,
+            userMessage: "Reply with the word OK and nothing else."
+        )
+        let cloudPolicy = try AgentModelPolicy(
+            localOnly: false,
+            allowedSelections: [fixture.request.selection],
+            strategy: .pinned,
+            requiredCapabilities: AgentModelCapabilitySet([])
+        )
+        let cloudContext = try ModelPreparationContext(
+            conversationID: fixture.context.conversationID,
+            modelPolicy: cloudPolicy,
+            capabilityGrant: fixture.context.capabilityGrant,
+            authorizationPayload: fixture.context.authorizationPayload,
+            maximumRequestBytes: fixture.context.maximumRequestBytes,
+            maximumResponseBytes: fixture.context.maximumResponseBytes,
+            timeoutMilliseconds: fixture.context.timeoutMilliseconds
+        )
+        let prepared = try await AgentModelRequestPreparer().prepare(
+            provider: provider,
+            request: fixture.request,
+            context: cloudContext
+        )
+        let policy = TestApprovalPolicyEngine()
+        let authorization = try await policy.bindLocalPolicy(
+            prepared: prepared.preparedRequest.externalOperation,
+            approvalID: ApprovalID(rawValue: ModelFixture.uuid(8)),
+            trustedRunAuthority: fixture.authority,
+            at: AgentTimestamp(rawValue: 1_000)
+        )
+        let authorized = AuthorizedAgentModelAttempt(
+            preparedAttempt: prepared,
+            request: try AuthorizedModelRequest(
+                request: fixture.request,
+                authorization: authorization,
+                clock: FixedAuthorizationClock(),
+                policyValidator: policy,
+                attemptLedger: TestAttemptLedger()
+            )
+        )
+
+        let result = try await AgentModelExecutor().execute(
+            provider: provider,
+            authorized: authorized
+        )
+
+        guard case .completed(let completion) = result.outcome,
+              case .finalAnswer(let answer) = completion.action
+        else {
+            let detail = result.outcome
+            let attachment = XCTAttachment(string: "outcome=\(detail)")
+            attachment.name = "live-online-auto-budget-failure"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            return XCTFail("live auto-budget request did not complete: \(detail)")
+        }
+        XCTAssertFalse((answer.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
     /// The 2026-standard path: reasoning ENABLED with medium effort. Verifies the configured gateway
     /// accepts `reasoning.effort` and still returns a real answer (not just reasoning).
     func testLiveResponsesWithMediumEffortReturnsAnswer() async throws {

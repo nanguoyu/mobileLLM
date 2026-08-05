@@ -101,6 +101,58 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         XCTAssertEqual(input.count, 1)
     }
 
+    func testRequestBodyOmitsMaxOutputTokensInAutoMode() throws {
+        let fixture = try ModelFixture(outputBudgetMode: .auto)
+        let data = try ResponsesAPIModelProvider.requestBody(
+            request: fixture.request,
+            baseURL: "https://gateway.example/v1"
+        )
+        let value = try AgentWireDecoder.decode(
+            JSONValue.self,
+            from: data,
+            limits: .inlineValue
+        )
+        guard case .object(let object) = value else { return XCTFail("body object") }
+        XCTAssertNil(
+            object["max_output_tokens"],
+            "auto mode omits the wire limit so the service uses its own model default"
+        )
+
+        let explicit = try ResponsesAPIModelProvider.requestBody(
+            request: fixture.request,
+            baseURL: "https://gateway.example/v1",
+            maxOutputTokensOverride: 8_192
+        )
+        let explicitValue = try AgentWireDecoder.decode(
+            JSONValue.self,
+            from: explicit,
+            limits: .inlineValue
+        )
+        guard case .object(let explicitObject) = explicitValue else { return XCTFail("body object") }
+        XCTAssertEqual(explicitObject["max_output_tokens"], .integer(8_192))
+    }
+
+    func testCapabilitiesHonorPerServiceOutputCeiling() async throws {
+        let provider = try ResponsesAPIModelProvider(
+            configurationProvider: {
+                ResponsesAPIConfiguration(
+                    baseURL: "https://gateway.example/v1",
+                    apiKey: "sk-test",
+                    maximumOutputTokens: 8_192
+                )
+            },
+            session: URLSession(configuration: .ephemeral)
+        )
+        let fixture = try ModelFixture(
+            location: .remote,
+            providerID: ResponsesAPIModelProvider.providerID,
+            remoteDestination: "openai.responses:responses-api-key:fixture-model"
+        )
+        let capabilities = try await provider.capabilities(for: fixture.request.selection)
+        XCTAssertEqual(capabilities.maximumOutputTokens, 8_192)
+        XCTAssertEqual(capabilities.maximumContextTokens, ResponsesAPIModelProvider.maximumContextTokens)
+    }
+
     func testRequestBodyOmitsToolsWhenNoneAreAdvertised() throws {
         let fixture = try ModelFixture(advertisedTools: [])
         let data = try ResponsesAPIModelProvider.requestBody(
@@ -662,7 +714,8 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         let fixture = try ModelFixture(
             location: .remote,
             thinkingMode: .enabled,
-            maximumOutputTokens: 1_024,
+            maximumOutputTokens: 4_096,
+            outputBudgetMode: .auto,
             providerID: ResponsesAPIModelProvider.providerID,
             remoteDestination: "openai.responses:responses-api-key:fixture-model"
         )
@@ -939,5 +992,121 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
             },
             [.provisionalAnswerDelta("Hel"), .provisionalAnswerDelta("lo")]
         )
+    }
+
+    func testGenerateStreamedTruncationRetriesWithHigherBudgetAndEmitsOnlyContinuation() async throws {
+        MockResponsesURLProtocol.requestCount = 0
+        MockResponsesURLProtocol.handler = { request in
+            MockResponsesURLProtocol.requestCount += 1
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "text/event-stream"]
+            )!
+            if MockResponsesURLProtocol.requestCount == 1 {
+                return (response, Data("""
+                data: {"type":"response.output_text.delta","delta":"Sleep doesn"}
+
+                data: {"type":"response.completed","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":1,"output_tokens":5}}
+
+                """.utf8))
+            }
+            let body = MockResponsesURLProtocol.requestBodyString(request)
+            let decoded = try JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any]
+            XCTAssertEqual(decoded?["max_output_tokens"] as? Int, 4_096)
+            return (response, Data("""
+            data: {"type":"response.output_text.delta","delta":"Sleep doesn"}
+
+            data: {"type":"response.output_text.delta","delta":"’t have to be perfect."}
+
+            data: {"type":"response.completed","status":"completed","usage":{"input_tokens":2,"output_tokens":7}}
+
+            """.utf8))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockResponsesURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockResponsesURLProtocol.handler = nil
+            MockResponsesURLProtocol.capturedRequest = nil
+            MockResponsesURLProtocol.requestCount = 0
+        }
+
+        let provider = try ResponsesAPIModelProvider(
+            configurationProvider: {
+                ResponsesAPIConfiguration(baseURL: "https://gateway.example/v1", apiKey: "sk-test")
+            },
+            session: session
+        )
+        let fixture = try ModelFixture(
+            location: .remote,
+            thinkingMode: .enabled,
+            maximumOutputTokens: 4_096,
+            outputBudgetMode: .auto,
+            providerID: ResponsesAPIModelProvider.providerID,
+            remoteDestination: "openai.responses:responses-api-key:fixture-model"
+        )
+        let cloudPolicy = try AgentModelPolicy(
+            localOnly: false,
+            allowedSelections: [fixture.request.selection],
+            strategy: .pinned,
+            requiredCapabilities: AgentModelCapabilitySet([])
+        )
+        let cloudContext = try ModelPreparationContext(
+            conversationID: fixture.context.conversationID,
+            modelPolicy: cloudPolicy,
+            capabilityGrant: fixture.context.capabilityGrant,
+            authorizationPayload: fixture.context.authorizationPayload,
+            maximumRequestBytes: fixture.context.maximumRequestBytes,
+            maximumResponseBytes: fixture.context.maximumResponseBytes,
+            timeoutMilliseconds: fixture.context.timeoutMilliseconds
+        )
+        let prepared = try await AgentModelRequestPreparer().prepare(
+            provider: provider,
+            request: fixture.request,
+            context: cloudContext
+        )
+        let policy = TestApprovalPolicyEngine()
+        let authorization = try await policy.bindLocalPolicy(
+            prepared: prepared.preparedRequest.externalOperation,
+            approvalID: ApprovalID(rawValue: ModelFixture.uuid(5)),
+            trustedRunAuthority: fixture.authority,
+            at: AgentTimestamp(rawValue: 1_000)
+        )
+        let authorized = AuthorizedAgentModelAttempt(
+            preparedAttempt: prepared,
+            request: try AuthorizedModelRequest(
+                request: fixture.request,
+                authorization: authorization,
+                clock: FixedAuthorizationClock(),
+                policyValidator: policy,
+                attemptLedger: TestAttemptLedger()
+            )
+        )
+        let sink = RecordingModelEventSink()
+
+        let result = try await AgentModelExecutor().execute(
+            provider: provider,
+            authorized: authorized,
+            eventSink: sink
+        )
+
+        guard case .completed(let completion) = result.outcome,
+              case .finalAnswer(let answer) = completion.action
+        else { return XCTFail("expected final answer, got \(result.outcome)") }
+        XCTAssertEqual(answer.text, "Sleep doesn’t have to be perfect.")
+        XCTAssertEqual(MockResponsesURLProtocol.requestCount, 2)
+
+        let answerDeltas = (await sink.events()).compactMap { event -> String? in
+            guard case .provisionalAnswerDelta(let delta) = event else { return nil }
+            return delta
+        }
+        XCTAssertEqual(
+            answerDeltas,
+            ["Sleep doesn", "’t have to be perfect."],
+            "the first attempt streams live and the retry emits ONLY the continuation"
+        )
+        XCTAssertEqual(answerDeltas.joined(), answer.text)
     }
 }

@@ -289,10 +289,13 @@ final class OnlineModelSelectionTests: XCTestCase {
         chat.newConversation()
 
         XCTAssertEqual(chat.conversationTemperature, settings.temperature, accuracy: 0.0001)
+        XCTAssertEqual(settings.onlineMaxTokens, 0, "the online default is auto, not a hardcoded cap")
+        XCTAssertTrue(chat.isOnlineOutputBudgetAuto, "online threads default to the service's own max")
+        XCTAssertEqual(chat.conversationOutputBudgetLabel, "Auto")
         XCTAssertEqual(
             chat.conversationMaxTokens,
-            settings.onlineMaxTokens,
-            "online threads default to the online output budget, not the local one"
+            settings.onlineContextLength,
+            "auto maps 0 to the context-window accounting ceiling for runtime validation"
         )
 
         // A local thread follows the local global default; the same per-conversation override
@@ -309,10 +312,17 @@ final class OnlineModelSelectionTests: XCTestCase {
         )
         localChat.newConversation()
         XCTAssertEqual(localChat.conversationMaxTokens, localSettings.maxTokens)
+        XCTAssertFalse(localChat.isOnlineOutputBudgetAuto, "local engines always have a finite budget")
+        localChat.setConversationMaxTokens(0)
+        XCTAssertNil(
+            localChat.conversationSamplingOverride?.maxTokens,
+            "0 (auto) is rejected for local threads"
+        )
 
         chat.setConversationTemperature(0.2)
         chat.setConversationMaxTokens(2_048)
         XCTAssertEqual(chat.conversationTemperature, 0.2, accuracy: 0.0001)
+        XCTAssertFalse(chat.isOnlineOutputBudgetAuto)
         XCTAssertEqual(chat.conversationMaxTokens, 2_048)
         XCTAssertEqual(chat.conversationTopP, settings.topP, accuracy: 0.0001)
         XCTAssertEqual(chat.conversationSamplingOverride?.temperature, 0.2)
@@ -321,7 +331,15 @@ final class OnlineModelSelectionTests: XCTestCase {
         chat.setConversationTemperature(nil)
         XCTAssertEqual(chat.conversationTemperature, settings.temperature, accuracy: 0.0001)
         XCTAssertEqual(chat.conversationMaxTokens, 2_048)
-        XCTAssertEqual(chat.conversationSamplingOverride?.maxTokens, 2_048)
+        chat.setConversationMaxTokens(nil)
+        XCTAssertTrue(chat.isOnlineOutputBudgetAuto, "resetting the override returns to global auto")
+        XCTAssertNil(chat.conversationSamplingOverride?.maxTokens)
+
+        // A thread can pin auto (0) explicitly so it survives a future global change.
+        chat.setConversationMaxTokens(0)
+        XCTAssertTrue(chat.isOnlineOutputBudgetAuto)
+        XCTAssertEqual(chat.conversationSamplingOverride?.maxTokens, 0)
+        XCTAssertEqual(chat.conversationMaxTokens, settings.onlineContextLength)
     }
 
     /// Approval mode is per-conversation (nil = ask) and persists on the thread record.

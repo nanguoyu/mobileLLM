@@ -356,6 +356,19 @@ public enum AgentModelThinkingMode: String, CaseIterable, Hashable, Codable, Sen
     case automatic
 }
 
+/// How the provider should treat `maximumOutputTokens` on the wire.
+///
+/// Local engines always need a finite budget (their KV context is device memory), so they use
+/// `.explicit`. Online services can often use the model's own default/maximum when the request
+/// simply omits the output limit; `.auto` tells the provider to omit it while the runtime still
+/// keeps `maximumOutputTokens` as a finite accounting ceiling for budgets and usage validation.
+public enum AgentOutputBudgetMode: String, CaseIterable, Hashable, Codable, Sendable {
+    /// Send `maximumOutputTokens` to the provider as a hard wire-level limit.
+    case explicit
+    /// Omit the provider's wire-level output limit so the service uses its own model default.
+    case auto
+}
+
 /// Complete provider-neutral generation controls frozen for one model attempt.
 public struct AgentModelGenerationParameters: Hashable, Codable, Sendable {
     /// Hard generated-token ceiling for this attempt.
@@ -374,6 +387,9 @@ public struct AgentModelGenerationParameters: Hashable, Codable, Sendable {
     public let thinkingMode: AgentModelThinkingMode
     /// Optional deterministic seed; nil explicitly requests an unseeded attempt.
     public let seed: UInt64?
+    /// Whether the provider sends the output limit on the wire (`.explicit`) or omits it so the
+    /// service uses its own model default (`.auto`). Defaults to `.explicit` for compatibility.
+    public let outputBudgetMode: AgentOutputBudgetMode
 
     /// Creates finite, canonicalizable generation controls.
     public init(
@@ -384,7 +400,8 @@ public struct AgentModelGenerationParameters: Hashable, Codable, Sendable {
         topK: UInt32?,
         repetitionPenalty: Double,
         thinkingMode: AgentModelThinkingMode,
-        seed: UInt64?
+        seed: UInt64?,
+        outputBudgetMode: AgentOutputBudgetMode = .explicit
     ) throws {
         let maximumIJSONInteger: UInt64 = 9_007_199_254_740_991
         guard maximumOutputTokens > 0,
@@ -404,6 +421,7 @@ public struct AgentModelGenerationParameters: Hashable, Codable, Sendable {
         self.repetitionPenalty = repetitionPenalty
         self.thinkingMode = thinkingMode
         self.seed = seed
+        self.outputBudgetMode = outputBudgetMode
     }
 
     /// Conservative compatibility defaults; production compilers should pass explicit values.
@@ -430,7 +448,11 @@ public struct AgentModelGenerationParameters: Hashable, Codable, Sendable {
                 topK: container.decodeIfPresent(UInt32.self, forKey: .topK),
                 repetitionPenalty: container.decode(Double.self, forKey: .repetitionPenalty),
                 thinkingMode: container.decode(AgentModelThinkingMode.self, forKey: .thinkingMode),
-                seed: container.decodeIfPresent(UInt64.self, forKey: .seed)
+                seed: container.decodeIfPresent(UInt64.self, forKey: .seed),
+                outputBudgetMode: container.decodeIfPresent(
+                    AgentOutputBudgetMode.self,
+                    forKey: .outputBudgetMode
+                ) ?? .explicit
             )
         } catch {
             throw DecodingError.dataCorrupted(
@@ -441,7 +463,7 @@ public struct AgentModelGenerationParameters: Hashable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case maximumOutputTokens, maximumContextTokens, temperature, topP, topK
-        case repetitionPenalty, thinkingMode, seed
+        case repetitionPenalty, thinkingMode, seed, outputBudgetMode
     }
 }
 
@@ -840,6 +862,7 @@ public struct AgentModelRequest: Hashable, Codable, Sendable {
                 "repetitionPenalty": .number(generationParameters.repetitionPenalty),
                 "thinkingMode": .string(generationParameters.thinkingMode.rawValue),
                 "seed": generationParameters.seed.map(JSONValue.unsignedInteger) ?? .null,
+                "outputBudgetMode": .string(generationParameters.outputBudgetMode.rawValue),
             ]),
             "output": output,
         ])

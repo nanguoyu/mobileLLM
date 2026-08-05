@@ -124,6 +124,7 @@ private struct OnlineServiceEditorView: View {
     @State private var name = ""
     @State private var baseURL = ""
     @State private var modelID = ""
+    @State private var maximumOutputTokens = ""
     @State private var key = ""
     @State private var enabled = false
     @State private var stored = false
@@ -142,6 +143,8 @@ private struct OnlineServiceEditorView: View {
                 field("API base URL", text: $baseURL, placeholder: "https://api.openai.com/v1",
                       keyboard: .url)
                 field("Model (optional)", text: $modelID, placeholder: "e.g. gpt-4o-mini")
+                field("Max output tokens (optional)", text: $maximumOutputTokens,
+                      placeholder: "e.g. 16384 — 0 = unknown (auto)")
 
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text("API key").font(.subheadline.weight(.medium))
@@ -233,6 +236,7 @@ private struct OnlineServiceEditorView: View {
             name = service.name
             baseURL = service.baseURL
             modelID = service.modelID ?? ""
+            maximumOutputTokens = service.maximumOutputTokens.map(String.init) ?? ""
             enabled = service.isEnabled
         } else {
             baseURL = settings.openAIBaseURL
@@ -247,6 +251,12 @@ private struct OnlineServiceEditorView: View {
             return
         }
         let trimmedModel = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedMaxOutput = maximumOutputTokens.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parsedMaxOutput = Int(trimmedMaxOutput)
+        if !trimmedMaxOutput.isEmpty, parsedMaxOutput == nil || parsedMaxOutput! < 0 {
+            status = "Max output tokens must be a non-negative integer (0 = unknown)."
+            return
+        }
         let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedKey.isEmpty {
             do {
@@ -263,6 +273,7 @@ private struct OnlineServiceEditorView: View {
             name: name,
             baseURL: normalized,
             modelID: trimmedModel.isEmpty ? nil : trimmedModel,
+            maximumOutputTokens: parsedMaxOutput.flatMap { $0 > 0 ? $0 : nil },
             isEnabled: enabled
         ))
         dismiss()

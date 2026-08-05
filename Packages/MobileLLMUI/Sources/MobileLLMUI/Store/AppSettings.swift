@@ -158,8 +158,8 @@ public final class AppSettings {
     public var topK: Int { didSet { persist() } }
     public var repetitionPenalty: Double { didSet { persist() } }
     public var maxTokens: Int { didSet { persist() } }
-    /// Output-token budget for ONLINE runs (independent of the local `maxTokens`). Long answers and
-    /// reasoning need more room than the local 1K default; 4096 keeps truncation rare.
+    /// Output-token budget for ONLINE runs (independent of the local `maxTokens`). 0 = auto: the
+    /// wire limit is omitted so the service uses the selected model's own default/maximum.
     public var onlineMaxTokens: Int { didSet { persist() } }
     public var contextLength: Int { didSet { persist() } }
     /// Context window for ONLINE services. Device RAM isn't the binding constraint (the service owns
@@ -189,6 +189,7 @@ public final class AppSettings {
         self.defaults = defaults
         self.keychain = keychain
         self.fallbackDefaultModelID = fallbackDefaultModelID
+        var outputBudgetMigrated = false
         let snap = Self.loadSnapshot(from: defaults, key: key)
         defaultModelID = snap?.defaultModelID ?? fallbackDefaultModelID
         enginePreference = snap?.enginePreference ?? .auto
@@ -244,15 +245,26 @@ public final class AppSettings {
         topK = snap?.topK ?? 20
         repetitionPenalty = snap?.repetitionPenalty ?? 1.05
         maxTokens = snap?.maxTokens ?? 1024
-        onlineMaxTokens = snap?.onlineMaxTokens ?? 4096
+        // 0 = auto: omit the wire limit so the online service uses the model's own default/maximum.
+        // The pre-auto builds persisted 4096 as the only possible value (no UI exposed it), so a
+        // snapshot without the one-time migration marker converts 4096 to auto. Once the marker is
+        // written, an explicit 4096 chosen in the new UI is a real user setting and survives.
+        let storedOnlineMax = snap?.onlineMaxTokens
+        if snap?.onlineMaxTokensAutoMigrated == true {
+            onlineMaxTokens = storedOnlineMax ?? 0
+        } else {
+            onlineMaxTokens = storedOnlineMax == nil ? 0 : (storedOnlineMax == 4096 ? 0 : storedOnlineMax!)
+            outputBudgetMigrated = storedOnlineMax == 4096
+        }
         contextLength = snap?.contextLength ?? 8192
         onlineContextLength = snap?.onlineContextLength ?? 32_768
         kvBits = snap?.kvBits ?? 4
         appearance = snap?.appearance ?? .system
         loading = false
-        // First launch after the update: any plaintext token was just moved into the Keychain — re-persist
-        // now so the scrubbed snapshot (no plaintext) replaces the one still on disk.
-        if migrated { persist() }
+        // First launch after an update: any plaintext token was just moved into the Keychain — re-persist
+        // now so the scrubbed snapshot (no plaintext) replaces the one still on disk. The same pass
+        // stamps the output-budget migration marker so a later explicit 4096 is never re-migrated.
+        if migrated || outputBudgetMigrated { persist() }
     }
 
     /// Decode the persisted MCP servers, moving any legacy plaintext token into the Keychain and hydrating
@@ -383,6 +395,8 @@ public final class AppSettings {
         var repetitionPenalty: Double
         var maxTokens: Int
         var onlineMaxTokens: Int? = nil
+        /// One-time marker that the pre-auto 4096 default has been migrated to auto (0).
+        var onlineMaxTokensAutoMigrated: Bool? = nil
         var contextLength: Int
         var onlineContextLength: Int? = nil
         var kvBits: Int
@@ -409,6 +423,7 @@ public final class AppSettings {
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
                             onlineMaxTokens: onlineMaxTokens,
+                            onlineMaxTokensAutoMigrated: true,
                             contextLength: contextLength, onlineContextLength: onlineContextLength,
                             kvBits: kvBits, appearance: appearance)
         if let data = try? JSONEncoder().encode(snap) { defaults.set(data, forKey: key) }
@@ -446,7 +461,7 @@ public final class AppSettings {
         topK = 20
         repetitionPenalty = 1.05
         maxTokens = 1024
-        onlineMaxTokens = 4096
+        onlineMaxTokens = 0
         contextLength = 8192
         onlineContextLength = 32_768
         kvBits = 4

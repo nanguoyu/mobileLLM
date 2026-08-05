@@ -279,6 +279,27 @@ struct SettingsView: View {
             sliderRow("Temperature", value: $settings.temperature, range: 0...1.5, step: 0.05, format: "%.2f")
             sliderRow("Top-p", value: $settings.topP, range: 0...1, step: 0.01, format: "%.2f")
             stepperRow("Max tokens", value: $settings.maxTokens, range: 128...4096, step: 128)
+            if settings.openAIOnlineEnabled {
+                HStack {
+                    Text("Online max output").font(.subheadline).foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    Menu {
+                        Button("Auto (model max)") { settings.onlineMaxTokens = 0 }
+                        Divider()
+                        ForEach([512, 1_024, 2_048, 4_096, 8_192, 16_384, 32_768, 65_536],
+                                id: \.self)
+                        { value in
+                            Button("\(value)") { settings.onlineMaxTokens = value }
+                        }
+                    } label: {
+                        Text(settings.onlineMaxTokens == 0 ? "Auto" : "\(settings.onlineMaxTokens)")
+                            .font(.subheadline).foregroundStyle(Theme.accent)
+                    }
+                    .fixedSize()
+                }
+                Text("Auto omits the limit so the service uses the model's own maximum; explicit values are sent as max_output_tokens.")
+                    .font(.caption).foregroundStyle(Theme.textTertiary)
+            }
             contextRow
             DisclosureGroup("Advanced") {
                 VStack(alignment: .leading, spacing: Theme.Space.md) {

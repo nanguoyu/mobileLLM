@@ -197,6 +197,7 @@ final class ModelAndToolContractTests: XCTestCase {
             generationParameters(repetitionPenalty: 1.1),
             generationParameters(thinkingMode: .enabled),
             generationParameters(seed: 42),
+            generationParameters(outputBudgetMode: .auto),
         ]
         let baselineFingerprint = try request.fingerprint()
         var fingerprints: Set<StableDigest> = [baselineFingerprint]
@@ -221,6 +222,26 @@ final class ModelAndToolContractTests: XCTestCase {
         XCTAssertThrowsError(try generationParameters(repetitionPenalty: 0))
         XCTAssertThrowsError(try generationParameters(repetitionPenalty: .nan))
         XCTAssertThrowsError(try generationParameters(seed: 9_007_199_254_740_992))
+    }
+
+    func testOutputBudgetModeDefaultsToExplicitForLegacyEncodedParameters() throws {
+        let baseline = try generationParameters()
+        XCTAssertEqual(baseline.outputBudgetMode, .explicit)
+        let encoded = try JSONEncoder().encode(baseline)
+        // Strip the new key exactly as a pre-auto snapshot on disk would look.
+        let object = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+        let legacy = try JSONSerialization.data(withJSONObject: object.filter { $0.key != "outputBudgetMode" })
+        let decoded = try JSONDecoder().decode(AgentModelGenerationParameters.self, from: legacy)
+        XCTAssertEqual(decoded.outputBudgetMode, .explicit)
+        XCTAssertEqual(decoded, baseline)
+
+        let auto = try generationParameters(outputBudgetMode: .auto)
+        XCTAssertEqual(auto.outputBudgetMode, .auto)
+        let roundTripped = try JSONDecoder().decode(
+            AgentModelGenerationParameters.self,
+            from: try JSONEncoder().encode(auto)
+        )
+        XCTAssertEqual(roundTripped, auto)
     }
 
     func testAdvertisedDescriptorOrderAndSelectorRationaleAreFrozenWithoutReordering() throws {
@@ -560,7 +581,8 @@ private extension ModelAndToolContractTests {
         topK: UInt32? = nil,
         repetitionPenalty: Double = 1,
         thinkingMode: AgentModelThinkingMode = .automatic,
-        seed: UInt64? = nil
+        seed: UInt64? = nil,
+        outputBudgetMode: AgentOutputBudgetMode = .explicit
     ) throws -> AgentModelGenerationParameters {
         try AgentModelGenerationParameters(
             maximumOutputTokens: maximumOutputTokens,
@@ -570,7 +592,8 @@ private extension ModelAndToolContractTests {
             topK: topK,
             repetitionPenalty: repetitionPenalty,
             thinkingMode: thinkingMode,
-            seed: seed
+            seed: seed,
+            outputBudgetMode: outputBudgetMode
         )
     }
 

@@ -13,6 +13,10 @@ public struct OnlineService: Sendable, Hashable, Codable, Identifiable {
     public var name: String
     public var baseURL: String
     public var modelID: String?
+    /// The selected model's real maximum output tokens when known. nil/0 = unknown: the app omits
+    /// the wire limit by default (auto) and uses the conversation context window as the runtime
+    /// accounting ceiling.
+    public var maximumOutputTokens: Int?
     /// True = this service is the active online model. The settings layer keeps at most one enabled.
     public var isEnabled: Bool
 
@@ -25,12 +29,14 @@ public struct OnlineService: Sendable, Hashable, Codable, Identifiable {
         name: String,
         baseURL: String,
         modelID: String? = nil,
+        maximumOutputTokens: Int? = nil,
         isEnabled: Bool = false
     ) {
         self.id = id
         self.name = name
         self.baseURL = baseURL
         self.modelID = modelID
+        self.maximumOutputTokens = maximumOutputTokens
         self.isEnabled = isEnabled
     }
 

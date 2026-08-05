@@ -154,6 +154,56 @@ final class SettingsPersistenceTests: XCTestCase {
         XCTAssertEqual(reloaded.onlineContextLength, 65_536)
     }
 
+    /// Pre-auto builds persisted 4096 as the only possible onlineMaxTokens (no UI exposed it). That
+    /// value now means "auto" (0) so upgraded installs use the model's own maximum instead of an
+    /// accidental product cap. Non-legacy explicit values survive untouched.
+    func testLegacyOnlineMaxTokens4096MigratesToAuto() {
+        write(#"""
+        {"defaultModelID":"bonsai-8b","systemPrompt":"keep","thinkingDefault":true,
+         "thinkingDisplay":"autoCollapse","temperature":0.7,"topP":0.95,"topK":20,
+         "repetitionPenalty":1.05,"maxTokens":1024,"onlineMaxTokens":4096,
+         "contextLength":8192,"kvBits":4,"appearance":"system"}
+        """#)
+        let migrated = AppSettings(defaults: defaults)
+        XCTAssertEqual(migrated.onlineMaxTokens, 0)
+        // The migration marker is stamped on first load, so an explicit 4096 chosen in the new UI
+        // survives relaunch instead of being converted to auto again.
+        migrated.onlineMaxTokens = 4_096
+        XCTAssertEqual(AppSettings(defaults: defaults).onlineMaxTokens, 4_096)
+
+        write(#"""
+        {"defaultModelID":"bonsai-8b","systemPrompt":"keep","thinkingDefault":true,
+         "thinkingDisplay":"autoCollapse","temperature":0.7,"topP":0.95,"topK":20,
+         "repetitionPenalty":1.05,"maxTokens":1024,"onlineMaxTokens":8192,
+         "contextLength":8192,"kvBits":4,"appearance":"system"}
+        """#)
+        XCTAssertEqual(AppSettings(defaults: defaults).onlineMaxTokens, 8_192)
+    }
+
+    /// Per-service model output metadata survives save/reload and feeds the runtime ceiling.
+    func testOnlineServiceMaxOutputMetadataRoundTrips() {
+        let settings = AppSettings(defaults: defaults)
+        settings.upsertOnlineService(OnlineService(
+            id: "svc-cap",
+            name: "Capped",
+            baseURL: "https://gateway.example.com/v1",
+            modelID: "capped-model",
+            maximumOutputTokens: 16_384
+        ))
+        let reloaded = AppSettings(defaults: defaults)
+        XCTAssertEqual(reloaded.onlineServices.first?.maximumOutputTokens, 16_384)
+
+        // Unknown stays nil through a save/reload (0 entered in the editor normalizes to nil).
+        settings.upsertOnlineService(OnlineService(
+            id: "svc-cap",
+            name: "Capped",
+            baseURL: "https://gateway.example.com/v1",
+            modelID: "capped-model",
+            maximumOutputTokens: nil
+        ))
+        XCTAssertNil(AppSettings(defaults: defaults).onlineServices.first?.maximumOutputTokens)
+    }
+
     /// A pre-D2 snapshot (no tool fields at all) decodes to the defaults: the privacy-sensitive tools off,
     /// both engines on — so an upgraded install behaves exactly like a fresh one, and the surrounding
     /// settings are untouched (all-or-nothing decode).

@@ -405,9 +405,31 @@ public final class ChatStore {
         conversationSamplingOverride?.topP ?? settings.topP
     }
 
+    /// True when the active ONLINE thread uses the service's own model output maximum (0 = auto).
+    /// Local threads always have a finite engine budget, so this is always false for them.
+    public var isOnlineOutputBudgetAuto: Bool {
+        guard isOnlineActive else { return false }
+        if let override = conversationSamplingOverride?.maxTokens { return override == 0 }
+        return settings.onlineMaxTokens == 0
+    }
+
+    /// Effective finite output ceiling used for runtime accounting. Online auto mode maps 0 to the
+    /// conversation's context window (the service metadata, when configured, may clamp it further).
     public var conversationMaxTokens: Int {
-        conversationSamplingOverride?.maxTokens
-            ?? (isOnlineActive ? settings.onlineMaxTokens : settings.maxTokens)
+        if let override = conversationSamplingOverride?.maxTokens {
+            if isOnlineActive && override == 0 { return onlineContextRequest }
+            return override
+        }
+        if isOnlineActive {
+            return settings.onlineMaxTokens == 0 ? onlineContextRequest : settings.onlineMaxTokens
+        }
+        return settings.maxTokens
+    }
+
+    /// Human-facing label for the sampling row: "Auto" when the online service picks its own max,
+    /// otherwise the concrete token count.
+    public var conversationOutputBudgetLabel: String {
+        isOnlineActive && isOnlineOutputBudgetAuto ? "Auto" : "\(conversationMaxTokens)"
     }
 
     /// Set one per-conversation sampling field; nil restores "follow the global setting".
@@ -420,6 +442,8 @@ public final class ChatStore {
     }
 
     public func setConversationMaxTokens(_ value: Int?) {
+        // 0 means "auto" and only exists for online services; local engines need a finite budget.
+        guard isOnlineActive || value != 0 else { return }
         mutateConversationSampling { $0.maxTokens = value }
     }
 

@@ -13,6 +13,10 @@ public struct ResponsesAPIConfiguration: Sendable, Equatable {
     public let apiKey: String
     /// Per-conversation reasoning effort (nil = service default; only sent when reasoning is enabled).
     public let reasoningEffort: ReasoningEffort?
+    /// The selected model's REAL maximum output tokens when known. Nil means "unknown" — the runtime
+    /// falls back to the conversation's context window as the accounting ceiling and the wire limit
+    /// is omitted in auto mode so the service uses its own model default.
+    public let maximumOutputTokens: UInt64?
 
     public static let defaultServiceID = "responses-api-key"
 
@@ -20,12 +24,14 @@ public struct ResponsesAPIConfiguration: Sendable, Equatable {
         serviceID: String = ResponsesAPIConfiguration.defaultServiceID,
         baseURL: String,
         apiKey: String,
-        reasoningEffort: ReasoningEffort? = nil
+        reasoningEffort: ReasoningEffort? = nil,
+        maximumOutputTokens: UInt64? = nil
     ) {
         self.serviceID = serviceID
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.reasoningEffort = reasoningEffort
+        self.maximumOutputTokens = maximumOutputTokens
     }
 }
 
@@ -55,6 +61,9 @@ private actor ResponsesAPITimeoutStore {
 /// the model boundary with exact destination, data category, and response accounting.
 public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sendable {
     public static let providerID = "openai.responses"
+    /// Advertising ceiling for OpenAI-compatible services without per-model metadata (matches the
+    /// context window the app already advertises for online runs).
+    public static let maximumContextTokens: UInt64 = 200_000
 
     public let descriptor: AgentModelProviderDescriptor
     /// Resolved on every generation so settings/Keychain changes apply without an app restart. The
@@ -93,9 +102,13 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
     }
 
     public func capabilities(for selection: AgentModelSelection) async throws -> AgentModelCapabilities {
-        try AgentModelCapabilities(
-            maximumContextTokens: 200_000,
-            maximumOutputTokens: 16_384,
+        // Per-service metadata wins when the user configured the model's real max output; otherwise
+        // the provider stays permissive (up to the same ceiling it advertises for context) so auto
+        // mode can never be rejected because our fallback was too small.
+        let outputCeiling = configurationProvider()?.maximumOutputTokens ?? Self.maximumContextTokens
+        return try AgentModelCapabilities(
+            maximumContextTokens: Self.maximumContextTokens,
+            maximumOutputTokens: outputCeiling,
             features: AgentModelCapabilitySet([
                 .nativeToolCalling, .multipleToolCalls, .reasoning,
             ]),
@@ -160,6 +173,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         emitter: AgentModelBoundaryEmitter
     ) async throws -> AgentModelBoundaryCompletion {
         try Task.checkCancellation()
+        let parameters = request.generationParameters
         guard let configuration = configurationProvider() else {
             throw AgentModelProviderFailure(try Self.configurationMissingFailure())
         }
@@ -182,7 +196,9 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         let emitReasoning = request.generationParameters.thinkingMode != .disabled
         func attempt(
             _ body: Data,
-            allowEffortFallback: Bool
+            allowEffortFallback: Bool,
+            allowAutoFallback: Bool,
+            streamEmission: Bool = true
         ) async throws -> (parsed: ParsedResponse, streamed: Bool, data: Data) {
             var urlRequest = makeRequest()
             urlRequest.httpBody = body
@@ -194,19 +210,50 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 for try await byte in bytes { data.append(byte) }
                 // Some gateways reject the reasoning-effort field entirely (HTTP 400 mentioning
                 // "reasoning"); retry once with the field omitted rather than failing the turn.
-                if allowEffortFallback, http?.statusCode == 400,
-                   let errorText = String(data: data, encoding: .utf8),
-                   errorText.localizedCaseInsensitiveContains("reasoning")
+                if http?.statusCode == 400,
+                   let errorText = String(data: data, encoding: .utf8)
                 {
-                    let fallbackBody = try Self.requestBody(
-                        request: request,
-                        baseURL: configuration.baseURL,
-                        reasoningEffort: configuration.reasoningEffort,
-                        omitReasoning: true,
-                        stream: true
-                    )
-                    if fallbackBody != body {
-                        return try await attempt(fallbackBody, allowEffortFallback: false)
+                    if allowEffortFallback,
+                       errorText.localizedCaseInsensitiveContains("reasoning")
+                    {
+                        let fallbackBody = try Self.requestBody(
+                            request: request,
+                            baseURL: configuration.baseURL,
+                            reasoningEffort: configuration.reasoningEffort,
+                            omitReasoning: true,
+                            stream: true
+                        )
+                        if fallbackBody != body {
+                            return try await attempt(
+                                fallbackBody,
+                                allowEffortFallback: false,
+                                allowAutoFallback: false,
+                                streamEmission: streamEmission
+                            )
+                        }
+                    }
+                    // Auto mode omits max_output_tokens; a gateway that REQUIRES the field rejects
+                    // with a token-limit message. Retry once with the runtime ceiling as the explicit
+                    // budget so the turn still works on strict services.
+                    if allowAutoFallback,
+                       ["max_output_tokens", "max_tokens", "output_tokens", "output limit"]
+                           .contains(where: { errorText.localizedCaseInsensitiveContains($0) })
+                    {
+                        let fallbackBody = try Self.requestBody(
+                            request: request,
+                            baseURL: configuration.baseURL,
+                            maxOutputTokensOverride: parameters.maximumOutputTokens,
+                            reasoningEffort: configuration.reasoningEffort,
+                            stream: true
+                        )
+                        if fallbackBody != body {
+                            return try await attempt(
+                                fallbackBody,
+                                allowEffortFallback: false,
+                                allowAutoFallback: false,
+                                streamEmission: streamEmission
+                            )
+                        }
                     }
                 }
                 throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
@@ -217,7 +264,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 let parsed = try await Self.consumeEventStream(
                     bytes,
                     emitter: emitter,
-                    emitReasoning: emitReasoning
+                    emitReasoning: emitReasoning,
+                    emit: streamEmission
                 )
                 return (parsed, true, Data())
             }
@@ -233,33 +281,72 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             reasoningEffort: configuration.reasoningEffort,
             stream: true
         )
-        var (parsed, streamed, data) = try await attempt(firstBody, allowEffortFallback: true)
+        var (parsed, streamed, data) = try await attempt(
+            firstBody,
+            allowEffortFallback: true,
+            allowAutoFallback: parameters.outputBudgetMode == .auto
+        )
 
-        if !streamed {
-            // Non-streaming fallback keeps the budget/truncation + reasoning-only retries.
-            if parsed.isTruncated,
-               request.generationParameters.maximumOutputTokens < 16_384
-            {
-                let bumped = min(
-                    max(request.generationParameters.maximumOutputTokens, 4_096),
-                    16_384
-                )
-                let retryBody = try Self.requestBody(
-                    request: request,
-                    baseURL: configuration.baseURL,
-                    maxOutputTokensOverride: bumped,
-                    stream: true
-                )
-                let (retried, retriedStreamed, retriedData) = try await attempt(
-                    retryBody,
-                    allowEffortFallback: false
-                )
-                if !retried.isTruncated || retried.text.utf8.count > parsed.text.utf8.count {
+        // Output-budget truncation: retry ONCE with a higher explicit budget. Streamed first
+        // attempts keep what the UI already showed and emit only the continuation when the retry
+        // preserves the shown prefix — never duplicating or splicing text.
+        let outputCeiling = configuration.maximumOutputTokens ?? Self.maximumContextTokens
+        let retryCeiling = min(outputCeiling, parameters.maximumOutputTokens)
+        if parsed.isTruncated,
+           parameters.outputBudgetMode == .auto
+                || parameters.maximumOutputTokens < retryCeiling
+        {
+            let bumped = min(
+                max(parameters.maximumOutputTokens, 16_384),
+                retryCeiling
+            )
+            let retryBody = try Self.requestBody(
+                request: request,
+                baseURL: configuration.baseURL,
+                maxOutputTokensOverride: bumped,
+                reasoningEffort: configuration.reasoningEffort,
+                stream: true
+            )
+            let (retried, retriedStreamed, retriedData) = try await attempt(
+                retryBody,
+                allowEffortFallback: false,
+                allowAutoFallback: false,
+                streamEmission: !streamed
+            )
+            if streamed {
+                let textContinues = parsed.text.isEmpty || retried.text.hasPrefix(parsed.text)
+                if textContinues,
+                   !retried.isTruncated || retried.text.utf8.count > parsed.text.utf8.count
+                {
+                    let reasoningContinues = parsed.reasoning.isEmpty
+                        || retried.reasoning.hasPrefix(parsed.reasoning)
+                    if emitReasoning, reasoningContinues,
+                       retried.reasoning.count > parsed.reasoning.count
+                    {
+                        try await emitter.emit(
+                            .reasoningDelta(String(retried.reasoning.dropFirst(parsed.reasoning.count))),
+                            responseBytes: 0
+                        )
+                    }
+                    if retried.text.count > parsed.text.count {
+                        try await emitter.emit(
+                            .answerDelta(String(retried.text.dropFirst(parsed.text.count))),
+                            responseBytes: 0
+                        )
+                    }
                     parsed = retried
-                    streamed = retriedStreamed
                     data = retriedData
                 }
+            } else if !retried.isTruncated || retried.text.utf8.count > parsed.text.utf8.count {
+                parsed = retried
+                streamed = retriedStreamed
+                data = retriedData
             }
+        }
+
+        if !streamed {
+            // Non-streaming fallback keeps the reasoning-only retry (streamed reasoning-only is
+            // handled below; both stay inside the same authorization boundary).
             if parsed.text.isEmpty, parsed.calls.isEmpty, parsed.hasReasoning, emitReasoning {
                 let retryBody = try Self.requestBody(
                     request: request,
@@ -269,7 +356,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 )
                 let (retried, retriedStreamed, retriedData) = try await attempt(
                     retryBody,
-                    allowEffortFallback: false
+                    allowEffortFallback: false,
+                    allowAutoFallback: false
                 )
                 parsed = retried
                 streamed = retriedStreamed
@@ -286,7 +374,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             )
             let (retried, retriedStreamed, retriedData) = try await attempt(
                 retryBody,
-                allowEffortFallback: false
+                allowEffortFallback: false,
+                allowAutoFallback: false
             )
             parsed = retried
             streamed = retriedStreamed
@@ -347,7 +436,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
     private static func consumeEventStream(
         _ bytes: URLSession.AsyncBytes,
         emitter: AgentModelBoundaryEmitter,
-        emitReasoning: Bool
+        emitReasoning: Bool,
+        emit: Bool = true
     ) async throws -> ParsedResponse {
         var reasoning = ""
         var text = ""
@@ -389,14 +479,16 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             case "response.reasoning_text.delta", "response.reasoning_summary_text.delta":
                 if case .string(let delta)? = event["delta"], !delta.isEmpty {
                     reasoning += delta
-                    if emitReasoning {
+                    if emit, emitReasoning {
                         try await emitter.emit(.reasoningDelta(delta), responseBytes: 0)
                     }
                 }
             case "response.output_text.delta":
                 if case .string(let delta)? = event["delta"], !delta.isEmpty {
                     text += delta
-                    try await emitter.emit(.answerDelta(delta), responseBytes: 0)
+                    if emit {
+                        try await emitter.emit(.answerDelta(delta), responseBytes: 0)
+                    }
                 }
             case "response.function_call_arguments.delta":
                 if case .string(let delta)? = event["delta"] {
@@ -501,10 +593,14 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             "input": .array(input),
             "temperature": .number(parameters.temperature),
             "top_p": .number(parameters.topP),
-            "max_output_tokens": .unsignedInteger(
-                maxOutputTokensOverride ?? parameters.maximumOutputTokens
-            ),
         ]
+        if let maxOutputTokensOverride {
+            // Explicit retry/fallback budgets always go on the wire.
+            fields["max_output_tokens"] = .unsignedInteger(maxOutputTokensOverride)
+        } else if parameters.outputBudgetMode != .auto {
+            // Auto mode omits the limit so the service uses its own model default/maximum.
+            fields["max_output_tokens"] = .unsignedInteger(parameters.maximumOutputTokens)
+        }
         // The Responses API carries the system prompt as a top-level `instructions` string, not as an
         // input item; some gateways reject `messages` outright on /responses.
         if !instructions.isEmpty {

@@ -59,6 +59,10 @@ public struct AgentRunRequestSnapshot: Sendable {
     public let onlineReasoningEnabled: Bool
     /// Per-kind context window for online runs (independent of the local `contextLength`).
     public let onlineContextLength: Int
+    /// Online output budget is "auto": omit the wire limit so the service uses its own model max.
+    public let onlineOutputBudgetAuto: Bool
+    /// The active service's declared model output ceiling (nil/0 = unknown).
+    public let onlineMaximumOutputTokens: Int?
     /// Per-conversation approval mode frozen with this run.
     public let approvalMode: AgentApprovalMode
     /// Per-conversation reasoning effort (nil = service default; medium is the product default).
@@ -96,6 +100,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         onlineServiceID: String?,
         onlineReasoningEnabled: Bool,
         onlineContextLength: Int,
+        onlineOutputBudgetAuto: Bool,
+        onlineMaximumOutputTokens: Int?,
         approvalMode: AgentApprovalMode,
         onlineReasoningEffort: ReasoningEffort?
     ) {
@@ -130,6 +136,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.onlineServiceID = onlineServiceID
         self.onlineReasoningEnabled = onlineReasoningEnabled
         self.onlineContextLength = onlineContextLength
+        self.onlineOutputBudgetAuto = onlineOutputBudgetAuto
+        self.onlineMaximumOutputTokens = onlineMaximumOutputTokens
         self.approvalMode = approvalMode
         self.onlineReasoningEffort = onlineReasoningEffort
     }
@@ -191,6 +199,27 @@ struct AppFrozenInputBuilder: Sendable {
         )
     }
 
+    /// Finite runtime output ceiling + wire budget mode for one frozen run.
+    ///
+    /// Local runs always send an explicit budget. Online auto mode keeps a finite accounting
+    /// ceiling (the model's declared max when known, else the conversation context window) while
+    /// telling the provider to OMIT the wire limit so the service uses its own model default.
+    private func outputBudget(
+        snapshot: AgentRunRequestSnapshot
+    ) -> (mode: AgentOutputBudgetMode, maximumOutputTokens: UInt64) {
+        guard Self.isOnline(snapshot: snapshot) else {
+            return (.explicit, UInt64(snapshot.maxTokens))
+        }
+        let context = UInt64(snapshot.onlineContextLength)
+        let serviceCap = snapshot.onlineMaximumOutputTokens
+            .flatMap { $0 > 0 ? UInt64($0) : nil }
+            ?? context
+        if snapshot.onlineOutputBudgetAuto {
+            return (.auto, min(serviceCap, context))
+        }
+        return (.explicit, min(UInt64(snapshot.maxTokens), serviceCap, context))
+    }
+
     func frozenInputs(
         snapshot: AgentRunRequestSnapshot,
         artifactReferences: [ArtifactReference],
@@ -213,15 +242,17 @@ struct AppFrozenInputBuilder: Sendable {
         let thinkingMode: AgentModelThinkingMode = online
             ? (snapshot.onlineReasoningEnabled ? .enabled : .disabled)
             : (snapshot.thinkingEnabled ? .enabled : .disabled)
+        let outputBudget = outputBudget(snapshot: snapshot)
         let generationParameters = try AgentModelGenerationParameters(
-            maximumOutputTokens: UInt64(snapshot.maxTokens),
+            maximumOutputTokens: outputBudget.maximumOutputTokens,
             maximumContextTokens: effectiveContext,
             temperature: snapshot.temperature,
             topP: snapshot.topP,
             topK: snapshot.topK > 0 ? UInt32(snapshot.topK) : nil,
             repetitionPenalty: snapshot.repetitionPenalty,
             thinkingMode: thinkingMode,
-            seed: nil
+            seed: nil,
+            outputBudgetMode: outputBudget.mode
         )
 
         let baseSystem = try BaseSystemContextSource(
@@ -315,7 +346,7 @@ struct AppFrozenInputBuilder: Sendable {
             : UInt64(ContextPolicy.effective(requested: snapshot.contextLength, model: snapshot.model))
         let budget = try AgentBudget.firstReleaseDefaults(
             contextTokensPerAttempt: effectiveContext,
-            outputTokens: UInt64(snapshot.maxTokens),
+            outputTokens: outputBudget(snapshot: snapshot).maximumOutputTokens,
             // Observed on device: the Gemma 4 E2B vision path peaks at ~1.30 GB (weights + mmproj +
             // KV + image encode), so a 1 GiB run ceiling fails settlement even though the model
             // answered correctly. 2 GiB covers every first-release curated model; it is a hard
@@ -959,16 +990,19 @@ public final class OpenAIOnlineConfigurationBox: @unchecked Sendable {
     private var baseURL: String
     private var modelID: String?
     private var reasoningEffort: ReasoningEffort?
+    private var maximumOutputTokens: Int?
     private let credentials: any OpenAICredentialStoring
 
     public init(
         baseURL: String,
         modelID: String?,
+        maximumOutputTokens: Int? = nil,
         credentials: any OpenAICredentialStoring
     ) {
         self.serviceID = OnlineService.defaultID
         self.baseURL = baseURL
         self.modelID = modelID
+        self.maximumOutputTokens = maximumOutputTokens
         self.credentials = credentials
     }
 
@@ -977,13 +1011,15 @@ public final class OpenAIOnlineConfigurationBox: @unchecked Sendable {
         serviceID: String,
         baseURL: String,
         modelID: String?,
-        reasoningEffort: ReasoningEffort? = nil
+        reasoningEffort: ReasoningEffort? = nil,
+        maximumOutputTokens: Int? = nil
     ) {
         lock.withLock {
             self.serviceID = serviceID
             self.baseURL = baseURL
             self.modelID = modelID
             self.reasoningEffort = reasoningEffort
+            self.maximumOutputTokens = maximumOutputTokens
         }
     }
 
@@ -998,7 +1034,9 @@ public final class OpenAIOnlineConfigurationBox: @unchecked Sendable {
                 serviceID: serviceID,
                 baseURL: baseURL,
                 apiKey: key,
-                reasoningEffort: reasoningEffort
+                reasoningEffort: reasoningEffort,
+                maximumOutputTokens: maximumOutputTokens
+                    .flatMap { $0 > 0 ? UInt64($0) : nil }
             )
         }
     }

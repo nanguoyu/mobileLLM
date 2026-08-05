@@ -775,6 +775,23 @@ must all produce it rather than implementing parallel approval formats.
 - A conversation-scoped online-model receipt covers one reasoning mode AND one effort level; changing
   either requires renewed approval.
 
+### 15.4 Output budget
+
+- The product default for ONLINE services is AUTO: `max_output_tokens` is omitted from the wire request
+  so the service uses the selected model's own default/maximum output. The runtime still keeps a finite
+  accounting ceiling for budgets and usage validation: the service's declared model maximum when
+  configured, otherwise the conversation's online context window.
+- Each online service may declare the model's real maximum output tokens (optional metadata). Explicit
+  user values are clamped to `[1, min(declared max, context window)]` and sent as `max_output_tokens`;
+  a per-conversation value of 0 pins auto for that thread. Local models always send an explicit budget —
+  their KV context is device memory — and never use auto.
+- Truncation (`incomplete_details.reason == "max_output_tokens"`, plus compatible `length`/`incomplete`
+  signals) triggers ONE bounded retry with a higher explicit budget. Streamed attempts keep the text
+  already shown and emit only the continuation when the retry preserves the shown prefix, so the UI
+  never duplicates or splices output. Explicit-mode replies never silently exceed the user's chosen cap.
+- Gateways that require `max_output_tokens` fall back to the runtime ceiling on a 400 token-limit
+  rejection instead of failing the turn.
+
 Approval records contain the displayed preview, normalized scope, arguments hash, policy version, timestamp, expiry,
 actual host/destination matcher, redirect/fallback bounds, data-category or payload digest, descriptor/schema/trust
 hashes, and user decision. The run capability ceiling is immutable for the run; every step receives an immutable
@@ -908,8 +925,9 @@ There is one chat UI, with progressive disclosure:
 - a persistent bottom control bar (above the composer input) shows the conversation's approval mode and
   reasoning effort, both switchable in place without opening a menu;
 - the conversation's top-right toolbar action is a Settings button (not New Chat) that opens the
-  per-conversation settings panel: reasoning on/off + effort, approval mode, context length, and sampling,
-  with reserved sections for future folder/file access and a shell terminal window;
+  per-conversation settings panel: reasoning on/off + effort, approval mode, context length, and sampling
+  (including the online output budget with Auto), with reserved sections for future folder/file access
+  and a shell terminal window;
 - New Chat remains available from the conversation list and the keyboard shortcut (macOS ⌘N);
 - waiting states clearly distinguish user input, approval, foreground, model, and resource waits;
 - submitting text to an active `InteractionRequestRecord` sends a Respond command and does not create a new root run;

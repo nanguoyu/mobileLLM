@@ -22,6 +22,7 @@ struct ModelFixture {
         requiredCapabilities: AgentModelCapabilitySet = AgentModelCapabilitySet([]),
         maximumContextTokens: UInt64 = 4_096,
         maximumOutputTokens: UInt64 = 1_024,
+        outputBudgetMode: AgentOutputBudgetMode = .explicit,
         reportsCost: Bool = false,
         offset: Int = 0,
         providerID: String? = nil,
@@ -93,7 +94,8 @@ struct ModelFixture {
                 topK: nil,
                 repetitionPenalty: 1,
                 thinkingMode: thinkingMode,
-                seed: 7
+                seed: 7,
+                outputBudgetMode: outputBudgetMode
             ),
             outputRequirement: .text
         )

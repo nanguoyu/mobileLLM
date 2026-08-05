@@ -216,11 +216,22 @@ struct ConversationSettingsView: View {
                         defaultLabel: String(format: "%.2f", settings.topP),
                         selected: { chat.conversationSamplingOverride?.topP },
                         set: { chat.setConversationTopP($0) })
-            samplingRow("Max tokens", value: "\(chat.conversationMaxTokens)",
-                        options: [512, 1_024, 2_048, 4_096],
-                        defaultLabel: "\(settings.maxTokens)",
+            samplingRow("Max tokens", value: chat.conversationOutputBudgetLabel,
+                        options: chat.isOnlineActive
+                            ? [0, 512, 1_024, 2_048, 4_096, 8_192, 16_384]
+                            : [512, 1_024, 2_048, 4_096],
+                        defaultLabel: chat.isOnlineActive
+                            ? (settings.onlineMaxTokens == 0 ? "Auto" : "\(settings.onlineMaxTokens)")
+                            : "\(settings.maxTokens)",
                         selected: { chat.conversationSamplingOverride?.maxTokens.map(Double.init) },
-                        set: { chat.setConversationMaxTokens($0.map(Int.init)) })
+                        set: { chat.setConversationMaxTokens($0.map(Int.init)) },
+                        label: {
+                            chat.isOnlineActive && $0 == 0 ? "Auto (model max)" : "\(Int($0))"
+                        })
+            if chat.isOnlineActive {
+                Text("Auto lets the online service use the model's own output maximum; explicit values clamp to the service window.")
+                    .font(.caption).foregroundStyle(Theme.textTertiary)
+            }
         }
         .padding(Theme.Space.md)
         .studioCard()
@@ -232,7 +243,8 @@ struct ConversationSettingsView: View {
         options: [Value],
         defaultLabel: String,
         selected: @escaping () -> Value?,
-        set: @escaping (Value?) -> Void
+        set: @escaping (Value?) -> Void,
+        label: @escaping (Value) -> String = { String(describing: $0) }
     ) -> some View {
         HStack {
             Text(title).font(.subheadline).foregroundStyle(Theme.textSecondary)
@@ -249,9 +261,9 @@ struct ConversationSettingsView: View {
                 ForEach(options, id: \.self) { option in
                     Button { set(option) } label: {
                         if selected() == option {
-                            Label(String(describing: option), systemImage: "checkmark")
+                            Label(label(option), systemImage: "checkmark")
                         } else {
-                            Text(String(describing: option))
+                            Text(label(option))
                         }
                     }
                 }
