@@ -16,6 +16,8 @@ struct ConversationListView: View {
     @State private var query = ""
     @State private var renaming: Conversation?
     @State private var renameText = ""
+    /// Active project-tag filter (nil = all conversations), spec §20: Project is pure tag grouping.
+    @State private var projectFilter: String?
 
     private var groups: [(Format.RecencyGroup, [Conversation])] {
         let filtered = filteredConversations()
@@ -35,6 +37,9 @@ struct ConversationListView: View {
             } else {
                 VStack(spacing: 0) {
                     searchField
+                    if !chat.allProjectTags.isEmpty {
+                        projectChips
+                    }
                     list
                 }
                 .background(Theme.bg)
@@ -72,6 +77,38 @@ struct ConversationListView: View {
         .background(Theme.surface2, in: Capsule())
         .overlay(Capsule().strokeBorder(Theme.hairline))
         .padding(.horizontal, Theme.Space.lg).padding(.top, Theme.Space.sm).padding(.bottom, Theme.Space.xs)
+    }
+
+    /// Horizontal tag chips: "All" plus every project tag in use. Selecting one filters the list.
+    private var projectChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.Space.xs) {
+                chip(title: "All", tag: nil)
+                ForEach(chat.allProjectTags, id: \.self) { tag in
+                    chip(title: tag, tag: tag)
+                }
+            }
+            .padding(.horizontal, Theme.Space.lg)
+            .padding(.bottom, Theme.Space.xs)
+        }
+    }
+
+    private func chip(title: String, tag: String?) -> some View {
+        let selected = projectFilter == tag
+        return Button {
+            projectFilter = tag
+        } label: {
+            Text(title)
+                .font(.caption.weight(selected ? .semibold : .regular))
+                .foregroundStyle(selected ? Theme.onAccent : Theme.textSecondary)
+                .padding(.horizontal, Theme.Space.sm)
+                .padding(.vertical, 5)
+                .background(selected ? Theme.accent : Theme.surface2,
+                            in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Filter by \(title)")
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
     private var list: some View {
@@ -187,9 +224,17 @@ struct ConversationListView: View {
     }
 
     private func filteredConversations() -> [Conversation] {
+        var result = chat.conversations
+        if let projectFilter {
+            result = result.filter { convo in
+                convo.projectTagList.contains {
+                    $0.caseInsensitiveCompare(projectFilter) == .orderedSame
+                }
+            }
+        }
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !needle.isEmpty else { return chat.conversations }
-        return chat.conversations.filter { convo in
+        guard !needle.isEmpty else { return result }
+        return result.filter { convo in
             convo.title.lowercased().contains(needle)
                 || convo.messages.contains { $0.answer.lowercased().contains(needle) }
         }

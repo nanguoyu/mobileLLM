@@ -256,7 +256,10 @@ public struct RootView: View {
     @ViewBuilder private var detail: some View {
         switch section {
         case .chat:
-            ChatDetailView(container: container, onOpenModels: { section = .models })
+            // The split detail needs its own stack so the ••• menu's data pages can Push (spec §20).
+            NavigationStack {
+                ChatDetailView(container: container, onOpenModels: { section = .models })
+            }
         case .models:
             ModelsView(models: container.models, settings: container.settings) { model, variant in
                 container.activate(model, variant: variant)

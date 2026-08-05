@@ -12,6 +12,14 @@ struct ChatDetailView: View {
     @State private var showSwitcher = false
     @State private var showTools = false
     @State private var showConversationSettings = false
+    @State private var showRename = false
+    @State private var renameText = ""
+    @State private var showDeleteConfirm = false
+    @State private var showProjectTags = false
+    @State private var showWorkflow = false
+    @State private var showBackgroundTasks = false
+    @State private var showFiles = false
+    @State private var showTerminal = false
     /// Net keyboard lift from UIKit's keyboardLayoutGuide (see KeyboardHeight.swift): 0 when hidden,
     /// keyboard height minus the home-indicator inset when up. Automatic avoidance is disabled below.
     @State private var keyboardOverlap: CGFloat = 0
@@ -91,11 +99,98 @@ struct ChatDetailView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { modelHeader }
             ToolbarItem(placement: .primaryAction) {
-                Button { showConversationSettings = true } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel("Conversation settings")
+                // The conversation overflow menu (spec §20): conversation actions, workspace pages,
+                // and Settings, each opening its own page.
+                Menu {
+                    Section("Conversation") {
+                        Button {
+                            renameText = chat.activeConversation?.title ?? ""
+                            showRename = true
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            showDeleteConfirm = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        Button {
+                            showProjectTags = true
+                        } label: {
+                            Label("Add to Project", systemImage: "tag")
+                        }
+                    }
+                    Section("Workspace") {
+                        Button {
+                            showWorkflow = true
+                        } label: {
+                            Label("Workflow", systemImage: "point.3.connected.trianglepath.dotted")
+                        }
+                        // Spec §20: the Workflow entry shows only the LIVE summary and is disabled while
+                        // nothing is running. The runtime is not implemented yet, so it is always off.
+                        .disabled(!chat.hasRunningWorkflow)
+                        Button {
+                            showBackgroundTasks = true
+                        } label: {
+                            Label("Background tasks", systemImage: "timer")
+                        }
+                        Button {
+                            showFiles = true
+                        } label: {
+                            Label("Files", systemImage: "folder")
+                        }
+                        Button {
+                            showTerminal = true
+                        } label: {
+                            Label("Terminal", systemImage: "terminal")
+                        }
+                    }
+                    Section {
+                        Button {
+                            showConversationSettings = true
+                        } label: {
+                            Label("Settings", systemImage: "gearshape")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                    .accessibilityLabel("Conversation menu")
                     .keyboardShortcut(",", modifiers: .command)
             }
         }
+        .alert("Rename chat", isPresented: $showRename) {
+            TextField("Title", text: $renameText)
+            Button("Cancel", role: .cancel) { showRename = false }
+            Button("Save") {
+                if let id = chat.activeID { chat.rename(id, to: renameText) }
+                showRename = false
+            }
+        }
+        .confirmationDialog(
+            "Delete this conversation?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                showDeleteConfirm = false
+                if let id = chat.activeID { chat.delete(id) }
+            }
+            Button("Cancel", role: .cancel) { showDeleteConfirm = false }
+        } message: {
+            Text("The conversation and its attachments will be deleted. You can undo from the toast.")
+        }
+        .sheet(isPresented: $showProjectTags) {
+            if let id = chat.activeID {
+                ProjectTagsSheet(chat: container.chat, conversationID: id)
+            }
+        }
+        .navigationDestination(isPresented: $showWorkflow) { WorkflowSummaryPage() }
+        .navigationDestination(isPresented: $showBackgroundTasks) {
+            BackgroundTasksPage(chat: container.chat, store: container.agentRuns)
+        }
+        .navigationDestination(isPresented: $showFiles) { FilesPage() }
+        .navigationDestination(isPresented: $showTerminal) { TerminalPage() }
         .sheet(isPresented: $showSwitcher) {
             ModelSwitcherSheet(container: container, onOpenModels: onOpenModels)
         }

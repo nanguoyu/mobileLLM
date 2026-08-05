@@ -385,6 +385,11 @@ public final class ChatStore {
         conversationApprovalMode ?? .safePreset
     }
 
+    /// Whether a workflow is running in the active conversation (spec §20/§23). The workflow runtime is
+    /// not implemented yet, so this is always false — the ••• Workflow entry stays disabled until it
+    /// becomes true, exactly as specified.
+    public var hasRunningWorkflow: Bool { false }
+
     /// The active thread's reasoning effort (nil = medium). Applies whenever reasoning is enabled.
     public var conversationReasoningEffort: ReasoningEffort? {
         get { activeConversation?.reasoningEffort }
@@ -749,6 +754,61 @@ public final class ChatStore {
         guard !trimmed.isEmpty, let i = conversations.firstIndex(where: { $0.id == id }) else { return }
         conversations[i].title = trimmed
         persist(conversations[i])
+    }
+
+    /// The project tags assigned to one conversation (spec §20: pure tag grouping, many-to-many).
+    public func projectTags(for id: UUID) -> [String] {
+        conversations.first(where: { $0.id == id })?.projectTagList ?? []
+    }
+
+    /// Replace a conversation's full tag set (normalized: trimmed, deduplicated, sorted).
+    public func setProjectTags(_ tags: [String], for id: UUID) {
+        guard let i = conversations.firstIndex(where: { $0.id == id }) else { return }
+        conversations[i].projectTags = Self.normalizedProjectTags(tags.map(canonicalProjectTag))
+        persist(conversations[i])
+    }
+
+    /// Toggle one tag on/off for a conversation.
+    public func toggleProjectTag(_ tag: String, on id: UUID) {
+        let canonical = canonicalProjectTag(tag)
+        guard !canonical.isEmpty, let i = conversations.firstIndex(where: { $0.id == id }) else { return }
+        var tags = conversations[i].projectTagList
+        if let index = tags.firstIndex(where: { $0.caseInsensitiveCompare(canonical) == .orderedSame }) {
+            tags.remove(at: index)
+        } else {
+            tags.append(canonical)
+        }
+        conversations[i].projectTags = Self.normalizedProjectTags(tags)
+        persist(conversations[i])
+    }
+
+    /// Every project tag in use, sorted — the tag picker and the list filter share this source.
+    public var allProjectTags: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for convo in conversations {
+            for tag in convo.projectTagList where seen.insert(tag.lowercased()).inserted {
+                result.append(tag)
+            }
+        }
+        return result.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    /// Reuses the spelling of an existing tag (case-insensitive), so "work" and "Work" never appear
+    /// as two picker entries — the first-seen spelling wins everywhere.
+    private func canonicalProjectTag(_ tag: String) -> String {
+        let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        return allProjectTags.first(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame })
+            ?? trimmed
+    }
+
+    private static func normalizedProjectTags(_ tags: [String]) -> [String] {
+        var seen = Set<String>()
+        let trimmed = tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return trimmed.filter { seen.insert($0.lowercased()).inserted }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     public func togglePin(_ id: UUID) {

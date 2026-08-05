@@ -2167,6 +2167,41 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
                 + "composer top \(composerFrame.minY), pill=\(pillPresent), streaming=\(stillStreaming)"
         )
     }
+
+    /// The conversation overflow menu (spec §20): all entries exist, Workflow is disabled while
+    /// nothing runs, and data pages push (Files) and return.
+    @MainActor
+    func test16OverflowMenuOpensPages() throws {
+        let app = try launchApp()
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let menu = app.buttons["Conversation menu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 15))
+        menu.tap()
+
+        for label in ["Rename", "Delete", "Add to Project", "Workflow",
+                      "Background tasks", "Files", "Terminal", "Settings"] {
+            XCTAssertTrue(app.buttons[label].waitForExistence(timeout: 5),
+                          "menu item \(label) is missing")
+        }
+        XCTAssertFalse(app.buttons["Workflow"].isEnabled,
+                       "Workflow must be disabled while no workflow is running")
+
+        app.buttons["Files"].tap()
+        let filesBar = app.navigationBars["Files"]
+        XCTAssertTrue(filesBar.waitForExistence(timeout: 10),
+                      "Files must push a real page, not be a disabled placeholder")
+        filesBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(menu.waitForExistence(timeout: 10), "back must return to the conversation")
+
+        menu.tap()
+        app.buttons["Background tasks"].tap()
+        XCTAssertTrue(app.navigationBars["Background tasks"].waitForExistence(timeout: 10),
+                      "Background tasks must push its page")
+        app.navigationBars["Background tasks"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+    }
 }
 
 private extension XCUIElementQuery {

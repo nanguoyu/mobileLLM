@@ -174,6 +174,9 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
     /// Per-thread reasoning effort (nil = `.medium`). Applies when reasoning is enabled. Missing key
     /// decodes as nil.
     public var reasoningEffort: ReasoningEffort?
+    /// Pure tag grouping for this conversation (spec §20 "Project"): a conversation may belong to any
+    /// number of tags, and tags are shared across conversations. Optional → old records decode as nil.
+    public var projectTags: [String]?
 
     public init(id: UUID = UUID(), title: String = "New Chat", createdAt: Date = Date(),
                 updatedAt: Date = Date(), systemPromptID: String? = nil, modelID: String,
@@ -182,7 +185,8 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
                 onlineReasoningEnabled: Bool? = nil, contextLength: Int? = nil,
                 sampling: ConversationSampling? = nil,
                 approvalMode: AgentApprovalMode? = nil,
-                reasoningEffort: ReasoningEffort? = nil) {
+                reasoningEffort: ReasoningEffort? = nil,
+                projectTags: [String]? = nil) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
@@ -199,7 +203,11 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
         self.sampling = sampling
         self.approvalMode = approvalMode
         self.reasoningEffort = reasoningEffort
+        self.projectTags = projectTags
     }
+
+    /// The conversation's project tags (empty when none are stored).
+    public var projectTagList: [String] { projectTags ?? [] }
 
     /// A one-line preview for the conversation list (last user or assistant text).
     public var preview: String {
