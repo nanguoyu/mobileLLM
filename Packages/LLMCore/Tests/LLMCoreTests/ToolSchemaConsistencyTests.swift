@@ -3,6 +3,7 @@
 import XCTest
 @testable import LLMCore
 
+// TEST-ID: AHT-TOOL-005
 /// Guards the premise behind Tool V2 descriptor digests: the static schemas the app's frozen catalog
 /// advertises must be byte-identical to the instance schemas the executor adapters build their
 /// descriptors from. A divergence would make every plan fail `preparedPlanMismatch`.

@@ -176,6 +176,23 @@ public struct AgentRunPresentation: Equatable, Sendable {
         state == .paused || state == .waitingForForeground
     }
 
+    /// Truthful bounded progress for the system UI (spec §19.2): settled durable steps out of the
+    /// steps observed so far plus the current in-flight action. It never claims 0% or 100% while the
+    /// run is still active, and a terminal run is always 100%.
+    public var progressFraction: Double? {
+        guard state != nil else { return nil }
+        if isTerminal { return 1 }
+        let settled = steps.filter {
+            $0.status == .succeeded || $0.status == .failed || $0.status == .uncertain
+        }.count
+        let inFlight = steps.filter {
+            $0.status == .running || $0.status == .waiting || $0.status == .pending
+        }.count
+        let total = max(settled + inFlight + 1, 1)
+        let completed = Double(settled)
+        return min(max(completed / Double(total), 0.02), 0.98)
+    }
+
     public var isWaiting: Bool {
         switch state {
         case .waitingForApproval, .waitingForUser, .paused, .waitingForForeground,

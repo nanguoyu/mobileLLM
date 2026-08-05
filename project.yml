@@ -77,6 +77,10 @@ targets:
         INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "mobileLLM lets the model add and read calendar events while answering you, and only if you select the calendar tool."
         INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "mobileLLM lets the model create reminders while answering you, and only if you select the reminders tool."
         INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "mobileLLM lets the model use your approximate location while answering you, and only if you select the location tool."
+        # iOS 26 continued processing (spec §19.2) lives in App/Info.plist: Xcode's generated-plist
+        # path does not emit UIBackgroundModes/BGTaskSchedulerPermittedIdentifiers from build
+        # settings, so the two keys ride a real plist that GENERATE_INFOPLIST_FILE merges.
+        INFOPLIST_FILE: App/Info.plist
     preBuildScripts:
       - name: Embed OpenAI app config (DEBUG)
         script: scripts/embed-openai-app-config.sh
@@ -137,6 +141,30 @@ targets:
     dependencies:
       - target: mobileLLM
 
+  # App-level Tool V2 adapter unit tests (AH-TOOLS-005) + lifecycle bridge seams. Hosted on macOS so
+  # the full app module (adapters included) is testable without a booted iOS simulator; the iOS build
+  # path is covered by the generic-device build gate.
+  mobileLLMUnitTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - AppUnitTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.mobileLLMUnitTests
+        SWIFT_VERSION: "6.0"
+        # macOS app bundles put the executable under Contents/MacOS; XcodeGen's inferred TEST_HOST
+        # points at the bundle root, which xcodebuild rejects.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/mobileLLM.app/Contents/MacOS/mobileLLM"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      - target: mobileLLM
+      - package: AgentContracts
+      - package: AgentRuntime
+      - package: LLMCore
+      - package: AppRuntime
+
 schemes:
   # The app scheme is declared explicitly because defining any scheme below turns off Xcode's implicit
   # per-target scheme (otherwise `-scheme mobileLLM` disappears).
@@ -180,3 +208,11 @@ schemes:
       testPlans:
         - path: Verification/AgentHarness/TestPlans/DeviceE2E.xctestplan
           defaultPlan: true
+  # App-module unit tests (Tool V2 adapters + lifecycle/continued-processing seams).
+  mobileLLMUnitTests:
+    build:
+      targets:
+        mobileLLM: [test]
+    test:
+      targets:
+        - mobileLLMUnitTests

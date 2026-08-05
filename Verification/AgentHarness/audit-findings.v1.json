@@ -94,8 +94,14 @@
     {
       "id": "OPEN-002",
       "severity": "P1",
-      "summary": "New Tool V2 adapters (Wikipedia, webpage reader, calendar, reminders, location) have unit/compile evidence only; device scenarios are required before AH-TOOLS-005 can flip active.",
+      "summary": "AH-TOOLS-005 flipped active on per-tool unit adapter tests (AppUnitTests/ToolV2AdapterTests.swift) plus the schema parity guard; physical-device scenarios for the new adapters remain pending.",
       "blockedBy": "iPhone unplugged"
+    },
+    {
+      "id": "OPEN-005",
+      "severity": "P1",
+      "summary": "AH-IOS-003 implementation lands (BGContinuedProcessingTask coordinator + scheduler adapter + entitlements/Info.plist); the iOS provisioning profile must be regenerated to include the Background Processing and Background GPU Access capabilities before a device install, and device outcomes (submit/reject/expire/cancel) remain pending.",
+      "blockedBy": "Provisioning profile + physical iPhone (iOS 26)"
     },
     {
       "id": "OPEN-003",
@@ -111,8 +117,8 @@
     }
   ],
   "evidence": [
-    "All package unit suites green: AgentContracts, AgentRuntime, LLMCore, MobileLLMUI",
-    "Generic iOS app + test-bundle build green",
+    "All package unit suites green: AgentContracts, AgentRuntime, LLMCore, MobileLLMUI (lifecycle + continued-processing coordinator suites added)",
+    "Generic iOS app build green (CODE_SIGNING_ALLOWED=NO) and macOS App-unit suite green (Tool V2 adapter tests)",
     "Device matrix: provisioning 00-03 pass; focused 12/13/17/26/28 pass; 16/24 pending rerun (see device-matrix.v1.json)"
   ]
 }

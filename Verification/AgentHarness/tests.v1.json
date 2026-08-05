@@ -843,6 +843,47 @@
       }
     },
     {
+      "id": "AHT-LIFECYCLE-003",
+      "title": "Aggregate every scene and drain with beginBackgroundTask before quiescence",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-IOS-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.LifecycleCoordinatorTests/testMultiSceneAggregationOnlyBackgroundsWhenEverySceneLeavesForeground"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.LifecycleCoordinatorTests/testExpirationReissuesTheSameIdempotentQuiesceCommand"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.LifecycleCoordinatorTests/testBackgroundWithoutAgentRuntimeStillUnloadsWeightsAndStopsAdmission"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "macos",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Multi-scene aggregation, finite drain lease, expiration reissue, admission stop, and weight unload"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
+    },
+    {
       "id": "AHT-LOOP-001",
       "title": "Normalize final, tool, user-input, and malformed model actions",
       "status": "active",
@@ -1412,14 +1453,37 @@
     {
       "id": "AHT-LIFECYCLE-002",
       "title": "Exercise every iOS 26 continued-processing outcome",
-      "status": "planned",
+      "status": "active",
       "kind": "device",
       "riskTier": "P0",
       "requirementIDs": [
         "AH-IOS-003"
       ],
-      "selectors": [],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.ContinuedProcessingCoordinatorTests/testEligibleRunSubmitsWithGpuWhenDeviceSupportsIt"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.ContinuedProcessingCoordinatorTests/testImmediateRejectionCancelsPendingAndQuiesces"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.ContinuedProcessingCoordinatorTests/testExpirationQuiescesAndCompletesTaskUnsuccessfully"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.ContinuedProcessingCoordinatorTests/testUserCancellationMapsToExplicitCancelCommand"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.AgentRunProgressAndAdmissionTests/testProgressFractionIsTruthfulAndBoundedWhileActive"
+        }
+      ],
       "platforms": [
+        "swiftpm",
+        "macos",
         "ios-device"
       ],
       "verificationTiers": [
@@ -1427,7 +1491,8 @@
         "release-candidate"
       ],
       "requiredEvidence": [
-        "Submit, immediate reject, expiration, system cancellation, and user cancellation"
+        "Coordinator unit matrix for submit, immediate reject, expiration, system cancellation, and user cancellation",
+        "BGContinuedProcessingTask device scenarios pending on the physical iPhone"
       ],
       "determinism": {
         "fixedSeedRequired": true,
@@ -2043,22 +2108,48 @@
     {
       "id": "AHT-TOOL-005",
       "title": "Every built-in tool executes through its Tool V2 adapter",
-      "status": "planned",
+      "status": "active",
       "kind": "unit",
       "riskTier": "P1",
       "requirementIDs": [
         "AH-TOOLS-005"
       ],
-      "selectors": [],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testWebSearchAdapterPreparesPlanAndExecutesInsideBoundary"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testWikipediaAdapterPreparesLanguageHostAndExecutes"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testWebScraperAdapterPreparesHttpsDestinationAndExecutes"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testSystemDataAdaptersPrepareAndExecuteAllFourTools"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testMemoryAdaptersPrepareAndExecuteRememberAndRecall"
+        },
+        {
+          "kind": "xctest",
+          "value": "LLMCoreTests.ToolSchemaConsistencyTests/testStaticSchemasMatchInstanceSchemas"
+        }
+      ],
       "platforms": [
         "all"
       ],
       "verificationTiers": [
-        "continuous",
+        "every-change",
         "release-candidate"
       ],
       "requiredEvidence": [
-        "Adapter prepare/execute contract tests per tool; device matrix rows"
+        "Adapter prepare/execute contract tests per tool",
+        "ToolSchemaConsistencyTests parity guard; device matrix rows pending"
       ],
       "determinism": {
         "fixedSeedRequired": false,

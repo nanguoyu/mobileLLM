@@ -163,8 +163,64 @@ struct SettingsView: View {
             }
             .tint(Theme.accent)
             manageToolsRow
+            #if os(iOS)
+            Divider().background(Theme.hairline)
+            Toggle(isOn: Binding(
+                get: { settings.continuedProcessingEnabled },
+                set: { newValue in
+                    settings.continuedProcessingEnabled = newValue
+                    container.continuedProcessing.setEnabled(
+                        newValue,
+                        activeConversationID: container.chat.activeID
+                    )
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Continue work in background (iOS 26)")
+                        .font(.subheadline).foregroundStyle(Theme.textPrimary)
+                    Text("When available, an active finite run may keep processing after you leave "
+                         + "the app, with progress shown by the system. Ordinary chat is never "
+                         + "submitted unless you turn this on, and a rejected submission pauses "
+                         + "the run until you resume it in the foreground.")
+                        .font(.caption).foregroundStyle(Theme.textTertiary)
+                }
+            }
+            .tint(Theme.accent)
+            if let status = continuedProcessingStatus {
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(continuedProcessingHasError ? Theme.danger : Theme.textTertiary)
+            }
+            #endif
         }
     }
+
+    #if os(iOS)
+    private var continuedProcessingStatus: String? {
+        let coordinator = container.continuedProcessing
+        switch coordinator.phase {
+        case .idle, .finished:
+            return nil
+        case .submitted:
+            return "Waiting for the system to grant continued processing…"
+        case .running:
+            return "A run is continuing in the background; the system shows its progress."
+        case .rejected(let diagnostic):
+            return "Not started: \(diagnostic)"
+        case .expired:
+            return "The system ended background processing; the run is paused and can be resumed."
+        case .cancelled:
+            return "Background continuation was cancelled."
+        }
+    }
+
+    private var continuedProcessingHasError: Bool {
+        switch container.continuedProcessing.phase {
+        case .rejected, .expired, .cancelled: true
+        case .idle, .submitted, .running, .finished: false
+        }
+    }
+    #endif
 
     // MARK: Skills
 

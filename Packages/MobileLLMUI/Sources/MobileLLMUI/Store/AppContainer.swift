@@ -23,6 +23,10 @@ public final class AppContainer {
     /// What the assistant remembers about the user — the durable memory store's main-actor mirror, shared
     /// by the memory screen (Settings → Behavior → Memory) and `ChatStore`'s prompt injector.
     public let memory: MemoryBook
+    /// Multi-scene lifecycle aggregation + finite background drain (spec §19.1).
+    public let lifecycle: LifecycleCoordinator
+    /// Explicit, bounded continued background processing (spec §19.2).
+    public let continuedProcessing: ContinuedProcessingCoordinator
     /// The privacy-gated tool seams, also surfaced to the Tools settings screen so flipping a toggle can
     /// request the system permission right there (nil in tests/previews — the screen then skips prompting).
     public let toolEventStore: (any EventStoring)?
@@ -72,10 +76,15 @@ public final class AppContainer {
                 eventStore: (any EventStoring)? = nil,
                 locationProvider: (any LocationProviding)? = nil,
                 openAICredentials: (any OpenAICredentialStoring)? = nil,
-                agentRuns: AgentRunStore? = nil) {
+                agentRuns: AgentRunStore? = nil,
+                lifecycle: LifecycleCoordinator? = nil,
+                continuedProcessing: ContinuedProcessingCoordinator? = nil) {
         let settings = settings ?? AppSettings(fallbackDefaultModelID: LLMCatalog.defaultModel(for: device).id)
         let store = conversationStore ?? ConversationStore()
         self.settings = settings
+        self.lifecycle = lifecycle ?? LifecycleCoordinator()
+        self.continuedProcessing = continuedProcessing
+            ?? ContinuedProcessingCoordinator()
         self.conversationStore = store
         self.models = ModelManager(engine: engine, device: device, downloadBase: downloadBase,
                                    downloader: downloader, installProbe: installProbe,
@@ -136,6 +145,53 @@ public final class AppContainer {
     public func attachAgentRuns(_ agentRuns: AgentRunStore) {
         self.agentRuns = agentRuns
         chat.attachAgentRuntime(agentRuns)
+        // Lifecycle wiring (spec §19.1): the coordinator drives admission, quiescence, and weight
+        // unloading through the same stores the UI uses, so tests exercise the real seam.
+        lifecycle.quiesce = { [weak self] in
+            await self?.chat.agentRuns?.quiesceForBackground()
+        }
+        lifecycle.stopAdmittingActions = { [weak self] in
+            self?.chat.setAcceptingNewActions(false)
+        }
+        lifecycle.resumeAdmittingActions = { [weak self] in
+            self?.chat.setAcceptingNewActions(true)
+        }
+        lifecycle.suspendModel = { [weak self] in
+            self?.suspendModel()
+        }
+        // Continued-processing wiring (spec §19.2): submit eligible runs when they start, settle the
+        // system task when they terminate, and keep progress truthful.
+        continuedProcessing.quiesce = { [weak self] in
+            await self?.chat.agentRuns?.quiesceForBackground()
+        }
+        continuedProcessing.cancelRun = { [weak self] conversationID in
+            await self?.chat.agentRuns?.cancel(conversationID: conversationID)
+        }
+        continuedProcessing.progressFraction = { [weak self] conversationID in
+            self?.chat.agentRuns?.presentation(for: conversationID)?.progressFraction
+        }
+        continuedProcessing.isRunEligible = { [weak self] conversationID in
+            guard let run = self?.chat.agentRuns?.presentation(for: conversationID) else { return false }
+            return run.isActive && !run.isWaiting
+        }
+        continuedProcessing.requiresGPUForRun = { [weak self] conversationID in
+            guard let self else { return false }
+            // Online runs have no local weights; only the resident local MLX engine needs GPU.
+            if self.chat.isOnlineActive { return false }
+            return self.chat.activeModel?.variant.engine == .mlx
+        }
+        continuedProcessing.isEnabled = { [weak self] in
+            self?.settings.continuedProcessingEnabled ?? false
+        }
+        agentRuns.onProgressTick = { [weak self] conversationID in
+            self?.continuedProcessing.refreshProgress(conversationID: conversationID)
+        }
+        chat.onAgentRunStarted = { [weak self] conversationID in
+            self?.continuedProcessing.submitIfEligible(conversationID: conversationID)
+        }
+        chat.onAgentRunTerminal = { [weak self] conversationID, _ in
+            self?.continuedProcessing.runFinished(conversationID: conversationID)
+        }
     }
 
     /// Records why the agent runtime could not be assembled (diagnostics only; the legacy loop

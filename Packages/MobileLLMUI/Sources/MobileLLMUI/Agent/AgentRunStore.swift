@@ -67,6 +67,9 @@ public final class AgentRunStore {
     /// Live-only token activity (reasoning/answer deltas) so the composer's streaming surface can
     /// render the same thinking/answering phases the legacy loop produced.
     public var onEphemeral: (@MainActor (UUID, AgentEphemeralDeltaKind, String) -> Void)?
+    /// Invoked after any durable or ephemeral projection change, so background-continued processing
+    /// can push truthful progress into the system UI (spec §19.2).
+    public var onProgressTick: (@MainActor (UUID) -> Void)?
 
     private let executor: any AgentExecutor
     private let requestBuilder: any AgentRunRequestBuilding
@@ -513,6 +516,7 @@ public final class AgentRunStore {
             break
         }
         runs[conversationID] = run.replacing(steps: deduplicated(steps))
+        onProgressTick?(conversationID)
     }
 
     private func applyEphemeral(_ envelope: AgentEphemeralEventEnvelope, conversationID: UUID) {
@@ -539,6 +543,7 @@ public final class AgentRunStore {
             break
         }
         runs[conversationID] = run
+        onProgressTick?(conversationID)
     }
 
     private func finish(
@@ -569,6 +574,7 @@ public final class AgentRunStore {
             failureMessage: message
         )
         runs[conversationID] = run
+        onProgressTick?(conversationID)
         guard let assistantMessageID = assistantMessageIDs[conversationID] else { return }
         onRunFailed?(conversationID, assistantMessageID, message)
     }

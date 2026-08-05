@@ -107,6 +107,14 @@ public final class ChatStore {
     public private(set) var agentRuns: AgentRunStore?
     /// Last agent-runtime send failure (diagnostics; toasts already surface it transiently).
     public private(set) var agentLastSendError: String?
+    /// Lifecycle admission gate (spec §19.1): while backgrounded, no new user turn enters the run
+    /// pipeline. Owned by `LifecycleCoordinator`.
+    public private(set) var acceptingNewActions = true
+    /// Fired when a durable agent run starts, so continued-processing can submit the eligible run.
+    public var onAgentRunStarted: (@MainActor (UUID) -> Void)?
+    /// Fired when a durable agent run reaches a terminal state, so continued-processing can complete
+    /// or settle its system task.
+    public var onAgentRunTerminal: (@MainActor (UUID, AgentTerminalReason) -> Void)?
     /// Whether the app is wired to the durable agent runtime. A false value keeps the legacy loop,
     /// which is how the rollout switch is implemented (spec §26).
     public var agentRuntimeEnabled: Bool { agentRuns != nil }
@@ -475,8 +483,13 @@ public final class ChatStore {
     public var isStreaming: Bool { streaming != nil }
     public var hasModel: Bool { activeModel != nil || isOnlineActive }
     public var canSend: Bool {
-        !conversationEraseInProgress && hasModel && streaming == nil
+        acceptingNewActions && !conversationEraseInProgress && hasModel && streaming == nil
             && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingImages.isEmpty)
+    }
+
+    /// The lifecycle coordinator calls this at the foreground→background boundary and back.
+    public func setAcceptingNewActions(_ value: Bool) {
+        acceptingNewActions = value
     }
 
     /// Header/switcher label for whatever will answer the next turn.
@@ -948,7 +961,11 @@ public final class ChatStore {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let stagedImages = pendingImages
         let images = stagedImages.map(\.data)
-        guard !text.isEmpty || !images.isEmpty, hasModel, streaming == nil else { return }
+        guard acceptingNewActions,
+              !text.isEmpty || !images.isEmpty,
+              hasModel,
+              streaming == nil
+        else { return }
 
         // Image capability belongs to the exact variant, not merely to the engine family: a text-only GGUF
         // (for example Bonsai 8B) runs on llama.cpp but has no vision projector. Reject before clearing the
@@ -1106,6 +1123,7 @@ public final class ChatStore {
         if streaming?.phase != .stopping {
             streaming?.phase = .warming
         }
+        onAgentRunStarted?(conversationID)
     }
 
     /// Project the committed journal answer into the conversation record (spec §9.1: journal first,
@@ -1158,6 +1176,10 @@ public final class ChatStore {
             streamingMessageID = nil
             genTask = nil
         }
+        onAgentRunTerminal?(
+            conversationID,
+            agentRuns?.presentation(for: conversationID)?.terminalReason ?? .completed
+        )
     }
 
     private func commitAgentFailure(
@@ -1205,6 +1227,7 @@ public final class ChatStore {
         if let message, reason != .cancelledByUser {
             showToast(Toast(message, kind: .error, autoDismiss: 5))
         }
+        onAgentRunTerminal?(conversationID, reason)
     }
 
     private func finalizeAgentRun(

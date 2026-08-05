@@ -156,6 +156,9 @@ private enum MacScreenshotError: LocalizedError {
 struct MobileLLMApp: App {
     @State private var container: AppContainer
     @Environment(\.scenePhase) private var scenePhase
+    #if os(iOS)
+    @State private var lifecycleMonitor: iOSSceneLifecycleMonitor?
+    #endif
     #if DEBUG && os(macOS)
     private let macScreenshotRequest = MacScreenshotRequest.current()
     #endif
@@ -195,7 +198,14 @@ struct MobileLLMApp: App {
         let locationProvider: (any LocationProviding)? = nil
         #endif
         let container = MainActor.assumeIsolated {
-            AppContainer(
+            #if os(iOS)
+            // Production finite drain lease over UIApplication.beginBackgroundTask (spec §19.1).
+            let lifecycle = LifecycleCoordinator(drainProvider: UIKitBackgroundDrainProvider())
+            #else
+            let lifecycle = LifecycleCoordinator()
+            #endif
+            let continuedProcessing = ContinuedProcessingCoordinator()
+            return AppContainer(
                 engine: engine,
                 downloadBase: base,
                 downloader: { repoId, revision, globs, progress in
@@ -206,7 +216,15 @@ struct MobileLLMApp: App {
                 // This IS the system model's install state: available ⇒ ready to use, nothing downloaded.
                 systemModelProbe: { AppleSystemModel.status() },
                 eventStore: eventStore,
-                locationProvider: locationProvider)
+                locationProvider: locationProvider,
+                lifecycle: lifecycle,
+                continuedProcessing: continuedProcessing
+            )
+        }
+        // The lifecycle coordinator's weight-unload seam works even when the agent runtime is in its
+        // rollout-off state (no attachAgentRuns call); the quiesce seam stays nil there by design.
+        container.lifecycle.suspendModel = { [weak container] in
+            container?.suspendModel()
         }
         // Online Responses config box: the provider reads it on worker threads; the app refreshes the
         // non-secret values from Settings on the main actor at every submission.
@@ -248,6 +266,37 @@ struct MobileLLMApp: App {
         // here keeps the legacy in-process loop — the rollout switch (spec §26) is the assembly's
         // presence, and the app never crashes on it.
         MainActor.assumeIsolated {
+            #if os(iOS)
+            // Register the iOS 26 continued-processing launch handler (spec §19.2). The wildcard
+            // identifier must match BGTaskSchedulerPermittedIdentifiers in Info.plist.
+            if #available(iOS 26.0, *) {
+                let prefix = "\(Bundle.main.bundleIdentifier ?? "wang.wangdongdong.mobileLLM").continuedProcessing"
+                let scheduler = BGContinuedProcessingSchedulerAdapter(identifierPrefix: prefix)
+                container.continuedProcessing.scheduler = scheduler
+                container.continuedProcessing.journal = { message in
+                    AgentRuntimeAssembly.logger(message)
+                }
+                scheduler.register(identifier: "\(prefix).*") { [weak container] task in
+                    guard let container else {
+                        task.setTaskCompleted(success: false)
+                        return
+                    }
+                    if let box = task as? BGContinuedProcessingTaskHandleBox {
+                        box.onExpirationForwarded = { [weak container] in
+                            container?.continuedProcessing.handleExpiration()
+                        }
+                    }
+                    guard let conversationID = ContinuedProcessingCoordinator.conversationID(
+                        fromIdentifier: task.identifier,
+                        prefix: prefix
+                    ) else {
+                        task.setTaskCompleted(success: false)
+                        return
+                    }
+                    container.continuedProcessing.handleTask(task, conversationID: conversationID)
+                }
+            }
+            #endif
             if let assembly = try? AgentRuntimeAssembly(
                 engine: engine,
                 downloadBase: base,
@@ -332,6 +381,9 @@ struct MobileLLMApp: App {
         }
         #endif
         _container = State(initialValue: container)
+        #if os(iOS)
+        _lifecycleMonitor = State(initialValue: iOSSceneLifecycleMonitor(coordinator: container.lifecycle))
+        #endif
         #if DEBUG && os(macOS)
         // Keep screenshot automation independent of SwiftUI view identity. A view-scoped `.task` can be
         // cancelled while bootstrap publishes its first observable changes, leaving a remote QA runner
@@ -370,14 +422,25 @@ struct MobileLLMApp: App {
                 // here would race it (sessions decoded and selection restored twice), so it's
                 // deliberately NOT started from the App scene.
                 .onChange(of: scenePhase) { _, phase in
+                    #if os(iOS)
+                    // The scene monitor aggregates every connected scene (spec §19.1); scenePhase is
+                    // only a launch-ordering safety net. The coordinator's enter guards make the
+                    // double call harmless.
+                    if phase == .background {
+                        container.lifecycle.enterBackground()
+                    } else if phase == .active || phase == .inactive {
+                        container.lifecycle.enterForeground()
+                    }
+                    #else
                     // Free the resident model when the app leaves the foreground: it stops a 5 GB model
-                    // hogging memory while unused and stops iOS jetsam-killing the app in the background.
+                    // hogging memory while unused and stops macOS jetsam-killing the app in the background.
                     if phase == .background {
                         container.suspendModel()
                         // Durable agent quiescence (spec §19.1): every active run pauses at its next
                         // safe boundary; recovery is explicit user Resume, never automatic.
                         Task { await container.chat.agentRuns?.quiesceForBackground() }
                     }
+                    #endif
                 }
         }
         // A postfix `#if` may contain ONLY member-expression continuations (SE-0308), so the Settings

@@ -4,8 +4,8 @@
   "documentID": "AH-REQUIREMENTS-V1",
   "sourceSpecification": {
     "path": "spec.md",
-    "sha256": "e4ad6b7300ce3f02fb8ecaccd3762953c2cd3a568b7185e350e863e69d902c88",
-    "capturedAtUTC": "2026-08-01T00:00:00Z"
+    "sha256": "000e4e1b08d7be02b3c921a6fa0e41d925d2498f0035a63bc28aa2ea6faf6d09",
+    "capturedAtUTC": "2026-08-05T22:00:00Z"
   },
   "requirements": [
     {
@@ -1440,8 +1440,8 @@
         {
           "section": "19.1",
           "heading": "iOS 17 baseline",
-          "lineStart": 821,
-          "lineEnd": 838
+          "lineStart": 904,
+          "lineEnd": 922
         }
       ],
       "platforms": [
@@ -1454,7 +1454,8 @@
         "release-candidate"
       ],
       "testIDs": [
-        "AHT-LIFECYCLE-001"
+        "AHT-LIFECYCLE-001",
+        "AHT-LIFECYCLE-003"
       ],
       "requiredEvidence": [
         "Scene aggregation, expiration, journal, and lease-drain results"
@@ -1477,8 +1478,8 @@
         {
           "section": "19.1",
           "heading": "iOS 17 baseline",
-          "lineStart": 835,
-          "lineEnd": 838
+          "lineStart": 904,
+          "lineEnd": 922
         }
       ],
       "platforms": [
@@ -1502,14 +1503,14 @@
       "area": "ios-lifecycle",
       "title": "iOS 26 continued processing is explicit and bounded",
       "statement": "Only explicitly requested finite eligible work uses continued processing, truthful progress, fail-if-not-immediate scheduling, shared journal semantics, and safe rejection, expiration, or cancellation handling.",
-      "status": "planned",
+      "status": "active",
       "riskTier": "P0",
       "specAnchors": [
         {
           "section": "19.2",
           "heading": "iOS 26 continued processing",
-          "lineStart": 840,
-          "lineEnd": 861
+          "lineStart": 923,
+          "lineEnd": 945
         }
       ],
       "platforms": [
@@ -1523,7 +1524,8 @@
         "AHT-LIFECYCLE-002"
       ],
       "requiredEvidence": [
-        "Submit, reject, expire, system cancel, and user cancel device scenarios"
+        "Coordinator unit matrix: submit, reject, expire, system cancel, and user cancel",
+        "Device scenarios for BGContinuedProcessingTask remain pending on the physical iPhone"
       ]
     },
     {
@@ -1957,7 +1959,7 @@
       "area": "performance",
       "title": "Latency and resource regressions are quantitatively gated",
       "statement": "Ordinary chat adds no model pass, median TTFO regresses at most 10%, p95 at most 15%, journal writes are not per-token, storage is bounded, and hard budgets remain effective.",
-      "status": "planned",
+      "status": "active",
       "riskTier": "P1",
       "specAnchors": [
         {
@@ -2020,25 +2022,26 @@
       "riskTier": "P1",
       "specAnchors": [
         {
-          "section": "14",
-          "heading": "Tool authorization",
-          "lineStart": 700,
-          "lineEnd": 730
+          "section": "13",
+          "heading": "Tool V2 contract",
+          "lineStart": 555,
+          "lineEnd": 644
         }
       ],
       "platforms": [
         "all"
       ],
       "verificationTiers": [
-        "continuous",
+        "every-change",
         "release-candidate"
       ],
       "testIDs": [
         "AHT-TOOL-005"
       ],
       "requiredEvidence": [
-        "Per-tool unit adapter tests plus device matrix entries",
-        "ToolSchemaConsistencyTests parity guard; wildcard destination plan tests; device scenarios pending"
+        "Per-tool unit adapter tests (web search, Wikipedia, webpage reader, calendar, reminders, location, memory)",
+        "ToolSchemaConsistencyTests parity guard; wildcard destination plan tests",
+        "Device matrix entries pending on the physical iPhone"
       ]
     }
   ]

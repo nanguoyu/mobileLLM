@@ -168,6 +168,13 @@ public final class AppSettings {
     /// KV-cache quantization width; 0 = unquantized (advanced).
     public var kvBits: Int { didSet { persist() } }
 
+    // MARK: iOS 26 background continuation
+
+    /// Explicit opt-in for continued background processing (spec §19.2). Defaults OFF: ordinary
+    /// open-ended chat runs are never submitted by default, and even with this on, only eligible
+    /// finite runs with a truthful bounded progress model may be submitted.
+    public var continuedProcessingEnabled: Bool { didSet { persist() } }
+
     // MARK: Appearance
     public var appearance: AppearanceMode { didSet { persist() } }
 
@@ -259,6 +266,7 @@ public final class AppSettings {
         contextLength = snap?.contextLength ?? 8192
         onlineContextLength = snap?.onlineContextLength ?? 32_768
         kvBits = snap?.kvBits ?? 4
+        continuedProcessingEnabled = snap?.continuedProcessingEnabled ?? false
         appearance = snap?.appearance ?? .system
         loading = false
         // First launch after an update: any plaintext token was just moved into the Keychain — re-persist
@@ -400,6 +408,7 @@ public final class AppSettings {
         var contextLength: Int
         var onlineContextLength: Int? = nil
         var kvBits: Int
+        var continuedProcessingEnabled: Bool? = nil
         var appearance: AppearanceMode
     }
 
@@ -425,7 +434,9 @@ public final class AppSettings {
                             onlineMaxTokens: onlineMaxTokens,
                             onlineMaxTokensAutoMigrated: true,
                             contextLength: contextLength, onlineContextLength: onlineContextLength,
-                            kvBits: kvBits, appearance: appearance)
+                            kvBits: kvBits,
+                            continuedProcessingEnabled: continuedProcessingEnabled,
+                            appearance: appearance)
         if let data = try? JSONEncoder().encode(snap) { defaults.set(data, forKey: key) }
     }
 
@@ -465,6 +476,7 @@ public final class AppSettings {
         contextLength = 8192
         onlineContextLength = 32_768
         kvBits = 4
+        continuedProcessingEnabled = false
         appearance = .system
         loading = false
         defaults.removeObject(forKey: key)
