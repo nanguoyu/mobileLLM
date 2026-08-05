@@ -368,11 +368,18 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         )
     }
 
-    private static func httpFailure(status: Int) throws -> AgentFailure {
-        try AgentFailure(
+    static func httpFailure(status: Int) throws -> AgentFailure {
+        let message: String
+        if status == 401 || status == 403 {
+            message = "The online model service rejected the API key (HTTP \(status)). "
+                + "Open Settings → Online models → OpenAI service and re-save the key."
+        } else {
+            message = "The online model service returned HTTP \(status)."
+        }
+        return try AgentFailure(
             code: "model.online.http",
             classification: .permanent,
-            safeMessage: "The online model service returned HTTP \(status).",
+            safeMessage: message,
             retryAdvice: .never,
             externalEffect: .confirmedNone,
             requiredUserAction: .none,

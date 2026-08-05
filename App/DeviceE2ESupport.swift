@@ -3,6 +3,7 @@
 #if DEBUG && os(iOS)
 import SwiftUI
 import UIKit
+import CryptoKit
 import LLMCore
 import MobileLLMUI
 
@@ -81,7 +82,17 @@ struct DeviceE2EDiagnosticsOverlay: View {
             "openaiModel=\(container.settings.openAIModelID ?? "none")",
             "openaiEnabled=\(container.settings.openAIOnlineEnabled)",
             "openaiKey=\((try? container.openAICredentials.loadAPIKey()) == nil ? "missing" : "stored")",
+            "openaiBaseURL=\(container.settings.openAIBaseURL)",
+            "openaiKeyFingerprint=\(openAIKeyFingerprint)",
         ].joined(separator: ";")
+    }
+
+    /// First 16 hex chars of SHA-256 over the stored key — enough to compare the phone's Keychain
+    /// against the Mac's ~/.mobilellm/openai.json without ever exposing the secret.
+    private var openAIKeyFingerprint: String {
+        guard let key = try? container.openAICredentials.loadAPIKey() else { return "none" }
+        let digest = SHA256.hash(data: Data(key.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined().prefix(16).description
     }
 
     private var thermalState: String {

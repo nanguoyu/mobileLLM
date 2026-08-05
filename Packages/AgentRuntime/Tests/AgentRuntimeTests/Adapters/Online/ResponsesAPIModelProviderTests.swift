@@ -400,4 +400,21 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         }
         XCTAssertEqual(failure.code, "model.online.invalid-base-url")
     }
+
+    func testUnauthorizedHTTPFailureNamesTheAPIKeyFix() throws {
+        let unauthorized = try ResponsesAPIModelProvider.httpFailure(status: 401)
+        XCTAssertEqual(unauthorized.code, "model.online.http")
+        XCTAssertTrue(
+            unauthorized.safeMessage.contains("API key"),
+            "401 must point the user at the key: \(unauthorized.safeMessage)"
+        )
+        XCTAssertTrue(
+            unauthorized.safeMessage.contains("Settings"),
+            "401 must be actionable: \(unauthorized.safeMessage)"
+        )
+
+        let serverError = try ResponsesAPIModelProvider.httpFailure(status: 500)
+        XCTAssertTrue(serverError.safeMessage.contains("HTTP 500"))
+        XCTAssertFalse(serverError.safeMessage.contains("API key"))
+    }
 }
