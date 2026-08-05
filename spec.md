@@ -735,6 +735,18 @@ must all produce it rather than implementing parallel approval formats.
   different reasoning mode; message-content changes within the approved destination do not expand the scope.
   All other `externalCommunication` operations (MCP writes, third-party communication) keep exact
   per-invocation approval.
+- Approval runs under one of three per-conversation modes, adjustable at any time and frozen per run:
+
+  - `ask` (default): follow the defaults above.
+  - `safePreset`: auto-approve in-app reads/writes and bounded network/private-data reads, plus
+    online-model inference within an already-approved conversation scope; external writes, unknown
+    external, destructive, financial, and code-execution operations still ask.
+  - `fullAccess`: auto-approve every operation inside the run capability ceiling without prompting.
+
+  A mode decides whether the user is ASKED, never whether an operation is authorized: the run capability
+  ceiling, the `prepare -> authorize -> execute` transaction, durable authorization records, and
+  destination/data-category matching remain enforced in every mode. A mode change affects only subsequent
+  runs and never expands an earlier receipt's scope.
 - External writes require an exact invocation preview and approval by default.
 - Reversible writes may offer an explicit conversation-scoped grant.
 - Destructive, publication, financial, and third-party communication actions require exact approval every time.
