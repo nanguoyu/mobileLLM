@@ -226,14 +226,95 @@ final class StreamingAuthorizationTests: XCTestCase {
         let inputEvents = await inputSink.snapshot()
         XCTAssertEqual(inputEvents, [.requestUserInput(interaction)])
     }
+
+    /// Spec §15.2: a conversation-scoped ONLINE-MODEL receipt must survive the execution gate when a
+    /// later attempt in the same conversation carries a different payload (e.g. the model called a
+    /// tool and the continuation now includes the tool result). The gate previously compared the new
+    /// payload digest against the ORIGINAL receipt's digest and failed with "observed operation
+    /// widened", killing Ask-mode multi-step runs.
+    func testConversationScopedModelConsentReusesAcrossChangedPayloadAtGate() async throws {
+        let first = try remoteModelBoundaryFixture(
+            seed: 400,
+            responseLimit: 16,
+            payloadMessage: "first turn"
+        )
+        let receipt = try ApprovalReceipt(
+            id: TestValues.id(ApprovalIDDomain.self, 404),
+            prepared: first.prepared,
+            decision: .approved,
+            scope: .conversation,
+            policyVersion: 1,
+            decidedAt: AgentTimestamp(rawValue: 1),
+            expiresAt: AgentTimestamp(rawValue: 1_000_000)
+        )
+        // Same conversation + same service, but the payload changed (tool result / new message):
+        // the conversation-scoped consent must still authorize the exact current plan.
+        let second = try remoteModelBoundaryFixture(
+            seed: 410,
+            responseLimit: 16,
+            conversationID: first.conversationID,
+            payloadMessage: "second turn with tool result"
+        )
+        XCTAssertNotEqual(
+            first.prepared.plan.payloadDigest,
+            second.prepared.plan.payloadDigest,
+            "fixture must exercise a changed payload"
+        )
+
+        let external = try AuthorizedExternalOperationRequest(
+            prepared: second.prepared,
+            authorization: receipt,
+            trustedRunAuthority: second.trustedRunAuthority
+        )
+        let authorized = try AuthorizedModelRequest(
+            request: second.request,
+            authorization: external,
+            clock: FixedClock(timestamp: AgentTimestamp(rawValue: 10)),
+            policyValidator: AllowingAuthorizationPolicy(),
+            attemptLedger: FreshBoundaryLedger()
+        )
+        let attempt = try ExternalOperationAttempt(prepared: second.prepared, attemptNumber: 1)
+        let hop = try ExternalOperationBoundaryHop(
+            prepared: second.prepared,
+            attempt: attempt,
+            destination: second.prepared.plan.destination
+        )
+        let observation = try ExternalOperationObservation(
+            destination: second.prepared.plan.destination,
+            dataCategories: second.prepared.plan.dataCategories,
+            effects: second.prepared.plan.effects,
+            requestBytes: UInt64(second.prepared.payload.data.count),
+            responseBytesLimit: 16,
+            payloadDigest: second.prepared.plan.payloadDigest,
+            idempotencyKey: second.prepared.plan.idempotencyKey
+        )
+        let sink = RecordingModelSink()
+        let completion = try successfulCompletion(text: "done")
+        let result = try await authorized.performGenerationBoundary(
+            observation: observation,
+            attempt: attempt,
+            hop: hop,
+            sink: sink
+        ) { _, emitter in
+            try await emitter.emit(.completed(completion), responseBytes: 1)
+            return AgentModelBoundaryCompletion(outcome: .completed(completion))
+        }
+        XCTAssertEqual(result.outcome, .completed(completion))
+        let events = await sink.snapshot()
+        XCTAssertEqual(events, [.completed(completion)])
+    }
 }
 
 private extension StreamingAuthorizationTests {
     struct ModelBoundaryFixture {
+        let request: AgentModelRequest
         let authorized: AuthorizedModelRequest
+        let conversationID: ConversationID
         let observation: ExternalOperationObservation
         let attempt: ExternalOperationAttempt
         let hop: ExternalOperationBoundaryHop
+        let prepared: PreparedExternalOperationRequest
+        let trustedRunAuthority: TrustedRunAuthority
     }
 
     func modelBoundaryFixture(
@@ -321,7 +402,9 @@ private extension StreamingAuthorizationTests {
         )
         let attempt = try ExternalOperationAttempt(prepared: prepared, attemptNumber: 1)
         return try ModelBoundaryFixture(
+            request: request,
             authorized: authorized,
+            conversationID: TestValues.id(ConversationIDDomain.self, seed + 3),
             observation: ExternalOperationObservation(
                 destination: nil,
                 dataCategories: [],
@@ -335,7 +418,138 @@ private extension StreamingAuthorizationTests {
                 prepared: prepared,
                 attempt: attempt,
                 destination: nil
-            )
+            ),
+            prepared: prepared,
+            trustedRunAuthority: trusted
+        )
+    }
+
+    /// Builds a remote model-provider boundary (plan kind `.modelProvider`, externalCommunication)
+    /// whose authorization payload varies with `payloadMessage`, mirroring production online runs.
+    func remoteModelBoundaryFixture(
+        seed: UInt16,
+        responseLimit: UInt64,
+        conversationID: ConversationID? = nil,
+        payloadMessage: String = "Answer remotely."
+    ) throws -> ModelBoundaryFixture {
+        let request = try AgentModelRequest(
+            requestID: TestValues.id(AgentRequestIDDomain.self, seed),
+            runID: TestValues.id(AgentRunIDDomain.self, seed + 1),
+            stepID: TestValues.id(AgentStepIDDomain.self, seed + 2),
+            selection: AgentModelSelection(
+                providerID: try AgentModelProviderID("openai.responses"),
+                modelID: try AgentModelID("deepseek-v4-flash"),
+                variantID: try AgentModelVariantID("default"),
+                capabilityVersion: SemanticVersion("1.0.0")!
+            ),
+            compiledManifestDigest: TestValues.digest("5"),
+            messages: [try AgentModelMessage(
+                role: .user,
+                content: payloadMessage,
+                isUntrustedData: false
+            )],
+            advertisedTools: [],
+            toolSelectionSnapshot: try AgentToolSelectionSnapshot(
+                selectorID: "runtime.tool-selector",
+                policyVersion: 1,
+                inputDigest: TestValues.digest("6"),
+                decisions: []
+            ),
+            generationParameters: .standard,
+            outputRequirement: .text
+        )
+        let canonical = try request.authorizationPayload()
+        let payload = TestValues.sanitized(canonical)
+        let destination = try ExternalDestination(
+            kind: .modelProvider,
+            normalizedIdentity: "openai.responses:svc-1:model-a"
+        )
+        let categories = [try AgentDataCategory(rawValue: "model.inference")]
+        let capabilitySet = AgentCapabilitySet([.externalCommunication])
+        let authorityScope = try AgentAuthorityScope(
+            capabilities: capabilitySet,
+            destinations: [destination],
+            dataCategories: categories,
+            artifactIDs: [],
+            secretReferenceIDs: [],
+            workspaceIDs: [],
+            constraints: []
+        )
+        let ceiling = RunCapabilityCeiling(authority: authorityScope)
+        let grant = try StepCapabilityGrant(runCeiling: ceiling, authority: authorityScope)
+        let plan = try ExternalOperationPlan(
+            kind: .modelProvider,
+            subjectID: "openai.responses",
+            destination: destination,
+            dataCategories: categories,
+            payloadDigest: canonical.fingerprint,
+            effects: [AgentEffect.externalCommunication],
+            requiredCapabilities: capabilitySet,
+            maximumRequestBytes: UInt64(canonical.data.count + 16),
+            maximumResponseBytes: responseLimit,
+            timeoutMilliseconds: 1_000,
+            retryPolicy: .never,
+            idempotency: .nonIdempotent,
+            userPreview: "Send this conversation to model-a"
+        )
+        let prepared = try PreparedExternalOperationRequest(
+            requestID: request.requestID,
+            runID: request.runID,
+            conversationID: conversationID
+                ?? TestValues.id(ConversationIDDomain.self, seed + 3),
+            stepID: request.stepID,
+            plan: plan,
+            payload: payload,
+            capabilityGrant: grant
+        )
+        let receipt = try ApprovalReceipt(
+            id: TestValues.id(ApprovalIDDomain.self, seed + 4),
+            prepared: prepared,
+            decision: .approved,
+            scope: .exactInvocation,
+            policyVersion: 1,
+            decidedAt: AgentTimestamp(rawValue: 1),
+            expiresAt: AgentTimestamp(rawValue: 100)
+        )
+        let trusted = try TrustedRunAuthority(
+            runID: request.runID,
+            ceiling: ceiling,
+            policyRevision: 1
+        )
+        let external = try AuthorizedExternalOperationRequest(
+            prepared: prepared,
+            authorization: receipt,
+            trustedRunAuthority: trusted
+        )
+        let authorized = try AuthorizedModelRequest(
+            request: request,
+            authorization: external,
+            clock: FixedClock(timestamp: AgentTimestamp(rawValue: 10)),
+            policyValidator: AllowingAuthorizationPolicy(),
+            attemptLedger: FreshBoundaryLedger()
+        )
+        let attempt = try ExternalOperationAttempt(prepared: prepared, attemptNumber: 1)
+        return try ModelBoundaryFixture(
+            request: request,
+            authorized: authorized,
+            conversationID: prepared.conversationID,
+            observation: ExternalOperationObservation(
+                destination: destination,
+                dataCategories: categories,
+                effects: [AgentEffect.externalCommunication],
+                requestBytes: UInt64(payload.data.count),
+                responseBytesLimit: responseLimit,
+                payloadDigest: canonical.fingerprint,
+                idempotencyKey: plan.idempotencyKey
+            ),
+            attempt: attempt,
+            hop: ExternalOperationBoundaryHop(
+                prepared: prepared,
+                attempt: attempt,
+                destination: destination
+            ),
+            prepared: prepared,
+            trustedRunAuthority: trusted
         )
     }
 

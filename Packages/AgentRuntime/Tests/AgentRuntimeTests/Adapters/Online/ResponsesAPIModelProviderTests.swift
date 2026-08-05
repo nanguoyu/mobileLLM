@@ -132,6 +132,24 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         XCTAssertEqual(explicitObject["max_output_tokens"], .integer(8_192))
     }
 
+    func testDeduplicatesIdenticalParsedCalls() throws {
+        let duplicate = ResponsesAPIModelProvider.ParsedCall(
+            name: "lookup",
+            argumentsJSON: #"{"q":"a"}"#
+        )
+        let different = ResponsesAPIModelProvider.ParsedCall(
+            name: "lookup",
+            argumentsJSON: #"{"q":"b"}"#
+        )
+        XCTAssertEqual(
+            ResponsesAPIModelProvider.deduplicatedCalls([
+                duplicate, duplicate, different,
+            ]).count,
+            2,
+            "identical gateway-duplicated tool calls must collapse to one"
+        )
+    }
+
     func testCapabilitiesHonorPerServiceOutputCeiling() async throws {
         let provider = try ResponsesAPIModelProvider(
             configurationProvider: {
@@ -234,9 +252,13 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
               case .array(let tools)? = object["tools"],
               tools.count == 1,
               case .object(let tool) = tools[0],
-              case .object(let function)? = tool["function"],
-              function["name"] == .string("calculator")
-        else { return XCTFail("expected one calculator tool") }
+              tool["name"] == .string("calculator"),
+              tool["description"] == .string("Look up a local value"),
+              tool["parameters"] != nil,
+              tool["function"] == nil
+        else {
+            return XCTFail("expected one flat Responses-API calculator tool: \(value)")
+        }
     }
 
     func testParseResponseExtractsTextCallsAndUsage() throws {

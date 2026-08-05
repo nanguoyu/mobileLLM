@@ -1740,8 +1740,16 @@ public actor ExternalExecutionAuthorizationGate {
         else {
             throw AgentContractError.authorizationBindingMismatch("operation boundary hop")
         }
+        // Spec §15.2: a conversation-scoped ONLINE-MODEL receipt consents to ONE service
+        // destination, not one exact prompt. Every later attempt (tool-result continuation or a
+        // new message in the same conversation) carries a different payload digest, so the digest
+        // recorded on the original receipt must not be revalidated here. The observation is still
+        // bound to the CURRENT plan's digest above via `isWithin`, and destination/categories/
+        // effects/scope remain exact for every model request.
+        let modelConsent = authorized.authorization.scope == .conversation
+            && authorized.prepared.plan.isModelProviderConsent
         guard observation.isWithin(authorized.prepared.plan),
-              observation.payloadDigest == authorized.authorization.payloadDigest,
+              modelConsent || observation.payloadDigest == authorized.authorization.payloadDigest,
               observation.idempotencyKey == attempt.idempotencyKey
         else {
             throw AgentContractError.authorizationBindingMismatch("observed operation widened")

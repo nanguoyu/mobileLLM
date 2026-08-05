@@ -256,7 +256,12 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                         }
                     }
                 }
-                throw AgentModelProviderFailure(try Self.httpFailure(status: http?.statusCode ?? -1))
+                throw AgentModelProviderFailure(
+                    try Self.httpFailure(
+                        status: http?.statusCode ?? -1,
+                        body: String(data: data, encoding: .utf8)
+                    )
+                )
             }
             let contentType = (http?.value(forHTTPHeaderField: "Content-Type") ?? "")
                 .lowercased()
@@ -404,14 +409,18 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             }
         }
 
+        // Some compatible gateways repeat the SAME function_call item (identical name + arguments)
+        // when the model decides to call a tool; the runtime would count every duplicate against the
+        // per-run tool budget and fail the batch. Identical duplicates are no-ops — keep one.
+        let calls = Self.deduplicatedCalls(parsed.calls)
         let action: AgentAction
-        if parsed.calls.isEmpty {
+        if calls.isEmpty {
             guard !parsed.text.isEmpty else {
                 throw AgentModelProviderFailure(try Self.emptyFailure())
             }
             action = .finalAnswer(try AgentAnswer(text: parsed.text))
         } else {
-            let calls = try parsed.calls.enumerated().map { index, call in
+            let normalized = try calls.enumerated().map { index, call in
                 try Self.normalize(
                     name: call.name,
                     argumentsJSON: call.argumentsJSON,
@@ -419,7 +428,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                     request: request
                 )
             }
-            action = .callTools(calls)
+            action = .callTools(normalized)
         }
         try await emitter.emit(
             .completed(try AgentModelCompletion(action: action, usage: usage)),
@@ -560,6 +569,13 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         }
     }
 
+    static func deduplicatedCalls(_ calls: [ParsedCall]) -> [ParsedCall] {
+        var seen = Set<String>()
+        return calls.filter { call in
+            seen.insert("\(call.name)\u{0}\(call.argumentsJSON)").inserted
+        }
+    }
+
     private static func streamFailure(_ message: String) throws -> AgentFailure {
         try AgentFailure(
             code: "model.online.stream",
@@ -672,11 +688,12 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             let schema = descriptor.inputSchema.root
             return .object([
                 "type": .string("function"),
-                "function": .object([
-                    "name": .string(descriptor.id.logicalID.name),
-                    "description": .string(descriptor.summary),
-                    "parameters": schema,
-                ]),
+                // Responses API tool items are FLAT: name/description/parameters sit next to type.
+                // The Chat Completions nesting ({type, function:{...}}) is rejected by strict
+                // Responses-compatible gateways with "tools[0]: missing field name".
+                "name": .string(descriptor.id.logicalID.name),
+                "description": .string(descriptor.summary),
+                "parameters": schema,
             ])
         }
     }
@@ -826,14 +843,25 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         )
     }
 
-    static func httpFailure(status: Int) throws -> AgentFailure {
-        let message: String
+    static func httpFailure(status: Int, body: String? = nil) throws -> AgentFailure {
+        var message: String
         if status == 401 || status == 403 {
             message = "The online model service rejected the API key (HTTP \(status)). "
                 + "Check the API key AND the service's base URL in Settings → Online models, "
                 + "then re-save."
         } else {
             message = "The online model service returned HTTP \(status)."
+        }
+        // Gateway error bodies are the fastest path to "why": include a bounded, cleaned excerpt so
+        // the user (and the E2E diagnostics) can see the service's own reason.
+        if let body {
+            let cleaned = body
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\n", with: " ")
+            let excerpt = cleaned.count > 200 ? String(cleaned.prefix(200)) + "…" : cleaned
+            if !excerpt.isEmpty {
+                message += " \(excerpt)"
+            }
         }
         return try AgentFailure(
             code: "model.online.http",

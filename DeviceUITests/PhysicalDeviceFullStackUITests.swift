@@ -1453,10 +1453,23 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
 }
 
 /// Simulator-first online-model matrix (iPhone Simulator focus). Requires the test runner to inject
-/// the OpenAI-compatible config (~/.mobilellm/openai.json via launchEnvironment) and to opt in with
-/// MOBILELLM_E2E_ALLOW_SIMULATOR=1. No local weights are needed: every case selects the online model
-/// and drives the same production agent-runtime path the physical-device matrix uses.
+/// the OpenAI-compatible config (~/.mobilellm/openai.json via launchEnvironment). No local weights
+/// are needed: every case selects the online model and drives the same production agent-runtime path
+/// the physical-device matrix uses. Non-approval cases run on the product default (Safe preset) so
+/// safe in-app/read/online operations proceed without prompts; approval has dedicated cases.
 final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
+
+    @MainActor
+    private func selectApprovalMode(_ title: String, in app: XCUIApplication) throws {
+        let bar = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Approval:")
+        ).firstMatch
+        XCTAssertTrue(bar.waitForExistence(timeout: 15), "Approval mode bar is missing")
+        bar.tap()
+        let option = app.buttons[title]
+        XCTAssertTrue(option.waitForExistence(timeout: 5), "Approval menu item is missing: \(title)")
+        option.tap()
+    }
 
     @MainActor
     func test01OnlineModelIsSendableWithoutAnyLocalWeights() throws {
@@ -1487,9 +1500,9 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
         field.tap()
         field.typeText("Write a five-sentence paragraph about sleep and memory.")
-        let send = app.buttons["Send"]
-        XCTAssertTrue(waitForEnabled(send, timeout: 20))
-        send.tap()
+        let sendButton = app.buttons["Send"]
+        XCTAssertTrue(waitForEnabled(sendButton, timeout: 20))
+        sendButton.tap()
 
         // Token-by-token promise: answer text must grow BEFORE the committed stats appear. The
         // default Safe preset auto-approves online inference, so no approval card interrupts.
@@ -1673,6 +1686,240 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
             assertStatsModel: false
         )
         XCTAssertFalse(second.answer.isEmpty)
+    }
+
+    /// Tool selection is app state, not model state: toggles and the master switch must survive a
+    /// relaunch even with no local weights installed, and the bottom bar must show the Safe preset
+    /// default (spec §15.2).
+    @MainActor
+    func test06ToolSelectionPersistsAcrossRelaunch() throws {
+        let app = try launchApp()
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        // Product default surfaces in the persistent bottom bar.
+        let approvalBar = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Approval: Safe preset")
+        ).firstMatch
+        XCTAssertTrue(approvalBar.waitForExistence(timeout: 15),
+                      "new conversations must default to Safe preset approval")
+
+        try configureTools(master: true, enabled: ["Calculator", "Web search"], in: app)
+        try relaunch(app)
+        try goToSettings(in: app)
+        let choose = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Choose tools")
+        ).firstMatch
+        XCTAssertTrue(scrollToHittable(choose, in: app.scrollViews.firstMatch))
+        choose.tap()
+        XCTAssertTrue(app.navigationBars["Tools"].waitForExistence(timeout: 15))
+        let scroll = firstHittableScrollView(in: app)
+        let expected: [String: Bool] = [
+            "Web search": true, "Webpage reader": false, "Wikipedia": false,
+            "Calculator": true, "Clock": false, "Memory": false,
+        ]
+        for (title, on) in expected {
+            let toggle = switchStarting(with: title, in: app)
+            XCTAssertTrue(scrollToHittable(toggle, in: scroll))
+            XCTAssertEqual(switchIsOn(toggle), on, "Persisted tool selection drifted: \(title)")
+        }
+        let master = switchStarting(with: "Allow selected tools", in: app)
+        XCTAssertTrue(scrollToHittable(master, in: scroll, swipingUp: false))
+        XCTAssertTrue(switchIsOn(master))
+    }
+
+    /// Calculator is a local pure tool: Safe preset auto-approves it, the exact result must reach the
+    /// user, and the tool row must appear in the run steps.
+    @MainActor
+    func test07OnlineCalculatorTool() throws {
+        let app = try launchApp()
+        // Configure tools BEFORE opening the sending conversation: an empty thread created earlier
+        // would be reused and keep its creation-time (tool-less) policy.
+        try configureTools(master: true, enabled: ["Calculator"], in: app)
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let marker = uniqueMarker("ONLINE_CALC")
+        var evidence = try send(
+            marker + "\nWhat is 1234567 * 7654321? You do not know this product from memory. "
+                + "You MUST call the calculator tool exactly once to compute it, "
+                + "then reply exactly RESULT=9449772114007.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        if evidence.toolActivities.isEmpty {
+            // Online models sometimes answer from arithmetic knowledge instead of calling the tool.
+            // Retry once with the tool-call made mandatory (same wiring the device clock test uses).
+            evidence = try send(
+                marker + "\nYou cannot multiply these numbers from memory. You MUST call the "
+                    + "calculator tool exactly once before answering. Use the calculator to multiply "
+                    + "1234567 by 7654321, then reply exactly RESULT=9449772114007.",
+                model: .bonsai, in: app, timeout: 300, assertEvidence: false
+            )
+        }
+        XCTAssertEqual(
+            evidence.toolActivities.count,
+            1,
+            "unexpected tool chain: \(evidence.toolActivities)"
+        )
+        XCTAssertEqual(evidence.toolActivities.first, "Calculator returned 9449772114007")
+        XCTAssertTrue(evidence.answer.contains("9449772114007"),
+                      "answer must carry the computed result: \(evidence.answer)")
+    }
+
+    /// Web search is a bounded network read: Safe preset auto-approves it and the run must surface
+    /// the tool activity without any approval card.
+    @MainActor
+    func test08OnlineWebSearchTool() throws {
+        let app = try launchApp()
+        try configureTools(master: true, enabled: ["Web search"], in: app)
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let marker = uniqueMarker("ONLINE_SEARCH")
+        var evidence = try send(
+            marker + "\nWhat is today's date? You do not know today's date reliably from memory. "
+                + "You MUST call the web search tool EXACTLY ONCE to look it up, then reply with the date "
+                + "and one sentence of context.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        if evidence.toolActivities.isEmpty {
+            evidence = try send(
+                marker + "\nYou MUST call the web search tool exactly once before answering. Use web search to "
+                    + "look up today's date, then reply with the date and one sentence of context.",
+                model: .bonsai, in: app, timeout: 300, assertEvidence: false
+            )
+        }
+        XCTAssertTrue(
+            evidence.toolActivities.contains(where: {
+                $0.localizedCaseInsensitiveContains("web_search")
+                    || $0.localizedCaseInsensitiveContains("web search")
+            }),
+            "web search tool activity is missing: \(evidence.toolActivities)"
+        )
+        XCTAssertFalse(evidence.answer.isEmpty)
+    }
+
+    /// Memory is a private-data read/write: Safe preset auto-approves it and the recalled fact must
+    /// survive across turns in the same conversation.
+    @MainActor
+    func test09OnlineMemoryRememberRecall() throws {
+        let app = try launchApp()
+        try configureTools(master: true, enabled: ["Memory"], in: app)
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let fact = "E2E_SKY_\(Int.random(in: 10_000...99_999))"
+        let first = try send(
+            "Remember this fact: the sky color is \(fact). Reply with only CONFIRMED.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        XCTAssertFalse(first.answer.isEmpty)
+        let second = try send(
+            "According to my memory, what is the sky color? Reply with only the fact.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        XCTAssertTrue(
+            second.answer.contains(fact),
+            "recalled fact is missing from the answer: \(second.answer)"
+        )
+    }
+
+    /// Approval-specific network read: with Ask pinned, a first-use web search must pause for an
+    /// approval card; Safe preset must not.
+    @MainActor
+    func test10AskModeWebSearchApprovalCard() throws {
+        let app = try launchApp()
+        try configureTools(master: true, enabled: ["Web search"], in: app)
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+        try selectApprovalMode("Ask", in: app)
+
+        let field = app.textFields["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        let copyCount = app.buttons.matching(identifier: "Copy answer").count
+        let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
+        field.tap()
+        field.typeText("Use web search to look up the current year, then reply with the year only.")
+        let send = app.buttons["Send"]
+        XCTAssertTrue(waitForEnabled(send, timeout: 20))
+        send.tap()
+
+        let approve = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Approve")
+        ).firstMatch
+        XCTAssertTrue(approve.waitForExistence(timeout: 90),
+                      "Ask mode must pause first-use web search for approval")
+        approve.tap()
+        let evidence = try waitForCommittedGeneration(
+            model: .bonsai, in: app,
+            previousCopyCount: copyCount,
+            previousStatsCount: statsCount,
+            startedAt: Date(),
+            timeout: 300,
+            assertStatsModel: false
+        )
+        XCTAssertFalse(evidence.answer.isEmpty)
+    }
+
+    /// Stop mid-generation commits the partial answer, marks the turn cancelled, and the next turn
+    /// recovers — with the online provider behind the same agent runtime.
+    @MainActor
+    func test11OnlineStopCommitsPartialAndRecovers() throws {
+        let app = try launchApp()
+        // Tool settings persist across launches inside one simulator run; stop/recovery must not
+        // inherit tools that an earlier case enabled (they change the wire request shape).
+        try configureTools(master: false, enabled: [], in: app)
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+
+        let marker = uniqueMarker("ONLINE_STOP")
+        let copies = app.buttons.matching(identifier: "Copy answer").count
+        let statsBefore = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
+        let field = app.textFields["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        field.tap()
+        field.typeText(
+            marker + "\nWrite a detailed 2500-word technical essay comparing ten sorting algorithms, "
+                + "with proofs and examples. Do not finish early."
+        )
+        let sendButton = app.buttons["Send"]
+        XCTAssertTrue(waitForEnabled(sendButton, timeout: 20))
+        sendButton.tap()
+
+        let stop = app.buttons["Stop"]
+        XCTAssertTrue(waitForEnabled(stop, timeout: 240), "Stop never became actionable")
+        Thread.sleep(forTimeInterval: 2)
+        stop.tap()
+        XCTAssertTrue(waitUntilGone(stop, timeout: 20), "Stop did not settle at a token boundary")
+
+        let statsQuery = app.descendants(matching: .any).matching(identifier: "assistant.stats")
+        let stoppedQuery = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "Stopped")
+        )
+        var statsValue = ""
+        let settleDeadline = Date().addingTimeInterval(10)
+        while Date() < settleDeadline {
+            if let stats = statsQuery.allElementsBoundByIndex.last {
+                statsValue = (stats.value as? String) ?? stats.label
+                if !statsValue.isEmpty { break }
+            }
+            if stoppedQuery.firstMatch.exists { break }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        XCTAssertTrue(stoppedQuery.firstMatch.exists || statsValue.contains("stop: cancelled"),
+                      "stopped turn is neither marked Stopped nor cancelled: \(statsValue)")
+        XCTAssertTrue(sendButton.waitForExistence(timeout: 10))
+
+        let recovery = try send(
+            "Reply exactly RECOVERED and nothing else.",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        XCTAssertEqual(recovery.answer, "RECOVERED", "online model could not generate after Stop")
+        XCTAssertGreaterThanOrEqual(app.buttons.matching(identifier: "Copy answer").count, copies + 1)
+        XCTAssertGreaterThanOrEqual(
+            app.descendants(matching: .any).matching(identifier: "assistant.stats").count,
+            statsBefore + 1
+        )
     }
 }
 

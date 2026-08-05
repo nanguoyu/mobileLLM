@@ -215,7 +215,8 @@ extension AgentRunController {
                 runID: facts.projection.runID,
                 reason: .internalFailure,
                 code: "execution.invalid-tool-batch",
-                message: "The model proposed a tool action that could not be validated."
+                message: "The model proposed a tool action that could not be validated: "
+                    + String(describing: error)
             )
             return
         }

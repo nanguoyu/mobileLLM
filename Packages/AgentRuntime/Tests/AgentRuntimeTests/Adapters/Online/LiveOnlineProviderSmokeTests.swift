@@ -337,6 +337,97 @@ final class LiveOnlineProviderSmokeTests: XCTestCase {
         XCTAssertFalse((answer.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
+    /// Diagnostics for the tool-calling contract: with a calculator advertised, the configured
+    /// gateway/model MUST return a native function_call for a prompt that cannot be answered from
+    /// knowledge ("1234567 * 7654321" is deliberately not a memorized product). This is the exact
+    /// wire path the simulator tool E2E drives.
+    func testLiveResponsesCallsToolWhenRequired() async throws {
+        let config = try loadConfig()
+        let model = config.model ?? ""
+        let provider = try ResponsesAPIModelProvider(
+            configurationProvider: {
+                ResponsesAPIConfiguration(
+                    baseURL: config.baseURL,
+                    apiKey: config.apiKey,
+                    reasoningEffort: .medium
+                )
+            },
+            session: .shared
+        )
+        let tool = try ModelFixture.tool(name: "calculator")
+        let fixture = try ModelFixture(
+            location: .remote,
+            thinkingMode: .disabled,
+            advertisedTools: [tool],
+            maximumOutputTokens: 4_096,
+            outputBudgetMode: .auto,
+            providerID: ResponsesAPIModelProvider.providerID,
+            remoteDestination: "openai.responses:\(ResponsesAPIConfiguration.defaultServiceID):\(model)",
+            modelID: model,
+            userMessage: "What is 1234567 * 7654321? You do not know this product from memory. "
+                + "You MUST call the calculator tool exactly once to compute it."
+        )
+        let cloudPolicy = try AgentModelPolicy(
+            localOnly: false,
+            allowedSelections: [fixture.request.selection],
+            strategy: .pinned,
+            requiredCapabilities: AgentModelCapabilitySet([])
+        )
+        let cloudContext = try ModelPreparationContext(
+            conversationID: fixture.context.conversationID,
+            modelPolicy: cloudPolicy,
+            capabilityGrant: fixture.context.capabilityGrant,
+            authorizationPayload: fixture.context.authorizationPayload,
+            maximumRequestBytes: fixture.context.maximumRequestBytes,
+            maximumResponseBytes: fixture.context.maximumResponseBytes,
+            timeoutMilliseconds: fixture.context.timeoutMilliseconds
+        )
+        let prepared = try await AgentModelRequestPreparer().prepare(
+            provider: provider,
+            request: fixture.request,
+            context: cloudContext
+        )
+        let policy = TestApprovalPolicyEngine()
+        let authorization = try await policy.bindLocalPolicy(
+            prepared: prepared.preparedRequest.externalOperation,
+            approvalID: ApprovalID(rawValue: ModelFixture.uuid(9)),
+            trustedRunAuthority: fixture.authority,
+            at: AgentTimestamp(rawValue: 1_000)
+        )
+        let authorized = AuthorizedAgentModelAttempt(
+            preparedAttempt: prepared,
+            request: try AuthorizedModelRequest(
+                request: fixture.request,
+                authorization: authorization,
+                clock: FixedAuthorizationClock(),
+                policyValidator: policy,
+                attemptLedger: TestAttemptLedger()
+            )
+        )
+
+        let result = try await AgentModelExecutor().execute(
+            provider: provider,
+            authorized: authorized
+        )
+
+        guard case .completed(let completion) = result.outcome else {
+            let detail = result.outcome
+            let attachment = XCTAttachment(string: "outcome=\(detail)")
+            attachment.name = "live-online-tool-failure"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            return XCTFail("live tool-call request did not complete: \(detail)")
+        }
+        let attachment = XCTAttachment(string: "action=\(completion.action)")
+        attachment.name = "live-online-tool-action"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        guard case .callTools(let calls) = completion.action else {
+            return XCTFail("gateway/model did not call the advertised calculator: \(completion.action)")
+        }
+        XCTAssertEqual(calls.map(\.toolID.name), ["calculator"])
+    }
+
     /// The 2026-standard path: reasoning ENABLED with medium effort. Verifies the configured gateway
     /// accepts `reasoning.effort` and still returns a real answer (not just reasoning).
     func testLiveResponsesWithMediumEffortReturnsAnswer() async throws {
