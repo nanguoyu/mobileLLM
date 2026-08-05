@@ -762,6 +762,19 @@ must all produce it rather than implementing parallel approval formats.
 - A background run that needs approval enters `waitingForApproval`; it does not attempt to present TCC or application
   approval UI while backgrounded.
 
+### 15.3 Reasoning and effort
+
+- Every model that supports reasoning/thinking — capable local checkpoints and online services — runs with
+  reasoning ENABLED by default. The per-conversation Thinking control may disable it.
+- Reasoning effort is a per-conversation setting with three levels: `low`, `medium` (default), `high`.
+  Online providers map the level to the service's reasoning-effort knob when available (`reasoning.effort`);
+  services without an effort knob ignore the level and keep their default. Local engines without an effort
+  knob treat the level as advisory only — capability is on/off, and the level never fabricates thinking.
+- Visible reasoning — local `<think>` output and online reasoning output — is surfaced through ONE shared
+  thinking disclosure in the UI. The app never invents, requests, or persists private hidden chain-of-thought.
+- A conversation-scoped online-model receipt covers one reasoning mode AND one effort level; changing
+  either requires renewed approval.
+
 Approval records contain the displayed preview, normalized scope, arguments hash, policy version, timestamp, expiry,
 actual host/destination matcher, redirect/fallback bounds, data-category or payload digest, descriptor/schema/trust
 hashes, and user decision. The run capability ceiling is immutable for the run; every step receives an immutable
@@ -892,6 +905,12 @@ There is one chat UI, with progressive disclosure:
 - the composer displays the conversation's allowed and pinned tool state;
 - complex runs expose a compact activity row that expands into steps;
 - approval cards show the tool, destination, exact action preview, data being sent/read, and grant scope;
+- a persistent bottom control bar (above the composer input) shows the conversation's approval mode and
+  reasoning effort, both switchable in place without opening a menu;
+- the conversation's top-right toolbar action is a Settings button (not New Chat) that opens the
+  per-conversation settings panel: reasoning on/off + effort, approval mode, context length, and sampling,
+  with reserved sections for future folder/file access and a shell terminal window;
+- New Chat remains available from the conversation list and the keyboard shortcut (macOS ⌘N);
 - waiting states clearly distinguish user input, approval, foreground, model, and resource waits;
 - submitting text to an active `InteractionRequestRecord` sends a Respond command and does not create a new root run;
 - the user can Pause, Resume, or Stop the run;
