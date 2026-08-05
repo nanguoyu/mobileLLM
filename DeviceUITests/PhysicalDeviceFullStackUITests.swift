@@ -1499,7 +1499,8 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         let copyCount = app.buttons.matching(identifier: "Copy answer").count
         let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
         field.tap()
-        field.typeText("Write a five-sentence paragraph about sleep and memory.")
+        field.typeText("Write a detailed 800-word essay about sleep and memory, with at least ten "
+            + "paragraphs. Do not stop early.")
         let sendButton = app.buttons["Send"]
         XCTAssertTrue(waitForEnabled(sendButton, timeout: 20))
         sendButton.tap()
@@ -1524,6 +1525,29 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         }
         XCTAssertTrue(sawLiveText,
                       "online answer must stream token-by-token before the run commits")
+
+        // Sticky-bottom autoscroll: while generation is still streaming and the user never scrolled,
+        // the thread must stay pinned at the latest output (no "Scroll to latest" pill). Scrolling
+        // away must surface the pill and stop the yank; tapping it re-pins and hides it again.
+        let pill = app.buttons.matching(
+            NSPredicate(format: "label == %@", "Scroll to latest")
+        ).firstMatch
+        XCTAssertFalse(pill.exists,
+                       "auto-follow must keep the thread pinned during streaming")
+        let dragStart = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+        let dragEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9))
+        dragStart.press(forDuration: 0.05, thenDragTo: dragEnd)
+        XCTAssertTrue(pill.waitForExistence(timeout: 5),
+                      "scrolling away mid-stream must surface the Scroll to latest pill")
+        let pillStillThere = pill.waitForExistence(timeout: 3)
+        XCTAssertTrue(pillStillThere,
+                      "auto-follow must not yank the user back down after a deliberate scroll")
+        pill.tap()
+        XCTAssertTrue(waitUntilGone(pill, timeout: 5),
+                      "tapping the pill must re-pin the thread to the latest output")
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertFalse(pill.exists,
+                       "auto-follow must keep re-pinning while streaming continues")
 
         let evidence = try waitForCommittedGeneration(
             model: .bonsai, in: app,

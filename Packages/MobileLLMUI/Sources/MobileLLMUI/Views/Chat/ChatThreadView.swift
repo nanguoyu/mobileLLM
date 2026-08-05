@@ -40,6 +40,17 @@ struct ChatThreadView: View {
     var agentRuns: AgentRunStore? = nil
 
     @State private var atBottom = true
+    /// The bottom marker's current Y in the scroll view's coordinate space.
+    @State private var bottomMaxY: CGFloat = 0
+    /// The thread content's total height (drives `overflowing` and growth detection).
+    @State private var contentHeight: CGFloat = 0
+    /// The thread content's total height at the last moment we were pinned at the bottom. A taller
+    /// value later means content grew (safe to follow); an unchanged value while the bottom marker
+    /// moves means the USER scrolled away (never fight it).
+    @State private var lastPinnedContentHeight: CGFloat = 0
+    /// True while the user is actively dragging the thread. Auto-follow is suspended during the drag
+    /// so a token landing mid-gesture can never yank the user back to the bottom.
+    @State private var userInteracting = false
     /// True once the thread content is taller than the viewport — the precondition for follow-scrolling.
     @State private var overflowing = false
     @State private var editing: Message?
@@ -146,17 +157,26 @@ struct ChatThreadView: View {
                     })
                 }
                 .scrollDismissesKeyboard(.interactively)   // drag the thread down to dismiss the keyboard
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 8)
+                        .onChanged { _ in userInteracting = true }
+                        .onEnded { _ in
+                            userInteracting = false
+                            if bottomMaxY > outer.size.height + 40 {
+                                atBottom = false
+                            }
+                        }
+                )
                 .coordinateSpace(name: "thread")
                 .background(Theme.bg)
-                // A leaf that alone observes `streaming` and nudges the scroll — throttled, so the thread's
-                // ForEach never re-lays-out for scrolling and streaming stays smooth.
-                .background { AutoScrollFollower(chat: chat, proxy: proxy, bottomID: bottomID,
-                                                 atBottom: atBottom, overflowing: overflowing) }
                 .onPreferenceChange(BottomOffsetKey.self) { maxY in
-                    atBottom = maxY <= outer.size.height + 40
+                    bottomMaxY = maxY
+                    followIfNeeded(proxy, viewportHeight: outer.size.height)
                 }
                 .onPreferenceChange(ContentHeightKey.self) { h in
+                    contentHeight = h
                     overflowing = h > outer.size.height + 1
+                    followIfNeeded(proxy, viewportHeight: outer.size.height)
                 }
                 .onChange(of: convo.messages.count) { _, _ in scrollToBottom(proxy, animated: false) }
                 .onChange(of: chat.activeID) { _, _ in scrollToBottom(proxy, animated: false) }
@@ -248,6 +268,38 @@ struct ChatThreadView: View {
             withAnimation(Motion.canvas) { proxy.scrollTo(bottomID, anchor: .bottom) }
         } else {
             proxy.scrollTo(bottomID, anchor: .bottom)
+        }
+        // We just pinned the thread; remember the content height so the next preference pass can tell
+        // "content grew" (follow again) from "user scrolled away" (leave them alone).
+        lastPinnedContentHeight = contentHeight
+        atBottom = true
+    }
+
+    /// The single follow decision: re-pin the bottom when NEW CONTENT pushed the marker down while the
+    /// user was at the bottom, and stay away when the user scrolled. Called from both preference
+    /// callbacks. The decision is deferred one runloop turn because the bottom-marker and content-size
+    /// preferences land in the SAME layout pass in unspecified order; by the next turn both values are
+    /// current, so "content grew" can be told apart from "user scrolled away" deterministically.
+    private func followIfNeeded(_ proxy: ScrollViewProxy, viewportHeight: CGFloat) {
+        if bottomMaxY <= viewportHeight + 40 {
+            atBottom = true
+            lastPinnedContentHeight = contentHeight
+            return
+        }
+        guard atBottom, overflowing else {
+            atBottom = false
+            return
+        }
+        let contentHeightAtDecision = contentHeight
+        let lastPinnedAtDecision = lastPinnedContentHeight
+        Task { @MainActor in
+            guard !userInteracting else { return }
+            if contentHeight > lastPinnedAtDecision + 1 {
+                scrollToBottom(proxy, animated: false)
+            } else if contentHeight == contentHeightAtDecision {
+                // No content change arrived in this pass: the user scrolled away, so stop following.
+                atBottom = false
+            }
         }
     }
 
@@ -354,42 +406,5 @@ private struct StreamingRow: View {
     /// Throttled while thinking; the full text once thinking ends, so the frozen block is exact.
     private func displayedReasoning(_ s: StreamingState) -> String {
         s.phase == .thinking ? shownReasoning : s.reasoning
-    }
-}
-
-/// An invisible leaf that follows the stream to the bottom — throttled to ~10 Hz, no animation (a jump,
-/// not an animated scroll, every token). It observes `streaming` so the thread's `ForEach` doesn't have to.
-private struct AutoScrollFollower: View {
-    let chat: ChatStore
-    let proxy: ScrollViewProxy
-    let bottomID: String
-    let atBottom: Bool
-    /// Content taller than the viewport. Following an UNDER-filled thread pins the bottom marker to the
-    /// viewport's bottom edge on every tick while the text grows — the whole view judders violently until
-    /// the first screenful fills. There is nothing to scroll until it overflows, so don't.
-    let overflowing: Bool
-
-    @State private var lastFollowAt = Date.distantPast
-
-    var body: some View {
-        // A full-size but non-interactive clear layer (kept alive by SwiftUI) whose only job is to watch
-        // the stream and nudge the scroll — it must not intercept the thread's scroll gesture.
-        Color.clear
-            .allowsHitTesting(false)
-            .onChange(of: signature) { _, _ in follow() }
-    }
-
-    /// Grows as the live answer/reasoning grows — the only signal that should nudge the scroll.
-    private var signature: Int {
-        guard let s = chat.streaming else { return 0 }
-        return s.answer.count &+ s.reasoning.count
-    }
-
-    private func follow() {
-        guard atBottom, overflowing else { return }
-        let now = Date()
-        guard now.timeIntervalSince(lastFollowAt) >= 0.1 else { return }   // ~10 Hz
-        lastFollowAt = now
-        proxy.scrollTo(bottomID, anchor: .bottom)
     }
 }
