@@ -44,12 +44,113 @@ public final class AppSettings {
     public var searchEngines: [SearchEngine] { didSet { persist() } }
 
     // MARK: Online models
-    /// Responses API base URL (gateway/proxy supported). Not a secret — the API key lives in Keychain.
-    public var openAIBaseURL: String { didSet { persist() } }
-    /// Model identifier on the compatible service (e.g. "gpt-4o-mini"); nil = the service default.
-    public var openAIModelID: String? { didSet { persist() } }
-    /// When true and a model id is set, the next send uses the online provider (data egress, approval).
-    public var openAIOnlineEnabled: Bool { didSet { persist() } }
+    /// Configured OpenAI-compatible services. Each keeps its own base URL / model id / Keychain key,
+    /// and at most one is enabled at a time (the active online model).
+    public private(set) var onlineServices: [OnlineService] {
+        didSet { persist() }
+    }
+
+    /// The service currently armed as the online model, or nil when none is enabled with a model id.
+    public var onlineActiveService: OnlineService? {
+        onlineServices.first { $0.isEnabled && !modelID(of: $0).isEmpty }
+    }
+
+    /// Stable service id of the active online model (nil = online off).
+    public var onlineServiceID: String? { onlineActiveService?.id }
+
+    /// Model identifier of the active online service (nil = online off or no model id configured).
+    public var onlineModelID: String? {
+        onlineActiveService.map(modelID(of:)).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// Legacy single-service accessor: the FIRST configured service (the one the Mac-local config and
+    /// test env seed). Kept so existing call sites, seeding, and tests keep working unchanged.
+    public var openAIBaseURL: String {
+        get { onlineServices.first?.baseURL ?? OpenAIServiceConfiguration.defaultBaseURL }
+        set {
+            ensureDefaultService()
+            onlineServices[0].baseURL = OpenAIServiceConfiguration.normalizedBaseURL(newValue)
+                ?? OpenAIServiceConfiguration.defaultBaseURL
+        }
+    }
+
+    public var openAIModelID: String? {
+        get { onlineServices.first?.modelID }
+        set {
+            ensureDefaultService()
+            onlineServices[0].modelID = newValue
+        }
+    }
+
+    /// Whether ANY online service is armed (legacy single-service toggle semantics).
+    public var openAIOnlineEnabled: Bool {
+        get { onlineServices.contains { $0.isEnabled } }
+        set {
+            if newValue {
+                ensureDefaultService()
+                setOnlineServiceEnabled(id: OnlineService.defaultID, enabled: true)
+            } else {
+                onlineServices = onlineServices.map { $0.withEnabled(false) }
+            }
+        }
+    }
+
+    /// Add or replace one service. Enabling it disables every other service (single active online model).
+    public func upsertOnlineService(_ service: OnlineService) {
+        var normalized = service
+        if normalized.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            normalized.name = Self.displayName(for: normalized.baseURL)
+        }
+        normalized.baseURL = OpenAIServiceConfiguration.normalizedBaseURL(normalized.baseURL)
+            ?? OpenAIServiceConfiguration.defaultBaseURL
+        var updated = onlineServices
+        if let index = updated.firstIndex(where: { $0.id == normalized.id }) {
+            updated[index] = normalized
+        } else {
+            updated.append(normalized)
+        }
+        if normalized.isEnabled {
+            updated = updated.map { $0.id == normalized.id ? $0 : $0.withEnabled(false) }
+        }
+        onlineServices = updated
+    }
+
+    /// Enable/disable one service; enabling deactivates the others.
+    public func setOnlineServiceEnabled(id: String, enabled: Bool) {
+        guard let index = onlineServices.firstIndex(where: { $0.id == id }) else { return }
+        if enabled {
+            onlineServices = onlineServices.enumerated().map { offset, service in
+                service.withEnabled(offset == index)
+            }
+        } else {
+            onlineServices[index] = onlineServices[index].withEnabled(false)
+        }
+    }
+
+    /// Remove a service (the caller also deletes its Keychain key).
+    public func removeOnlineService(id: String) {
+        onlineServices.removeAll { $0.id == id }
+    }
+
+    private func modelID(of service: OnlineService) -> String {
+        service.modelID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func ensureDefaultService() {
+        guard !onlineServices.contains(where: { $0.id == OnlineService.defaultID }) else { return }
+        onlineServices.insert(
+            OnlineService(
+                id: OnlineService.defaultID,
+                name: "OpenAI",
+                baseURL: OpenAIServiceConfiguration.defaultBaseURL
+            ),
+            at: 0
+        )
+    }
+
+    private static func displayName(for baseURL: String) -> String {
+        URL(string: baseURL)?.host ?? "Online service"
+    }
 
     // MARK: Sampling
     public var temperature: Double { didSet { persist() } }
@@ -111,10 +212,27 @@ public final class AppSettings {
             loadedEngines = [.duckduckgo, .bing, .brave]
         }
         searchEngines = loadedEngines
-        openAIBaseURL = snap?.openAIBaseURL.flatMap(OpenAIServiceConfiguration.normalizedBaseURL)
-            ?? OpenAIServiceConfiguration.defaultBaseURL
-        openAIModelID = snap?.openAIModelID
-        openAIOnlineEnabled = snap?.openAIOnlineEnabled ?? false
+        if let services = snap?.onlineServices, !services.isEmpty {
+            onlineServices = services
+        } else if snap?.openAIBaseURL != nil || snap?.openAIModelID != nil
+                    || snap?.openAIOnlineEnabled == true
+        {
+            // Single-service era migration: keep the default id so the already-stored Keychain key
+            // (account "responses-api-key") keeps working without re-entry.
+            onlineServices = [
+                OnlineService(
+                    id: OnlineService.defaultID,
+                    name: "OpenAI",
+                    baseURL: snap?.openAIBaseURL
+                        .flatMap(OpenAIServiceConfiguration.normalizedBaseURL)
+                        ?? OpenAIServiceConfiguration.defaultBaseURL,
+                    modelID: snap?.openAIModelID,
+                    isEnabled: snap?.openAIOnlineEnabled ?? false
+                ),
+            ]
+        } else {
+            onlineServices = []
+        }
         temperature = snap?.temperature ?? 0.7
         topP = snap?.topP ?? 0.95
         topK = snap?.topK ?? 20
@@ -250,6 +368,7 @@ public final class AppSettings {
         var openAIBaseURL: String? = nil
         var openAIModelID: String? = nil
         var openAIOnlineEnabled: Bool? = nil
+        var onlineServices: [OnlineService]? = nil
         var temperature: Double
         var topP: Double
         var topK: Int
@@ -266,15 +385,17 @@ public final class AppSettings {
         // only a marker of which servers have one. The secrets live in the Keychain (A2.9).
         let scrubbed = mcpServers.map { server -> MCPServer in var s = server; s.token = nil; return s }
         let markers = Set(mcpServers.filter { $0.token?.isEmpty == false }.map(\.id))
+        let defaultService = onlineServices.first
         let snap = Snapshot(defaultModelID: defaultModelID, enginePreference: enginePreference,
                             systemPrompt: systemPrompt, systemPromptSeeded: true,
                             thinkingDefault: thinkingDefault, thinkingDisplay: thinkingDisplay,
                             toolsEnabled: toolsEnabled, dictationLocale: dictationLocale,
                             mcpServers: scrubbed, mcpTokenMarkers: markers,
                             disabledBuiltInTools: disabledBuiltInTools, searchEngines: searchEngines,
-                            openAIBaseURL: openAIBaseURL,
-                            openAIModelID: openAIModelID,
-                            openAIOnlineEnabled: openAIOnlineEnabled,
+                            openAIBaseURL: defaultService?.baseURL,
+                            openAIModelID: defaultService?.modelID,
+                            openAIOnlineEnabled: defaultService?.isEnabled ?? false,
+                            onlineServices: onlineServices,
                             temperature: temperature, topP: topP, topK: topK,
                             repetitionPenalty: repetitionPenalty, maxTokens: maxTokens,
                             contextLength: contextLength, kvBits: kvBits, appearance: appearance)

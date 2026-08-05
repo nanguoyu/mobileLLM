@@ -167,10 +167,11 @@ class DeviceE2ETestCase: XCTestCase {
         // injected through launchEnvironment so simulator and physical-device apps never need manual
         // entry. The DEBUG app seeds the key into its own Keychain.
         let openAI = loadOpenAITestConfig()
-        // Debug-only breadcrumb: confirms the runner read ~/.mobilellm/openai.json (flags + model only,
-        // never the key).
+        // Debug-only breadcrumb: confirms the runner read ~/.mobilellm/openai.json. Prints presence
+        // flags only — never the key, base URL, or model id.
         print("[DeviceE2E] openai runner config: key=\(openAI.apiKey?.isEmpty == false) "
-            + "baseURL=\(openAI.baseURL ?? "nil") model=\(openAI.model ?? "nil")")
+            + "baseURLSet=\(openAI.baseURL?.isEmpty == false) "
+            + "modelSet=\(openAI.model?.isEmpty == false)")
         if let key = openAI.apiKey, !key.isEmpty {
             app.launchEnvironment["MOBILELLM_OPENAI_API_KEY"] = key
         }

@@ -79,18 +79,27 @@ struct DeviceE2EDiagnosticsOverlay: View {
             "resident=\(container.models.engineResident)",
             "phase=\(phase)",
             "thermal=\(thermalState)",
-            "openaiModel=\(container.settings.openAIModelID ?? "none")",
+            "openaiService=\(container.settings.onlineServiceID ?? "none")",
+            "openaiModel=\(container.settings.onlineModelID ?? "none")",
             "openaiEnabled=\(container.settings.openAIOnlineEnabled)",
-            "openaiKey=\((try? container.openAICredentials.loadAPIKey()) == nil ? "missing" : "stored")",
-            "openaiBaseURL=\(container.settings.openAIBaseURL)",
+            "openaiKey=\(openAIKeyStored ? "stored" : "missing")",
+            "openaiBaseURL=\(container.settings.onlineActiveService?.baseURL ?? container.settings.openAIBaseURL)",
             "openaiKeyFingerprint=\(openAIKeyFingerprint)",
         ].joined(separator: ";")
+    }
+
+    private var openAIKeyStored: Bool {
+        let serviceID = container.settings.onlineServiceID ?? OnlineService.defaultID
+        return (try? container.openAICredentials.loadAPIKey(serviceID: serviceID)) != nil
     }
 
     /// First 16 hex chars of SHA-256 over the stored key — enough to compare the phone's Keychain
     /// against the Mac's ~/.mobilellm/openai.json without ever exposing the secret.
     private var openAIKeyFingerprint: String {
-        guard let key = try? container.openAICredentials.loadAPIKey() else { return "none" }
+        let serviceID = container.settings.onlineServiceID ?? OnlineService.defaultID
+        guard let key = try? container.openAICredentials.loadAPIKey(serviceID: serviceID) else {
+            return "none"
+        }
         let digest = SHA256.hash(data: Data(key.utf8))
         return digest.map { String(format: "%02x", $0) }.joined().prefix(16).description
     }

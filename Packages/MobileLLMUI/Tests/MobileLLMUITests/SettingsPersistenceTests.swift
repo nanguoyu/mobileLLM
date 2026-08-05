@@ -105,6 +105,43 @@ final class SettingsPersistenceTests: XCTestCase {
         XCTAssertEqual(reloaded.openAIBaseURL, "https://gateway.example.com/v1")
     }
 
+    /// Multiple services persist as a list, at most one is active, and enabling one deactivates the
+    /// others — the single-active invariant survives a save/reload.
+    func testMultipleOnlineServicesPersistWithSingleActive() {
+        let settings = AppSettings(defaults: defaults)
+        settings.upsertOnlineService(OnlineService(
+            id: "svc-gateway",
+            name: "Gateway",
+            baseURL: "https://gateway.example.com/v1",
+            modelID: "gateway-model"
+        ))
+        settings.upsertOnlineService(OnlineService(
+            id: "svc-openai",
+            name: "OpenAI",
+            baseURL: "https://api.openai.com/v1",
+            modelID: "gpt-4o-mini",
+            isEnabled: true
+        ))
+
+        let reloaded = AppSettings(defaults: defaults)
+        XCTAssertEqual(reloaded.onlineServices.count, 2)
+        XCTAssertEqual(reloaded.onlineActiveService?.id, "svc-openai")
+        XCTAssertEqual(reloaded.onlineModelID, "gpt-4o-mini")
+
+        reloaded.setOnlineServiceEnabled(id: "svc-gateway", enabled: true)
+        XCTAssertEqual(reloaded.onlineActiveService?.id, "svc-gateway")
+        XCTAssertEqual(reloaded.onlineModelID, "gateway-model")
+        XCTAssertEqual(
+            reloaded.onlineServices.first { $0.id == "svc-openai" }?.isEnabled,
+            false,
+            "enabling one service must deactivate the other"
+        )
+
+        reloaded.removeOnlineService(id: "svc-gateway")
+        XCTAssertEqual(reloaded.onlineServices.count, 1)
+        XCTAssertEqual(reloaded.onlineServices.first?.id, "svc-openai")
+    }
+
     /// A pre-D2 snapshot (no tool fields at all) decodes to the defaults: the privacy-sensitive tools off,
     /// both engines on — so an upgraded install behaves exactly like a fresh one, and the surrounding
     /// settings are untouched (all-or-nothing decode).

@@ -24,16 +24,18 @@ final class OnlineModelSelectionTests: XCTestCase {
 
     func testOnlineIdentityRoundTrips() {
         XCTAssertEqual(
-            OnlineModelIdentity.conversationModelID("gateway-model"),
-            "online.responses:gateway-model"
+            OnlineModelIdentity.conversationModelID("svc-1", model: "gateway-model"),
+            "online.responses:svc-1:gateway-model"
         )
         XCTAssertEqual(
-            OnlineModelIdentity.serviceModel(fromConversationModelID: "online.responses:gateway-model"),
-            "gateway-model"
+            OnlineModelIdentity.serviceParts(
+                fromConversationModelID: "online.responses:svc-1:gateway-model"
+            )?.serviceID,
+            "svc-1"
         )
-        XCTAssertNil(OnlineModelIdentity.serviceModel(fromConversationModelID: "bonsai-8b"))
-        XCTAssertNil(OnlineModelIdentity.serviceModel(fromConversationModelID: "online.responses:"))
-        XCTAssertEqual(OnlineModelIdentity.displayLabel("gateway-model"), "Online · gateway-model")
+        XCTAssertNil(OnlineModelIdentity.serviceParts(fromConversationModelID: "bonsai-8b"))
+        XCTAssertNil(OnlineModelIdentity.serviceParts(fromConversationModelID: "online.responses:svc-1:"))
+        XCTAssertEqual(OnlineModelIdentity.displayLabel("Gateway"), "Online · Gateway")
     }
 
     func testOnlineSelectionMakesChatSendableWithoutAnyLocalModel() {
@@ -48,12 +50,12 @@ final class OnlineModelSelectionTests: XCTestCase {
 
         XCTAssertTrue(chat.isOnlineActive)
         XCTAssertTrue(chat.hasModel)
-        XCTAssertEqual(chat.activeModelLabel, "Online · gateway-model")
+        XCTAssertEqual(chat.activeModelLabel, "Online · OpenAI")
         chat.draft = "hello"
         XCTAssertTrue(chat.canSend)
 
         let convo = chat.newConversation()
-        XCTAssertEqual(convo?.modelID, "online.responses:gateway-model")
+        XCTAssertEqual(convo?.modelID, "online.responses:responses-api-key:gateway-model")
         XCTAssertEqual(convo?.variantID, OnlineModelIdentity.variantID)
     }
 
@@ -86,7 +88,7 @@ final class OnlineModelSelectionTests: XCTestCase {
             activeModel: nil
         )
         let convo = chat.newConversation()
-        XCTAssertEqual(convo?.modelID, "online.responses:gateway-model")
+        XCTAssertEqual(convo?.modelID, "online.responses:responses-api-key:gateway-model")
 
         // User turned the online service off and opened a local thread; reopening the online thread
         // must bring the same service model back without loading any weights.
@@ -116,5 +118,40 @@ final class OnlineModelSelectionTests: XCTestCase {
         XCTAssertEqual(chat.draft, "what is this?", "the draft must survive an online vision rejection")
         XCTAssertEqual(chat.pendingImages.count, 1, "staged images must survive the rejection")
         XCTAssertNotNil(chat.banner, "the rejection must surface a toast")
+    }
+
+    /// With multiple services, the ACTIVE one (not the first) decides what a send uses.
+    func testActiveServiceSwitchingChangesOnlineModelID() {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "online-multi-\(UUID().uuidString)")!)
+        settings.upsertOnlineService(OnlineService(
+            id: "svc-a",
+            name: "A",
+            baseURL: "https://api.a.example",
+            modelID: "model-a"
+        ))
+        settings.upsertOnlineService(OnlineService(
+            id: "svc-b",
+            name: "B",
+            baseURL: "https://api.b.example",
+            modelID: "model-b",
+            isEnabled: true
+        ))
+        let chat = ChatStore(
+            engine: MockLLMEngine(script: .init()),
+            store: store,
+            settings: settings,
+            activeModel: nil
+        )
+
+        XCTAssertEqual(chat.onlineServiceID, "svc-b")
+        XCTAssertEqual(chat.onlineModelID, "model-b")
+        XCTAssertEqual(chat.activeModelLabel, "Online · B")
+
+        settings.setOnlineServiceEnabled(id: "svc-a", enabled: true)
+        XCTAssertEqual(chat.onlineServiceID, "svc-a")
+        XCTAssertEqual(chat.onlineModelID, "model-a")
+        XCTAssertEqual(chat.activeModelLabel, "Online · A")
     }
 }

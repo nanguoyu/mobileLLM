@@ -12,19 +12,25 @@ public enum OnlineModelIdentity {
     public static let providerID = "openai.responses"
     /// Stable variant id pinned for every online selection (the service model id is the real identity).
     public static let variantID = "responses.default"
-    /// Conversation-level model-id prefix; the service model id follows the colon.
+    /// Conversation-level model-id prefix; service id and model follow the colons.
     public static let conversationModelIDPrefix = "online.responses:"
 
-    /// The durable conversation model id for one service model.
-    public static func conversationModelID(_ serviceModel: String) -> String {
-        conversationModelIDPrefix + serviceModel
+    /// The durable conversation model id for one service + model pair.
+    public static func conversationModelID(_ serviceID: String, model: String) -> String {
+        "\(conversationModelIDPrefix)\(serviceID):\(model)"
     }
 
-    /// The service model id when a conversation model id is an online selection, else nil.
-    public static func serviceModel(fromConversationModelID modelID: String) -> String? {
+    /// Splits an online conversation identity into (serviceID, model); nil for non-online ids.
+    public static func serviceParts(fromConversationModelID modelID: String)
+        -> (serviceID: String, model: String)?
+    {
         guard modelID.hasPrefix(conversationModelIDPrefix) else { return nil }
-        let value = String(modelID.dropFirst(conversationModelIDPrefix.count))
-        return value.isEmpty ? nil : value
+        let tail = String(modelID.dropFirst(conversationModelIDPrefix.count))
+        guard let colon = tail.firstIndex(of: ":") else { return nil }
+        let serviceID = String(tail[..<colon])
+        let model = String(tail[tail.index(after: colon)...])
+        guard !serviceID.isEmpty, !model.isEmpty else { return nil }
+        return (serviceID, model)
     }
 
     /// Human-facing label shown in the header, switcher, and stats footer.

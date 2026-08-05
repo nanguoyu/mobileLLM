@@ -18,7 +18,6 @@ struct SettingsView: View {
     @State private var showSkills = false
     @State private var showMemory = false
     @State private var showOpenAI = false
-    @State private var openAIKeyStored = false
 
     init(container: AppContainer) {
         self.container = container
@@ -42,7 +41,6 @@ struct SettingsView: View {
         .scrollDismissesKeyboard(.interactively)   // drag to dismiss the system-prompt keyboard
         .background(Theme.bg)
         .task { storageBytes = await container.conversationStore.storageBytes() }
-        .task { openAIKeyStored = (try? container.openAICredentials.loadAPIKey()) != nil }
         .alert("Delete all chats?", isPresented: $confirmDeleteChats) {
             Button("Delete all chats", role: .destructive) { deleteAllChats() }
             Button("Cancel", role: .cancel) {}
@@ -97,7 +95,7 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showOpenAI) {
             NavigationStack {
-                OpenAIServiceSheet(settings: settings, store: container.openAICredentials)
+                OnlineServicesView(settings: settings, store: container.openAICredentials)
             }
             #if os(macOS)
             .frame(minWidth: 520, minHeight: 440)
@@ -226,7 +224,7 @@ struct SettingsView: View {
                     Image(systemName: "key.horizontal")
                         .font(.subheadline).foregroundStyle(Theme.accent).frame(width: 22)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("OpenAI service").font(.subheadline).foregroundStyle(Theme.textPrimary)
+                        Text("Online services").font(.subheadline).foregroundStyle(Theme.textPrimary)
                         Text(onlineSummary)
                             .font(.caption).foregroundStyle(Theme.textTertiary)
                     }
@@ -236,21 +234,22 @@ struct SettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("OpenAI service")
-            .accessibilityValue(openAIKeyStored ? "Key stored" : "Not set")
-            Text("Online model support uses the Responses API. The key lives in the device Keychain "
-                 + "only — never synced, backed up, or committed. Enable it inside the service sheet.")
+            .accessibilityLabel("Online services")
+            .accessibilityValue("\(settings.onlineServices.count) services")
+            Text("Add one or more OpenAI-compatible services. Each key lives in the device Keychain "
+                 + "only — never synced, backed up, or committed. Sends use the active service.")
                 .font(.caption).foregroundStyle(Theme.textTertiary)
         }
     }
 
     private var onlineSummary: String {
-        let key = openAIKeyStored ? "Key stored" : "No key"
-        if settings.openAIOnlineEnabled {
-            let model = settings.openAIModelID ?? "service default"
-            return "On · \(model) · \(settings.openAIBaseURL)"
+        if let service = settings.onlineActiveService {
+            return "\(settings.onlineServices.count) service\(settings.onlineServices.count == 1 ? "" : "s") · On · \(service.name)"
         }
-        return "Off · \(key) · \(settings.openAIBaseURL)"
+        if settings.onlineServices.isEmpty {
+            return "No services configured"
+        }
+        return "\(settings.onlineServices.count) service\(settings.onlineServices.count == 1 ? "" : "s") · Off"
     }
 
     // MARK: Choose tools

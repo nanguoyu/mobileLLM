@@ -24,29 +24,32 @@ struct ModelSwitcherSheet: View {
         return all.filter { $0.1.id == activeID } + all.filter { $0.1.id != activeID }
     }
 
-    /// The configured online service model id, when the key is present and a model id is set. The
-    /// online selection is first-class: it needs no installed weights, so it must appear even on a
-    /// device with zero local models.
-    private var onlineServiceModel: String? {
-        guard let model = container.settings.openAIModelID,
-              !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              (try? container.openAICredentials.loadAPIKey()) != nil
-        else { return nil }
-        return model.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Configured online services that are ready to send: a model id is set and the service's Keychain
+    /// key is present. The online selection is first-class: it needs no installed weights, so it must
+    /// appear even on a device with zero local models.
+    private var onlineServices: [OnlineService] {
+        container.settings.onlineServices.filter { service in
+            service.modelID.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+                && (try? container.openAICredentials.loadAPIKey(serviceID: service.id)) != nil
+        }
     }
 
     var body: some View {
         NavigationStack {
             Group {
-                if onlineServiceModel == nil && installed.isEmpty {
+                if onlineServices.isEmpty && installed.isEmpty {
                     ChatPlaceholder(icon: "square.and.arrow.down",
                                     title: "No models installed",
                                     message: "Download a model to start chatting on-device.",
                                     actionTitle: "Open Models", action: { dismiss(); onOpenModels() })
                 } else {
                     List {
-                        if let serviceModel = onlineServiceModel {
-                            Section("Online") { onlineRow(serviceModel) }
+                        if !onlineServices.isEmpty {
+                            Section("Online") {
+                                ForEach(onlineServices) { service in
+                                    onlineRow(service)
+                                }
+                            }
                         }
                         if !installed.isEmpty {
                             Section("On-device") {
@@ -85,17 +88,17 @@ struct ModelSwitcherSheet: View {
         }
     }
 
-    private func onlineRow(_ serviceModel: String) -> some View {
-        let isActive = container.settings.openAIOnlineEnabled
+    private func onlineRow(_ service: OnlineService) -> some View {
+        let isActive = container.settings.onlineActiveService?.id == service.id
         return Button {
-            container.settings.openAIOnlineEnabled = true
+            container.settings.setOnlineServiceEnabled(id: service.id, enabled: true)
             dismiss()
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(OnlineModelIdentity.displayLabel(serviceModel))
+                    Text(OnlineModelIdentity.displayLabel(service.name))
                         .font(.subheadline.weight(.medium)).foregroundStyle(Theme.textPrimary)
-                    Text("Responses API · data egress · no local weights")
+                    Text("\(service.modelID ?? "") · \(service.baseURL)")
                         .font(.caption).foregroundStyle(Theme.textSecondary)
                 }
                 Spacer()
@@ -107,7 +110,7 @@ struct ModelSwitcherSheet: View {
         }
         .buttonStyle(.plain)
         .listRowBackground(isActive ? Theme.accentSoft : Color.clear)
-        .accessibilityLabel(OnlineModelIdentity.displayLabel(serviceModel))
+        .accessibilityLabel(OnlineModelIdentity.displayLabel(service.name))
         .accessibilityValue(isActive ? "Active" : "")
         .accessibilityAddTraits(isActive ? [.isSelected] : [])
     }

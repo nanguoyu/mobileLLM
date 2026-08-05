@@ -205,7 +205,7 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         let fixture = try ModelFixture(
             location: .remote,
             providerID: ResponsesAPIModelProvider.providerID,
-            remoteDestination: "openai.responses:fixture-model"
+            remoteDestination: "openai.responses:responses-api-key:fixture-model"
         )
         let cloudPolicy = try AgentModelPolicy(
             localOnly: false,
@@ -274,7 +274,7 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         )
     }
 
-    func testGenerateFailsClosedWhenConfigurationMissing() async throws {
+    func testPrepareFailsClosedWhenConfigurationMissing() async throws {
         let session = URLSession(configuration: .ephemeral)
         let provider = try ResponsesAPIModelProvider(
             configurationProvider: { nil },
@@ -283,7 +283,7 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         let fixture = try ModelFixture(
             location: .remote,
             providerID: ResponsesAPIModelProvider.providerID,
-            remoteDestination: "openai.responses:fixture-model"
+            remoteDestination: "openai.responses:responses-api-key:fixture-model"
         )
         let cloudPolicy = try AgentModelPolicy(
             localOnly: false,
@@ -300,42 +300,17 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
             maximumResponseBytes: fixture.context.maximumResponseBytes,
             timeoutMilliseconds: fixture.context.timeoutMilliseconds
         )
-        let prepared = try await AgentModelRequestPreparer().prepare(
-            provider: provider,
-            request: fixture.request,
-            context: cloudContext
-        )
-        let policy = TestApprovalPolicyEngine()
-        let authorization = try await policy.bindLocalPolicy(
-            prepared: prepared.preparedRequest.externalOperation,
-            approvalID: ApprovalID(rawValue: ModelFixture.uuid(6)),
-            trustedRunAuthority: fixture.authority,
-            at: AgentTimestamp(rawValue: 1_000)
-        )
-        let authorizedRequest = try AuthorizedModelRequest(
-            request: fixture.request,
-            authorization: authorization,
-            clock: FixedAuthorizationClock(),
-            policyValidator: policy,
-            attemptLedger: TestAttemptLedger()
-        )
-        let authorized = AuthorizedAgentModelAttempt(
-            preparedAttempt: prepared,
-            request: authorizedRequest
-        )
-        let sink = RecordingModelEventSink()
-
-        let result = try await AgentModelExecutor().execute(
-            provider: provider,
-            authorized: authorized,
-            eventSink: sink
-        )
-
-        guard case .failed(let failure) = result.outcome else {
-            return XCTFail("expected typed failure, got \(result.outcome)")
+        do {
+            _ = try await AgentModelRequestPreparer().prepare(
+                provider: provider,
+                request: fixture.request,
+                context: cloudContext
+            )
+            XCTFail("prepare must fail closed without a configured service")
+        } catch let failure as AgentModelProviderFailure {
+            XCTAssertEqual(failure.failure.code, "model.online.configuration-missing")
+            XCTAssertEqual(failure.failure.externalEffect, .confirmedNone)
         }
-        XCTAssertEqual(failure.code, "model.online.configuration-missing")
-        XCTAssertEqual(failure.externalEffect, .confirmedNone)
     }
 
     func testGenerateRejectsNonHTTPSBaseURL() async throws {
@@ -349,7 +324,7 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         let fixture = try ModelFixture(
             location: .remote,
             providerID: ResponsesAPIModelProvider.providerID,
-            remoteDestination: "openai.responses:fixture-model"
+            remoteDestination: "openai.responses:responses-api-key:fixture-model"
         )
         let cloudPolicy = try AgentModelPolicy(
             localOnly: false,

@@ -16,6 +16,21 @@ final class OpenAICredentialsTests: XCTestCase {
         XCTAssertNil(try store.loadAPIKey())
     }
 
+    /// Keys are scoped per service: saving one service's key must never leak into another's account.
+    func testPerServiceKeysAreIsolated() throws {
+        let store = EphemeralOpenAICredentialStore()
+        try store.saveAPIKey("sk-service-a", serviceID: "svc-a")
+        try store.saveAPIKey("sk-service-b", serviceID: "svc-b")
+
+        XCTAssertEqual(try store.loadAPIKey(serviceID: "svc-a"), "sk-service-a")
+        XCTAssertEqual(try store.loadAPIKey(serviceID: "svc-b"), "sk-service-b")
+        XCTAssertNil(try store.loadAPIKey(serviceID: "svc-c"))
+
+        try store.deleteAPIKey(serviceID: "svc-a")
+        XCTAssertNil(try store.loadAPIKey(serviceID: "svc-a"))
+        XCTAssertEqual(try store.loadAPIKey(serviceID: "svc-b"), "sk-service-b")
+    }
+
     func testEnvironmentSeedingOnlyWhenKeyPresent() throws {
         let store = EphemeralOpenAICredentialStore()
         OpenAIKeyEnvironment.seedIfPresent(store: store, environment: [:])

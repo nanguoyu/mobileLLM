@@ -6,10 +6,20 @@ import Foundation
 /// One OpenAI-compatible service configuration, injected by the app at assembly time. The API key
 /// lives in the device Keychain; the app reads it once and hands it here.
 public struct ResponsesAPIConfiguration: Sendable, Equatable {
+    /// Stable service identity distinguishing multiple online services in approval destinations.
+    /// Kept in lockstep with the app's `OnlineService.id`; "responses-api-key" is the migrated default.
+    public let serviceID: String
     public let baseURL: String
     public let apiKey: String
 
-    public init(baseURL: String, apiKey: String) {
+    public static let defaultServiceID = "responses-api-key"
+
+    public init(
+        serviceID: String = ResponsesAPIConfiguration.defaultServiceID,
+        baseURL: String,
+        apiKey: String
+    ) {
+        self.serviceID = serviceID
         self.baseURL = baseURL
         self.apiKey = apiKey
     }
@@ -75,13 +85,16 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         _ request: AgentModelRequest,
         context: ModelPreparationContext
     ) async throws -> PreparedModelRequest {
+        guard let configuration = configurationProvider() else {
+            throw AgentModelProviderFailure(try Self.configurationMissingFailure())
+        }
         let modelName = request.selection.modelID.rawValue
         let plan = try ExternalOperationPlan(
             kind: .modelProvider,
             subjectID: descriptor.id.rawValue,
             destination: try ExternalDestination(
                 kind: .modelProvider,
-                normalizedIdentity: "\(Self.providerID):\(modelName)"
+                normalizedIdentity: "\(Self.providerID):\(configuration.serviceID):\(modelName)"
             ),
             dataCategories: [try AgentDataCategory(rawValue: "model.inference")],
             payloadDigest: context.authorizationPayload.fingerprint,
@@ -372,7 +385,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         let message: String
         if status == 401 || status == 403 {
             message = "The online model service rejected the API key (HTTP \(status)). "
-                + "Open Settings → Online models → OpenAI service and re-save the key."
+                + "Check the API key AND the service's base URL in Settings → Online models, "
+                + "then re-save."
         } else {
             message = "The online model service returned HTTP \(status)."
         }

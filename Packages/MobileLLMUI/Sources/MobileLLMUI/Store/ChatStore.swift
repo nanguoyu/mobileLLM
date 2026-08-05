@@ -310,13 +310,10 @@ public final class ChatStore {
     /// The online service model when the user selected it AND a model id is configured. The API key is
     /// not checked here (Settings only enables the toggle once a key exists, and removing the key turns
     /// it off); a run that somehow reaches generation without a key fails closed in the provider.
-    public var onlineModelID: String? {
-        guard settings.openAIOnlineEnabled,
-              let model = settings.openAIModelID,
-              !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return nil }
-        return model.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
+    public var onlineModelID: String? { settings.onlineModelID }
+
+    /// Stable id of the active online service (Keychain account + approval destination scope).
+    public var onlineServiceID: String? { settings.onlineServiceID }
 
     /// Whether the next turn routes to the online provider. First-class model choice: it needs no local
     /// weights and no `activeModel`, so a device with zero installed models can still chat online.
@@ -331,18 +328,20 @@ public final class ChatStore {
 
     /// Header/switcher label for whatever will answer the next turn.
     public var activeModelLabel: String {
-        if let model = onlineModelID { return OnlineModelIdentity.displayLabel(model) }
+        if let service = settings.onlineActiveService {
+            return OnlineModelIdentity.displayLabel(service.name)
+        }
         return activeModel?.subtitle ?? "No model"
     }
 
     /// The durable generation identity for the current selection: online when active, else the local
     /// model. Also used to stamp conversations so a thread remembers its model across relaunch.
     private func currentGenerationModel() -> GenerationModel? {
-        if let model = onlineModelID {
+        if let service = settings.onlineActiveService {
             return GenerationModel(
-                modelID: OnlineModelIdentity.conversationModelID(model),
+                modelID: OnlineModelIdentity.conversationModelID(service.id, model: service.modelID ?? ""),
                 variantID: OnlineModelIdentity.variantID,
-                displayName: OnlineModelIdentity.displayLabel(model),
+                displayName: OnlineModelIdentity.displayLabel(service.name),
                 engine: .online
             )
         }
@@ -498,9 +497,27 @@ public final class ChatStore {
         guard streaming == nil, let convo = activeConversation, !convo.modelID.isEmpty else { return }
         // An online thread remembers the service model id; reopen it by arming the same selection.
         // No local weights are involved, so there is nothing to load or restore.
-        if let serviceModel = OnlineModelIdentity.serviceModel(fromConversationModelID: convo.modelID) {
-            settings.openAIOnlineEnabled = true
-            settings.openAIModelID = serviceModel
+        if let parts = OnlineModelIdentity.serviceParts(fromConversationModelID: convo.modelID) {
+            // Re-arm the exact service the thread used. If the service was deleted, recreate a minimal
+            // entry so the thread's model identity stays truthful and sends fail closed on the missing key.
+            if settings.onlineServices.contains(where: { $0.id == parts.serviceID }) {
+                let existing = settings.onlineServices.first { $0.id == parts.serviceID }!
+                settings.upsertOnlineService(OnlineService(
+                    id: existing.id,
+                    name: existing.name,
+                    baseURL: existing.baseURL,
+                    modelID: parts.model,
+                    isEnabled: true
+                ))
+            } else {
+                settings.upsertOnlineService(OnlineService(
+                    id: parts.serviceID,
+                    name: parts.serviceID,
+                    baseURL: settings.openAIBaseURL,
+                    modelID: parts.model,
+                    isEnabled: true
+                ))
+            }
             return
         }
         let modelDiffers = convo.modelID != activeModel?.model.id

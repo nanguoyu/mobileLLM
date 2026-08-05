@@ -406,10 +406,19 @@ private func makeAgentSnapshot(
     onlineConfigBox: OpenAIOnlineConfigurationBox
 ) -> AgentRunRequestSnapshot? {
     // Keep the provider's config box in step with Settings before the snapshot freezes the selection.
-    onlineConfigBox.update(
-        baseURL: container.settings.openAIBaseURL,
-        modelID: container.settings.openAIModelID
-    )
+    if let service = container.settings.onlineActiveService {
+        onlineConfigBox.update(
+            serviceID: service.id,
+            baseURL: service.baseURL,
+            modelID: service.modelID
+        )
+    } else {
+        onlineConfigBox.update(
+            serviceID: OnlineService.defaultID,
+            baseURL: container.settings.openAIBaseURL,
+            modelID: nil
+        )
+    }
     let onlineModelID = container.chat.onlineModelID
     // Online runs need no local weights, so a device with zero installed models can still send. The
     // fallback identity only feeds context-policy bookkeeping; the run selection is the online provider
@@ -470,7 +479,8 @@ private func makeAgentSnapshot(
             : [],
         toolPolicy: container.chat.activeConversation?.toolPolicy,
         onlineModelEnabled: container.settings.openAIOnlineEnabled,
-        onlineModelID: onlineModelID
+        onlineModelID: onlineModelID,
+        onlineServiceID: container.chat.onlineServiceID
     )
 }
 

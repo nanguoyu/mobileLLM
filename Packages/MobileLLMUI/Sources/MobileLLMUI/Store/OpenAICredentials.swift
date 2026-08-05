@@ -7,9 +7,26 @@ import AppRuntime
 /// off-backup, never in UserDefaults or the repo); tests and the debug launcher can seed it through a
 /// launch-environment variable, which is never committed.
 public protocol OpenAICredentialStoring: Sendable {
-    func saveAPIKey(_ key: String) throws
-    func loadAPIKey() throws -> String?
-    func deleteAPIKey() throws
+    /// Stores one service's key. `serviceID` is the OnlineService identity (also the Keychain account).
+    func saveAPIKey(_ key: String, serviceID: String) throws
+    func loadAPIKey(serviceID: String) throws -> String?
+    func deleteAPIKey(serviceID: String) throws
+}
+
+/// Convenience for the legacy single-service surface (the Mac-local config / test env seeding and the
+/// default service). Defaults to `OnlineService.defaultID`.
+public extension OpenAICredentialStoring {
+    func saveAPIKey(_ key: String) throws {
+        try saveAPIKey(key, serviceID: OnlineService.defaultID)
+    }
+
+    func loadAPIKey() throws -> String? {
+        try loadAPIKey(serviceID: OnlineService.defaultID)
+    }
+
+    func deleteAPIKey() throws {
+        try deleteAPIKey(serviceID: OnlineService.defaultID)
+    }
 }
 
 /// Keychain-backed store, scoped to its own service so it never collides with MCP bearer tokens.
@@ -21,22 +38,21 @@ public struct KeychainOpenAICredentialStore: OpenAICredentialStoring, Sendable {
     }
 
     private let box: KeychainBox
-    private let account = "responses-api-key"
 
     public init(service: String = KeychainOpenAICredentialStore.defaultService()) {
         box = KeychainBox(service: service)
     }
 
-    public func saveAPIKey(_ key: String) throws {
-        try box.save(key, account: account)
+    public func saveAPIKey(_ key: String, serviceID: String) throws {
+        try box.save(key, account: serviceID)
     }
 
-    public func loadAPIKey() throws -> String? {
-        try box.readString(account: account)
+    public func loadAPIKey(serviceID: String) throws -> String? {
+        try box.readString(account: serviceID)
     }
 
-    public func deleteAPIKey() throws {
-        try box.delete(account: account)
+    public func deleteAPIKey(serviceID: String) throws {
+        try box.delete(account: serviceID)
     }
 }
 
@@ -44,20 +60,20 @@ public struct KeychainOpenAICredentialStore: OpenAICredentialStoring, Sendable {
 /// Keychain.
 public final class EphemeralOpenAICredentialStore: OpenAICredentialStoring, @unchecked Sendable {
     private let lock = NSLock()
-    private var key: String?
+    private var keys: [String: String] = [:]
 
     public init() {}
 
-    public func saveAPIKey(_ key: String) throws {
-        lock.withLock { self.key = key }
+    public func saveAPIKey(_ key: String, serviceID: String) throws {
+        lock.withLock { keys[serviceID] = key }
     }
 
-    public func loadAPIKey() throws -> String? {
-        lock.withLock { key }
+    public func loadAPIKey(serviceID: String) throws -> String? {
+        lock.withLock { keys[serviceID] }
     }
 
-    public func deleteAPIKey() throws {
-        lock.withLock { key = nil }
+    public func deleteAPIKey(serviceID: String) throws {
+        lock.withLock { keys[serviceID] = nil }
     }
 }
 

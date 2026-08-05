@@ -52,6 +52,8 @@ public struct AgentRunRequestSnapshot: Sendable {
     public let onlineModelEnabled: Bool
     /// Model identifier on the compatible service; nil keeps the run local even if the toggle is on.
     public let onlineModelID: String?
+    /// Stable id of the active online service (approval destination scope + Keychain account).
+    public let onlineServiceID: String?
 
     public init(
         conversationID: UUID,
@@ -81,7 +83,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         webSearchDestinations: [ExternalDestination],
         toolPolicy: ConversationToolPolicy?,
         onlineModelEnabled: Bool,
-        onlineModelID: String?
+        onlineModelID: String?,
+        onlineServiceID: String?
     ) {
         self.conversationID = conversationID
         self.userTurnID = userTurnID
@@ -111,6 +114,7 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.toolPolicy = toolPolicy
         self.onlineModelEnabled = onlineModelEnabled
         self.onlineModelID = onlineModelID
+        self.onlineServiceID = onlineServiceID
     }
 }
 
@@ -322,7 +326,9 @@ struct AppFrozenInputBuilder: Sendable {
             ])
             ceilingDestinations.append(try ExternalDestination(
                 kind: .modelProvider,
-                normalizedIdentity: "\(AppFrozenInputBuilder.onlineProviderID):\(modelID.trimmingCharacters(in: .whitespacesAndNewlines))"
+                normalizedIdentity: "\(AppFrozenInputBuilder.onlineProviderID):"
+                    + "\(snapshot.onlineServiceID ?? ResponsesAPIConfiguration.defaultServiceID):"
+                    + "\(modelID.trimmingCharacters(in: .whitespacesAndNewlines))"
             ))
             ceilingDataCategories.append(try AgentDataCategory(rawValue: "model.inference"))
         }
@@ -931,6 +937,7 @@ struct SQLiteJournalRecoveryLister: AgentRunRecoveryListing {
 /// so the secret is never retained by this box or frozen into a run.
 public final class OpenAIOnlineConfigurationBox: @unchecked Sendable {
     private let lock = NSLock()
+    private var serviceID: String = ResponsesAPIConfiguration.defaultServiceID
     private var baseURL: String
     private var modelID: String?
     private let credentials: any OpenAICredentialStoring
@@ -940,14 +947,16 @@ public final class OpenAIOnlineConfigurationBox: @unchecked Sendable {
         modelID: String?,
         credentials: any OpenAICredentialStoring
     ) {
+        self.serviceID = OnlineService.defaultID
         self.baseURL = baseURL
         self.modelID = modelID
         self.credentials = credentials
     }
 
     /// Refresh non-secret settings before a submission (called on the main actor).
-    public func update(baseURL: String, modelID: String?) {
+    public func update(serviceID: String, baseURL: String, modelID: String?) {
         lock.withLock {
+            self.serviceID = serviceID
             self.baseURL = baseURL
             self.modelID = modelID
         }
@@ -957,10 +966,14 @@ public final class OpenAIOnlineConfigurationBox: @unchecked Sendable {
     func configuration() -> ResponsesAPIConfiguration? {
         lock.withLock {
             guard let modelID, !modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  let key = try? credentials.loadAPIKey(),
+                  let key = try? credentials.loadAPIKey(serviceID: serviceID),
                   !key.isEmpty
             else { return nil }
-            return ResponsesAPIConfiguration(baseURL: baseURL, apiKey: key)
+            return ResponsesAPIConfiguration(
+                serviceID: serviceID,
+                baseURL: baseURL,
+                apiKey: key
+            )
         }
     }
 }
