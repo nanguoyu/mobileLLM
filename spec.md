@@ -728,6 +728,13 @@ must all produce it rather than implementing parallel approval formats.
 
 - External reads require approval on first use in a conversation for the exact tool and bounded destination/data
   scope. A receipt may authorize subsequent matching reads in that conversation.
+- Online-model inference is data egress (`externalCommunication`) scoped to one exact service destination
+  and data category. Approval on first use in a conversation authorizes subsequent matching model requests
+  in that conversation: same conversation, same provider/model destination, same data categories, and the
+  same service-side reasoning mode. The receipt never covers a different service, model, conversation, or a
+  different reasoning mode; message-content changes within the approved destination do not expand the scope.
+  All other `externalCommunication` operations (MCP writes, third-party communication) keep exact
+  per-invocation approval.
 - External writes require an exact invocation preview and approval by default.
 - Reversible writes may offer an explicit conversation-scoped grant.
 - Destructive, publication, financial, and third-party communication actions require exact approval every time.
