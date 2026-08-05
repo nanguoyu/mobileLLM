@@ -346,6 +346,12 @@ public enum ApprovalDecisionTables {
             }
         case .usableConversationRead where input.effectClass == .externalRead:
             return receipt("AH-APPROVAL-AUTHORITY-013", .boundedConversationRead, false)
+        case .usableConversationRead where input.effectClass == .strongExact:
+            // A conversation-scoped receipt for a strong-exact class can only be ONLINE-MODEL consent:
+            // receipt creation and decoding require the plan's destination to be a modelProvider, so
+            // reuse is bounded to that one service and the message-specific payload/fingerprint are
+            // intentionally not part of the match.
+            return receipt("AH-APPROVAL-AUTHORITY-022", .boundedConversationRead, false)
         default:
             break
         }

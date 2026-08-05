@@ -268,12 +268,15 @@ struct AgentRunPanel: View {
                 Button {
                     Task { await store.decideApproval(conversationID: conversationID, approvalID: approval.approvalID, approved: true) }
                 } label: {
-                    Text(approval.isExternalWrite ? "Approve once" : "Approve").frame(maxWidth: .infinity)
+                    Text(approval.isExternalWrite || approval.isConversationScoped
+                         ? "Approve once" : "Approve").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(StudioButtonStyle(.primary))
                 .accessibilityLabel("Approve \(approval.toolName)")
             }
-            Text("Approving authorizes only this exact prepared operation. Denying continues without it.")
+            Text(approval.isConversationScoped
+                 ? "Approving authorizes this model for the rest of this conversation. Denying continues without it."
+                 : "Approving authorizes only this exact prepared operation. Denying continues without it.")
                 .font(.caption2)
                 .foregroundStyle(Theme.textTertiary)
         }

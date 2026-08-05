@@ -309,6 +309,9 @@ public struct DefaultApprovalPolicyEngine: ApprovalPolicyEngine, Sendable {
         prepared: PreparedExternalOperationRequest
     ) -> ApprovalReceiptValidity {
         let plan = prepared.plan
+        // Online-model conversation consent deliberately ignores the message-specific payload/fingerprint:
+        // the user approved THIS conversation for THIS service, not one exact prompt.
+        let modelConsent = receipt.scope == .conversation && plan.isModelProviderConsent
         if receipt.scope == .exactInvocation {
             if receipt.requestID != prepared.requestID { return .requestMismatch }
             if receipt.invocationID != prepared.invocationID { return .invocationMismatch }
@@ -327,7 +330,7 @@ public struct DefaultApprovalPolicyEngine: ApprovalPolicyEngine, Sendable {
             return .authorityConstraintsMismatch
         }
         if receipt.effects != plan.effects { return .effectsMismatch }
-        if receipt.payloadDigest != plan.payloadDigest { return .payloadMismatch }
+        if !modelConsent, receipt.payloadDigest != plan.payloadDigest { return .payloadMismatch }
         if receipt.executionConstraintDigest != plan.executionConstraintDigest {
             return .executionConstraintsMismatch
         }
@@ -338,7 +341,9 @@ public struct DefaultApprovalPolicyEngine: ApprovalPolicyEngine, Sendable {
         if receipt.credentialReference != plan.credentialReference {
             return .credentialReferenceMismatch
         }
-        if receipt.planFingerprint != plan.fingerprint { return .planFingerprintMismatch }
+        if !modelConsent, receipt.planFingerprint != plan.fingerprint {
+            return .planFingerprintMismatch
+        }
         if receipt.scope == .exactInvocation {
             if receipt.preparedRequestFingerprint != prepared.fingerprint {
                 return .preparedRequestMismatch

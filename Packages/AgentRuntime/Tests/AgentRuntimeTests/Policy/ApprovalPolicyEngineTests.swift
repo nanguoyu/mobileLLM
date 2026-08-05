@@ -241,6 +241,96 @@ final class ApprovalPolicyEngineTests: XCTestCase {
         XCTAssertEqual(viaMode.authorization.decision, .requireApproval)
     }
 
+    /// Spec §15.2: a conversation-scoped ONLINE-MODEL receipt reuses across later messages in the same
+    /// conversation (same service destination/data scope, different prompt payload), never across a
+    /// different service or conversation.
+    func testConversationScopedModelReceiptReusesAcrossMessages() throws {
+        func modelFixture(
+            offset: Int,
+            conversationID: ConversationID? = nil,
+            identity: String,
+            suffix: String = ""
+        ) throws -> Fixture {
+            try Fixture(
+                effect: .externalCommunication,
+                runOffset: offset,
+                conversationID: conversationID,
+                planKind: .modelProvider,
+                destinationKind: .modelProvider,
+                destinationIdentity: identity,
+                payloadSuffix: suffix
+            )
+        }
+
+        let first = try modelFixture(offset: 0, identity: "openai.responses:svc-1:model-a")
+        let engine = try makeApprovalEngine()
+        let receipt = try ApprovalReceipt(
+            id: first.approvalID,
+            prepared: first.prepared,
+            decision: .approved,
+            scope: .conversation,
+            policyVersion: 1,
+            decidedAt: first.now,
+            expiresAt: AgentTimestamp(rawValue: first.now.rawValue + 10_000)
+        )
+        // The receipt must survive a durable round trip (conversation + externalCommunication is legal
+        // only for a modelProvider destination).
+        let decoded = try JSONDecoder().decode(
+            ApprovalReceipt.self,
+            from: JSONEncoder().encode(receipt)
+        )
+        XCTAssertEqual(decoded.scope, .conversation)
+
+        // Second message, different payload, same conversation + service: reuse without asking.
+        let second = try modelFixture(
+            offset: 100,
+            conversationID: first.conversationID,
+            identity: "openai.responses:svc-1:model-a",
+            suffix: "-second-message"
+        )
+        let reused = engine.evaluate(
+            prepared: second.prepared,
+            trustedRunAuthority: second.trustedAuthority,
+            interaction: .foregroundInteractive,
+            candidateReceipts: [decoded],
+            at: second.now,
+            approvalMode: .ask
+        )
+        XCTAssertEqual(reused.authorization.decision, .authorizeMatchingReceipt)
+        XCTAssertEqual(reused.matchingReceipt, decoded)
+
+        // A different service destination must not inherit the receipt.
+        let otherService = try modelFixture(
+            offset: 200,
+            conversationID: first.conversationID,
+            identity: "openai.responses:svc-2:model-b"
+        )
+        let otherServiceEvaluation = engine.evaluate(
+            prepared: otherService.prepared,
+            trustedRunAuthority: otherService.trustedAuthority,
+            interaction: .foregroundInteractive,
+            candidateReceipts: [decoded],
+            at: otherService.now,
+            approvalMode: .ask
+        )
+        XCTAssertEqual(otherServiceEvaluation.authorization.decision, .requireApproval)
+
+        // A different conversation must not inherit the receipt either.
+        let otherConversation = try modelFixture(
+            offset: 300,
+            identity: "openai.responses:svc-1:model-a"
+        )
+        let otherConversationEvaluation = engine.evaluate(
+            prepared: otherConversation.prepared,
+            trustedRunAuthority: otherConversation.trustedAuthority,
+            interaction: .foregroundInteractive,
+            candidateReceipts: [decoded],
+            at: otherConversation.now,
+            approvalMode: .ask
+        )
+        XCTAssertEqual(otherConversationEvaluation.authorization.decision, .requireApproval)
+    }
+
     func testExpiredWrongPolicyAndMissingTrustNeverAuthorize() throws {
         let fixture = try Fixture(effect: .networkRead)
         let engine = try makeApprovalEngine()
@@ -677,7 +767,8 @@ private struct Fixture {
         plan suppliedPlan: ExternalOperationPlan? = nil,
         planKind: ExternalOperationKind? = nil,
         destinationKind: ExternalDestination.Kind? = nil,
-        destinationIdentity: String? = nil
+        destinationIdentity: String? = nil,
+        payloadSuffix: String = ""
     ) throws {
         func id<Domain>(_ value: Int, as: Domain.Type) -> AgentIdentifier<Domain>
             where Domain: AgentIdentifierDomain
@@ -694,7 +785,7 @@ private struct Fixture {
         let requestID = id(4, as: AgentRequestIDDomain.self)
         let stepID = id(5, as: AgentStepIDDomain.self)
         let invocationID = id(6, as: ToolInvocationIDDomain.self)
-        let payloadValue = try CanonicalJSON(.object(["query": .string("example")]))
+        let payloadValue = try CanonicalJSON(.object(["query": .string("example\(payloadSuffix)")]))
         let redaction = try RedactionMetadata(classification: .sensitive, policyVersion: 1)
         let payload = try testSanitizationAttestor.attest(
             value: payloadValue,

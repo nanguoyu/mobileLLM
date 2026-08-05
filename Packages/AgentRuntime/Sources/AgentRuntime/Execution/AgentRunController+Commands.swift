@@ -921,7 +921,14 @@ extension AgentRunController {
         guard approval.request.acceptsDecision(at: now),
               approval.request.policyVersion == policyEngine.policyVersion
         else { return try rejected(command, history: history, code: "execution.approval-expired") }
-        let scope = approvedScope ?? .exactInvocation
+        let prepared = approval.request.prepared
+        let isModelApproval = prepared.plan.kind == .modelProvider
+        // Spec §15.2: approving the online model consents to THIS conversation using THIS service, so
+        // the receipt is conversation-scoped and reusable across subsequent messages; denials remain
+        // exact and terminal.
+        let scope: ApprovalScope = isModelApproval
+            ? (decision == .approved ? .conversation : .exactInvocation)
+            : (approvedScope ?? .exactInvocation)
         let receipt: ApprovalReceipt
         do {
             receipt = try ApprovalReceipt(
@@ -933,8 +940,6 @@ extension AgentRunController {
         } catch {
             return try rejected(command, history: history, code: "execution.approval-scope")
         }
-        let prepared = approval.request.prepared
-        let isModelApproval = prepared.plan.kind == .modelProvider
         // An approved MODEL request resumes the model path (the worker re-runs the exact prepared
         // attempt, now bound to the receipt); a tool approval resumes tool execution.
         let approvedNext: AgentRunState

@@ -370,7 +370,8 @@ public final class AgentRunStore {
                     preview: plan.userPreview.isEmpty ? plan.subjectID : plan.userPreview,
                     dataCategories: plan.dataCategories.map(\.rawValue),
                     effects: plan.effects.map(\.rawValue),
-                    isExternalWrite: plan.effects.contains(.externalWrite)
+                    isExternalWrite: plan.effects.contains(.externalWrite),
+                    isConversationScoped: plan.kind == .modelProvider
                 )
             )
             steps.append(step(

@@ -78,6 +78,9 @@ public struct AgentApprovalCard: Equatable, Sendable {
     public let dataCategories: [String]
     public let effects: [String]
     public let isExternalWrite: Bool
+    /// True when approving grants conversation-scoped consent (online-model inference): subsequent
+    /// matching requests in this conversation reuse the receipt without asking again.
+    public let isConversationScoped: Bool
 
     public init(
         approvalID: ApprovalID,
@@ -86,7 +89,8 @@ public struct AgentApprovalCard: Equatable, Sendable {
         preview: String,
         dataCategories: [String],
         effects: [String],
-        isExternalWrite: Bool
+        isExternalWrite: Bool,
+        isConversationScoped: Bool
     ) {
         self.approvalID = approvalID
         self.toolName = toolName
@@ -95,6 +99,7 @@ public struct AgentApprovalCard: Equatable, Sendable {
         self.dataCategories = dataCategories
         self.effects = effects
         self.isExternalWrite = isExternalWrite
+        self.isConversationScoped = isConversationScoped
     }
 }
 

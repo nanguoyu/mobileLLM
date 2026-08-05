@@ -35,10 +35,10 @@ final class ApprovalDecisionTableTests: XCTestCase {
             }
         }
         XCTAssertEqual(cells, ApprovalDecisionTables.authorizationCellCount)
-        XCTAssertEqual(winners.count, 21)
+        XCTAssertEqual(winners.count, 22)
         XCTAssertEqual(
             winners,
-            Set((1 ... 21).map { String(format: "AH-APPROVAL-AUTHORITY-%03d", $0) })
+            Set((1 ... 22).map { String(format: "AH-APPROVAL-AUTHORITY-%03d", $0) })
         )
     }
 

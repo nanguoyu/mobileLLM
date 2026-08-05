@@ -36,7 +36,8 @@ final class AgentRunStoreTests: XCTestCase {
                 preview: "preview",
                 dataCategories: [],
                 effects: [],
-                isExternalWrite: false
+                isExternalWrite: false,
+                isConversationScoped: false
             )
         )
         XCTAssertTrue(waitingApproval.needsPanel)

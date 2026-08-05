@@ -831,9 +831,16 @@ public struct ApprovalReceipt: Hashable, Codable, Sendable {
                 .init(codingPath: decoder.codingPath, debugDescription: "Approval expiry precedes decision")
             )
         }
+        let decodedDestination = try container.decodeIfPresent(
+            ExternalDestination.self,
+            forKey: .destination
+        )
         let safeReadEffects: Set<AgentEffect> = [.localRead, .privateDataRead, .networkRead]
+        let modelProviderConsent = Set(decodedEffects) == [.externalCommunication]
+            && decodedDestination?.kind == .modelProvider
         if decodedScope == .conversation,
-           !Set(decodedEffects).isSubset(of: safeReadEffects)
+           !Set(decodedEffects).isSubset(of: safeReadEffects),
+           !modelProviderConsent
         {
             throw DecodingError.dataCorrupted(
                 .init(codingPath: decoder.codingPath, debugDescription: "Unsafe conversation approval")
@@ -852,7 +859,7 @@ public struct ApprovalReceipt: Hashable, Codable, Sendable {
         expiresAt = decodedExpiresAt
         previewDigest = try container.decode(StableDigest.self, forKey: .previewDigest)
         argumentsDigest = try container.decodeIfPresent(StableDigest.self, forKey: .argumentsDigest)
-        destination = try container.decodeIfPresent(ExternalDestination.self, forKey: .destination)
+        destination = decodedDestination
         allowedRedirects = decodedRedirects
         allowedFallbacks = decodedFallbacks
         dataCategories = decodedCategories
@@ -1339,6 +1346,7 @@ public struct AuthorizedExternalOperationRequest: Hashable, Sendable {
         guard authorization.conversationID == prepared.conversationID else {
             throw AgentContractError.authorizationBindingMismatch("conversation identity")
         }
+        let modelConsent = authorization.scope == .conversation && plan.isModelProviderConsent
         switch authorization.scope {
         case .exactInvocation:
             guard authorization.runID == prepared.runID,
@@ -1357,8 +1365,11 @@ public struct AuthorizedExternalOperationRequest: Hashable, Sendable {
                 throw AgentContractError.authorizationBindingMismatch("unsafe conversation scope")
             }
         }
-        guard authorization.planFingerprint == plan.fingerprint else {
+        guard modelConsent || authorization.planFingerprint == plan.fingerprint else {
             throw AgentContractError.authorizationBindingMismatch("plan fingerprint")
+        }
+        guard modelConsent || authorization.payloadDigest == plan.payloadDigest else {
+            throw AgentContractError.authorizationBindingMismatch("prepared payload digest")
         }
         guard authorization.previewDigest == StableDigest.sha256(Data(plan.userPreview.utf8)),
               authorization.argumentsDigest == plan.canonicalArguments?.fingerprint,
@@ -1370,7 +1381,6 @@ public struct AuthorizedExternalOperationRequest: Hashable, Sendable {
               authorization.workspaceID == plan.workspaceID,
               authorization.authorityConstraints == plan.authorityConstraints,
               authorization.effects == plan.effects,
-              authorization.payloadDigest == plan.payloadDigest,
               authorization.executionConstraintDigest == plan.executionConstraintDigest,
               authorization.descriptorID == plan.descriptorID,
               authorization.schemaDigest == plan.schemaDigest,
@@ -1776,12 +1786,20 @@ public actor ExternalExecutionAuthorizationGate {
     }
 }
 
-private extension ExternalOperationPlan {
+public extension ExternalOperationPlan {
     var permitsConversationScopedApproval: Bool {
         let reusableReadEffects: Set<AgentEffect> = [.localRead, .privateDataRead, .networkRead]
-        return !effects.isEmpty
+        let readSafe = !effects.isEmpty
             && Set(effects).isSubset(of: reusableReadEffects)
             && idempotency == .pureRead
             && !effects.contains(.unknownExternal)
+        // Spec §15.2: online-model inference is conversation-scoped consent to ONE service destination.
+        return readSafe || isModelProviderConsent
+    }
+
+    public var isModelProviderConsent: Bool {
+        effects == [.externalCommunication]
+            && destination?.kind == .modelProvider
+            && idempotency == .nonIdempotent
     }
 }
