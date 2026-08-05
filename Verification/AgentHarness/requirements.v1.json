@@ -1959,7 +1959,7 @@
       "area": "performance",
       "title": "Latency and resource regressions are quantitatively gated",
       "statement": "Ordinary chat adds no model pass, median TTFO regresses at most 10%, p95 at most 15%, journal writes are not per-token, storage is bounded, and hard budgets remain effective.",
-      "status": "active",
+      "status": "planned",
       "riskTier": "P1",
       "specAnchors": [
         {
@@ -2018,7 +2018,7 @@
       "area": "tools",
       "title": "Every built-in tool has a Tool V2 adapter on the agent runtime",
       "statement": "Wikipedia, webpage reading, calendar, reminders and location cross the same prepare-authorize-execute boundary as the first five adapted tools; each executes through a Tool V2 adapter with exact destinations, data categories, effects, and system-permission seams, and none is silently advertised while unavailable.",
-      "status": "planned",
+      "status": "active",
       "riskTier": "P1",
       "specAnchors": [
         {
