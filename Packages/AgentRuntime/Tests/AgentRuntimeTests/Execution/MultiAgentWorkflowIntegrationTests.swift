@@ -516,16 +516,27 @@ final class MultiAgentWorkflowIntegrationTests: XCTestCase {
         XCTAssertEqual(summary.phases[0].status, .completed)
         XCTAssertEqual(summary.phases[0].childRunIDs.count, 2)
         XCTAssertEqual(summary.phases[0].stats.subagentCount, 2)
+        XCTAssertEqual(summary.phases[0].completedChildCount, 2)
         XCTAssertEqual(summary.phases[0].stats.inputTokens, 30)
         XCTAssertEqual(summary.phases[0].outputArtifactReferences.count, 2)
         XCTAssertEqual(summary.phases[1].status, .completed)
+        XCTAssertEqual(summary.phases[1].completedChildCount, 1)
         XCTAssertEqual(summary.aggregated.subagentCount, 3)
         XCTAssertEqual(summary.aggregated.toolInvocationCount, 3)
+        XCTAssertEqual(summary.completedPhaseCount, 2)
+        XCTAssertEqual(summary.totalPhaseCount, 2)
+        XCTAssertEqual(summary.finalAnswer, "combined")
         let handoff = try XCTUnwrap(summary.phases[0].handoff)
         XCTAssertEqual(handoff.upstreamArtifactReferences.count, 2)
         XCTAssertTrue(handoff.taskBrief.contains("Synthesize"))
         XCTAssertTrue(handoff.keyDecisions.contains("source A"))
         XCTAssertEqual(spawner.spawnedRequests.count, 3)
+        // Live progress: the store must have saved after each child, not only at phase boundaries.
+        let snapshots = await recording.savedSnapshots
+        XCTAssertTrue(snapshots.contains { $0.aggregated.subagentCount == 1
+            && $0.phases[0].completedChildCount == 1 })
+        XCTAssertTrue(snapshots.contains { $0.aggregated.subagentCount == 2
+            && $0.phases[0].completedChildCount == 2 })
     }
 
     func testWorkflowFailsWhenChildFails() async throws {
@@ -705,6 +716,120 @@ final class MultiAgentWorkflowIntegrationTests: XCTestCase {
         )
         XCTAssertEqual(final.status, .completed)
         XCTAssertEqual(final.aggregated.subagentCount, 2)
+    }
+
+    func testStructuredPlanDecodesAndSchemaValidates() throws {
+        let json: JSONValue = .object([
+            "goal": .string("Deploy Kimi K3 on iPhone 16 Pro"),
+            "phases": .array([
+                .object([
+                    "sequence": .integer(1),
+                    "title": .string("Explore"),
+                    "acceptanceCriteria": .string("Facts gathered"),
+                    "childInstructions": .array([
+                        .string("Search iPhone 16 Pro RAM"),
+                        .string("Search Kimi K3 quantizations"),
+                    ]),
+                ]),
+                .object([
+                    "sequence": .integer(2),
+                    "title": .string("Plan"),
+                    "acceptanceCriteria": .string("Plan written"),
+                    "childInstructions": .array([
+                        .string("Write the deployment plan"),
+                    ]),
+                ]),
+            ]),
+        ])
+        let plan = try WorkflowPlan.decode(from: json)
+        XCTAssertEqual(plan.phases.count, 2)
+        XCTAssertEqual(plan.phases[0].childInstructions.count, 2)
+        XCTAssertEqual(plan.phases[1].childInstructions.count, 1)
+
+        let data = try CanonicalJSON(json).data
+        let instance = try AgentWireDecoder.decode(
+            JSONValue.self,
+            from: data,
+            limits: .inlineValue
+        )
+        XCTAssertTrue(try WorkflowPlanSchema.document.validates(instance: instance))
+    }
+
+    func testFallbackQualityLoopAuditFeedsReviseAndDeliverFinalPlan() async throws {
+        let parent = makeWorkflowParent()
+        let plan = try WorkflowPlan.fallback(goal: "Deploy Kimi K3 on iPhone 16 Pro")
+        XCTAssertEqual(plan.phases.count, 6)
+        XCTAssertEqual(
+            plan.phases.map(\.title),
+            ["Explore", "Plan", "Audit", "Revise", "Verify", "Deliver"]
+        )
+
+        let spawner = FakeSubagentSpawner(results: [
+            .completed(answer: try AgentAnswer(text: "facts gathered"),
+                       usage: usage(input: 1, output: 1, tools: 1, active: 1)),
+            .completed(answer: try AgentAnswer(text: "plan draft"),
+                       usage: usage(input: 1, output: 1, tools: 0, active: 1)),
+            .completed(answer: try AgentAnswer(text: "finding: memory risk"),
+                       usage: usage(input: 1, output: 1, tools: 1, active: 1)),
+            .completed(answer: try AgentAnswer(text: "finding: approval risk"),
+                       usage: usage(input: 1, output: 1, tools: 1, active: 1)),
+            .completed(answer: try AgentAnswer(text: "revised plan addressing findings"),
+                       usage: usage(input: 1, output: 1, tools: 0, active: 1)),
+            .completed(answer: try AgentAnswer(text: "verification passed"),
+                       usage: usage(input: 1, output: 1, tools: 0, active: 1)),
+            .completed(answer: try AgentAnswer(text: "FINAL DELIVERED PLAN"),
+                       usage: usage(input: 1, output: 1, tools: 1, active: 1)),
+        ])
+        let recording = InMemoryWorkflowRecording()
+        let orchestrator = WorkflowOrchestrator(spawner: spawner, recording: recording)
+
+        let summary = try await orchestrator.start(
+            workflowID: UUID(),
+            title: "Kimi K3 study",
+            plan: plan,
+            conversationID: UUID(),
+            parent: parent,
+            ceilingAttenuator: { ceiling, _, _ in
+                try ceiling.attenuating(
+                    to: AgentAuthorityScope(
+                        capabilities: AgentCapabilitySet([.networkRead])
+                    ),
+                    requireStrict: true
+                )
+            },
+            budgetAttenuator: { budget, _, _ in
+                try budget.attenuating(
+                    to: try AgentBudget(
+                        limits: BudgetQuantities(
+                            Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map {
+                                ($0, $0 == .toolInvocations ? 2 : budget.limits[$0])
+                            })
+                        ),
+                        maximumThermalState: budget.maximumThermalState,
+                        memoryPressureResponse: budget.memoryPressureResponse
+                    ),
+                    requireStrict: true
+                )
+            }
+        )
+
+        XCTAssertEqual(summary.status, .completed)
+        XCTAssertEqual(summary.phases.count, 6)
+        XCTAssertTrue(summary.phases.allSatisfy { $0.status == .completed })
+        XCTAssertEqual(summary.aggregated.subagentCount, 7)
+        XCTAssertEqual(summary.aggregated.toolInvocationCount, 4)
+        // The final answer is the DELIVER phase output, not the audit's findings.
+        XCTAssertEqual(summary.finalAnswer, "FINAL DELIVERED PLAN")
+        XCTAssertEqual(summary.completedPhaseCount, 6)
+        XCTAssertEqual(summary.completedSubagentCount, 7)
+        XCTAssertEqual(summary.totalSubagentCount, 7)
+
+        // The Revise child (index 4 of spawned requests) received BOTH audit findings via the
+        // upstream handoff — the harness actually fixes the plan after auditing it.
+        XCTAssertEqual(spawner.spawnedRequests.count, 7)
+        let reviseRequest = spawner.spawnedRequests[4]
+        XCTAssertTrue(reviseRequest.instruction.contains("finding: memory risk"))
+        XCTAssertTrue(reviseRequest.instruction.contains("finding: approval risk"))
     }
 
     // MARK: - Fixtures
@@ -1027,6 +1152,7 @@ final class FakeSubagentSpawner: SubagentSpawning, @unchecked Sendable {
 actor InMemoryWorkflowRecording: WorkflowRecording {
     private var summaries: [UUID: WorkflowSummary] = [:]
     private(set) var lastSaved: WorkflowSummary?
+    private(set) var savedSnapshots: [WorkflowSummary] = []
 
     func load(workflowID: UUID) async throws -> WorkflowSummary? {
         summaries[workflowID]
@@ -1035,5 +1161,6 @@ actor InMemoryWorkflowRecording: WorkflowRecording {
     func save(_ summary: WorkflowSummary) async throws {
         summaries[summary.id] = summary
         lastSaved = summary
+        savedSnapshots.append(summary)
     }
 }

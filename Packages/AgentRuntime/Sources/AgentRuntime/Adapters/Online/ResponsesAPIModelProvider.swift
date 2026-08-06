@@ -415,10 +415,13 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         let calls = Self.deduplicatedCalls(parsed.calls)
         let action: AgentAction
         if calls.isEmpty {
-            guard !parsed.text.isEmpty else {
+            let finalText = Self.isStructured(request)
+                ? Self.structuredJSONText(parsed.text)
+                : parsed.text
+            guard !finalText.isEmpty else {
                 throw AgentModelProviderFailure(try Self.emptyFailure())
             }
-            action = .finalAnswer(try AgentAnswer(text: parsed.text))
+            action = .finalAnswer(try AgentAnswer(text: finalText))
         } else {
             let normalized = try calls.enumerated().map { index, call in
                 try Self.normalize(
@@ -520,10 +523,26 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                     callArguments = ""
                 }
             case "response.completed":
-                if case .object(let usageObject)? = event["usage"] {
+                let usageObject: [String: JSONValue]?
+                if case .object(let eventUsage)? = event["usage"] {
+                    usageObject = eventUsage
+                } else if case .object(let response)? = event["response"],
+                          case .object(let nested)? = response["usage"]
+                {
+                    usageObject = nested
+                } else {
+                    usageObject = nil
+                }
+                if let usageObject {
                     usage = ParsedUsage(
-                        inputTokens: Self.unsignedNumber(usageObject["input_tokens"]) ?? 0,
-                        outputTokens: Self.unsignedNumber(usageObject["output_tokens"]) ?? 0
+                        inputTokens: Self.usageNumber(
+                            usageObject,
+                            keys: ["input_tokens", "prompt_tokens", "inputTokens"]
+                        ),
+                        outputTokens: Self.usageNumber(
+                            usageObject,
+                            keys: ["output_tokens", "completion_tokens", "outputTokens"]
+                        )
                     )
                 }
                 if case .string(let status)? = event["status"], status != "completed" {
@@ -567,6 +586,36 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         case .number(let v): v >= 0 ? UInt64(v) : nil
         default: nil
         }
+    }
+
+    /// Compatible gateways report usage under OpenAI-chat keys (`prompt_tokens`/`completion_tokens`)
+    /// or camelCase; accept any of them so run/UI token statistics are truthful.
+    private static func usageNumber(
+        _ object: [String: JSONValue],
+        keys: [String]
+    ) -> UInt64 {
+        for key in keys {
+            if let value = unsignedNumber(object[key]) {
+                return value
+            }
+        }
+        return 0
+    }
+
+    private static func isStructured(_ request: AgentModelRequest) -> Bool {
+        if case .structured = request.outputRequirement { return true }
+        return false
+    }
+
+    /// Weak planner models often wrap JSON in ```json fences; the runtime's structured-output
+    /// validator requires the raw JSON, so strip a single outer fence before building the action.
+    private static func structuredJSONText(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("```") else { return trimmed }
+        var lines = trimmed.split(separator: "\n", omittingEmptySubsequences: false)
+        if lines.first?.contains("```") == true { lines.removeFirst() }
+        if lines.last?.contains("```") == true { lines.removeLast() }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func deduplicatedCalls(_ calls: [ParsedCall]) -> [ParsedCall] {
@@ -788,10 +837,23 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                     || reason == "incomplete"
             }
         }
-        let usage = ParsedUsage(
-            inputTokens: number(["usage", "input_tokens"]) ?? 0,
-            outputTokens: number(["usage", "output_tokens"]) ?? 0
-        )
+        let usage: ParsedUsage
+        if case .object(let root) = value,
+           case .object(let usageObject)? = root["usage"]
+        {
+            usage = ParsedUsage(
+                inputTokens: Self.usageNumber(
+                    usageObject,
+                    keys: ["input_tokens", "prompt_tokens", "inputTokens"]
+                ),
+                outputTokens: Self.usageNumber(
+                    usageObject,
+                    keys: ["output_tokens", "completion_tokens", "outputTokens"]
+                )
+            )
+        } else {
+            usage = ParsedUsage(inputTokens: 0, outputTokens: 0)
+        }
         return ParsedResponse(
             text: text,
             reasoning: reasoning,

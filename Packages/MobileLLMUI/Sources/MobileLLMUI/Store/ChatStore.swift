@@ -181,6 +181,8 @@ public final class ChatStore {
     /// `loadAllLive()` begun before the tombstone write can otherwise reinsert a chat after the user deleted
     /// it. IDs leave this set only when delete fails, Undo succeeds, or a full erase resets the session.
     private var locallyRemovedConversationIDs: Set<UUID> = []
+    /// workflowID → assistant message id that already projected the workflow's final answer.
+    private var workflowAssistantMessageIDs: [UUID: UUID] = [:]
     /// Settings can be open in more than one macOS window. Each erase request owns a reservation so an
     /// earlier failing request cannot reopen persistence while another window is still deleting files.
     private var conversationEraseReservations = 0
@@ -1195,6 +1197,19 @@ public final class ChatStore {
             conversations[ci].messages[mi].workflowRecord = record
             conversations[ci].updatedAt = Date()
             persist(conversations[ci])
+            // Project the workflow's final result into the chat exactly once (spec §20: the record
+            // is the live row; the committed answer lands as a normal assistant message).
+            if record.status == .completed,
+               let answer = record.finalAnswer,
+               !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               workflowAssistantMessageIDs[workflowID] == nil
+            {
+                let assistant = Message(role: .assistant, answer: answer)
+                conversations[ci].messages.append(assistant)
+                workflowAssistantMessageIDs[workflowID] = assistant.id
+                conversations[ci].updatedAt = Date()
+                persist(conversations[ci])
+            }
             return
         }
     }

@@ -39,6 +39,6 @@
     { "id": "test28", "name": "MCP tool approval and result", "status": "pass", "evidence": "focused 2026-08-04 (DeepWiki read_wiki_structure)" },
     { "id": "test29", "name": "Wikipedia, webpage reader, calendar, reminders, and location on device", "status": "pending", "evidence": "per-tool unit adapter tests green 2026-08-05; device scenarios pending" },
     { "id": "test30", "name": "iOS 26 continued processing submit/reject/expire/cancel", "status": "pending", "evidence": "coordinator unit matrix green 2026-08-05; requires regenerated provisioning profile + iPhone on iOS 26" },
-    { "id": "test31", "name": "/workflow runs a message-anchored multi-agent workflow on device", "status": "pending", "evidence": "runtime orchestrator + UI unit/integration matrix green 2026-08-06; real-model workflow run pending" }
+    { "id": "test31", "name": "/workflow runs a message-anchored multi-agent workflow on device", "status": "pending", "evidence": "full audit→revise→verify→deliver workflow completed on iPhone 17 simulator 2026-08-06 (auto-plan + fallback, 6 phases / 7 subagents, 18K tokens, final plan projected into chat); physical-device run still pending" }
   ]
 }

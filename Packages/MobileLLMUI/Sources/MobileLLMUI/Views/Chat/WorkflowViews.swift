@@ -64,16 +64,34 @@ struct WorkflowMessageRow: View {
     private var statusText: String {
         switch record.status {
         case .running:
-            "Running · \(record.aggregated.subagentCount) subagent"
-                + (record.aggregated.subagentCount == 1 ? "" : "s")
+            var parts = ["Running"]
+            if record.totalPhaseCount > 0 {
+                let current = min(record.completedPhaseCount + 1, record.totalPhaseCount)
+                parts.append("phase \(current)/\(record.totalPhaseCount)")
+            }
+            parts.append(
+                "\(record.completedSubagentCount)/\(record.totalSubagentCount) subagents"
+            )
+            if record.aggregated.inputTokens + record.aggregated.outputTokens > 0
+                || record.aggregated.toolInvocationCount > 0
+            {
+                parts.append(
+                    Format.shortCount(
+                        record.aggregated.inputTokens + record.aggregated.outputTokens
+                    ) + " tokens · "
+                        + "\(Format.shortCount(record.aggregated.toolInvocationCount)) tool calls"
+                )
+            }
+            return parts.joined(separator: " · ")
         case .completed:
-            "Completed · \(record.aggregated.subagentCount) subagents · "
+            return "Completed · \(record.completedPhaseCount)/\(record.totalPhaseCount) phases · "
+                + "\(record.completedSubagentCount)/\(record.totalSubagentCount) subagents · "
                 + Format.shortCount(record.aggregated.inputTokens + record.aggregated.outputTokens)
-                + " tokens"
+                + " tokens · \(Format.shortCount(record.aggregated.toolInvocationCount)) tool calls"
         case .failed:
-            "Failed"
+            return "Failed"
         case .cancelled:
-            "Cancelled"
+            return "Cancelled"
         }
     }
 }
@@ -107,7 +125,16 @@ struct WorkflowSummaryPage: View {
                         Section {
                             workflowHeader(workflow)
                             ForEach(workflow.phases) { phase in
-                                WorkflowPhaseRow(phase: phase)
+                                WorkflowPhaseRow(
+                                    phase: phase,
+                                    totalChildren: workflow.plan?.phases
+                                        .first(where: { $0.sequence == phase.sequence })?
+                                        .childInstructions.count
+                                        ?? phase.childRunIDs.count,
+                                    childInstructions: workflow.plan?.phases
+                                        .first(where: { $0.sequence == phase.sequence })?
+                                        .childInstructions ?? []
+                                )
                             }
                         }
                     }
@@ -129,7 +156,8 @@ struct WorkflowSummaryPage: View {
             Text(workflow.title)
                 .font(.headline)
                 .foregroundStyle(Theme.textPrimary)
-            Text("\(workflow.status.label) · \(workflow.aggregated.subagentCount) subagents · "
+            Text("\(workflow.status.label) · "
+                 + "\(workflow.completedSubagentCount)/\(workflow.totalSubagentCount) subagents · "
                  + Format.shortCount(
                     workflow.aggregated.inputTokens + workflow.aggregated.outputTokens
                  ) + " tokens · \(workflow.aggregated.toolInvocationCount) tool calls")
@@ -143,6 +171,8 @@ struct WorkflowSummaryPage: View {
 /// One phase node in the workflow tree.
 struct WorkflowPhaseRow: View {
     let phase: WorkflowPhaseRecord
+    let totalChildren: Int
+    let childInstructions: [String]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -161,7 +191,7 @@ struct WorkflowPhaseRow: View {
                         .foregroundStyle(Theme.textTertiary)
                 }
             }
-            Text("\(phase.status.label) · \(phase.childRunIDs.count) subagents · "
+            Text("\(phase.status.label) · \(phase.completedChildCount)/\(totalChildren) subagents · "
                  + Format.shortCount(phase.stats.inputTokens + phase.stats.outputTokens)
                  + " tokens · \(phase.stats.toolInvocationCount) tool calls")
                 .font(.caption)
@@ -172,9 +202,36 @@ struct WorkflowPhaseRow: View {
                     .foregroundStyle(Theme.textTertiary)
                     .lineLimit(2)
             }
+            if !childInstructions.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(childInstructions.enumerated()), id: \.offset) { index, instruction in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Image(systemName: childStatus(index).symbol)
+                                .font(.caption2)
+                                .foregroundStyle(childStatus(index).color)
+                                .accessibilityHidden(true)
+                            Text(instruction)
+                                .font(.caption2)
+                                .foregroundStyle(Theme.textSecondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            }
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
+    }
+
+    private func childStatus(_ index: Int) -> (symbol: String, color: Color) {
+        if index < phase.completedChildCount {
+            return ("checkmark.circle.fill", Theme.fitGreen)
+        }
+        if index == phase.completedChildCount, phase.status == .running {
+            return ("arrow.triangle.2.circlepath", Theme.accent)
+        }
+        return ("circle", Theme.textTertiary)
     }
 }
 

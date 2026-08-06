@@ -308,6 +308,12 @@ struct MobileLLMApp: App {
                 downloadBase: base,
                 conversationDirectory: container.conversationStore.directory,
                 snapshot: { [weak container] conversationID, userTurnID, text, imageRefs in
+                    if let template = AppWorkflowSnapshotRegistry.shared.template(
+                        conversationID: conversationID,
+                        userTurnID: userTurnID
+                    ) {
+                        return template.withText(text)
+                    }
                     guard let container else { return nil }
                     return makeAgentSnapshot(
                         container: container,
@@ -371,6 +377,12 @@ struct MobileLLMApp: App {
                         downloadBase: base,
                         conversationDirectory: container.conversationStore.directory,
                         snapshot: { [weak container] conversationID, userTurnID, text, imageRefs in
+                            if let template = AppWorkflowSnapshotRegistry.shared.template(
+                                conversationID: conversationID,
+                                userTurnID: userTurnID
+                            ) {
+                                return template.withText(text)
+                            }
                             guard let container else { return nil }
                             return makeAgentSnapshot(
                                 container: container,

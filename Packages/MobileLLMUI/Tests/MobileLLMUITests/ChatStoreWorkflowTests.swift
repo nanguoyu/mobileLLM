@@ -80,6 +80,64 @@ final class ChatStoreWorkflowTests: XCTestCase {
         XCTAssertNotNil(chat.banner)
     }
 
+    func testWorkflowCompletionProjectsFinalAnswerIntoChat() async throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let workflowStore = WorkflowStore(directory: dir.appendingPathComponent("wf", isDirectory: true))
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "workflow-\(UUID().uuidString)")!)
+        let chat = ChatStore(
+            engine: MockLLMEngine(script: .init(answer: "unused")),
+            store: store,
+            settings: settings,
+            activeModel: LoadedModel(
+                model: LLMCatalog.bonsai8b,
+                variant: LLMCatalog.bonsai8b.defaultVariantValue
+            ),
+            workflowStore: workflowStore
+        )
+        var workflowIDValue: UUID?
+        chat.workflowLaunch = { goal, conversationID, userMessageID, workflowID in
+            workflowIDValue = workflowID
+            let summary = WorkflowSummary(
+                id: workflowID,
+                title: goal,
+                conversationID: conversationID,
+                status: .running
+            )
+            try await workflowStore.save(summary)
+            chat.attachWorkflowRecord(
+                WorkflowMessageRecord(summary: summary),
+                to: userMessageID
+            )
+        }
+
+        chat.draft = "/workflow research kim k3"
+        chat.send()
+        try await waitUntil { workflowIDValue != nil }
+        let workflowID = try XCTUnwrap(workflowIDValue)
+
+        var completed = try XCTUnwrap(workflowStore.summary(workflowID: workflowID))
+        completed.status = .completed
+        completed.endTime = Date()
+        completed.completedPhaseCount = 1
+        completed.totalPhaseCount = 1
+        completed.finalAnswer = "Deploy Kimi K3 on iPhone 16 Pro with a 4-bit GGUF and llama.cpp."
+        completed.refreshAggregates()
+        try await workflowStore.save(completed)
+
+        try await waitUntil {
+            chat.activeConversation?.messages.contains {
+                $0.role == .assistant
+                    && $0.answer.contains("Deploy Kimi K3")
+            } ?? false
+        }
+        let assistantMessages = chat.activeConversation?.messages.filter {
+            $0.role == .assistant && !$0.answer.isEmpty
+        } ?? []
+        XCTAssertEqual(assistantMessages.count, 1, "the final answer must be projected exactly once")
+        XCTAssertTrue(assistantMessages[0].answer.contains("llama.cpp"))
+    }
+
     private func tempStore() -> (ConversationStore, URL) {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("workflow-chat-\(UUID().uuidString)", isDirectory: true)

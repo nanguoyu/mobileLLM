@@ -153,42 +153,65 @@ public struct WorkflowOrchestrator: Sendable {
 
         var outputArtifacts: [ArtifactReference] = []
         var results: [SubagentResult] = []
+        var lastAnswer: String?
+        // The previous phase's handoff carries audit findings / decisions the next phase must
+        // consume (e.g. a Revise phase fixing what the Audit phase flagged).
+        let upstreamHandoff = index > 0 ? summary.phases[index - 1].handoff : nil
         for (childIndex, childInstruction) in phasePlan.childInstructions.enumerated() {
             let childRunID = SubagentStableID.childRun(
                 workflowID: workflowID,
                 phase: phasePlan.sequence,
                 child: childIndex
             )
-            let childCeiling = try ceilingAttenuator(
-                parent.capabilityCeiling,
-                phasePlan,
-                childIndex
-            )
-            let childBudget = try budgetAttenuator(
-                parent.budget,
-                phasePlan,
-                childIndex
-            )
-            let spawnRequest = try SubagentSpawnRequest(
-                parentRunID: parent.runID,
-                parentRequestID: parent.requestID,
-                requestingStepID: parent.requestingStepID,
-                childRunID: childRunID,
-                role: "subagent",
-                instruction: Self.composedInstruction(
-                    child: childInstruction,
-                    phasePlan: phasePlan
-                ),
-                outputRequirement: .textAndArtifacts,
-                modelPolicy: parent.modelPolicy,
-                capabilityCeiling: childCeiling,
-                budget: childBudget,
-                contextReferences: [],
-                artifactReferences: phasePlan.inputArtifactReferences,
-                sandboxRequirement: nil,
-                source: .workflow,
-                approvalMode: parent.approvalMode
-            )
+            let childCeiling: RunCapabilityCeiling
+            let childBudget: AgentBudget
+            let spawnRequest: SubagentSpawnRequest
+            do {
+                childCeiling = try ceilingAttenuator(
+                    parent.capabilityCeiling,
+                    phasePlan,
+                    childIndex
+                )
+                childBudget = try budgetAttenuator(
+                    parent.budget,
+                    phasePlan,
+                    childIndex
+                )
+                spawnRequest = try SubagentSpawnRequest(
+                    parentRunID: parent.runID,
+                    parentRequestID: parent.requestID,
+                    requestingStepID: parent.requestingStepID,
+                    childRunID: childRunID,
+                    role: "subagent",
+                    instruction: Self.composedInstruction(
+                        child: childInstruction,
+                        phasePlan: phasePlan,
+                        upstreamHandoff: upstreamHandoff
+                    ),
+                    outputRequirement: .textAndArtifacts,
+                    modelPolicy: parent.modelPolicy,
+                    capabilityCeiling: childCeiling,
+                    budget: childBudget,
+                    contextReferences: [],
+                    artifactReferences: phasePlan.inputArtifactReferences,
+                    sandboxRequirement: nil,
+                    source: .workflow,
+                    approvalMode: parent.approvalMode
+                )
+            } catch {
+                phase.status = .failed
+                phase.endTime = Date()
+                summary.phases[index] = phase
+                summary.status = .failed
+                summary.endTime = Date()
+                summary.refreshAggregates()
+                try await recording.save(summary)
+                throw WorkflowOrchestratorError.childSpawnFailed(
+                    workflowID,
+                    phasePlan.sequence,
+                    childIndex
+                )
+            }
             let handleID: AgentExecutionHandleID
             do {
                 handleID = try await spawner.spawn(spawnRequest)
@@ -231,8 +254,15 @@ public struct WorkflowOrchestrator: Sendable {
             case .completed(let answer, let usage):
                 outputArtifacts.append(contentsOf: answer.artifacts)
                 phase.stats.merge(Self.stats(usage: usage))
+                if let text = answer.text, !text.trimmingCharacters(in: .whitespaces).isEmpty {
+                    lastAnswer = text
+                }
             case .failed(_, let usage):
                 phase.stats.merge(Self.stats(usage: usage))
+                phase.completedChildCount += 1
+                summary.phases[index] = phase
+                summary.refreshAggregates()
+                try await recording.save(summary)
                 phase.status = .failed
                 phase.endTime = Date()
                 summary.phases[index] = phase
@@ -246,6 +276,10 @@ public struct WorkflowOrchestrator: Sendable {
                     childIndex
                 )
             case .cancelled:
+                phase.completedChildCount += 1
+                summary.phases[index] = phase
+                summary.refreshAggregates()
+                try await recording.save(summary)
                 phase.status = .cancelled
                 phase.endTime = Date()
                 summary.phases[index] = phase
@@ -255,11 +289,16 @@ public struct WorkflowOrchestrator: Sendable {
                 try await recording.save(summary)
                 return summary
             }
+            phase.completedChildCount += 1
+            summary.phases[index] = phase
+            summary.refreshAggregates()
+            try await recording.save(summary)
         }
 
         phase.status = .completed
         phase.endTime = Date()
         phase.outputArtifactReferences = outputArtifacts
+        summary.finalAnswer = lastAnswer ?? summary.finalAnswer
         if let nextPlan = plan.phases.dropFirst(Int(index) + 1).first {
             phase.handoff = Self.makeHandoff(
                 phasePlan: phasePlan,
@@ -276,11 +315,29 @@ public struct WorkflowOrchestrator: Sendable {
 
     private static func composedInstruction(
         child: String,
-        phasePlan: WorkflowPhasePlan
+        phasePlan: WorkflowPhasePlan,
+        upstreamHandoff: WorkflowHandoff?
     ) -> String {
         var parts: [String] = []
         if let brief = phasePlan.handoff?.taskBrief, !brief.isEmpty {
             parts.append(brief)
+        }
+        if let upstreamHandoff {
+            if !upstreamHandoff.keyDecisions.isEmpty {
+                parts.append(
+                    "Previous phase findings:\n"
+                        + upstreamHandoff.keyDecisions.map { "- \($0)" }.joined(separator: "\n")
+                )
+            }
+            if !upstreamHandoff.knownRisks.isEmpty {
+                parts.append(
+                    "Known risks from the previous phase:\n"
+                        + upstreamHandoff.knownRisks.map { "- \($0)" }.joined(separator: "\n")
+                )
+            }
+            if !upstreamHandoff.verificationDuties.isEmpty {
+                parts.append("Verify: " + upstreamHandoff.verificationDuties.joined(separator: " "))
+            }
         }
         parts.append(child)
         parts.append("Acceptance criteria: \(phasePlan.acceptanceCriteria)")

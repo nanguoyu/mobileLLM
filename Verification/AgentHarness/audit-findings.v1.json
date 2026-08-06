@@ -106,7 +106,7 @@
     {
       "id": "OPEN-006",
       "severity": "P2",
-      "summary": "SubagentSpawner, bounded parallel tool batches, and the workflow orchestrator land with runtime + UI unit/integration coverage (2026-08-06); a real-model /workflow device run and workflow child approvals on device remain pending (test31).",
+      "summary": "SubagentSpawner, bounded parallel tool batches, and the workflow orchestrator land with runtime + UI unit/integration coverage; a full audit→revise→verify→deliver workflow with real online children completed on the iPhone 17 simulator (2026-08-06), final plan projected into chat. Physical-device run and workflow child approvals on device remain pending (test31).",
       "blockedBy": "Physical iPhone (real-model workflow run)"
     },
     {

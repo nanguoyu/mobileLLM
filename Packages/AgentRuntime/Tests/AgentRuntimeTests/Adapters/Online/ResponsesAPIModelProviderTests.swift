@@ -1016,6 +1016,98 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         )
     }
 
+    /// DeepSeek nests usage inside `response.completed.response.usage`; the parser must read the
+    /// nested object so workflow/run token statistics are truthful.
+    func testGenerateStreamsDeepSeekNestedUsage() async throws {
+        let streamBody = """
+        data: {"type":"response.output_text.delta","delta":"Hello"}
+
+        data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":12,"output_tokens":7}}}
+
+        """
+        MockResponsesURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "text/event-stream"]
+            )!
+            return (response, Data(streamBody.utf8))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockResponsesURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            MockResponsesURLProtocol.handler = nil
+            MockResponsesURLProtocol.capturedRequest = nil
+        }
+
+        let provider = try ResponsesAPIModelProvider(
+            configurationProvider: {
+                ResponsesAPIConfiguration(
+                    baseURL: "https://gateway.example/v1",
+                    apiKey: "sk-test",
+                    reasoningEffort: .medium
+                )
+            },
+            session: session
+        )
+        let fixture = try ModelFixture(
+            location: .remote,
+            thinkingMode: .enabled,
+            providerID: ResponsesAPIModelProvider.providerID,
+            remoteDestination: "openai.responses:responses-api-key:fixture-model"
+        )
+        let cloudPolicy = try AgentModelPolicy(
+            localOnly: false,
+            allowedSelections: [fixture.request.selection],
+            strategy: .pinned,
+            requiredCapabilities: AgentModelCapabilitySet([])
+        )
+        let cloudContext = try ModelPreparationContext(
+            conversationID: fixture.context.conversationID,
+            modelPolicy: cloudPolicy,
+            capabilityGrant: fixture.context.capabilityGrant,
+            authorizationPayload: fixture.context.authorizationPayload,
+            maximumRequestBytes: fixture.context.maximumRequestBytes,
+            maximumResponseBytes: fixture.context.maximumResponseBytes,
+            timeoutMilliseconds: fixture.context.timeoutMilliseconds
+        )
+        let prepared = try await AgentModelRequestPreparer().prepare(
+            provider: provider,
+            request: fixture.request,
+            context: cloudContext
+        )
+        let policy = TestApprovalPolicyEngine()
+        let authorization = try await policy.bindLocalPolicy(
+            prepared: prepared.preparedRequest.externalOperation,
+            approvalID: ApprovalID(rawValue: ModelFixture.uuid(5)),
+            trustedRunAuthority: fixture.authority,
+            at: AgentTimestamp(rawValue: 1_000)
+        )
+        let authorized = AuthorizedAgentModelAttempt(
+            preparedAttempt: prepared,
+            request: try AuthorizedModelRequest(
+                request: fixture.request,
+                authorization: authorization,
+                clock: FixedAuthorizationClock(),
+                policyValidator: policy,
+                attemptLedger: TestAttemptLedger()
+            )
+        )
+
+        let result = try await AgentModelExecutor().execute(
+            provider: provider,
+            authorized: authorized
+        )
+        guard case .completed(let completion) = result.outcome,
+              case .finalAnswer(let answer) = completion.action
+        else { return XCTFail("expected final answer, got \(result.outcome)") }
+        XCTAssertEqual(answer.text, "Hello")
+        XCTAssertEqual(completion.usage.inputTokens, 12)
+        XCTAssertEqual(completion.usage.outputTokens, 7)
+    }
+
     func testGenerateStreamedTruncationRetriesWithHigherBudgetAndEmitsOnlyContinuation() async throws {
         MockResponsesURLProtocol.requestCount = 0
         MockResponsesURLProtocol.handler = { request in

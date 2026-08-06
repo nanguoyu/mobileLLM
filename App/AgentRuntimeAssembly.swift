@@ -143,6 +143,140 @@ public struct AgentRunRequestSnapshot: Sendable {
     }
 }
 
+extension AgentRunRequestSnapshot {
+    /// Workflow children are exploration/planning/audit agents: they need the built-in tools
+    /// regardless of the chat's tool master switch. The ceiling is rebuilt from this snapshot, so
+    /// web search / Wikipedia / webpage / memory destinations join the run exactly once.
+    func withWorkflowTools() -> AgentRunRequestSnapshot {
+        // The frozen inputs use the snapshot's toolPolicy verbatim; a conversation that disabled the
+        // tool master would otherwise strip workflow children of every tool. Force a master-enabled
+        // policy covering the built-in + discovered MCP tools.
+        let builtinIDs = ToolID.allCases.map {
+            // Valid constant names; safe by construction.
+            try! AgentToolLogicalID(providerID: "builtin", name: $0.rawValue)
+        }
+        let mcpIDs = mcpToolDescriptors.map(\.id.logicalID)
+        let allowed = builtinIDs + mcpIDs
+        let forcedPolicy = try! ConversationToolPolicy(
+            masterEnabled: true,
+            allowedToolIDs: allowed,
+            pinnedToolIDs: allowed,
+            selectionPolicyVersion: 1,
+            materializedFromGlobalTemplate: true
+        )
+        // The conversation may have the tool master off, which empties webSearchDestinations; the
+        // workflow ceiling must still name the configured search-engine hosts so web_search can pass
+        // prepare→authorize inside children.
+        let engineDestinations = SearchEngine.allCases.compactMap { engine in
+            try? AppWebSearchToolAdapter.destination(engine: engine)
+        }
+        return AgentRunRequestSnapshot(
+            conversationID: conversationID,
+            userTurnID: userTurnID,
+            text: text,
+            imageRefs: imageRefs,
+            messages: messages,
+            systemPrompt: systemPrompt,
+            memoryFacts: memoryFacts,
+            activeSkill: activeSkill,
+            model: model,
+            variant: variant,
+            weightsDirectory: weightsDirectory,
+            thinkingEnabled: thinkingEnabled,
+            contextLength: contextLength,
+            maxTokens: maxTokens,
+            temperature: temperature,
+            topP: topP,
+            topK: topK,
+            repetitionPenalty: repetitionPenalty,
+            toolsEnabled: true,
+            localToolNames: Set(ToolID.allCases.map(\.rawValue)).sorted(),
+            memorySeamAvailable: memorySeamAvailable,
+            eventSeamAvailable: eventSeamAvailable,
+            locationSeamAvailable: locationSeamAvailable,
+            mcpToolDescriptors: mcpToolDescriptors,
+            webSearchDestinations: engineDestinations,
+            toolPolicy: forcedPolicy,
+            onlineModelEnabled: onlineModelEnabled,
+            onlineModelID: onlineModelID,
+            onlineServiceID: onlineServiceID,
+            onlineReasoningEnabled: onlineReasoningEnabled,
+            onlineContextLength: onlineContextLength,
+            onlineOutputBudgetAuto: onlineOutputBudgetAuto,
+            onlineMaximumOutputTokens: onlineMaximumOutputTokens,
+            approvalMode: approvalMode,
+            onlineReasoningEffort: onlineReasoningEffort
+        )
+    }
+
+    /// The input freezer rebuilds snapshots per request instruction; workflow children carry the
+    /// same (conversation, userTurn) as their root but a different task text.
+    func withText(_ text: String) -> AgentRunRequestSnapshot {
+        AgentRunRequestSnapshot(
+            conversationID: conversationID,
+            userTurnID: userTurnID,
+            text: text,
+            imageRefs: imageRefs,
+            messages: messages,
+            systemPrompt: systemPrompt,
+            memoryFacts: memoryFacts,
+            activeSkill: activeSkill,
+            model: model,
+            variant: variant,
+            weightsDirectory: weightsDirectory,
+            thinkingEnabled: thinkingEnabled,
+            contextLength: contextLength,
+            maxTokens: maxTokens,
+            temperature: temperature,
+            topP: topP,
+            topK: topK,
+            repetitionPenalty: repetitionPenalty,
+            toolsEnabled: toolsEnabled,
+            localToolNames: localToolNames,
+            memorySeamAvailable: memorySeamAvailable,
+            eventSeamAvailable: eventSeamAvailable,
+            locationSeamAvailable: locationSeamAvailable,
+            mcpToolDescriptors: mcpToolDescriptors,
+            webSearchDestinations: webSearchDestinations,
+            toolPolicy: toolPolicy,
+            onlineModelEnabled: onlineModelEnabled,
+            onlineModelID: onlineModelID,
+            onlineServiceID: onlineServiceID,
+            onlineReasoningEnabled: onlineReasoningEnabled,
+            onlineContextLength: onlineContextLength,
+            onlineOutputBudgetAuto: onlineOutputBudgetAuto,
+            onlineMaximumOutputTokens: onlineMaximumOutputTokens,
+            approvalMode: approvalMode,
+            onlineReasoningEffort: onlineReasoningEffort
+        )
+    }
+}
+
+/// The input freezer rebuilds snapshots from Settings, which would strip workflow children of their
+/// forced tool set. This registry lets the assembly's snapshot closure return the workflow template
+/// (with tools on) for every run anchored to one `/workflow` message.
+@MainActor
+final class AppWorkflowSnapshotRegistry {
+    static let shared = AppWorkflowSnapshotRegistry()
+    private var templates: [String: AgentRunRequestSnapshot] = [:]
+
+    func register(conversationID: UUID, userTurnID: UUID, template: AgentRunRequestSnapshot) {
+        templates[key(conversationID, userTurnID)] = template
+    }
+
+    func template(conversationID: UUID, userTurnID: UUID) -> AgentRunRequestSnapshot? {
+        templates[key(conversationID, userTurnID)]
+    }
+
+    func unregister(conversationID: UUID, userTurnID: UUID) {
+        templates.removeValue(forKey: key(conversationID, userTurnID))
+    }
+
+    private func key(_ conversationID: UUID, _ userTurnID: UUID) -> String {
+        "\(conversationID.uuidString):\(userTurnID.uuidString)"
+    }
+}
+
 // MARK: - Shared frozen-input construction
 
 /// Shared builder used by both the request builder (submission) and the input freezer (recovery).
@@ -1203,17 +1337,44 @@ public final class AgentRuntimeAssembly {
         workflowID: UUID
     ) throws -> AgentRequest {
         let source = try frozenBuilder.request(snapshot: snapshot, artifactReferences: [])
+        // Workflow children legitimately need several web searches per phase; the default 3-tool
+        // ceiling would make every child fail at its third search. Give the root a generous tool
+        // budget so attenuated children can inherit up to 8 tool invocations.
+        let rootBudgetValues = Dictionary(
+            uniqueKeysWithValues: BudgetDimension.allCases.map {
+                ($0, source.budget.limits[$0])
+            }
+        )
+        var workflowBudgetValues = rootBudgetValues
+        workflowBudgetValues[.toolInvocations] = 12
+        let workflowBudget = try AgentBudget(
+            limits: BudgetQuantities(workflowBudgetValues),
+            maximumThermalState: source.budget.maximumThermalState,
+            memoryPressureResponse: source.budget.memoryPressureResponse
+        )
+        let planInstruction = """
+        You are a workflow planner. Decompose the user's goal into 2-4 execution phases. Each phase \
+        must contain 1-4 subagent instructions. Return ONLY the JSON plan:
+        {"goal":"<the goal>","phases":[{"sequence":1,"title":"...","acceptanceCriteria":"...",\
+        "childInstructions":["..."]}]}
+        Decide the phase count, the subagent count per phase, and each subagent's concrete task from \
+        the goal itself — do not copy this prompt's shape. For research/deployment goals use phases \
+        such as explore → plan → audit; for coding goals use analyze → implement → review → fix. Each \
+        child instruction must name what that subagent investigates or produces and, when relevant, \
+        that it MUST call the web_search tool before answering.
+        Goal: \(snapshot.text)
+        """
         return try AgentRequest(
             id: source.id,
             runID: WorkflowIdentity.rootRun(workflowID: workflowID),
             conversationID: source.conversationID,
             userTurnID: source.userTurnID,
             role: "workflow-root",
-            instruction: source.instruction,
-            outputRequirement: source.outputRequirement,
+            instruction: planInstruction,
+            outputRequirement: .structured(WorkflowPlanSchema.document),
             modelPolicy: source.modelPolicy,
             capabilityCeiling: source.capabilityCeiling,
-            budget: source.budget,
+            budget: workflowBudget,
             contextReferences: source.contextReferences,
             artifactReferences: [],
             labels: source.labels,
