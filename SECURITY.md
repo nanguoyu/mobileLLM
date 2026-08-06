@@ -53,19 +53,22 @@ account, analytics, or telemetry service.
 
 ## Security boundaries
 
-- Master tool access is off by default. Only individually selected built-in tools and MCP servers are
-  advertised to the model; a network-tool call sends its arguments to that service. Tool responses are
+- Master tool access is off by default. The security contract permits only individually selected built-in tools and
+  MCP servers to be advertised; a network-tool call sends its arguments to that service. The current staged-workflow
+  launcher incorrectly forces all built-ins and discovered MCP descriptors on, which is tracked as a release-blocking
+  conformance gap in `spec.md` §33. Tool responses are
   framed as untrusted external data before being returned to the model. Every external operation —
   online-model inference and every tool call — passes an immutable `prepare → authorize → execute`
   boundary: a prepared plan (destination, data categories, argument digest, response ceiling) cannot be
   widened during execution, and the run's capability ceiling is frozen for its lifetime. Three
-  per-conversation approval modes (Ask / Safe preset / Full access) control when the user is asked;
-  approval receipts are durable and bound to the exact operation.
+  per-conversation approval modes control presentation: Ask follows explicit approval policy, Safe preset
+  auto-authorizes app-local work, bounded network/private reads and selected online-provider egress, and Full access
+  auto-authorizes any prepared operation within the frozen ceiling. Receipts remain durable and operation-bound.
 - Online-model API keys are stored in the platform Keychain with this-device-only accessibility and are
   never written to Settings or `UserDefaults`; the macOS/simulator DEBUG build reads the developer's
   `~/.mobilellm/openai.json` outside the repository to seed tests, and that file is never committed.
-  Sending a conversation to an online service is data egress and asks for approval once per conversation
-  under the active mode.
+  Sending a conversation to an online service is data egress. Ask requests bounded conversation consent;
+  Safe preset and Full access bind authorization without presenting a prompt, still inside the frozen ceiling.
 - Subagents and workflow children receive a strict subset of the parent run's capability ceiling and
   attenuated budgets; a child can never grant itself an authority the parent did not hold. Future
   server-side native tools (e.g. DeepSeek `web_search`) are provider-executed: the app advertises either

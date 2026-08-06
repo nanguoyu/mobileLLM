@@ -1,6 +1,6 @@
 name: CI
 
-# Fast tests cover all five packages that build under plain SwiftPM without Metal or vendored artifacts.
+# Fast tests cover all eight packages that build under plain SwiftPM without Metal or vendored artifacts.
 # A second, cached integration job builds the pinned llama.cpp XCFramework on a cache miss, then proves the
 # generated app project for both shipped platforms and every engine test target with xcodebuild. No
 # signing identity or repository secret is required.

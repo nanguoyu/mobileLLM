@@ -1775,7 +1775,7 @@
     },
     {
       "id": "AHT-WORKFLOW-001",
-      "title": "Dynamic workflow orchestrator honors phase and handoff contracts",
+      "title": "Staged workflow orchestrator honors phase and handoff contracts",
       "status": "active",
       "kind": "integration",
       "riskTier": "P1",
@@ -2116,7 +2116,7 @@
         "fixedSeedRequired": true,
         "rotatingSeedRequired": true
       },
-      "notes": "Passed on iPhone 16 Pro (iOS 27): test12/test13/test24 green with the networkRead adapter and durable approval flow."
+      "notes": "test12/test13 passed on iPhone 16 Pro (iOS 27); test24 remains pending in device-matrix.v1.json and must not be reported green until rerun."
     },
     {
       "id": "AHT-DEVICE-MEMORY-001",
@@ -2153,7 +2153,7 @@
         "fixedSeedRequired": true,
         "rotatingSeedRequired": true
       },
-      "notes": "Passed on iPhone 16 Pro (iOS 27): test16/test17 green with the localRead/localWrite adapter on the app-owned MemoryStore."
+      "notes": "test17 passed on iPhone 16 Pro (iOS 27); test16 remains pending in device-matrix.v1.json after partial save/recall evidence."
     },
     {
       "id": "AHT-DEVICE-VISION-001",

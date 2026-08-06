@@ -8,7 +8,7 @@
 run fully on your device behind one protocol (Apple [MLX](https://github.com/ml-explore/mlx-swift),
 [llama.cpp](https://github.com/ggml-org/llama.cpp), and Apple Intelligence's own on-device model), with an
 optional OpenAI-compatible **online model** path for testing and high-quality API models. A durable agent
-runtime (runs, journal, approvals, subagents, workflows) sits above the engines. No account and no
+runtime (runs, journal, approvals, subagents, staged workflows) is the primary execution path. No account and no
 telemetry: inference and chat storage stay on your device. Network access happens only for model
 discovery/downloads, online models you enable and approve, or tools you explicitly enable (web, Wikipedia, MCP).
 
@@ -46,7 +46,7 @@ discovery/downloads, online models you enable and approve, or tools you explicit
   (*Runs great* / *Tight* / *High memory · may fail*) from your hardware profile, and the context-length options are
   capped by what the model was trained for and re-scored per rung — a setting that buys memory, not capability.
   Local engines cooperatively check cancellation, memory pressure, and iOS thermal state at decode boundaries.
-- 🛠️ **Agent runtime + tool calling + MCP.** Every send is a durable **agent run** behind a frozen-input,
+- 🛠️ **Agent runtime + tool calling + MCP.** Normal app sends use a durable **agent run** behind a frozen-input,
   journaled, recoverable runtime (spec `spec.md`): each external operation passes a
   `prepare → authorize → execute` boundary with immutable capability ceilings, budgets, approvals, and a
   replayable journal. The real toolbox includes keyless **web search** (five engines: DuckDuckGo, Bing
@@ -56,8 +56,9 @@ discovery/downloads, online models you enable and approve, or tools you explicit
   capability; the full Tool Settings screen adds descriptions, search-engine priority, and remote **MCP**
   controls (Streamable HTTP, per-server enable + per-tool mute). Tool access is off by default, only
   selected tools are advertised to the model, and tool results are framed as **untrusted data**
-  (prompt-injection fenced) before another model pass.
-- 🧩 **Subagents + parallel tool batches + dynamic workflows.** The runtime can spawn bounded
+  (prompt-injection fenced) before another model pass. Runtime assembly failure still has a legacy
+  compatibility fallback; workflow tool-policy conformance is an open release blocker in `spec.md` §33.
+- 🧩 **Subagents + parallel tool batches + staged workflows.** The runtime can spawn bounded
   subagents with attenuated ceilings, run tool batches in parallel inside one run, and orchestrate a
   message-anchored **workflow** (`/workflow <goal>`): a planner decomposes the goal into phases
   (explore → plan → audit → revise → verify → deliver fallback), fans out subagents per phase, passes
@@ -66,8 +67,8 @@ discovery/downloads, online models you enable and approve, or tools you explicit
   id, API key in the device Keychain only); one active service routes the conversation to the provider.
   Per-conversation: approval (see below), reasoning on/off + effort (low/medium/high), context length,
   sampling, and an **Auto output budget** that lets the service use the model's own maximum.
-- 🛂 **Three per-conversation approval modes** — **Ask** (every external operation), **Safe preset**
-  (app-internal/read-class actions auto-approved, network/data-egress actions asked), and **Full access**
+- 🛂 **Three per-conversation approval modes** — **Ask** (external operations ask according to policy), **Safe preset**
+  (app-local work, bounded network/private reads, and the selected online provider are auto-approved), and **Full access**
   (auto-approve within the run's immutable ceiling). The mode and reasoning effort live in a persistent
   bottom control bar above the composer and can be switched in place; approval cards dock immediately
   above the composer while a run waits.
@@ -244,6 +245,8 @@ package's macros can't build under plain SwiftPM), and `-scheme UITests` drives 
 (keyboard/composer geometry, agent-run UI, workflow E2E). The checked-in test plans live in
 `Verification/AgentHarness/TestPlans` (`SimulatorUI.xctestplan`, `DeviceE2E.xctestplan`); online-model
 scenarios read `~/.mobilellm/openai.json` through launch-environment variables (see below).
+The plans are checked in and runnable, but the current CI workflow only validates that Xcode can discover them;
+executing the full simulator plan in CI remains an open release gate.
 
 See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup and package map.
 
@@ -267,8 +270,8 @@ Settings or `UserDefaults`.
 
 To actually route chat through the service, open Settings → Online models, add/select a service, store
 its key, and toggle **Use online model**. The next message is sent to the configured endpoint; like
-other external operations, data egress asks for approval once per conversation under the selected
-approval mode (Ask / Safe preset / Full access). The base URL may point at any OpenAI-compatible
+other external operations, data egress follows the selected approval mode: Ask prompts, while Safe preset
+and Full access auto-authorize it only inside the frozen provider/model ceiling. The base URL may point at any OpenAI-compatible
 gateway — only `https` is accepted.
 
 ## Community

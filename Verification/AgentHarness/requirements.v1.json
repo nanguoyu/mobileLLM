@@ -4,8 +4,8 @@
   "documentID": "AH-REQUIREMENTS-V1",
   "sourceSpecification": {
     "path": "spec.md",
-    "sha256": "681d2106e7534aeecbe9649dcd729206f01d24c1576882c958d0a09e538442b3",
-    "capturedAtUTC": "2026-08-06T01:00:00Z"
+    "sha256": "aba2f01835dc456161d807d802882dcb4c4f3654e3e843e4c3a8d07044352432",
+    "capturedAtUTC": "2026-08-06T12:20:57Z"
   },
   "requirements": [
     {
@@ -295,7 +295,7 @@
       "id": "AH-ARCH-002",
       "area": "architecture",
       "title": "Deferred runtimes remain absent",
-      "statement": "The first release contains no workflow interpreter, DAG scheduler, production sandbox substitute, arbitrary shell, or online model client; the subagent spawner, bounded parallel tool batches, and dynamic workflow orchestrator are implemented in that dependency order (§30).",
+      "statement": "The release contains no workflow language/interpreter, general DAG scheduler, production sandbox substitute, arbitrary shell, or silent cloud fallback; online providers, the subagent spawner, bounded parallel tool batches, and the staged workflow orchestrator use the shared harness boundaries.",
       "status": "active",
       "riskTier": "P0",
       "specAnchors": [
@@ -1770,7 +1770,7 @@
     {
       "id": "AH-WORKFLOW-001",
       "area": "subagents-workflows",
-      "title": "Dynamic workflow orchestrator implements phase and handoff contracts",
+      "title": "Staged workflow orchestrator implements phase and handoff contracts",
       "statement": "The workflow orchestrator decomposes goals into durable phases, fans out and merges child runs, and passes versioned artifacts plus distilled WorkflowHandoff records between phases per §23.1, with no direct filesystem, network, tool, or sandbox authority.",
       "status": "active",
       "riskTier": "P1",
@@ -2085,8 +2085,8 @@
         {
           "section": "29.1",
           "heading": "Audit cadence and stop rule",
-          "lineStart": 1474,
-          "lineEnd": 1495
+          "lineStart": 1481,
+          "lineEnd": 1500
         }
       ],
       "platforms": [
@@ -2100,7 +2100,7 @@
       ],
       "requiredEvidence": [
         "Consolidated audit report, remediation set, full rerun, and bounded closure report",
-        "Verification/AgentHarness/audit-findings.v1.json (2026-08-04 self-audit wave; independent sign-off pending)"
+        "Verification/AgentHarness/audit-findings.v1.json (2026-08-04 implementation-review history; not the consolidated audit)"
       ]
     },
     {

@@ -41,7 +41,7 @@ eight are MLX-free and test under plain SwiftPM without any Metal toolchain or t
 | `AppRuntime` | Resumable downloader, memory/thermal governors, `DurableStore` (Foundation + CryptoKit) | MLX-free — `swift test` |
 | `LLMCore` | Catalog + schema, `RoutingEngine`, memory governor, context policy, tools/MCP, Explore, `ThinkSplitter`, the `LLMEngine` protocol + a mock | MLX-free — `swift test` |
 | `AgentContracts` | Versioned run/step/request/approval/budget/workflow contracts shared by runtime, sandbox API, and UI | MLX-free — `swift test` |
-| `AgentRuntime` | Durable agent executor, SQLite journal, approval policy, budgets, recovery, subagents, parallel tool batches, workflow orchestrator, online Responses API provider | MLX-free — `swift test` (links sqlite3) |
+| `AgentRuntime` | Durable agent executor, SQLite journal, approval policy, budgets, recovery, subagents, parallel tool batches, staged workflow orchestrator, online Responses API provider | MLX-free — `swift test` (links sqlite3) |
 | `AgentSandboxAPI` | Protocol-only sandbox seam; no provider ships in the open-source build | MLX-free — `swift test` |
 | `MobileLLMUI` | SwiftUI chat / models / settings + `@Observable` stores, agent run/approval/workflow UI (codes against `LLMEngine` + `AgentRuntime` contracts) | MLX-free — `swift test` |
 | `LLMEngineApple` | The Apple Intelligence engine — weak-linked `FoundationModels`, no weights of ours | MLX-free — `swift test` |
@@ -101,6 +101,10 @@ xcodebuild -skipMacroValidation -scheme UITests \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
   -only-testing:mobileLLMUITests/WorkflowUITests test
 ```
+
+The simulator suite is currently a required manual/local command: CI validates discovery of both test plans but does
+not yet execute `SimulatorUI.xctestplan`. Do not report simulator coverage as a CI gate until that job is added and
+archives its `.xcresult` evidence.
 
 Note the simulator runs **llama.cpp on CPU only and cannot run MLX at all** — activation refuses MLX
 variants there by design; anything MLX is validated on real hardware.

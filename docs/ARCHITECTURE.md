@@ -8,8 +8,8 @@ mobileLLM is a private, on-device chat app for open-weight LLMs on macOS + iOS. 
 engines — Apple **MLX** (resident weights), **llama.cpp** (memory-mapped GGUF), and **Apple Intelligence**
 (the OS's own model, no weights of ours at all) — behind one protocol, so everything above the engine is
 engine-agnostic and unit-testable without a Metal toolchain. Above the engines sits a durable **agent
-runtime** (`AgentRuntime`): every send is a frozen-input, journaled run with approvals, budgets, recovery,
-optional online models, subagents, and dynamic workflows.
+runtime** (`AgentRuntime`): normal app sends use frozen-input, journaled runs with approvals, budgets, recovery,
+optional online models, subagents, and staged workflows. Assembly failure still has a legacy compatibility path.
 
 ## Package graph
 
@@ -48,13 +48,18 @@ kernels or GGUF Metal (agent/online/workflow behavior is validated on the simula
 
 ## Agent runtime: durable runs, approvals, online models
 
-`ChatStore` no longer owns the agent loop. Sending a message builds a frozen `AgentRunRequestSnapshot`
+`ChatStore` no longer owns the primary agent loop. Sending a message builds a frozen `AgentRunRequestSnapshot`
 (context compiler, memory, skills, tool policy) and submits an `AgentRequest` to
 `DurableAgentExecutor` → `AgentRunController`. The controller persists every step in a SQLite
 `SQLiteRunJournal` (CAS commands, idempotency, recovery), projects run state to `AgentRunStore` for the
 UI, and drives the state machine: context compiled → model attempt → tool invocation → synthesis →
 terminal/final answer, with explicit waiting states for approval, user input, foreground, and model
-resources.
+resources. The legacy in-process `ToolLoop` remains only as an assembly-failure/test-preview compatibility path.
+
+Submission and finalization atomically write canonical journal message references plus outbox rows. The SQLite
+claim/ack primitives are implemented, but the app does not yet run a production outbox projector; `ChatStore`
+currently persists the visible compatibility projection from runtime callbacks. Crash-safe journal-to-conversation
+projection is therefore an open conformance item, not a completed architecture guarantee.
 
 Every external operation — online-model inference and every network/privacy tool call — passes a single
 `prepare → authorize → execute` boundary:
@@ -62,8 +67,8 @@ Every external operation — online-model inference and every network/privacy to
 - **prepare** builds an immutable `ExternalOperationPlan` (kind, destination, data categories, argument
   digest, response ceiling, timeout);
 - **authorize** checks the run's immutable capability ceiling and the step grant, then consults the
-  per-conversation approval mode — `ask`, `safePreset` (read-class/app-internal effects auto-approved,
-  network/data egress asked), or `fullAccess` — and records a durable approval receipt bound to the exact
+  per-conversation approval mode — `ask`, `safePreset` (app-local work, bounded network/private reads, and
+  selected online-provider egress auto-approved), or `fullAccess` — and records a durable receipt bound to the exact
   operation;
 - **execute** runs inside an authorized boundary (Tool V2 `AuthorizedToolInvocation`, or the model
   boundary for provider inference) that rejects any observed widening of destination/arguments/effect.
@@ -82,11 +87,11 @@ default is **Auto** (omit `max_output_tokens` so the service uses the model's ow
 model maximum still bounds the accounting ceiling). Streaming emits reasoning and answer deltas as they
 arrive; truncated-`max_output_tokens` runs get one bounded continuation retry that preserves already
 streamed text. The provider is itself an authorized external operation
-(destination `openai.responses:<serviceID>:<modelName>`), so sending a conversation asks for approval
-once per conversation under the active mode. Multiple services can be configured in Settings → Online
+(destination `openai.responses:<serviceID>:<modelName>`), so Ask mode requests bounded conversation consent;
+Safe preset and Full access bind authorization without presenting a prompt. Multiple services can be configured in Settings → Online
 models; at most one is active.
 
-## Subagents, parallel tool batches, and dynamic workflows
+## Subagents, parallel tool batches, and staged workflows
 
 - **Subagents** (`SubagentSpawner`): a parent run can spawn bounded children with a strict subset of its
   capability ceiling and attenuated budgets (model attempts, tool calls, network bytes, active time).
@@ -96,16 +101,20 @@ models; at most one is active.
   model turn may execute concurrently (default 1 = serial). Each call keeps its own cancellation token,
   and journal settlement of the batch is serialized with stale-retry protection so parallel execution
   never races the durable ledger.
-- **Dynamic workflows** (`/workflow <goal>`): the launcher submits a workflow-root *planner* run that
+- **Staged workflows v1** (`/workflow <goal>`): the launcher submits a workflow-root *planner* run that
   emits a structured JSON plan (2–4 phases, each with 1–4 child instructions); if the planner can't
   produce valid JSON after its bounded repair, the deterministic fallback is Explore → Plan → Audit →
   Revise → Verify → Deliver (6 phases, 7 children). `WorkflowOrchestrator` fans out subagents per phase,
   passes structured `WorkflowHandoff`s (including audit findings) into the next phase, and delivers the
   final plan back to the conversation. The UI is message-anchored: a live record row under the
   `/workflow` message shows `phase x/y · subagents a/b · tokens · tool calls`, and the summary page shows
-  each phase's acceptance criteria and every child's task/status. Workflow children force the built-in
-  tool set (web search, Wikipedia, webpage reader, memory) and get a deep-research budget (more tool
-  invocations, larger network ceilings) regardless of the chat's master tool switch.
+  each phase's acceptance criteria and every child's task/status. This is not the future Dynamic Workflows
+  language/graph system: there is no branching DAG, saved definition, or parallel child scheduler.
+
+Two workflow integration gaps remain. First, `withWorkflowTools()` currently forces all built-ins and discovered
+MCP descriptors on regardless of the initiating conversation's allowed set; this violates the tool-policy contract
+and is a release blocker. Second, summaries and child IDs persist, but app bootstrap does not yet reconstruct and
+advance an unfinished workflow, so end-to-end workflow relaunch is not complete.
 
 ## iOS lifecycle and continued processing
 

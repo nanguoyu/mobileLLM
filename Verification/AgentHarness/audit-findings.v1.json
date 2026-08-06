@@ -2,8 +2,9 @@
   "schemaVersion": 1,
   "documentID": "AH-AUDIT-FINDINGS-V1",
   "performedAtUTC": "2026-08-04T18:50:00Z",
-  "auditor": "Codex code-review wave (release-candidate)",
+  "auditor": "Historical implementation review (not the consolidated release audit)",
   "scope": [
+    "Historical review evidence only; AHT-AUDIT-001 remains planned after implementation and release evidence close",
     "Agent runtime execution: prepare -> authorize -> execute, terminal semantics, budgets, duplicate suppression, recovery",
     "Tool V2 adapters: all built-ins (calculator, clock, web search, Wikipedia, webpage reader, memory, calendar, reminders, location) plus MCP",
     "Frozen vs executor catalog descriptor consistency (schema digest, effects, idempotency, timeout)",
