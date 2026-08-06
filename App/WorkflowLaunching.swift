@@ -3,6 +3,7 @@
 import Foundation
 import AgentContracts
 import AgentRuntime
+import LLMCore
 import MobileLLMUI
 
 /// App-side workflow launcher (spec §22/§23): creates the reserved workflow-root run through the
@@ -10,7 +11,7 @@ import MobileLLMUI
 /// exact ceiling/budget/model policy the conversation would have used for a chat run.
 @MainActor
 final class WorkflowLauncher {
-    private let container: AppContainer
+    private weak var container: AppContainer?
     private let assembly: AgentRuntimeAssembly
     private let downloadBase: URL
     private let onlineConfigBox: OpenAIOnlineConfigurationBox
@@ -42,6 +43,9 @@ final class WorkflowLauncher {
         userMessageID: UUID,
         workflowID: UUID
     ) async throws {
+        guard let container else {
+            throw WorkflowLaunchError.snapshotUnavailable("container deallocated")
+        }
         guard let snapshot = makeAgentSnapshot(
             container: container,
             conversationID: conversationID,
@@ -51,7 +55,13 @@ final class WorkflowLauncher {
             downloadBase: downloadBase,
             onlineConfigBox: onlineConfigBox
         ) else {
-            throw WorkflowLaunchError.snapshotUnavailable
+            let fallback = container.models.model(id: container.settings.defaultModelID)?.id
+                ?? LLMCatalog.all.first?.id ?? "nil"
+            throw WorkflowLaunchError.snapshotUnavailable(
+                "activeModel=\(container.chat.activeModel != nil) "
+                    + "online=\(container.chat.onlineModelID ?? "nil") "
+                    + "fallback=\(fallback)"
+            )
         }
         let root = try assembly.makeWorkflowRoot(
             snapshot: snapshot,
@@ -126,6 +136,13 @@ final class WorkflowLauncher {
     }
 }
 
-enum WorkflowLaunchError: Error {
-    case snapshotUnavailable
+enum WorkflowLaunchError: LocalizedError {
+    case snapshotUnavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .snapshotUnavailable(let reason):
+            "Workflow snapshot unavailable: \(reason)"
+        }
+    }
 }

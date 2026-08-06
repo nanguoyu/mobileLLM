@@ -40,6 +40,7 @@ struct WorkflowMessageRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Workflow: \(record.title)")
         .accessibilityValue(statusText)
+        .accessibilityIdentifier("workflow.row")
     }
 
     private var statusSymbol: String {

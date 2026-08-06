@@ -259,6 +259,12 @@ struct MobileLLMApp: App {
             if let model = config.model, !model.isEmpty {
                 container.settings.openAIModelID = model
             }
+            // DEBUG convenience for simulator/device E2E: an embedded config with a model is a
+            // complete online service, so arm it instead of leaving the toggle off and forcing every
+            // test run through Settings. Production builds never contain this block.
+            if !config.apiKey.isEmpty, let model = config.model, !model.isEmpty {
+                container.settings.openAIOnlineEnabled = true
+            }
         }
         #endif
         // Attach the durable agent runtime (spec §6 / §20): SQLite journal, artifact store, local
@@ -347,11 +353,8 @@ struct MobileLLMApp: App {
                     downloadBase: base,
                     onlineConfigBox: onlineConfigBox
                 )
-                container.chat.workflowLaunch = { [weak launcher] goal, conversationID,
+                container.chat.workflowLaunch = { [launcher] goal, conversationID,
                     userMessageID, workflowID in
-                    guard let launcher else {
-                        throw WorkflowLaunchError.snapshotUnavailable
-                    }
                     try await launcher.launch(
                         goal: goal,
                         conversationID: conversationID,

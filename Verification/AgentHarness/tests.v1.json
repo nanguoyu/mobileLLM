@@ -1802,6 +1802,10 @@
         {
           "kind": "xctest",
           "value": "MobileLLMUITests.ChatStoreWorkflowTests/testWorkflowCommandStartsMessageAnchoredWorkflow"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUITests.WorkflowUITests/testWorkflowCommandShowsMessageAnchoredRecord"
         }
       ],
       "platforms": [
