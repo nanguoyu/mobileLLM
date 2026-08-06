@@ -1692,6 +1692,87 @@
       }
     },
     {
+      "id": "AHT-SPAWNER-001",
+      "title": "Spawner runs durable sequential child runs with attenuated authority",
+      "status": "planned",
+      "kind": "integration",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-SUBAGENT-001"
+      ],
+      "selectors": [],
+      "platforms": [
+        "swiftpm",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Spawner admission, parent-run identity, ceiling attenuation, structured results, and journal tree reconstruction"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
+    },
+    {
+      "id": "AHT-PARALLEL-001",
+      "title": "Bounded parallel tool batches preserve all execution invariants",
+      "status": "planned",
+      "kind": "property",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-PARALLEL-001"
+      ],
+      "selectors": [],
+      "platforms": [
+        "swiftpm",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Concurrent ceiling, budget, duplicate-suppression, reconciliation, and cancellation matrix"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
+    },
+    {
+      "id": "AHT-WORKFLOW-001",
+      "title": "Dynamic workflow orchestrator honors phase and handoff contracts",
+      "status": "planned",
+      "kind": "integration",
+      "riskTier": "P1",
+      "requirementIDs": [
+        "AH-WORKFLOW-001"
+      ],
+      "selectors": [],
+      "platforms": [
+        "swiftpm",
+        "macos"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Phase record, handoff dataflow, fan-out/fan-in, acceptance gates, and message-anchored rendering"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": true
+      }
+    },
+    {
       "id": "AHT-SECURITY-002",
       "title": "Fuzz prompt and external-content authority injection",
       "status": "active",

@@ -269,7 +269,10 @@ it succeeded, failed, or abandoned. Only an explicit decision to abandon unresol
 The first release processes multiple proposed tool calls serially in the model-provided order. Each invocation has
 its own state machine (`proposed`, `prepared`, `waitingForApproval`, `authorized`, `executing`, `completed`, `failed`,
 `waitingForReconciliation`, `cancelled`). A deterministic barrier appends results in proposal order and starts the
-next model pass only after every invocation in the batch reaches a usable outcome. Parallel tool batches are deferred.
+next model pass only after every invocation in the batch reaches a usable outcome. Parallel tool batches are the
+second step of the multi-agent roadmap (§30): bounded fan-out executes under the SAME run ceiling, budget ledger,
+duplicate suppression, and reconciliation invariants as serial batches. They land after the subagent spawner and
+before the dynamic workflow orchestrator.
 
 ### 8.1 Stable boundaries
 
@@ -1099,7 +1102,9 @@ Respond command changes the run. Commands carry target run/request IDs and expec
 - optional sandbox requirement;
 - labels and provenance.
 
-The first release has no `SubagentSpawner` implementation and advertises no spawn capability. Future subagents:
+Implementation roadmap (§30): the first release adds a `SubagentSpawner` that runs child runs sequentially and
+advertises the spawn capability only when the spawner is available; bounded parallel subagent execution follows the
+parallel tool-batch concurrency layer, and the dynamic workflow orchestrator builds on both. Subagents:
 
 - inherit only a strict subset of parent capabilities;
 - receive independent contexts and budgets;
@@ -1113,6 +1118,9 @@ asks for multi-agent work in a message, and the `/workflow` slash command is the
 guaranteed trigger. Every workflow is anchored to the message that initiated it, records that anchor
 durably, and spawns child runs under the reserved parent-run identity so the journal can reconstruct
 the full tree after relaunch.
+
+Implementation order (see §30): the subagent spawner lands first, then bounded parallel tool batches,
+then this orchestrator.
 
 ## 23. Dynamic Workflows compatibility seam
 
@@ -1493,10 +1501,20 @@ These decisions are intentionally deferred because the corresponding capability 
 - server-side native tools (e.g. DeepSeek `web_search`): policy recorded in §15.5, implementation
   deferred until the capability metadata, provider translation, step UI, and approval wiring land together;
 - the private sandbox runtime's transport, packaging, entitlements, and binary distribution;
-- subagent scheduling limits and local/remote concurrency;
+- remote/cross-device concurrency and production subagent scheduling policies; local subagent
+  spawning and bounded parallel tool batches are PLANNED implementation steps, not deferred;
 - workflow definition language, interpreter, DAG semantics, and saved-workflow locations (the
   message-anchored workflow UI and record contracts are fixed in §20/§23 and are NOT deferred);
 - distributed or cross-device execution.
+
+The multi-agent implementation order is fixed: (1) `SubagentSpawner` with sequential child runs,
+attenuated ceilings, independent budgets/contexts, structured results and artifacts, and child
+visibility in the journal (§22); (2) bounded parallel tool batches inside one run under the same
+ceiling, budget ledger, duplicate suppression, and reconciliation invariants (§12); (3) the dynamic
+workflow orchestrator with phase decomposition, fan-out/fan-in, `WorkflowPhaseRecord`, and
+`WorkflowHandoff` dataflow (§23/§23.1). Parallel tool batches and parallel subagent execution are
+planned, not deferred; the workflow interpreter, DAG semantics, saved-workflow locations,
+remote/cross-device execution, and production scheduling policies remain deferred.
 
 Their future implementations must honor the contracts and authority boundaries established here.
 

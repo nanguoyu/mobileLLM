@@ -4,8 +4,8 @@
   "documentID": "AH-REQUIREMENTS-V1",
   "sourceSpecification": {
     "path": "spec.md",
-    "sha256": "b6df07175c68ba5672309d7ad05e828b8d3ce1d3afd5eff4937bfc2cc9af2857",
-    "capturedAtUTC": "2026-08-06T00:00:00Z"
+    "sha256": "681d2106e7534aeecbe9649dcd729206f01d24c1576882c958d0a09e538442b3",
+    "capturedAtUTC": "2026-08-06T01:00:00Z"
   },
   "requirements": [
     {
@@ -19,8 +19,8 @@
         {
           "section": "27",
           "heading": "Test strategy",
-          "lineStart": 1231,
-          "lineEnd": 1241
+          "lineStart": 1239,
+          "lineEnd": 1249
         }
       ],
       "platforms": [
@@ -50,8 +50,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1349,
-          "lineEnd": 1421
+          "lineStart": 1357,
+          "lineEnd": 1429
         }
       ],
       "platforms": [
@@ -81,8 +81,8 @@
         {
           "section": "27",
           "heading": "Test strategy",
-          "lineStart": 1231,
-          "lineEnd": 1241
+          "lineStart": 1239,
+          "lineEnd": 1249
         }
       ],
       "platforms": [
@@ -112,8 +112,8 @@
         {
           "section": "27.1",
           "heading": "Deterministic unit and property tests",
-          "lineStart": 1242,
-          "lineEnd": 1279
+          "lineStart": 1250,
+          "lineEnd": 1287
         }
       ],
       "platforms": [
@@ -143,14 +143,14 @@
         {
           "section": "27.1",
           "heading": "Deterministic unit and property tests",
-          "lineStart": 1242,
-          "lineEnd": 1279
+          "lineStart": 1250,
+          "lineEnd": 1287
         },
         {
           "section": "27.3",
           "heading": "Real-device matrix",
-          "lineStart": 1301,
-          "lineEnd": 1331
+          "lineStart": 1309,
+          "lineEnd": 1339
         }
       ],
       "platforms": [
@@ -179,8 +179,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1349,
-          "lineEnd": 1421
+          "lineStart": 1357,
+          "lineEnd": 1429
         }
       ],
       "platforms": [
@@ -210,8 +210,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1349,
-          "lineEnd": 1421
+          "lineStart": 1357,
+          "lineEnd": 1429
         }
       ],
       "platforms": [
@@ -241,8 +241,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1349,
-          "lineEnd": 1421
+          "lineStart": 1357,
+          "lineEnd": 1429
         }
       ],
       "platforms": [
@@ -295,7 +295,7 @@
       "id": "AH-ARCH-002",
       "area": "architecture",
       "title": "Deferred runtimes remain absent",
-      "statement": "The first release contains no workflow interpreter, DAG scheduler, child-agent spawner, production sandbox substitute, arbitrary shell, or online model client.",
+      "statement": "The first release contains no workflow interpreter, DAG scheduler, production sandbox substitute, arbitrary shell, or online model client; the subagent spawner, bounded parallel tool batches, and dynamic workflow orchestrator are planned in that dependency order (§30).",
       "status": "active",
       "riskTier": "P0",
       "specAnchors": [
@@ -308,8 +308,8 @@
         {
           "section": "23",
           "heading": "Dynamic Workflows compatibility seam",
-          "lineStart": 1117,
-          "lineEnd": 1144
+          "lineStart": 1125,
+          "lineEnd": 1152
         }
       ],
       "platforms": [
@@ -374,8 +374,8 @@
         {
           "section": "9.2",
           "heading": "Minimum records",
-          "lineStart": 346,
-          "lineEnd": 362
+          "lineStart": 349,
+          "lineEnd": 365
         }
       ],
       "platforms": [
@@ -404,7 +404,7 @@
           "section": "8",
           "heading": "Run lifecycle and state machine",
           "lineStart": 215,
-          "lineEnd": 273
+          "lineEnd": 276
         }
       ],
       "platforms": [
@@ -432,8 +432,8 @@
         {
           "section": "8.1",
           "heading": "Stable boundaries",
-          "lineStart": 274,
-          "lineEnd": 292
+          "lineStart": 277,
+          "lineEnd": 295
         }
       ],
       "platforms": [
@@ -462,8 +462,8 @@
         {
           "section": "8.2",
           "heading": "Terminal semantics",
-          "lineStart": 293,
-          "lineEnd": 313
+          "lineStart": 296,
+          "lineEnd": 316
         }
       ],
       "platforms": [
@@ -492,13 +492,13 @@
           "section": "8",
           "heading": "Run lifecycle and state machine",
           "lineStart": 215,
-          "lineEnd": 273
+          "lineEnd": 276
         },
         {
           "section": "20",
           "heading": "Unified UI and interaction model",
-          "lineStart": 946,
-          "lineEnd": 1000
+          "lineStart": 949,
+          "lineEnd": 1003
         }
       ],
       "platforms": [
@@ -527,13 +527,13 @@
           "section": "8",
           "heading": "Run lifecycle and state machine",
           "lineStart": 215,
-          "lineEnd": 273
+          "lineEnd": 276
         },
         {
           "section": "18",
           "heading": "Retry, idempotency, and uncertainty",
-          "lineStart": 888,
-          "lineEnd": 901
+          "lineStart": 891,
+          "lineEnd": 904
         }
       ],
       "platforms": [
@@ -562,8 +562,8 @@
         {
           "section": "9.1",
           "heading": "Source of truth",
-          "lineStart": 316,
-          "lineEnd": 345
+          "lineStart": 319,
+          "lineEnd": 348
         }
       ],
       "platforms": [
@@ -592,8 +592,8 @@
         {
           "section": "9.1",
           "heading": "Source of truth",
-          "lineStart": 316,
-          "lineEnd": 345
+          "lineStart": 319,
+          "lineEnd": 348
         }
       ],
       "platforms": [
@@ -622,8 +622,8 @@
         {
           "section": "9.3",
           "heading": "Concurrency and command consistency",
-          "lineStart": 363,
-          "lineEnd": 374
+          "lineStart": 366,
+          "lineEnd": 377
         }
       ],
       "platforms": [
@@ -652,8 +652,8 @@
         {
           "section": "9.4",
           "heading": "Recovery algorithm",
-          "lineStart": 375,
-          "lineEnd": 389
+          "lineStart": 378,
+          "lineEnd": 392
         }
       ],
       "platforms": [
@@ -682,8 +682,8 @@
         {
           "section": "9.5",
           "heading": "Deletion coordination",
-          "lineStart": 390,
-          "lineEnd": 407
+          "lineStart": 393,
+          "lineEnd": 410
         }
       ],
       "platforms": [
@@ -712,8 +712,8 @@
         {
           "section": "9.5",
           "heading": "Deletion coordination",
-          "lineStart": 390,
-          "lineEnd": 407
+          "lineStart": 393,
+          "lineEnd": 410
         }
       ],
       "platforms": [
@@ -741,8 +741,8 @@
         {
           "section": "10",
           "heading": "Model-provider abstraction",
-          "lineStart": 408,
-          "lineEnd": 475
+          "lineStart": 411,
+          "lineEnd": 478
         }
       ],
       "platforms": [
@@ -772,8 +772,8 @@
         {
           "section": "10",
           "heading": "Model-provider abstraction",
-          "lineStart": 408,
-          "lineEnd": 475
+          "lineStart": 411,
+          "lineEnd": 478
         }
       ],
       "platforms": [
@@ -807,8 +807,8 @@
         {
           "section": "12",
           "heading": "Agent action protocol and loop policy",
-          "lineStart": 505,
-          "lineEnd": 554
+          "lineStart": 508,
+          "lineEnd": 557
         }
       ],
       "platforms": [
@@ -837,8 +837,8 @@
         {
           "section": "11",
           "heading": "Single-model resource arbitration",
-          "lineStart": 476,
-          "lineEnd": 504
+          "lineStart": 479,
+          "lineEnd": 507
         }
       ],
       "platforms": [
@@ -868,8 +868,8 @@
         {
           "section": "11",
           "heading": "Single-model resource arbitration",
-          "lineStart": 476,
-          "lineEnd": 504
+          "lineStart": 479,
+          "lineEnd": 507
         }
       ],
       "platforms": [
@@ -898,8 +898,8 @@
         {
           "section": "12",
           "heading": "Agent action protocol and loop policy",
-          "lineStart": 505,
-          "lineEnd": 554
+          "lineStart": 508,
+          "lineEnd": 557
         }
       ],
       "platforms": [
@@ -927,8 +927,8 @@
         {
           "section": "12",
           "heading": "Agent action protocol and loop policy",
-          "lineStart": 505,
-          "lineEnd": 554
+          "lineStart": 508,
+          "lineEnd": 557
         }
       ],
       "platforms": [
@@ -958,13 +958,13 @@
           "section": "8",
           "heading": "Run lifecycle and state machine",
           "lineStart": 215,
-          "lineEnd": 273
+          "lineEnd": 276
         },
         {
           "section": "12",
           "heading": "Agent action protocol and loop policy",
-          "lineStart": 505,
-          "lineEnd": 554
+          "lineStart": 508,
+          "lineEnd": 557
         }
       ],
       "platforms": [
@@ -991,8 +991,8 @@
         {
           "section": "13.2",
           "heading": "Execution",
-          "lineStart": 600,
-          "lineEnd": 644
+          "lineStart": 603,
+          "lineEnd": 647
         }
       ],
       "platforms": [
@@ -1022,8 +1022,8 @@
         {
           "section": "13.1",
           "heading": "Descriptor",
-          "lineStart": 557,
-          "lineEnd": 599
+          "lineStart": 560,
+          "lineEnd": 602
         }
       ],
       "platforms": [
@@ -1052,14 +1052,14 @@
         {
           "section": "13.2",
           "heading": "Execution",
-          "lineStart": 600,
-          "lineEnd": 644
+          "lineStart": 603,
+          "lineEnd": 647
         },
         {
           "section": "15.2",
           "heading": "Approval defaults",
-          "lineStart": 719,
-          "lineEnd": 771
+          "lineStart": 722,
+          "lineEnd": 774
         }
       ],
       "platforms": [
@@ -1089,8 +1089,8 @@
         {
           "section": "13.2",
           "heading": "Execution",
-          "lineStart": 600,
-          "lineEnd": 644
+          "lineStart": 603,
+          "lineEnd": 647
         }
       ],
       "platforms": [
@@ -1119,8 +1119,8 @@
         {
           "section": "14",
           "heading": "Conversation-persistent intelligent tool selection",
-          "lineStart": 645,
-          "lineEnd": 689
+          "lineStart": 648,
+          "lineEnd": 692
         }
       ],
       "platforms": [
@@ -1150,8 +1150,8 @@
         {
           "section": "14",
           "heading": "Conversation-persistent intelligent tool selection",
-          "lineStart": 645,
-          "lineEnd": 689
+          "lineStart": 648,
+          "lineEnd": 692
         }
       ],
       "platforms": [
@@ -1180,8 +1180,8 @@
         {
           "section": "15.2",
           "heading": "Approval defaults",
-          "lineStart": 719,
-          "lineEnd": 771
+          "lineStart": 722,
+          "lineEnd": 774
         }
       ],
       "platforms": [
@@ -1211,14 +1211,14 @@
         {
           "section": "15.1",
           "heading": "Effect classes",
-          "lineStart": 692,
-          "lineEnd": 718
+          "lineStart": 695,
+          "lineEnd": 721
         },
         {
           "section": "15.2",
           "heading": "Approval defaults",
-          "lineStart": 719,
-          "lineEnd": 771
+          "lineStart": 722,
+          "lineEnd": 774
         }
       ],
       "platforms": [
@@ -1248,14 +1248,14 @@
         {
           "section": "15.2",
           "heading": "Approval defaults",
-          "lineStart": 719,
-          "lineEnd": 771
+          "lineStart": 722,
+          "lineEnd": 774
         },
         {
           "section": "24",
           "heading": "Security and privacy requirements",
-          "lineStart": 1184,
-          "lineEnd": 1199
+          "lineStart": 1192,
+          "lineEnd": 1207
         }
       ],
       "platforms": [
@@ -1285,13 +1285,13 @@
           "section": "8",
           "heading": "Run lifecycle and state machine",
           "lineStart": 215,
-          "lineEnd": 273
+          "lineEnd": 276
         },
         {
           "section": "16",
           "heading": "Context compiler, Memory, and Skills",
-          "lineStart": 831,
-          "lineEnd": 851
+          "lineStart": 834,
+          "lineEnd": 854
         }
       ],
       "platforms": [
@@ -1319,8 +1319,8 @@
         {
           "section": "16",
           "heading": "Context compiler, Memory, and Skills",
-          "lineStart": 831,
-          "lineEnd": 851
+          "lineStart": 834,
+          "lineEnd": 854
         }
       ],
       "platforms": [
@@ -1351,8 +1351,8 @@
         {
           "section": "17",
           "heading": "Artifact system",
-          "lineStart": 852,
-          "lineEnd": 872
+          "lineStart": 855,
+          "lineEnd": 875
         }
       ],
       "platforms": [
@@ -1381,8 +1381,8 @@
         {
           "section": "17.1",
           "heading": "Data protection and backup",
-          "lineStart": 873,
-          "lineEnd": 887
+          "lineStart": 876,
+          "lineEnd": 890
         }
       ],
       "platforms": [
@@ -1410,8 +1410,8 @@
         {
           "section": "18",
           "heading": "Retry, idempotency, and uncertainty",
-          "lineStart": 888,
-          "lineEnd": 901
+          "lineStart": 891,
+          "lineEnd": 904
         }
       ],
       "platforms": [
@@ -1440,8 +1440,8 @@
         {
           "section": "19.1",
           "heading": "iOS 17 baseline",
-          "lineStart": 904,
-          "lineEnd": 922
+          "lineStart": 907,
+          "lineEnd": 925
         }
       ],
       "platforms": [
@@ -1478,8 +1478,8 @@
         {
           "section": "19.1",
           "heading": "iOS 17 baseline",
-          "lineStart": 904,
-          "lineEnd": 922
+          "lineStart": 907,
+          "lineEnd": 925
         }
       ],
       "platforms": [
@@ -1509,8 +1509,8 @@
         {
           "section": "19.2",
           "heading": "iOS 26 continued processing",
-          "lineStart": 923,
-          "lineEnd": 945
+          "lineStart": 926,
+          "lineEnd": 948
         }
       ],
       "platforms": [
@@ -1539,8 +1539,8 @@
         {
           "section": "20",
           "heading": "Unified UI and interaction model",
-          "lineStart": 946,
-          "lineEnd": 1000
+          "lineStart": 949,
+          "lineEnd": 1003
         }
       ],
       "platforms": [
@@ -1570,8 +1570,8 @@
         {
           "section": "20",
           "heading": "Unified UI and interaction model",
-          "lineStart": 946,
-          "lineEnd": 1000
+          "lineStart": 949,
+          "lineEnd": 1003
         }
       ],
       "platforms": [
@@ -1600,8 +1600,8 @@
         {
           "section": "21.1",
           "heading": "Isolation from the private implementation",
-          "lineStart": 1003,
-          "lineEnd": 1014
+          "lineStart": 1006,
+          "lineEnd": 1017
         }
       ],
       "platforms": [
@@ -1631,8 +1631,8 @@
         {
           "section": "21.2",
           "heading": "Two-level integration",
-          "lineStart": 1015,
-          "lineEnd": 1065
+          "lineStart": 1018,
+          "lineEnd": 1068
         }
       ],
       "platforms": [
@@ -1660,8 +1660,8 @@
         {
           "section": "21.2",
           "heading": "Two-level integration",
-          "lineStart": 1015,
-          "lineEnd": 1065
+          "lineStart": 1018,
+          "lineEnd": 1068
         }
       ],
       "platforms": [
@@ -1690,8 +1690,8 @@
         {
           "section": "22",
           "heading": "Subagent compatibility seam",
-          "lineStart": 1066,
-          "lineEnd": 1116
+          "lineStart": 1069,
+          "lineEnd": 1124
         }
       ],
       "platforms": [
@@ -1708,6 +1708,96 @@
       ]
     },
     {
+      "id": "AH-SUBAGENT-001",
+      "area": "subagents-workflows",
+      "title": "Subagent spawner runs durable sequential child runs",
+      "statement": "A SubagentSpawner starts child runs under a reserved parent identity with attenuated ceilings, independent budgets and contexts, structured results and artifact references, and no self-approval; children are visible in the journal tree and inherit only what the roadmap in §30 permits.",
+      "status": "planned",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "22",
+          "heading": "Subagent compatibility seam",
+          "lineStart": 1069,
+          "lineEnd": 1124
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-SPAWNER-001"
+      ],
+      "requiredEvidence": [
+        "Spawner admission policy, ceiling attenuation, independent budgets, structured results, and journal tree reconstruction"
+      ]
+    },
+    {
+      "id": "AH-PARALLEL-001",
+      "area": "subagents-workflows",
+      "title": "Bounded parallel tool batches preserve execution invariants",
+      "statement": "Parallel tool batches fan out inside one run under the same run ceiling, budget ledger, duplicate suppression, and reconciliation invariants as serial batches, with a deterministic barrier before the next model pass.",
+      "status": "planned",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "12",
+          "heading": "Agent action protocol and loop policy",
+          "lineStart": 508,
+          "lineEnd": 557
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-PARALLEL-001"
+      ],
+      "requiredEvidence": [
+        "Concurrent invocation matrix with ceiling, budget, duplicate, reconciliation, and cancellation outcomes"
+      ]
+    },
+    {
+      "id": "AH-WORKFLOW-001",
+      "area": "subagents-workflows",
+      "title": "Dynamic workflow orchestrator implements phase and handoff contracts",
+      "statement": "The workflow orchestrator decomposes goals into durable phases, fans out and merges child runs, and passes versioned artifacts plus distilled WorkflowHandoff records between phases per §23.1, with no direct filesystem, network, tool, or sandbox authority.",
+      "status": "planned",
+      "riskTier": "P1",
+      "specAnchors": [
+        {
+          "section": "23",
+          "heading": "Dynamic Workflows compatibility seam",
+          "lineStart": 1125,
+          "lineEnd": 1152
+        }
+      ],
+      "platforms": [
+        "all"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly",
+        "release-candidate"
+      ],
+      "testIDs": [
+        "AHT-WORKFLOW-001"
+      ],
+      "requiredEvidence": [
+        "Phase record, handoff, fan-out/fan-in, acceptance-gate, and dataflow-graph scenarios"
+      ]
+    },
+    {
       "id": "AH-SECURITY-001",
       "area": "security-privacy",
       "title": "Prompt and external content cannot grant authority",
@@ -1718,8 +1808,8 @@
         {
           "section": "24",
           "heading": "Security and privacy requirements",
-          "lineStart": 1184,
-          "lineEnd": 1199
+          "lineStart": 1192,
+          "lineEnd": 1207
         }
       ],
       "platforms": [
@@ -1748,14 +1838,14 @@
         {
           "section": "17.1",
           "heading": "Data protection and backup",
-          "lineStart": 873,
-          "lineEnd": 887
+          "lineStart": 876,
+          "lineEnd": 890
         },
         {
           "section": "24",
           "heading": "Security and privacy requirements",
-          "lineStart": 1184,
-          "lineEnd": 1199
+          "lineStart": 1192,
+          "lineEnd": 1207
         }
       ],
       "platforms": [
@@ -1784,8 +1874,8 @@
         {
           "section": "25",
           "heading": "Observability",
-          "lineStart": 1200,
-          "lineEnd": 1216
+          "lineStart": 1208,
+          "lineEnd": 1224
         }
       ],
       "platforms": [
@@ -1814,8 +1904,8 @@
         {
           "section": "26",
           "heading": "Backward compatibility and rollout",
-          "lineStart": 1217,
-          "lineEnd": 1230
+          "lineStart": 1225,
+          "lineEnd": 1238
         }
       ],
       "platforms": [
@@ -1845,8 +1935,8 @@
         {
           "section": "26",
           "heading": "Backward compatibility and rollout",
-          "lineStart": 1217,
-          "lineEnd": 1230
+          "lineStart": 1225,
+          "lineEnd": 1238
         }
       ],
       "platforms": [
@@ -1875,8 +1965,8 @@
         {
           "section": "27.1",
           "heading": "Deterministic unit and property tests",
-          "lineStart": 1242,
-          "lineEnd": 1279
+          "lineStart": 1250,
+          "lineEnd": 1287
         }
       ],
       "platforms": [
@@ -1905,8 +1995,8 @@
         {
           "section": "27.2",
           "heading": "Integration tests",
-          "lineStart": 1280,
-          "lineEnd": 1300
+          "lineStart": 1288,
+          "lineEnd": 1308
         }
       ],
       "platforms": [
@@ -1934,8 +2024,8 @@
         {
           "section": "27.3",
           "heading": "Real-device matrix",
-          "lineStart": 1301,
-          "lineEnd": 1331
+          "lineStart": 1309,
+          "lineEnd": 1339
         }
       ],
       "platforms": [
@@ -1965,8 +2055,8 @@
         {
           "section": "27.4",
           "heading": "Performance and resource gates",
-          "lineStart": 1332,
-          "lineEnd": 1348
+          "lineStart": 1340,
+          "lineEnd": 1356
         }
       ],
       "platforms": [
@@ -1995,8 +2085,8 @@
         {
           "section": "29.1",
           "heading": "Audit cadence and stop rule",
-          "lineStart": 1466,
-          "lineEnd": 1487
+          "lineStart": 1474,
+          "lineEnd": 1495
         }
       ],
       "platforms": [
@@ -2024,8 +2114,8 @@
         {
           "section": "13",
           "heading": "Tool V2 contract",
-          "lineStart": 555,
-          "lineEnd": 556
+          "lineStart": 558,
+          "lineEnd": 559
         }
       ],
       "platforms": [
