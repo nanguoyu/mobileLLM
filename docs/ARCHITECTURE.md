@@ -1,38 +1,122 @@
 # mobileLLM — Architecture
 
-What the code *is* today (2026-07-23). For the original design intent and how the build diverged from it,
+What the code *is* today (2026-08-06). For the original design intent and how the build diverged from it,
 see the frozen [DESIGN.md](DESIGN.md); for the dependency wiring of the local-weight engines, see
-[WIRING.md](WIRING.md).
+[WIRING.md](WIRING.md); the normative requirements live in [spec.md](../spec.md).
 
 mobileLLM is a private, on-device chat app for open-weight LLMs on macOS + iOS. It runs three inference
 engines — Apple **MLX** (resident weights), **llama.cpp** (memory-mapped GGUF), and **Apple Intelligence**
 (the OS's own model, no weights of ours at all) — behind one protocol, so everything above the engine is
-engine-agnostic and unit-testable without a Metal toolchain.
+engine-agnostic and unit-testable without a Metal toolchain. Above the engines sits a durable **agent
+runtime** (`AgentRuntime`): every send is a frozen-input, journaled run with approvals, budgets, recovery,
+optional online models, subagents, and dynamic workflows.
 
 ## Package graph
 
-Seven Swift packages plus the app target. MLX and llama.cpp are quarantined to one package each; the other
-five are MLX-free and keep a fast `swift test` loop.
+Ten Swift packages plus the app target. MLX and llama.cpp are quarantined to one package each; the other
+eight are MLX-free and keep a fast `swift test` loop.
 
 ```
 App (mobileLLM.app, Xcode target)
 │   assembles RoutingEngine(engines: [.mlx: MLXLLMEngine(), .llamaCpp: LlamaEngine(),
 │                                     .apple: AppleLLMEngine()])
-│   + the resumable ModelDownloader, injected into the AppContainer composition root
-├─▶ MobileLLMUI ──▶ AppUI, AppRuntime, LLMCore        SwiftUI surface + @Observable stores   (MLX-free)
+│   + the resumable ModelDownloader and the agent executor/online config, injected into
+│   AppContainer at composition root
+├─▶ AgentContracts ◀─ shared by runtime, sandbox API, UI       versioned run/step/request/   (MLX-free)
+│                        approval/budget/workflow contracts
+├─▶ AgentRuntime ──▶ AgentContracts, LLMCore     durable executor, SQLite journal, approval  (MLX-free,
+│                                                policy, budgets, recovery, subagents,       sqlite3)
+│                                                parallel tool batches, workflow orchestrator,
+│                                                online Responses API provider
+├─▶ AgentSandboxAPI ──▶ AgentContracts           protocol-only sandbox seam (no provider     (MLX-free)
+│                                                ships in the open-source build)
+├─▶ MobileLLMUI ──▶ AppUI, AppRuntime, LLMCore,  SwiftUI surface + @Observable stores,        (MLX-free)
+│                   AgentContracts, AgentRuntime agent run/approval/workflow UI
 ├─▶ LLMEngineMLX ─▶ LLMCore + AppRuntime + PrismML fork resident-weights MLX engine            (Metal)
 ├─▶ LLMEngineLlama ▶ LLMCore + AppRuntime + llama.xcframework mmap'd-GGUF llama.cpp engine      (Metal)
 └─▶ LLMEngineApple ▶ LLMCore + FoundationModels (weak) Apple Intelligence engine              (MLX-free)
 
-LLMCore ──▶ AppRuntime            catalog + schema, RoutingEngine, governors, tools/MCP,       (MLX-free)
+LLMCore ──▶ AppRuntime            catalog + schema, RoutingEngine, governors, legacy tools/MCP, (MLX-free)
                                   context policy, Explore, ThinkSplitter, LLMEngine protocol
 AppRuntime  (Foundation + CryptoKit)   downloader, generation/thermal governance, DurableStore (MLX-free)
 AppUI       (SwiftUI, no deps)         ink-wash design tokens + shared controls                (MLX-free)
 ```
 
-The app is built with `xcodebuild` (MLX Metal kernels require it); the five MLX-free packages test with
+The app is built with `xcodebuild` (MLX Metal kernels require it); the eight MLX-free packages test with
 plain SwiftPM. Inference is validated on real devices — the simulator has no Metal path for the 1-bit MLX
-kernels or GGUF Metal.
+kernels or GGUF Metal (agent/online/workflow behavior is validated on the simulator instead).
+
+## Agent runtime: durable runs, approvals, online models
+
+`ChatStore` no longer owns the agent loop. Sending a message builds a frozen `AgentRunRequestSnapshot`
+(context compiler, memory, skills, tool policy) and submits an `AgentRequest` to
+`DurableAgentExecutor` → `AgentRunController`. The controller persists every step in a SQLite
+`SQLiteRunJournal` (CAS commands, idempotency, recovery), projects run state to `AgentRunStore` for the
+UI, and drives the state machine: context compiled → model attempt → tool invocation → synthesis →
+terminal/final answer, with explicit waiting states for approval, user input, foreground, and model
+resources.
+
+Every external operation — online-model inference and every network/privacy tool call — passes a single
+`prepare → authorize → execute` boundary:
+
+- **prepare** builds an immutable `ExternalOperationPlan` (kind, destination, data categories, argument
+  digest, response ceiling, timeout);
+- **authorize** checks the run's immutable capability ceiling and the step grant, then consults the
+  per-conversation approval mode — `ask`, `safePreset` (read-class/app-internal effects auto-approved,
+  network/data egress asked), or `fullAccess` — and records a durable approval receipt bound to the exact
+  operation;
+- **execute** runs inside an authorized boundary (Tool V2 `AuthorizedToolInvocation`, or the model
+  boundary for provider inference) that rejects any observed widening of destination/arguments/effect.
+
+Budgets (model attempts, tool invocations, network bytes, generated/persisted bytes, active time) are
+accounted in a ledger and attenuate for children; recovery replays journaled boundaries and asks for
+reconciliation when an uncertain external write cannot be replayed safely.
+
+### Online models (OpenAI-compatible Responses API)
+
+`ResponsesAPIModelProvider` calls any configured OpenAI-compatible `/responses` endpoint (base URL,
+model id, API key resolved from the device Keychain per service). The online model is selected per
+conversation, and per-conversation controls cover: approval mode, reasoning on/off + effort
+(low/medium/high, sent as `reasoning.effort`), context length, sampling, and the output budget — the
+default is **Auto** (omit `max_output_tokens` so the service uses the model's own maximum; a declared
+model maximum still bounds the accounting ceiling). Streaming emits reasoning and answer deltas as they
+arrive; truncated-`max_output_tokens` runs get one bounded continuation retry that preserves already
+streamed text. The provider is itself an authorized external operation
+(destination `openai.responses:<serviceID>:<modelName>`), so sending a conversation asks for approval
+once per conversation under the active mode. Multiple services can be configured in Settings → Online
+models; at most one is active.
+
+## Subagents, parallel tool batches, and dynamic workflows
+
+- **Subagents** (`SubagentSpawner`): a parent run can spawn bounded children with a strict subset of its
+  capability ceiling and attenuated budgets (model attempts, tool calls, network bytes, active time).
+  Children get their own frozen inputs, journal, structured results, artifacts, and provenance; a
+  workflow root is the orchestration anchor for the whole tree.
+- **Parallel tool batches**: `AgentRequest.parallelToolBatchLimit` bounds how many tool calls in one
+  model turn may execute concurrently (default 1 = serial). Each call keeps its own cancellation token,
+  and journal settlement of the batch is serialized with stale-retry protection so parallel execution
+  never races the durable ledger.
+- **Dynamic workflows** (`/workflow <goal>`): the launcher submits a workflow-root *planner* run that
+  emits a structured JSON plan (2–4 phases, each with 1–4 child instructions); if the planner can't
+  produce valid JSON after its bounded repair, the deterministic fallback is Explore → Plan → Audit →
+  Revise → Verify → Deliver (6 phases, 7 children). `WorkflowOrchestrator` fans out subagents per phase,
+  passes structured `WorkflowHandoff`s (including audit findings) into the next phase, and delivers the
+  final plan back to the conversation. The UI is message-anchored: a live record row under the
+  `/workflow` message shows `phase x/y · subagents a/b · tokens · tool calls`, and the summary page shows
+  each phase's acceptance criteria and every child's task/status. Workflow children force the built-in
+  tool set (web search, Wikipedia, webpage reader, memory) and get a deep-research budget (more tool
+  invocations, larger network ceilings) regardless of the chat's master tool switch.
+
+## iOS lifecycle and continued processing
+
+`LifecycleBridge` aggregates every connected `UIWindowScene` activation state (iPadOS Split View
+included), and on iOS 17 a `UIKitBackgroundDrainProvider` begins a `UIBackgroundTask` when the app
+quiesces a run: the controller journals a safe quiescence boundary and leaves resumable work in
+`waitingForForeground` — a normal launch never auto-loads a model or silently resumes an unrelated run.
+On iOS 26 `ContinuedProcessingBridge` schedules `BGContinuedProcessingTask`s with
+`fail-if-not-immediately-runnable` strategy (no delayed queueing), requests `.gpu` only when the engine
+needs it and the device supports it, and cancels cleanly on foreground-resume. Runs interrupted by
+expiration or system cancellation remain recoverable through the journal.
 
 ## The engine protocol and routing
 
@@ -124,7 +208,13 @@ extend it); `fits` / `largestFitting` re-score each rung through the governor. H
 
 ## Tools + MCP
 
-Tool calling is an **agent loop above the engine** — no engine changes. `ToolLoop` runs
+Tool calling is an **agent loop above the engine** — no engine changes. Production agent runs execute
+tools through **Tool V2** adapters (`LegacyLocalToolAdapter`, `AppWebSearchToolAdapter`,
+`AppWebScraperToolAdapter`, `MCPToolV2Adapter`) inside the `prepare → authorize → execute` boundary:
+the descriptor carries schema/effects/timeouts/trust, and every network hop runs inside an authorized
+`ExternalOperationPlan` (engine hosts, Wikipedia language host, user-configured MCP endpoint, or the
+`<serviceID>:<tool>` destination for future server-side native tools). `LLMCore.ToolLoop` remains as the
+legacy/simplified loop (for older compatibility paths and its fixture suites): it runs
 generate → detect a `<tool_call>{…}</tool_call>` in the stream → run the tool locally → feed a
 `<tool_response>` back → generate again, with a three-execution mobile budget. Exact duplicate calls are
 suppressed. A successful `remember` goes directly to one tool-free, non-thinking synthesis pass, while
@@ -133,9 +223,10 @@ receives no tool schemas, so a weak model cannot turn memory bookkeeping into an
 `ToolPrompt` folds the advertised tool schemas into ordinary system turns; `ToolCallProcessor` extracts
 calls from plain text and hides any hallucinated call markup in the final pass.
 
-- **Built-in tools** (`Tool` protocol): `web_search` — real, keyless SERP search (DuckDuckGo's html
-  endpoint first, Bing fall-through; heuristic parsers over scraped result pages, tracker unwrapping,
-  ≤6 results — inherently brittle, so failures degrade to a readable string and the fixtures need
+- **Built-in tools** (`Tool` protocol): `web_search` — real, keyless SERP search across **five engines**
+  (DuckDuckGo's html endpoint first, then Bing RSS, Brave, Yahoo, Marginalia), each with heuristic
+  parsers over scraped result pages, tracker unwrapping, and a priority fall-through (first engine with
+  results wins, ≤6 results per call; failures degrade to a readable string and the fixtures need
   occasional refresh); `fetch_webpage` — readable-text extraction (boilerplate stripped, 6000-char cap,
   content-type guards, and a shared bounded HTTP client). That client accepts only HTTP(S), resolves every
   hostname and rejects the request if any answer is non-public, disables automatic redirects and

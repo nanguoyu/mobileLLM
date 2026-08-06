@@ -4,18 +4,20 @@
 
 # mobileLLM
 
-**A private, open-source chat app that runs open-weight language models fully on your device** —
-macOS + iOS, native Swift + SwiftUI. Three inference engines — Apple [MLX](https://github.com/ml-explore/mlx-swift),
-[llama.cpp](https://github.com/ggml-org/llama.cpp), and Apple Intelligence's own on-device model — sit
-behind one protocol. No account and no telemetry: inference and chat storage stay on your device. Network
-access happens only for model discovery/downloads or tools you explicitly enable (web, Wikipedia, MCP).
+**A private, open-source agent chat app for macOS + iOS** — native Swift + SwiftUI. Open-weight models
+run fully on your device behind one protocol (Apple [MLX](https://github.com/ml-explore/mlx-swift),
+[llama.cpp](https://github.com/ggml-org/llama.cpp), and Apple Intelligence's own on-device model), with an
+optional OpenAI-compatible **online model** path for testing and high-quality API models. A durable agent
+runtime (runs, journal, approvals, subagents, workflows) sits above the engines. No account and no
+telemetry: inference and chat storage stay on your device. Network access happens only for model
+discovery/downloads, online models you enable and approve, or tools you explicitly enable (web, Wikipedia, MCP).
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
   <a href="https://github.com/nanguoyu/mobileLLM/actions/workflows/ci.yml"><img src="https://github.com/nanguoyu/mobileLLM/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/platform-iOS%20%7C%20macOS-lightgrey.svg" alt="Platforms: iOS | macOS" />
   <img src="https://img.shields.io/badge/Swift-6-orange.svg" alt="Swift 6" />
-  <img src="https://img.shields.io/badge/inference-100%25%20on--device-brightgreen.svg" alt="100% on-device" />
+  <img src="https://img.shields.io/badge/inference-on--device%20default%20%7C%20online%20optional-blue.svg" alt="On-device default, online optional" />
 </p>
 
 <!-- Hero image. To refresh, replace assets/screenshot.jpg in place (same path/name) — nothing else
@@ -27,8 +29,8 @@ access happens only for model discovery/downloads or tools you explicitly enable
 ## Features
 
 - 🔒 **On-device by default.** Inference, chats, memories, skills, attachments, and downloaded weights stay
-  on your device — no account and no telemetry. Model downloads and explicitly enabled network tools are
-  the documented exceptions; see **Privacy and network boundary** below.
+  on your device — no account and no telemetry. Model downloads, explicitly enabled network tools, and
+  online models you enable and approve are the documented exceptions; see **Privacy and network boundary** below.
 - 💬 **Streamed chat with thinking disclosure.** Tokens stream one by one; for reasoning models the `<think>`
   trace shows in a disclosure that auto-collapses to "Thought for Ns" when the answer starts (or always-expand / hidden).
 - ⚡ **Three engines, one protocol.** **MLX** (resident weights), **llama.cpp** (memory-mapped GGUF), and
@@ -44,15 +46,39 @@ access happens only for model discovery/downloads or tools you explicitly enable
   (*Runs great* / *Tight* / *High memory · may fail*) from your hardware profile, and the context-length options are
   capped by what the model was trained for and re-scored per rung — a setting that buys memory, not capability.
   Local engines cooperatively check cancellation, memory pressure, and iOS thermal state at decode boundaries.
-- 🛠️ **Tool calling + MCP.** An on-device agent loop with a real toolbox: keyless **web search**
-  (DuckDuckGo first, Bing RSS fall-through, Brave last — no API key), a **webpage reader**
-  (readable-text extraction with SSRF guards), Wikipedia, calculator, clock — plus permission-gated
-  **calendar, reminders and location** tools (off until you select them; the system permission prompt
-  appears when selected). The chat's Tools submenu shows a master authorization plus a checkmark for every built-in
+- 🛠️ **Agent runtime + tool calling + MCP.** Every send is a durable **agent run** behind a frozen-input,
+  journaled, recoverable runtime (spec `spec.md`): each external operation passes a
+  `prepare → authorize → execute` boundary with immutable capability ceilings, budgets, approvals, and a
+  replayable journal. The real toolbox includes keyless **web search** (five engines: DuckDuckGo, Bing
+  RSS, Brave, Yahoo, Marginalia — no API key), a **webpage reader** (readable-text extraction with SSRF
+  guards), Wikipedia, calculator, clock — plus permission-gated **calendar, reminders and location**
+  tools. The chat's Tools submenu shows a master authorization plus a checkmark for every built-in
   capability; the full Tool Settings screen adds descriptions, search-engine priority, and remote **MCP**
-  controls (Streamable HTTP, per-server enable + per-tool mute). Tool access is off by default, and only
-  selected tools are advertised to the model. Invoking a network tool sends that tool's arguments to its
-  remote endpoint and adds another model pass.
+  controls (Streamable HTTP, per-server enable + per-tool mute). Tool access is off by default, only
+  selected tools are advertised to the model, and tool results are framed as **untrusted data**
+  (prompt-injection fenced) before another model pass.
+- 🧩 **Subagents + parallel tool batches + dynamic workflows.** The runtime can spawn bounded
+  subagents with attenuated ceilings, run tool batches in parallel inside one run, and orchestrate a
+  message-anchored **workflow** (`/workflow <goal>`): a planner decomposes the goal into phases
+  (explore → plan → audit → revise → verify → deliver fallback), fans out subagents per phase, passes
+  structured handoffs between phases, and shows live x/y progress, tokens, and tool-call counts.
+- 🌐 **Online models (OpenAI-compatible Responses API).** Add any number of services (base URL, model
+  id, API key in the device Keychain only); one active service routes the conversation to the provider.
+  Per-conversation: approval (see below), reasoning on/off + effort (low/medium/high), context length,
+  sampling, and an **Auto output budget** that lets the service use the model's own maximum.
+- 🛂 **Three per-conversation approval modes** — **Ask** (every external operation), **Safe preset**
+  (app-internal/read-class actions auto-approved, network/data-egress actions asked), and **Full access**
+  (auto-approve within the run's immutable ceiling). The mode and reasoning effort live in a persistent
+  bottom control bar above the composer and can be switched in place; approval cards dock immediately
+  above the composer while a run waits.
+- ⏱️ **iOS lifecycle.** iOS 17 background-drain quiescence keeps runs resumable, and on iOS 26 the app
+  uses BGTaskScheduler **continued processing** (fail-if-not-immediately-runnable, GPU-aware) so an
+  already-authorized run can finish in the background without silently resuming later.
+- ☰ **Conversation overflow menu.** The top-right action is an overflow menu (•••), not New Chat:
+  Rename / Delete / Add to Project (pure tag grouping), workspace pages (Workflow, Terminal, Files,
+  Background tasks), and per-conversation Settings (reasoning + effort, approval mode, context length,
+  sampling, online output budget). Unimplemented workspace pages get a real empty-state page, never a
+  dead menu item.
 - 🧠 **Memory you can read and correct.** Tell it something worth keeping and it notes it down; the notes
   relevant to your question are folded into the prompt before it answers, so memory works without the model
   having to remember to look. Everything it saved is listed in Settings → Behavior → Memory — who wrote each
@@ -134,23 +160,27 @@ Tool output is treated as untrusted data before it is returned to the model. See
 
 ## Architecture
 
-Seven Swift packages, MLX quarantined to one of them:
+Ten Swift packages, MLX quarantined to one of them:
 
 ```
 mobileLLM.app  (Xcode target — build via xcodebuild)
-├── MobileLLMUI      SwiftUI chat / models / settings + @Observable stores   (MLX-free)
-├── LLMEngineMLX     the MLX engine — resident weights, PrismML 1-bit fork    (Metal)
+├── AgentContracts   versioned run/step/approval/budget/plan contracts          (MLX-free)
+├── AgentRuntime     durable agent executor, journal, approvals, subagents,     (MLX-free)
+│                    parallel tools, workflow orchestrator, online Responses    (sqlite3)
+├── AgentSandboxAPI  protocol-only sandbox seam (no provider in OSS build)      (MLX-free)
+├── MobileLLMUI      SwiftUI chat / models / settings + @Observable stores       (MLX-free)
+├── LLMEngineMLX     the MLX engine — resident weights, PrismML 1-bit fork      (Metal)
 ├── LLMEngineLlama   the llama.cpp engine — mmap'd GGUF, vendored xcframework  (Metal)
 ├── LLMEngineApple   the Apple Intelligence engine — weak-linked, no weights   (MLX-free)
-├── LLMCore          catalog + schema, RoutingEngine, governor, tools/MCP,     (MLX-free)
+├── LLMCore          catalog + schema, RoutingEngine, governor, legacy tools/MCP, (MLX-free)
 │                    context policy, Explore, ThinkSplitter, LLMEngine protocol
 ├── AppRuntime       downloader, memory/thermal governors, durable store       (MLX-free)
 └── AppUI            ink-wash design tokens + shared controls                   (MLX-free)
 ```
 
 Three engines behind one `LLMEngine` protocol, fronted by a `RoutingEngine` that keeps at most one resident —
-so the UI, downloader, and governance are engine-agnostic and unit-testable against a mock. The five MLX-free
-packages keep a fast `swift test` loop; only the two local-weight engines need the Metal toolchain.
+so the UI, downloader, and governance are engine-agnostic and unit-testable against a mock. The eight
+MLX-free packages keep a fast `swift test` loop; only the two local-weight engines need the Metal toolchain.
 
 - **MLX engine** — resident weights via the PrismML 1-bit fork; the fastest path on Mac.
 - **llama.cpp engine** — memory-mapped GGUF, so large models fit on memory-tight phones (clean, file-backed
@@ -196,27 +226,34 @@ open mobileLLM.xcodeproj
 Build the app with **Xcode / `xcodebuild`** (MLX's Metal kernels require it). Inference (the 1-bit MLX
 kernels and GGUF Metal) is validated on **real devices** — the simulator has no Metal path for it.
 
-For a fast inner loop, the five MLX-free packages need none of the above and run under plain SwiftPM:
+For a fast inner loop, the eight MLX-free packages need none of the above and run under plain SwiftPM:
 
 ```sh
 swift test --package-path Packages/AppUI
 swift test --package-path Packages/AppRuntime
 swift test --package-path Packages/LLMCore
+swift test --package-path Packages/AgentContracts
+swift test --package-path Packages/AgentRuntime
+swift test --package-path Packages/AgentSandboxAPI
 swift test --package-path Packages/MobileLLMUI
 swift test --package-path Packages/LLMEngineApple
 ```
 
-Two more xcodebuild-only suites: `-scheme EngineTests` runs the engine packages' unit tests (the MLX
-package's macros can't build under plain SwiftPM), and `-scheme UITests` drives the keyboard/composer
-geometry on an iOS simulator with XCUITest (needs a small GGUF seeded into the app container and the
-simulator's hardware keyboard disabled — see `UITests/KeyboardUITests.swift`).
+Two xcodebuild-only suites remain: `-scheme EngineTests` runs the engine packages' unit tests (the MLX
+package's macros can't build under plain SwiftPM), and `-scheme UITests` drives the iOS simulator
+(keyboard/composer geometry, agent-run UI, workflow E2E). The checked-in test plans live in
+`Verification/AgentHarness/TestPlans` (`SimulatorUI.xctestplan`, `DeviceE2E.xctestplan`); online-model
+scenarios read `~/.mobilellm/openai.json` through launch-environment variables (see below).
 
 See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup and package map.
 
 ## OpenAI-compatible online models (developer setup)
 
-Online-model testing reads one file **outside the repository**: `~/.mobilellm/openai.json`
-(`apiKey`, `baseURL`, `model`), created once with:
+Online models are a per-service configuration: **Settings → Online models** lets you add multiple
+OpenAI-compatible Responses API services (name, base URL, model id, optional declared max output
+tokens), store each API key in the device Keychain (this-device-only, off-backup), and activate one.
+Developer/test machines can seed the same configuration from one file **outside the repository**:
+`~/.mobilellm/openai.json` (`apiKey`, `baseURL`, `model`), created once with:
 
 ```sh
 scripts/setup-openai-config.sh
@@ -225,14 +262,14 @@ scripts/setup-openai-config.sh
 It is written `chmod 600` and never committed. macOS DEBUG builds read it directly; simulator and
 physical-device UI tests forward it through the `MOBILELLM_OPENAI_API_KEY`,
 `MOBILELLM_OPENAI_BASE_URL`, and `MOBILELLM_OPENAI_MODEL` launch-environment variables, and the DEBUG
-app seeds the key into the device Keychain (this-device-only, off-backup). The key is never written to
+app seeds the key into the device Keychain (this-device-only, off-backup). Keys are never written to
 Settings or `UserDefaults`.
 
-To actually route chat through the service, open Settings → Online models → OpenAI service and turn
-on **Use online model** (the toggle appears once a key is stored and a model id is set). The next
-message is sent to the configured endpoint; like other external tools, the first request in each
-conversation goes through the approval card. The base URL and model id may point at any
-OpenAI-compatible gateway — only `https` is accepted.
+To actually route chat through the service, open Settings → Online models, add/select a service, store
+its key, and toggle **Use online model**. The next message is sent to the configured endpoint; like
+other external operations, data egress asks for approval once per conversation under the selected
+approval mode (Ask / Safe preset / Full access). The base URL may point at any OpenAI-compatible
+gateway — only `https` is accepted.
 
 ## Community
 

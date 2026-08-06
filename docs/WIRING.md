@@ -50,8 +50,10 @@ load macros expand against:
   at runtime two ways: (1) `@rpath/libc++.1.dylib` not found → add `-rpath /usr/lib` (done on LLMSmoke);
   (2) "Failed to load the default metallib" → only xcodebuild bundles `mlx-swift_Cmlx.bundle/…/default.metallib`.
   So: `xcodebuild -scheme llm-smoke -destination 'platform=macOS,arch=arm64' -derivedDataPath <DD> -skipMacroValidation build`, then run `<DD>/Build/Products/Debug/llm-smoke`.
-- The MLX-free packages (AppUI / AppRuntime / LLMCore / MobileLLMUI / LLMEngineApple) keep their fast
-  `swift test` loop.
+- The MLX-free packages (AppUI / AppRuntime / LLMCore / AgentContracts / AgentRuntime /
+  AgentSandboxAPI / MobileLLMUI / LLMEngineApple) keep their fast `swift test` loop. `AgentRuntime`
+  additionally links system `sqlite3` and depends only on `AgentContracts` + `LLMCore`; `AgentSandboxAPI`
+  is protocol-only (depends on `AgentContracts`) and ships no sandbox provider.
 - **Simulator has no 1-bit Metal path** → validate on real devices only.
 - **HF model loader (in `LLMEngineMLX`):** `MLXHuggingFace`'s `#huggingFaceLoadModelContainer`
   macro expands to code referencing `HuggingFace.HubClient` + `Tokenizers.AutoTokenizer`, so the consumer

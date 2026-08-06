@@ -22,13 +22,19 @@ bounty program.
 mobileLLM is an **on-device inference** application: generation and chat persistence run on the user's
 hardware. It is not an offline-only application. Hugging Face discovery/downloads and network tools
 (web search, webpage reading, Wikipedia, and user-configured MCP servers) make outbound requests when the
-user invokes or enables them. The app has no account, analytics, or telemetry service.
+user invokes or enables them; **online models** (OpenAI-compatible Responses API services the user adds)
+send conversation text to the configured endpoint after per-conversation approval. The app has no
+account, analytics, or telemetry service.
 
 **In scope** — issues in this repository's code, for example:
 
 - memory-safety or crash issues in the app or the MLX-free packages,
 - the resumable downloader and its on-disk handling (path handling, checksum verification, resume logic),
 - outbound web-tool controls (URL scheme, DNS/IP and redirect validation, response-size enforcement),
+- the agent runtime's `prepare → authorize → execute` boundary, capability ceilings, budgets, approval
+  receipts, journal/recovery, and subagent attenuation,
+- online-model configuration and per-conversation data-egress approval (including future server-side
+  native tools such as a provider-hosted `web_search`, whose policy is fixed in spec §15.5),
 - the MCP client's parsing of untrusted server responses (JSON-RPC / SSE),
 - persistence and recovery (`DurableStore`, conversation/registry stores),
 - anything that could cause data the app holds to leave the device unexpectedly.
@@ -49,7 +55,22 @@ user invokes or enables them. The app has no account, analytics, or telemetry se
 
 - Master tool access is off by default. Only individually selected built-in tools and MCP servers are
   advertised to the model; a network-tool call sends its arguments to that service. Tool responses are
-  framed as untrusted external data before being returned to the model.
+  framed as untrusted external data before being returned to the model. Every external operation —
+  online-model inference and every tool call — passes an immutable `prepare → authorize → execute`
+  boundary: a prepared plan (destination, data categories, argument digest, response ceiling) cannot be
+  widened during execution, and the run's capability ceiling is frozen for its lifetime. Three
+  per-conversation approval modes (Ask / Safe preset / Full access) control when the user is asked;
+  approval receipts are durable and bound to the exact operation.
+- Online-model API keys are stored in the platform Keychain with this-device-only accessibility and are
+  never written to Settings or `UserDefaults`; the macOS/simulator DEBUG build reads the developer's
+  `~/.mobilellm/openai.json` outside the repository to seed tests, and that file is never committed.
+  Sending a conversation to an online service is data egress and asks for approval once per conversation
+  under the active mode.
+- Subagents and workflow children receive a strict subset of the parent run's capability ceiling and
+  attenuated budgets; a child can never grant itself an authority the parent did not hold. Future
+  server-side native tools (e.g. DeepSeek `web_search`) are provider-executed: the app advertises either
+  the native tool or the local adapter for a capability, never both, and the provider's output item is
+  treated as untrusted external data (spec §15.5).
 - MCP bearer tokens are stored in the platform Keychain with this-device-only accessibility. They are not
   retained in the `UserDefaults` settings snapshot.
 - Model files are confined to the app's model directory, downloaded from the variant's declared Hugging

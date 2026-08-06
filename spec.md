@@ -1456,6 +1456,13 @@ The first release is complete only when all of the following are true:
 
 Implementation is one dependency-ordered program, followed by one consolidated independent audit:
 
+**Status (2026-08-06):** steps 1-5 are implemented and green on `main` (contracts, SQLite journal +
+recovery, Tool V2 / MCP / online Responses provider adapters, runtime controller + approvals + budgets,
+`ChatStore` command/projection migration with progressive activity/approval/resume/workflow UI, plus the
+multi-agent wave from §30: subagents, bounded parallel tool batches, and the dynamic workflow
+orchestrator with message-anchored UI and simulator E2E evidence). Step 6 gates are in progress; steps
+7-8 remain pending.
+
 1. Establish stable requirement/test IDs, risk tiers, semantic registries, coverage collection, deterministic fixtures,
    and CI discovery gates; then freeze value types, IDs, state machine, event envelope, Tool V2, model-provider,
    approval, `AgentExecutor`, and `AgentSandboxAPI` contracts with exhaustive contract tests.
@@ -1501,20 +1508,21 @@ These decisions are intentionally deferred because the corresponding capability 
 - server-side native tools (e.g. DeepSeek `web_search`): policy recorded in §15.5, implementation
   deferred until the capability metadata, provider translation, step UI, and approval wiring land together;
 - the private sandbox runtime's transport, packaging, entitlements, and binary distribution;
-- remote/cross-device concurrency and production subagent scheduling policies; local subagent
-  spawning and bounded parallel tool batches are PLANNED implementation steps, not deferred;
+- remote/cross-device concurrency and production subagent scheduling policies (local subagent
+  spawning, bounded parallel tool batches, and the dynamic workflow orchestrator are IMPLEMENTED as of
+  2026-08-06 and are not deferred);
 - workflow definition language, interpreter, DAG semantics, and saved-workflow locations (the
   message-anchored workflow UI and record contracts are fixed in §20/§23 and are NOT deferred);
 - distributed or cross-device execution.
 
-The multi-agent implementation order is fixed: (1) `SubagentSpawner` with sequential child runs,
-attenuated ceilings, independent budgets/contexts, structured results and artifacts, and child
-visibility in the journal (§22); (2) bounded parallel tool batches inside one run under the same
+The multi-agent implementation order is fixed and has shipped: (1) `SubagentSpawner` with sequential
+child runs, attenuated ceilings, independent budgets/contexts, structured results and artifacts, and
+child visibility in the journal (§22); (2) bounded parallel tool batches inside one run under the same
 ceiling, budget ledger, duplicate suppression, and reconciliation invariants (§12); (3) the dynamic
 workflow orchestrator with phase decomposition, fan-out/fan-in, `WorkflowPhaseRecord`, and
-`WorkflowHandoff` dataflow (§23/§23.1). Parallel tool batches and parallel subagent execution are
-planned, not deferred; the workflow interpreter, DAG semantics, saved-workflow locations,
-remote/cross-device execution, and production scheduling policies remain deferred.
+`WorkflowHandoff` dataflow (§23/§23.1). What remains deferred: parallel subagent *execution* (children
+currently run sequentially per phase), the workflow definition language / interpreter / DAG semantics,
+saved-workflow locations, remote/cross-device execution, and production scheduling policies.
 
 Their future implementations must honor the contracts and authority boundaries established here.
 
