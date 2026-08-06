@@ -80,4 +80,19 @@ enum Format {
         if n >= 1000 { return "\(n / 1000)K" }
         return "\(n)"
     }
+
+    static func shortCount(_ n: Int64) -> String {
+        shortCount(Int(clamping: n))
+    }
+
+    /// Compact elapsed time ("42s", "3m 12s", "1h 04m").
+    static func duration(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let hours = total / 3_600
+        let minutes = (total % 3_600) / 60
+        let secs = total % 60
+        if hours > 0 { return String(format: "%dh %02dm", hours, minutes) }
+        if minutes > 0 { return String(format: "%dm %02ds", minutes, secs) }
+        return "\(secs)s"
+    }
 }

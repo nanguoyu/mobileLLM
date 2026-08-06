@@ -1051,6 +1051,9 @@ public final class AgentRuntimeAssembly {
     public let repository: SQLiteRunJournal
     public let artifactStore: ContentAddressedArtifactStore
     public let executor: DurableAgentExecutor
+    let requestBuilder: AppAgentRunRequestBuilder
+    let inputFreezer: AppAgentRunInputFreezer
+    let frozenBuilder: AppFrozenInputBuilder
     /// Bounded redacted operational log (diagnostics only; never persisted as user history).
     public let diagnosticLogger: AgentDiagnosticLogger
 
@@ -1149,7 +1152,7 @@ public final class AgentRuntimeAssembly {
             mcpCache: mcpDiscovery,
             session: session
         )
-        let frozenBuilder = AppFrozenInputBuilder(
+        frozenBuilder = AppFrozenInputBuilder(
             capabilityVersion: capabilityVersion
         )
         let attachmentDirectory = conversationDirectory
@@ -1166,12 +1169,14 @@ public final class AgentRuntimeAssembly {
             artifacts: artifactResolver,
             lastSubmission: lastSubmission
         )
+        requestBuilder = builder
         let freezer = AppAgentRunInputFreezer(
             frozenBuilder: frozenBuilder,
             snapshot: snapshot,
             artifacts: artifactResolver,
             lastSubmission: lastSubmission
         )
+        inputFreezer = freezer
         executor = DurableAgentExecutor(
             repository: repository,
             payloadStore: payloadStore,
@@ -1188,6 +1193,49 @@ public final class AgentRuntimeAssembly {
             executor: executor,
             requestBuilder: builder,
             recovery: SQLiteJournalRecoveryLister(repository: repository)
+        )
+    }
+
+    /// Builds the reserved workflow-root request from a normal conversation snapshot. The root's
+    /// ceiling/budget/model policy are frozen exactly like a chat run; children attenuate from it.
+    public func makeWorkflowRoot(
+        snapshot: AgentRunRequestSnapshot,
+        workflowID: UUID
+    ) throws -> AgentRequest {
+        let source = try frozenBuilder.request(snapshot: snapshot, artifactReferences: [])
+        return try AgentRequest(
+            id: source.id,
+            runID: WorkflowIdentity.rootRun(workflowID: workflowID),
+            conversationID: source.conversationID,
+            userTurnID: source.userTurnID,
+            role: "workflow-root",
+            instruction: source.instruction,
+            outputRequirement: source.outputRequirement,
+            modelPolicy: source.modelPolicy,
+            capabilityCeiling: source.capabilityCeiling,
+            budget: source.budget,
+            contextReferences: source.contextReferences,
+            artifactReferences: [],
+            labels: source.labels,
+            provenance: AgentRequestProvenance(source: .workflow),
+            approvalMode: source.approvalMode
+        )
+    }
+
+    /// The parent context workflow children attenuate from. The requesting step is stable per
+    /// workflow so the journal tree is identical across relaunches.
+    public func workflowParentContext(
+        workflowID: UUID,
+        request: AgentRequest
+    ) -> WorkflowParentContext {
+        WorkflowParentContext(
+            runID: request.runID,
+            requestID: request.id,
+            requestingStepID: WorkflowIdentity.rootStep(workflowID: workflowID),
+            capabilityCeiling: request.capabilityCeiling,
+            budget: request.budget,
+            modelPolicy: request.modelPolicy,
+            approvalMode: request.approvalMode
         )
     }
 }

@@ -1694,16 +1694,30 @@
     {
       "id": "AHT-SPAWNER-001",
       "title": "Spawner runs durable sequential child runs with attenuated authority",
-      "status": "planned",
+      "status": "active",
       "kind": "integration",
       "riskTier": "P1",
       "requirementIDs": [
         "AH-SUBAGENT-001"
       ],
-      "selectors": [],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MultiAgentWorkflowIntegrationTests/testSubagentSpawnerCreatesAttenuatedChildAndCollectsResult"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MultiAgentWorkflowIntegrationTests/testSubagentSpawnerRejectsTerminalParentAndNonAttenuatedRequests"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MultiAgentWorkflowIntegrationTests/testSubagentSpawnerRejectsTerminalParent"
+        }
+      ],
       "platforms": [
         "swiftpm",
-        "macos"
+        "macos",
+        "ios-device"
       ],
       "verificationTiers": [
         "pull-request",
@@ -1721,16 +1735,30 @@
     {
       "id": "AHT-PARALLEL-001",
       "title": "Bounded parallel tool batches preserve all execution invariants",
-      "status": "planned",
+      "status": "active",
       "kind": "property",
       "riskTier": "P1",
       "requirementIDs": [
         "AH-PARALLEL-001"
       ],
-      "selectors": [],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MultiAgentWorkflowIntegrationTests/testParallelToolBatchExecutesConcurrentlyThenDeterministicBarrier"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MultiAgentWorkflowIntegrationTests/testParallelToolBatchWithFailedToolSynthesizesAfterBarrier"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MultiAgentWorkflowIntegrationTests/testParallelToolBatchWithUncertainToolStopsAtReconciliation"
+        }
+      ],
       "platforms": [
         "swiftpm",
-        "macos"
+        "macos",
+        "ios-device"
       ],
       "verificationTiers": [
         "pull-request",
@@ -1748,16 +1776,38 @@
     {
       "id": "AHT-WORKFLOW-001",
       "title": "Dynamic workflow orchestrator honors phase and handoff contracts",
-      "status": "planned",
+      "status": "active",
       "kind": "integration",
       "riskTier": "P1",
       "requirementIDs": [
         "AH-WORKFLOW-001"
       ],
-      "selectors": [],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MultiAgentWorkflowIntegrationTests/testWorkflowRunsPhasesWritesRecordsAndHandoffs"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MultiAgentWorkflowIntegrationTests/testWorkflowFailsWhenChildFails"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.MultiAgentWorkflowIntegrationTests/testWorkflowAdvanceResumesFromDurableRecording"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.WorkflowStoreTests/testSaveLoadRoundTripAndRunningFlag"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.ChatStoreWorkflowTests/testWorkflowCommandStartsMessageAnchoredWorkflow"
+        }
+      ],
       "platforms": [
         "swiftpm",
-        "macos"
+        "macos",
+        "ios-device"
       ],
       "verificationTiers": [
         "pull-request",

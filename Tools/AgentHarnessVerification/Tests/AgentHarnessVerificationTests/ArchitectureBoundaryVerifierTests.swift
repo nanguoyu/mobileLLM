@@ -71,7 +71,6 @@ final class ArchitectureBoundaryVerifierTests: XCTestCase {
         try fixture.writeProductionSource(
             "Compatibility.swift",
             contents: """
-            public protocol SubagentSpawner {}
             public protocol AgentSandboxProvider {}
             public struct WorkflowReference {}
             public struct SandboxExecutionRequest {}
@@ -84,6 +83,8 @@ final class ArchitectureBoundaryVerifierTests: XCTestCase {
             contents: """
             struct WorkflowInterpreter {}
             actor DAGScheduler {}
+            // Subagent spawning is an implemented first-release feature (spec §22/§30); a spawner
+            // conformance must NOT be flagged by the deferred-feature boundary.
             struct LocalSubagentSpawner {}
             struct PlaceholderSandbox: AgentSandboxProvider {}
             final class OpenAIModelProvider {}
@@ -98,7 +99,7 @@ final class ArchitectureBoundaryVerifierTests: XCTestCase {
         let diagnostics = fixture.verify()
         let codes = Set(diagnostics.map(\.code))
         XCTAssertTrue(codes.contains("AHV-DEFERRED-WORKFLOW"))
-        XCTAssertTrue(codes.contains("AHV-DEFERRED-SUBAGENT"))
+        XCTAssertFalse(codes.contains("AHV-DEFERRED-SUBAGENT"))
         XCTAssertTrue(codes.contains("AHV-DEFERRED-SANDBOX"))
         XCTAssertTrue(codes.contains("AHV-DEFERRED-ONLINE-MODEL"))
         XCTAssertTrue(codes.contains("AHV-DEFERRED-SHELL"))

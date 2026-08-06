@@ -295,7 +295,7 @@
       "id": "AH-ARCH-002",
       "area": "architecture",
       "title": "Deferred runtimes remain absent",
-      "statement": "The first release contains no workflow interpreter, DAG scheduler, production sandbox substitute, arbitrary shell, or online model client; the subagent spawner, bounded parallel tool batches, and dynamic workflow orchestrator are planned in that dependency order (§30).",
+      "statement": "The first release contains no workflow interpreter, DAG scheduler, production sandbox substitute, arbitrary shell, or online model client; the subagent spawner, bounded parallel tool batches, and dynamic workflow orchestrator are implemented in that dependency order (§30).",
       "status": "active",
       "riskTier": "P0",
       "specAnchors": [
@@ -1712,7 +1712,7 @@
       "area": "subagents-workflows",
       "title": "Subagent spawner runs durable sequential child runs",
       "statement": "A SubagentSpawner starts child runs under a reserved parent identity with attenuated ceilings, independent budgets and contexts, structured results and artifact references, and no self-approval; children are visible in the journal tree and inherit only what the roadmap in §30 permits.",
-      "status": "planned",
+      "status": "active",
       "riskTier": "P1",
       "specAnchors": [
         {
@@ -1742,7 +1742,7 @@
       "area": "subagents-workflows",
       "title": "Bounded parallel tool batches preserve execution invariants",
       "statement": "Parallel tool batches fan out inside one run under the same run ceiling, budget ledger, duplicate suppression, and reconciliation invariants as serial batches, with a deterministic barrier before the next model pass.",
-      "status": "planned",
+      "status": "active",
       "riskTier": "P1",
       "specAnchors": [
         {
@@ -1772,7 +1772,7 @@
       "area": "subagents-workflows",
       "title": "Dynamic workflow orchestrator implements phase and handoff contracts",
       "statement": "The workflow orchestrator decomposes goals into durable phases, fans out and merges child runs, and passes versioned artifacts plus distilled WorkflowHandoff records between phases per §23.1, with no direct filesystem, network, tool, or sandbox authority.",
-      "status": "planned",
+      "status": "active",
       "riskTier": "P1",
       "specAnchors": [
         {

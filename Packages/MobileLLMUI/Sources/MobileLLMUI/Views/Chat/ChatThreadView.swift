@@ -169,10 +169,24 @@ struct ChatThreadView: View {
 
     @ViewBuilder private func row(_ message: Message) -> some View {
         if message.role == .user {
-            UserBubble(message: message,
-                       onEdit: isBusy ? nil : { beginEdit(message) },
-                       onCopy: { Clipboard.copy(message.answer); chat.showToast(Toast("Copied")) },
-                       attachmentLoader: { await chat.attachmentData($0) })
+            VStack(alignment: .trailing, spacing: Theme.Space.xs) {
+                UserBubble(message: message,
+                           onEdit: isBusy ? nil : { beginEdit(message) },
+                           onCopy: { Clipboard.copy(message.answer); chat.showToast(Toast("Copied")) },
+                           attachmentLoader: { await chat.attachmentData($0) })
+                if let workflow = message.workflowRecord {
+                    NavigationLink {
+                        WorkflowSummaryPage(
+                            store: chat.workflowStore,
+                            conversationID: workflow.conversationID ?? chat.activeID
+                        )
+                    } label: {
+                        WorkflowMessageRow(record: workflow)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: 360, alignment: .trailing)
+                }
+            }
         } else if message.id == chat.streamingMessageID {
             StreamingRow(chat: chat, displayMode: displayMode,
                          modelName: chat.streaming?.generatedBy?.displayName

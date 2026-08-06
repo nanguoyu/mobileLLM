@@ -6,7 +6,7 @@ import AgentContracts
 
 /// A consistent "this capability exists but is not enabled / has no data yet" page (spec §20:
 /// unimplemented capabilities get a real page with explicit empty-state UX, never a missing item).
-private struct CapabilityEmptyState: View {
+struct CapabilityEmptyState: View {
     let icon: String
     let title: String
     let message: String
@@ -28,21 +28,6 @@ private struct CapabilityEmptyState: View {
         .padding(Theme.Space.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bg)
-    }
-}
-
-/// Workflow summary (spec §20/§23): the live Claude Code-style tree of running subagents. The top-right
-/// entry is disabled while nothing is running; this page is the destination that entry opens.
-struct WorkflowSummaryPage: View {
-    var body: some View {
-        CapabilityEmptyState(
-            icon: "point.3.connected.trianglepath.dotted",
-            title: "No workflow is running",
-            message: "Workflows appear here while they run, with each subagent's status, elapsed time, "
-                + "tokens, and tool calls. The Workflow menu entry enables itself only while a workflow "
-                + "is active in this conversation."
-        )
-        .navigationTitle("Workflow")
     }
 }
 

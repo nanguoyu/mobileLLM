@@ -104,6 +104,12 @@
       "blockedBy": "Provisioning profile + physical iPhone (iOS 26)"
     },
     {
+      "id": "OPEN-006",
+      "severity": "P2",
+      "summary": "SubagentSpawner, bounded parallel tool batches, and the workflow orchestrator land with runtime + UI unit/integration coverage (2026-08-06); a real-model /workflow device run and workflow child approvals on device remain pending (test31).",
+      "blockedBy": "Physical iPhone (real-model workflow run)"
+    },
+    {
       "id": "OPEN-003",
       "severity": "P2",
       "summary": "Webpage reader is https-only on the agent path (http URLs rejected at prepare); documented limitation, matches the https wildcard security boundary.",

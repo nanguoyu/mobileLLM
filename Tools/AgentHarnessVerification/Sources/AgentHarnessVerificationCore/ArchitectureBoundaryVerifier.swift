@@ -203,10 +203,6 @@ enum ArchitectureBoundaryVerifier {
                     add(&diagnostics, "AHV-DEFERRED-WORKFLOW", "\(path):\(tokens[index].line)",
                         "first release may not implement \(name)")
                 }
-                if lowered.contains("subagentspawner") || conformances.contains("SubagentSpawner") {
-                    add(&diagnostics, "AHV-DEFERRED-SUBAGENT", "\(path):\(tokens[index].line)",
-                        "first release may not implement a SubagentSpawner")
-                }
                 if conformances.contains("AgentSandboxProvider") || placeholderSandboxName(lowered) {
                     add(&diagnostics, "AHV-DEFERRED-SANDBOX", "\(path):\(tokens[index].line)",
                         "open-source production sources may not implement a sandbox provider or substitute")
@@ -228,10 +224,6 @@ enum ArchitectureBoundaryVerifier {
                     add(&diagnostics, "AHV-DEFERRED-SANDBOX", "\(path):\(tokens[index].line)",
                         "open-source production sources may not implement AgentSandboxProvider")
                 }
-                if conformances.contains("SubagentSpawner") {
-                    add(&diagnostics, "AHV-DEFERRED-SUBAGENT", "\(path):\(tokens[index].line)",
-                        "first release may not implement SubagentSpawner")
-                }
             }
 
             if kind == "func", index + 1 < tokens.count,
@@ -241,10 +233,6 @@ enum ArchitectureBoundaryVerifier {
                     || (lowered.contains("dag") && lowered.contains("schedul")) {
                     add(&diagnostics, "AHV-DEFERRED-WORKFLOW", "\(path):\(tokens[index].line)",
                         "first release may not implement workflow interpretation or DAG scheduling")
-                }
-                if lowered.contains("spawnsubagent") || lowered.contains("spawnchildagent") {
-                    add(&diagnostics, "AHV-DEFERRED-SUBAGENT", "\(path):\(tokens[index].line)",
-                        "first release may not spawn subagents")
                 }
                 if lowered.contains("executeshell") || lowered.contains("runshell")
                     || lowered.contains("spawnprocess") {

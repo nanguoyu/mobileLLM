@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: MIT
+
+import XCTest
+import AgentContracts
+@testable import MobileLLMUI
+@testable import LLMCore
+
+// TEST-ID: AHT-WORKFLOW-001
+@MainActor
+final class ChatStoreWorkflowTests: XCTestCase {
+    func testWorkflowCommandStartsMessageAnchoredWorkflow() async throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let workflowDirectory = dir.appendingPathComponent("workflows", isDirectory: true)
+        let workflowStore = WorkflowStore(directory: workflowDirectory)
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "workflow-\(UUID().uuidString)")!)
+        let chat = ChatStore(
+            engine: MockLLMEngine(script: .init(answer: "unused")),
+            store: store,
+            settings: settings,
+            activeModel: LoadedModel(
+                model: LLMCatalog.bonsai8b,
+                variant: LLMCatalog.bonsai8b.defaultVariantValue
+            ),
+            workflowStore: workflowStore
+        )
+        var launched: (goal: String, conversationID: UUID, userMessageID: UUID, workflowID: UUID)?
+        chat.workflowLaunch = { goal, conversationID, userMessageID, workflowID in
+            launched = (goal, conversationID, userMessageID, workflowID)
+            let summary = WorkflowSummary(
+                id: workflowID,
+                title: goal,
+                conversationID: conversationID,
+                status: .running
+            )
+            try await workflowStore.save(summary)
+            chat.attachWorkflowRecord(
+                WorkflowMessageRecord(summary: summary),
+                to: userMessageID
+            )
+        }
+
+        chat.draft = "/workflow research the topic"
+        chat.send()
+
+        try await waitUntil { launched != nil }
+        let conversation = try XCTUnwrap(chat.activeConversation)
+        let message = try XCTUnwrap(conversation.messages.first)
+        XCTAssertEqual(message.role, .user)
+        XCTAssertEqual(message.answer, "research the topic")
+        XCTAssertEqual(message.workflowRecord?.workflowID, launched?.workflowID)
+        XCTAssertEqual(message.workflowRecord?.status, .running)
+        XCTAssertTrue(chat.hasRunningWorkflow)
+    }
+
+    func testWorkflowCommandWithoutGoalShowsWarningAndSendsNothing() async throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let workflowStore = WorkflowStore(directory: dir.appendingPathComponent("wf", isDirectory: true))
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "workflow-\(UUID().uuidString)")!)
+        let chat = ChatStore(
+            engine: MockLLMEngine(script: .init(answer: "unused")),
+            store: store,
+            settings: settings,
+            activeModel: LoadedModel(
+                model: LLMCatalog.bonsai8b,
+                variant: LLMCatalog.bonsai8b.defaultVariantValue
+            ),
+            workflowStore: workflowStore
+        )
+        var launched = false
+        chat.workflowLaunch = { _, _, _, _ in launched = true }
+
+        chat.draft = "/workflow   "
+        chat.send()
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        XCTAssertFalse(launched)
+        XCTAssertNil(chat.activeConversation, "an empty /workflow goal must not create a turn")
+        XCTAssertNotNil(chat.banner)
+    }
+
+    private func tempStore() -> (ConversationStore, URL) {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("workflow-chat-\(UUID().uuidString)", isDirectory: true)
+        return (ConversationStore(directory: dir), dir)
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 2,
+        condition: @MainActor () -> Bool
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if await condition() { return }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("condition timed out")
+    }
+}

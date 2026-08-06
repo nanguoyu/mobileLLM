@@ -107,6 +107,12 @@ public final class ChatStore {
     public private(set) var agentRuns: AgentRunStore?
     /// Last agent-runtime send failure (diagnostics; toasts already surface it transiently).
     public private(set) var agentLastSendError: String?
+    /// Durable workflow summaries (spec §23); nil keeps legacy behavior in tests/previews.
+    public let workflowStore: WorkflowStore?
+    /// App-assembled workflow launcher: (goal, conversationID, userMessageID, workflowID). The app
+    /// creates the reserved parent run, persists the running message record, and drives the
+    /// orchestrator to completion.
+    public var workflowLaunch: (@MainActor (String, UUID, UUID, UUID) async throws -> Void)?
     /// Lifecycle admission gate (spec §19.1): while backgrounded, no new user turn enters the run
     /// pipeline. Owned by `LifecycleCoordinator`.
     public private(set) var acceptingNewActions = true
@@ -118,6 +124,12 @@ public final class ChatStore {
     /// Whether the app is wired to the durable agent runtime. A false value keeps the legacy loop,
     /// which is how the rollout switch is implemented (spec §26).
     public var agentRuntimeEnabled: Bool { agentRuns != nil }
+
+    /// Whether any workflow is currently running in this conversation's app (spec §20: the top-right
+    /// Workflow entry enables itself only while a workflow is active).
+    public var hasRunningWorkflow: Bool {
+        workflowStore?.hasRunningWorkflow ?? false
+    }
 
     /// The most images a single turn may carry (keeps the mtmd prefill — and memory — bounded).
     public static let maxAttachments = 3
@@ -189,7 +201,8 @@ public final class ChatStore {
                 eventStore: (any EventStoring)? = nil,
                 locationProvider: (any LocationProviding)? = nil,
                 skillStore: SkillStore? = nil,
-                agentRuns: AgentRunStore? = nil) {
+                agentRuns: AgentRunStore? = nil,
+                workflowStore: WorkflowStore? = nil) {
         self.engine = engine
         self.store = store
         self.settings = settings
@@ -199,9 +212,15 @@ public final class ChatStore {
         self.locationProvider = locationProvider
         self.skillStore = skillStore
         self.agentRuns = agentRuns
+        self.workflowStore = workflowStore
         self.thinkingEnabled = settings.thinkingDefault
         if let agentRuns {
             attachAgentRuntime(agentRuns)
+        }
+        if let workflowStore {
+            workflowStore.onWorkflowChanged = { [weak self] workflowID in
+                self?.refreshWorkflowRecord(workflowID: workflowID)
+            }
         }
     }
 
@@ -396,8 +415,6 @@ public final class ChatStore {
     /// Whether a workflow is running in the active conversation (spec §20/§23). The workflow runtime is
     /// not implemented yet, so this is always false — the ••• Workflow entry stays disabled until it
     /// becomes true, exactly as specified.
-    public var hasRunningWorkflow: Bool { false }
-
     /// The active thread's reasoning effort (nil = medium). Applies whenever reasoning is enabled.
     public var conversationReasoningEffort: ReasoningEffort? {
         get { activeConversation?.reasoningEffort }
@@ -966,6 +983,19 @@ public final class ChatStore {
               hasModel,
               streaming == nil
         else { return }
+        // Deterministic workflow trigger (spec §22): `/workflow <goal>` starts a message-anchored
+        // multi-agent workflow instead of a normal chat turn.
+        if text.hasPrefix("/workflow") {
+            let goal = String(text.dropFirst("/workflow".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !goal.isEmpty else {
+                showToast(Toast("Describe the goal after /workflow, e.g. /workflow research the topic",
+                                kind: .warning, autoDismiss: 5))
+                return
+            }
+            startWorkflow(goal: goal)
+            return
+        }
 
         // Image capability belongs to the exact variant, not merely to the engine family: a text-only GGUF
         // (for example Bonsai 8B) runs on llama.cpp but has no vision projector. Reject before clearing the
@@ -1114,6 +1144,58 @@ public final class ChatStore {
                     errorMessage: error.localizedDescription
                 )
             }
+        }
+    }
+
+    /// Starts a message-anchored workflow. The app-assembled launcher creates the reserved parent
+    /// run, persists the initial running record, and drives the orchestrator; the store's change
+    /// callback keeps the message row live until completion.
+    private func startWorkflow(goal: String) {
+        guard let workflowLaunch,
+              let convo = activeConversation ?? newConversation(),
+              let idx = conversations.firstIndex(where: { $0.id == convo.id })
+        else { return }
+        let workflowID = UUID()
+        let user = Message(role: .user, answer: goal)
+        conversations[idx].messages.append(user)
+        conversations[idx].updatedAt = Date()
+        persist(conversations[idx])
+        Task { @MainActor in
+            do {
+                try await workflowLaunch(goal, convo.id, user.id, workflowID)
+            } catch {
+                showToast(Toast(
+                    "Workflow couldn't start: \(error.localizedDescription)",
+                    kind: .error,
+                    autoDismiss: 5
+                ))
+            }
+        }
+    }
+
+    /// Attaches the workflow's running record to its initiating message (called by the app launcher).
+    public func attachWorkflowRecord(_ record: WorkflowMessageRecord, to messageID: UUID) {
+        guard let ci = conversations.firstIndex(where: {
+            $0.messages.contains { $0.id == messageID }
+        }),
+        let mi = conversations[ci].messages.firstIndex(where: { $0.id == messageID })
+        else { return }
+        conversations[ci].messages[mi].workflowRecord = record
+        conversations[ci].updatedAt = Date()
+        persist(conversations[ci])
+    }
+
+    /// Live-updates the message-anchored record from the durable workflow summary.
+    private func refreshWorkflowRecord(workflowID: UUID) {
+        guard let record = workflowStore?.messageRecord(workflowID: workflowID) else { return }
+        for ci in conversations.indices {
+            guard let mi = conversations[ci].messages.firstIndex(where: {
+                $0.workflowRecord?.workflowID == workflowID
+            }) else { continue }
+            conversations[ci].messages[mi].workflowRecord = record
+            conversations[ci].updatedAt = Date()
+            persist(conversations[ci])
+            return
         }
     }
 

@@ -84,6 +84,7 @@ public struct WorkflowOrchestrator: Sendable {
         workflowID: UUID,
         title: String,
         plan: WorkflowPlan,
+        conversationID: UUID? = nil,
         parent: WorkflowParentContext,
         ceilingAttenuator: @escaping WorkflowCeilingAttenuator,
         budgetAttenuator: @escaping WorkflowBudgetAttenuator
@@ -94,6 +95,7 @@ public struct WorkflowOrchestrator: Sendable {
         var summary = WorkflowSummary(
             id: workflowID,
             title: title,
+            conversationID: conversationID,
             plan: plan,
             rootRunID: parent.runID,
             phases: plan.phases.map {

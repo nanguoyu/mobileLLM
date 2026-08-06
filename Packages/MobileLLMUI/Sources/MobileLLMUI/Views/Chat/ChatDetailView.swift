@@ -127,7 +127,7 @@ struct ChatDetailView: View {
                             Label("Workflow", systemImage: "point.3.connected.trianglepath.dotted")
                         }
                         // Spec §20: the Workflow entry shows only the LIVE summary and is disabled while
-                        // nothing is running. The runtime is not implemented yet, so it is always off.
+                        // nothing is running in this conversation.
                         .disabled(!chat.hasRunningWorkflow)
                         Button {
                             showBackgroundTasks = true
@@ -185,7 +185,9 @@ struct ChatDetailView: View {
                 ProjectTagsSheet(chat: container.chat, conversationID: id)
             }
         }
-        .navigationDestination(isPresented: $showWorkflow) { WorkflowSummaryPage() }
+        .navigationDestination(isPresented: $showWorkflow) {
+            WorkflowSummaryPage(store: container.workflowStore, conversationID: chat.activeID)
+        }
         .navigationDestination(isPresented: $showBackgroundTasks) {
             BackgroundTasksPage(chat: container.chat, store: container.agentRuns)
         }

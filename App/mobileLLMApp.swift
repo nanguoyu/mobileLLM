@@ -340,6 +340,25 @@ struct MobileLLMApp: App {
                 AgentRuntimeAssembly.logger(
                     "Agent runtime attached (journal: \(assembly.repository.location.path))"
                 )
+                container.workflowStore.load()
+                let launcher = WorkflowLauncher(
+                    container: container,
+                    assembly: assembly,
+                    downloadBase: base,
+                    onlineConfigBox: onlineConfigBox
+                )
+                container.chat.workflowLaunch = { [weak launcher] goal, conversationID,
+                    userMessageID, workflowID in
+                    guard let launcher else {
+                        throw WorkflowLaunchError.snapshotUnavailable
+                    }
+                    try await launcher.launch(
+                        goal: goal,
+                        conversationID: conversationID,
+                        userMessageID: userMessageID,
+                        workflowID: workflowID
+                    )
+                }
             } else {
                 // Diagnose the exact assembly failure instead of silently falling back, so device
                 // tests can distinguish a healthy rollout-off state from a wiring bug.
@@ -460,7 +479,7 @@ struct MobileLLMApp: App {
 }
 
 @MainActor
-private func makeAgentSnapshot(
+func makeAgentSnapshot(
     container: AppContainer,
     conversationID: UUID,
     userTurnID: UUID,

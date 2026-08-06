@@ -95,12 +95,16 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
     /// `attachments/` dir — never inline here). Optional → old records without the key decode as nil,
     /// and a text-only turn re-encodes byte-identically (the synthesized Codable omits a nil key).
     public var attachments: [ImageRef]?
+    /// Message-anchored workflow record (spec §20/§23): the initiating message owns the live and
+    /// completed workflow row. Optional → old records decode without one.
+    public var workflowRecord: WorkflowMessageRecord?
 
     public init(id: UUID = UUID(), role: Role, createdAt: Date = Date(),
                 answer: String, reasoning: String? = nil, thinkingSeconds: Double? = nil,
                 toolRuns: [ToolRun]? = nil, stats: Stats? = nil, parentID: UUID? = nil,
                 emptyOutcome: EmptyOutcome? = nil, attachments: [ImageRef]? = nil,
-                generatedBy: GenerationModel? = nil) {
+                generatedBy: GenerationModel? = nil,
+                workflowRecord: WorkflowMessageRecord? = nil) {
         self.id = id
         self.role = role
         self.createdAt = createdAt
@@ -113,6 +117,7 @@ public struct Message: Identifiable, Codable, Sendable, Equatable {
         self.parentID = parentID
         self.emptyOutcome = emptyOutcome
         self.attachments = attachments
+        self.workflowRecord = workflowRecord
     }
 
     /// A CJK-aware token estimate (`LLMCore.TokenEstimate`) used for context-window trimming — the old

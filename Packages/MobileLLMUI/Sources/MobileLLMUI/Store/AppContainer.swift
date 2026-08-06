@@ -27,6 +27,8 @@ public final class AppContainer {
     public let lifecycle: LifecycleCoordinator
     /// Explicit, bounded continued background processing (spec §19.2).
     public let continuedProcessing: ContinuedProcessingCoordinator
+    /// Durable workflow summaries + orchestrator recording seam (spec §23/§23.1).
+    public let workflowStore: WorkflowStore
     /// The privacy-gated tool seams, also surfaced to the Tools settings screen so flipping a toggle can
     /// request the system permission right there (nil in tests/previews — the screen then skips prompting).
     public let toolEventStore: (any EventStoring)?
@@ -78,13 +80,15 @@ public final class AppContainer {
                 openAICredentials: (any OpenAICredentialStoring)? = nil,
                 agentRuns: AgentRunStore? = nil,
                 lifecycle: LifecycleCoordinator? = nil,
-                continuedProcessing: ContinuedProcessingCoordinator? = nil) {
+                continuedProcessing: ContinuedProcessingCoordinator? = nil,
+                workflowStore: WorkflowStore? = nil) {
         let settings = settings ?? AppSettings(fallbackDefaultModelID: LLMCatalog.defaultModel(for: device).id)
         let store = conversationStore ?? ConversationStore()
         self.settings = settings
         self.lifecycle = lifecycle ?? LifecycleCoordinator()
         self.continuedProcessing = continuedProcessing
             ?? ContinuedProcessingCoordinator()
+        self.workflowStore = workflowStore ?? WorkflowStore(directory: store.directory)
         self.conversationStore = store
         self.models = ModelManager(engine: engine, device: device, downloadBase: downloadBase,
                                    downloader: downloader, installProbe: installProbe,
@@ -113,7 +117,8 @@ public final class AppContainer {
         self.chat = ChatStore(engine: engine, store: store, settings: settings,
                               memoryBook: memoryBook, eventStore: eventStore,
                               locationProvider: locationProvider, skillStore: skillStore,
-                              agentRuns: agentRuns)
+                              agentRuns: agentRuns,
+                              workflowStore: self.workflowStore)
         // Cold launch restores identity only, so the first turn is where the weights are actually loaded.
         // A false answer stops the turn instead of generating against an empty engine.
         chat.ensureModelReady = { [weak self] in

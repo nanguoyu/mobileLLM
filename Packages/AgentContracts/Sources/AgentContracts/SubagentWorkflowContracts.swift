@@ -259,6 +259,8 @@ public struct WorkflowHandoff: Hashable, Codable, Sendable {
 public struct WorkflowSummary: Hashable, Codable, Sendable, Identifiable {
     public let id: UUID
     public let title: String
+    /// Owning conversation (nil for app-global or legacy records).
+    public let conversationID: UUID?
     /// The durable decomposition plan; persisted so relaunch can resume the orchestrator.
     public var plan: WorkflowPlan?
     public var status: WorkflowStatus
@@ -272,6 +274,7 @@ public struct WorkflowSummary: Hashable, Codable, Sendable, Identifiable {
     public init(
         id: UUID = UUID(),
         title: String,
+        conversationID: UUID? = nil,
         plan: WorkflowPlan? = nil,
         status: WorkflowStatus = .running,
         startTime: Date = Date(),
@@ -282,6 +285,7 @@ public struct WorkflowSummary: Hashable, Codable, Sendable, Identifiable {
     ) {
         self.id = id
         self.title = title
+        self.conversationID = conversationID
         self.plan = plan
         self.status = status
         self.startTime = startTime
@@ -307,6 +311,7 @@ public struct WorkflowSummary: Hashable, Codable, Sendable, Identifiable {
 public struct WorkflowMessageRecord: Hashable, Codable, Sendable {
     public let workflowID: UUID
     public let title: String
+    public let conversationID: UUID?
     public var status: WorkflowStatus
     public let startTime: Date
     public var endTime: Date?
@@ -316,6 +321,7 @@ public struct WorkflowMessageRecord: Hashable, Codable, Sendable {
     public init(
         workflowID: UUID,
         title: String,
+        conversationID: UUID? = nil,
         status: WorkflowStatus = .running,
         startTime: Date = Date(),
         endTime: Date? = nil,
@@ -324,6 +330,7 @@ public struct WorkflowMessageRecord: Hashable, Codable, Sendable {
     ) {
         self.workflowID = workflowID
         self.title = title
+        self.conversationID = conversationID
         self.status = status
         self.startTime = startTime
         self.endTime = endTime
@@ -334,6 +341,7 @@ public struct WorkflowMessageRecord: Hashable, Codable, Sendable {
     public init(summary: WorkflowSummary) {
         workflowID = summary.id
         title = summary.title
+        conversationID = summary.conversationID
         status = summary.status
         startTime = summary.startTime
         endTime = summary.endTime

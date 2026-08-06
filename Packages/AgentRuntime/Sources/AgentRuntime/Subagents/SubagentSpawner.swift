@@ -40,7 +40,10 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
         guard let parentFacts = try await repository.loadRunFacts(for: request.parentRunID) else {
             throw SubagentSpawnError.parentUnavailable
         }
-        guard !parentFacts.projection.isTerminal else {
+        // Workflow roots are app-orchestrated anchors: their ceiling is frozen at submission and
+        // children inherit a strict subset of it even after the placeholder root answers. Parent
+        // agents must stay alive; only `.workflow` provenance may anchor on a terminal parent.
+        guard !parentFacts.projection.isTerminal || request.source == .workflow else {
             throw SubagentSpawnError.parentTerminal
         }
         guard let parentPayload = parentFacts.submission?.request.payload else {
@@ -179,6 +182,73 @@ enum SubagentStableID {
     }
 
     static func childRun(workflowID: UUID, phase: UInt64, child: Int) -> AgentRunID {
+        AgentRunID(rawValue: uuid(
+            domain: "workflow-child.v1",
+            components: [workflowID.uuidString, String(phase), String(child)]
+        ))
+    }
+
+    static func rootRun(workflowID: UUID) -> AgentRunID {
+        AgentRunID(rawValue: uuid(
+            domain: "workflow-root.v1",
+            components: [workflowID.uuidString]
+        ))
+    }
+
+    static func rootCommand(workflowID: UUID) -> AgentCommandID {
+        AgentCommandID(rawValue: uuid(
+            domain: "workflow-root-command.v1",
+            components: [workflowID.uuidString]
+        ))
+    }
+
+    private static func uuid(domain: String, components: [String]) -> UUID {
+        let digest = StableDigest.fingerprint(
+            domain: "mobilellm.\(domain)",
+            components: components.map { Data($0.utf8) }
+        )
+        let bytes = stride(from: 0, to: 32, by: 2).map { index -> UInt8 in
+            let start = digest.rawValue.index(digest.rawValue.startIndex, offsetBy: index)
+            let end = digest.rawValue.index(start, offsetBy: 2)
+            return UInt8(digest.rawValue[start ..< end], radix: 16)!
+        }
+        var value = bytes
+        value[6] = (value[6] & 0x0f) | 0x50
+        value[8] = (value[8] & 0x3f) | 0x80
+        return UUID(uuid: (
+            value[0], value[1], value[2], value[3],
+            value[4], value[5], value[6], value[7],
+            value[8], value[9], value[10], value[11],
+            value[12], value[13], value[14], value[15]
+        ))
+    }
+}
+
+/// Public stable identities for workflow roots and children (spec §23): relaunch can reconstruct
+/// the exact run tree from the workflow id alone.
+public enum WorkflowIdentity {
+    public static func rootRun(workflowID: UUID) -> AgentRunID {
+        AgentRunID(rawValue: uuid(
+            domain: "workflow-root.v1",
+            components: [workflowID.uuidString]
+        ))
+    }
+
+    public static func rootCommand(workflowID: UUID) -> AgentCommandID {
+        AgentCommandID(rawValue: uuid(
+            domain: "workflow-root-command.v1",
+            components: [workflowID.uuidString]
+        ))
+    }
+
+    public static func rootStep(workflowID: UUID) -> AgentStepID {
+        AgentStepID(rawValue: uuid(
+            domain: "workflow-root-step.v1",
+            components: [workflowID.uuidString]
+        ))
+    }
+
+    public static func childRun(workflowID: UUID, phase: UInt64, child: Int) -> AgentRunID {
         AgentRunID(rawValue: uuid(
             domain: "workflow-child.v1",
             components: [workflowID.uuidString, String(phase), String(child)]
