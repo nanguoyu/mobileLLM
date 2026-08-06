@@ -1142,6 +1142,45 @@ run. While running, the record renders live below the initiating message and the
 entry shows the real-time tree summary; after completion the record becomes the clickable archive entry
 that opens the same summary page in its completed state.
 
+### 23.1 Phase and handoff contracts
+
+When the workflow runtime lands, it decomposes the initiating goal into durable, reviewable phases
+before any child run starts. The decomposition is a first-class journal record, not hidden
+chain-of-thought: each phase names its inputs, expected outputs, acceptance criteria, dependency
+order, and any approval gate the user must pass before that phase executes. A phase may fan out to
+multiple child runs; the orchestrator fans their results back in and advances only when the phase's
+acceptance criteria are met. Parallelism, scheduling limits, and the interpreter remain deferred per
+§30, but the record contracts below are fixed now.
+
+Child runs communicate through versioned artifacts and structured handoff records, never through a
+free-form agent-to-agent chat channel or full-transcript passing. The orchestrator holds no direct
+filesystem, network, tool, or sandbox authority: it coordinates runs, and every artifact reference
+travels through the same policy-controlled runtime and ceiling attenuation as any other operation.
+
+Each phase persists a `WorkflowPhaseRecord`:
+
+- phase ID, sequence number, and status (pending / running / waiting / completed / failed /
+  cancelled);
+- input artifact references and output artifact references — references, not content copies; the
+  referenced artifacts are scoped and integrity-checked;
+- acceptance criteria;
+- start/end time and aggregated statistics (child-run count, elapsed time, input/output tokens,
+  tool-invocation count).
+
+Before a child run starts, the orchestrator writes a `WorkflowHandoff` containing:
+
+- the child run's task brief: goal, constraints, and the acceptance criteria it must satisfy;
+- references to the upstream artifacts the child may read;
+- the key decisions and known risks or uncertainties the upstream phase recorded;
+- the explicit verification duties the child must perform before reporting completion
+  ("verify X", never "assume X").
+
+Coding and analysis workflows therefore take the shape of a dataflow graph: one phase reads upstream
+artifacts, writes its own artifacts, and hands a distilled handoff to the next phase. This keeps
+context bounded, keeps every edge durable and resumable, and lets a reviewer phase consume exactly
+the diff or position artifacts an implementer phase produced. The UI continues to render this tree
+through the message-anchored record and summary page fixed in §20.
+
 ## 24. Security and privacy requirements
 
 - Local inference remains local. Future online inference is opt-in and visibly classified as data egress.
