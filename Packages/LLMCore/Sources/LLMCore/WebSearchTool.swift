@@ -8,6 +8,8 @@ public enum SearchEngine: String, Sendable, Codable, CaseIterable, Hashable {
     case duckduckgo
     case bing
     case brave
+    case yahoo
+    case marginalia
 }
 
 /// One organic web-search hit.
@@ -36,19 +38,19 @@ public struct WebSearchTool: Tool {
     private let maxResults: Int
     private let maxBytes: Int
 
-    public init(engines: [SearchEngine] = [.duckduckgo, .bing, .brave],
+    public init(engines: [SearchEngine] = [.duckduckgo, .bing, .brave, .yahoo, .marginalia],
                 session: URLSession = .shared, maxResults: Int = 6,
                 maxBytes: Int = 2 * 1024 * 1024) {
-        self.engines = engines.isEmpty ? [.duckduckgo, .bing, .brave] : engines
+        self.engines = engines.isEmpty ? [.duckduckgo, .bing, .brave, .yahoo, .marginalia] : engines
         self.httpClient = WebHTTPClient(session: session)
         self.maxResults = max(1, maxResults)
         self.maxBytes = max(1, maxBytes)
     }
 
-    init(engines: [SearchEngine] = [.duckduckgo, .bing, .brave],
+    init(engines: [SearchEngine] = [.duckduckgo, .bing, .brave, .yahoo, .marginalia],
          session: URLSession, maxResults: Int = 6, maxBytes: Int = 2 * 1024 * 1024,
          dnsResolver: @escaping WebDNSResolver) {
-        self.engines = engines.isEmpty ? [.duckduckgo, .bing, .brave] : engines
+        self.engines = engines.isEmpty ? [.duckduckgo, .bing, .brave, .yahoo, .marginalia] : engines
         self.httpClient = WebHTTPClient(session: session, resolver: dnsResolver)
         self.maxResults = max(1, maxResults)
         self.maxBytes = max(1, maxBytes)
@@ -123,6 +125,8 @@ public struct WebSearchTool: Tool {
         case .duckduckgo: return URL(string: "https://html.duckduckgo.com/html/?q=\(q)")
         case .bing:       return URL(string: "https://www.bing.com/search?q=\(q)&format=rss&count=10")
         case .brave:      return URL(string: "https://search.brave.com/search?q=\(q)")
+        case .yahoo:      return URL(string: "https://search.yahoo.com/search?p=\(q)")
+        case .marginalia: return URL(string: "https://search.marginalia.nu/search?query=\(q)")
         }
     }
 
@@ -133,6 +137,8 @@ public struct WebSearchTool: Tool {
         case .duckduckgo: return parseDuckDuckGo(html)
         case .bing:       return parseBing(html)
         case .brave:      return parseBrave(html)
+        case .yahoo:      return parseYahoo(html)
+        case .marginalia: return parseMarginalia(html)
         }
     }
 
@@ -224,6 +230,71 @@ public struct WebSearchTool: Tool {
     static func cleanBraveURL(_ raw: String) -> String {
         let s = HTMLUtil.unescape(raw)
         return s.hasPrefix("//") ? "https:" + s : s
+    }
+
+    /// Parse Yahoo's organic results: each `<li class="... algo-sr ...">` (or div) block carries an
+    /// `<h3 class="title"><a href="...">Title</a></h3>` and a snippet paragraph. URLs are Yahoo
+    /// redirect wrappers that `cleanYahooURL` unwraps.
+    static func parseYahoo(_ html: String) -> [SearchResult] {
+        var out: [SearchResult] = []
+        for block in HTMLUtil.segments(html, startingAt: "algo-sr") {
+            guard let href = HTMLUtil.firstGroup(
+                "<a[^>]+href=\"([^\"]+)\"",
+                in: String(block)
+            ),
+            let titleRaw = HTMLUtil.firstGroup(
+                "<a[^>]+href=\"[^\"]*\"[^>]*>(.*?)</a>",
+                in: String(block)
+            ) else { continue }
+            let title = HTMLUtil.inlineText(titleRaw)
+            guard !title.isEmpty else { continue }
+            let snippet = HTMLUtil.firstGroup(
+                "<p[^>]*>(.*?)</p>",
+                in: String(block)
+            ).map(HTMLUtil.inlineText) ?? ""
+            out.append(SearchResult(
+                title: title,
+                url: cleanYahooURL(href),
+                snippet: snippet
+            ))
+        }
+        return out
+    }
+
+    /// Unwrap Yahoo's `r.search.yahoo.com/.../RU=<encoded>&RV=...` redirect back to the destination.
+    static func cleanYahooURL(_ raw: String) -> String {
+        let s = HTMLUtil.unescape(raw)
+        if let r = s.range(of: "RU=") {
+            let enc = String(s[r.upperBound...].prefix { $0 != "&" })
+            if let decoded = enc.removingPercentEncoding, decoded.hasPrefix("http") {
+                return decoded
+            }
+        }
+        return s.hasPrefix("//") ? "https:" + s : s
+    }
+
+    /// Parse Marginalia's text-first index: each result is an `<h2>` with a direct `<a href>`
+    /// title, followed by a description paragraph. Marginalia links are direct destinations.
+    static func parseMarginalia(_ html: String) -> [SearchResult] {
+        var out: [SearchResult] = []
+        for block in HTMLUtil.segments(html, startingAt: "<h2") {
+            guard let href = HTMLUtil.firstGroup(
+                "<a[^>]+href=\"([^\"]+)\"",
+                in: String(block)
+            ),
+            let titleRaw = HTMLUtil.firstGroup(
+                "<a[^>]+href=\"[^\"]*\"[^>]*>(.*?)</a>",
+                in: String(block)
+            ) else { continue }
+            let title = HTMLUtil.inlineText(titleRaw)
+            guard !title.isEmpty else { continue }
+            let snippet = HTMLUtil.firstGroup(
+                "<p[^>]*>(.*?)</p>",
+                in: String(block)
+            ).map(HTMLUtil.inlineText) ?? ""
+            out.append(SearchResult(title: title, url: href, snippet: snippet))
+        }
+        return out
     }
 
     /// Unwrap DDG's redirect wrapper (`//duckduckgo.com/l/?uddg=<pct-encoded-target>&rut=…`) back to the

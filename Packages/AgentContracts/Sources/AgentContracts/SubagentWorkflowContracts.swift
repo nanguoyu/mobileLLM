@@ -501,9 +501,11 @@ public struct WorkflowPlan: Hashable, Codable, Sendable {
                     title: "Explore",
                     acceptanceCriteria: "The key facts and constraints are gathered",
                     childInstructions: [
-                        "Before answering, call the web_search tool to gather the latest facts, "
-                            + "specifications, and constraints about: \(goal). Keep your answer "
-                            + "concise (under 200 words).",
+                        "Before answering, run EXACTLY 3 different web_search queries with varied "
+                            + "wording, then use fetch_webpage to READ at least 2 of the linked "
+                            + "pages, so you gather the latest facts, specifications, and constraints "
+                            + "about: \(goal). Summarize what you learned with source URLs "
+                            + "(under 300 words).",
                     ]
                 ),
                 WorkflowPhasePlan(
@@ -511,7 +513,8 @@ public struct WorkflowPlan: Hashable, Codable, Sendable {
                     title: "Plan",
                     acceptanceCriteria: "A concrete step-by-step plan is written from the findings",
                     childInstructions: [
-                        "Write a concrete, step-by-step plan for: \(goal). Keep it under 300 words.",
+                        "Write a concrete, step-by-step plan for: \(goal), citing the gathered facts "
+                            + "and source URLs. Keep it under 300 words.",
                     ]
                 ),
                 WorkflowPhasePlan(
@@ -550,7 +553,8 @@ public struct WorkflowPlan: Hashable, Codable, Sendable {
                     acceptanceCriteria: "The final delivery-ready plan is written",
                     childInstructions: [
                         "Write the final delivery-ready plan for: \(goal). This is the answer the "
-                            + "user receives. Keep it concise (under 400 words).",
+                            + "user receives. Include the key facts and source URLs gathered by the "
+                            + "earlier phases. Keep it concise (under 400 words).",
                     ]
                 ),
             ]

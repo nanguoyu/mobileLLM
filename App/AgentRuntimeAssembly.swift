@@ -1347,6 +1347,16 @@ public final class AgentRuntimeAssembly {
         )
         var workflowBudgetValues = rootBudgetValues
         workflowBudgetValues[.toolInvocations] = 12
+        workflowBudgetValues[.modelAttempts] = 16
+        // Deep research phases make several searches AND read pages; the default 8 MB network
+        // ceiling dies on the second Brave page. Enlarge the network/time budgets for the whole
+        // workflow tree (children still attenuate strictly).
+        workflowBudgetValues[.networkRequestBytes] = 32 * 1_024 * 1_024
+        workflowBudgetValues[.networkResponseBytesPerOperation] = 8 * 1_024 * 1_024
+        workflowBudgetValues[.networkResponseBytesTotal] = 64 * 1_024 * 1_024
+        workflowBudgetValues[.generatedArtifactBytes] = 64 * 1_024 * 1_024
+        workflowBudgetValues[.persistedOutputBytes] = 64 * 1_024 * 1_024
+        workflowBudgetValues[.activeMilliseconds] = 30 * 60 * 1_000
         let workflowBudget = try AgentBudget(
             limits: BudgetQuantities(workflowBudgetValues),
             maximumThermalState: source.budget.maximumThermalState,

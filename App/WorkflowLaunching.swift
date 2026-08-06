@@ -149,8 +149,8 @@ final class WorkflowLauncher {
                 child[.modelAttempts] = max(1, values[.modelAttempts]! / 2)
                 child[.activeMilliseconds] = values[.activeMilliseconds]! / 2
                 // Exploration/audit children legitimately make several web searches per turn; the
-                // parent's 3-tool ceiling is too tight for a multi-finding audit phase.
-                child[.toolInvocations] = 8
+                // parent's default ceiling is too tight for deep research (searches + page reads).
+                child[.toolInvocations] = 10
                 let attenuated = try AgentBudget(
                     limits: BudgetQuantities(child),
                     maximumThermalState: budget.maximumThermalState,

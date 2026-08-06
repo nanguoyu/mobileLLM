@@ -995,6 +995,9 @@ public final class ChatStore {
                                 kind: .warning, autoDismiss: 5))
                 return
             }
+            // The workflow command is a real send: clear the composer exactly like a chat turn.
+            draft = ""
+            clearPendingImages()
             startWorkflow(goal: goal)
             return
         }

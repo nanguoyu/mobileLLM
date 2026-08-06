@@ -205,7 +205,7 @@ final class SettingsPersistenceTests: XCTestCase {
     }
 
     /// A pre-D2 snapshot (no tool fields at all) decodes to the defaults: the privacy-sensitive tools off,
-    /// both engines on — so an upgraded install behaves exactly like a fresh one, and the surrounding
+    /// the full engine set on — so an upgraded install behaves exactly like a fresh one, and the surrounding
     /// settings are untouched (all-or-nothing decode).
     func testOldSnapshotDecodesWithToolDefaults() {
         write(#"""
@@ -216,7 +216,10 @@ final class SettingsPersistenceTests: XCTestCase {
         """#)
         let settings = AppSettings(defaults: defaults)
         XCTAssertEqual(settings.disabledBuiltInTools, AppSettings.defaultDisabledBuiltInTools)
-        XCTAssertEqual(Set(settings.searchEngines), [.duckduckgo, .bing, .brave])
+        XCTAssertEqual(
+            Set(settings.searchEngines),
+            [.duckduckgo, .bing, .brave, .yahoo, .marginalia]
+        )
         XCTAssertEqual(settings.builtInToolConfig.enabled, BuiltInToolConfig.defaultEnabled,
                        "the derived config matches D1's default-enabled set exactly")
         XCTAssertEqual(settings.systemPrompt, "keep me", "unrelated settings survive the added fields")
@@ -283,11 +286,15 @@ final class SettingsPersistenceTests: XCTestCase {
         XCTAssertEqual(config.searchEngines, [.bing, .duckduckgo], "engine priority order is preserved")
     }
 
-    /// An empty engine selection can't produce a broken web_search tool — the config falls back to both.
+    /// An empty engine selection can't produce a broken web_search tool — the config falls back to
+    /// the full default engine set.
     func testBuiltInToolConfigFallsBackWhenNoEnginesChosen() {
         let settings = AppSettings(defaults: defaults)
         settings.searchEngines = []
-        XCTAssertEqual(Set(settings.builtInToolConfig.searchEngines), [.duckduckgo, .bing, .brave])
+        XCTAssertEqual(
+            Set(settings.builtInToolConfig.searchEngines),
+            [.duckduckgo, .bing, .brave, .yahoo, .marginalia]
+        )
     }
 
     // MARK: Context clamp

@@ -26,6 +26,15 @@ final class WorkflowUITests: XCTestCase {
         let send = app.buttons["Send"]
         XCTAssertTrue(send.waitForExistence(timeout: 5))
         send.tap()
+        let composerDeadline = Date().addingTimeInterval(3)
+        while Date() < composerDeadline {
+            if !((field.value as? String) ?? "").contains("/workflow") { break }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        XCTAssertTrue(
+            !((field.value as? String) ?? "").contains("/workflow"),
+            "the composer must clear after a /workflow send"
+        )
 
         // The DEBUG app seeds its online service from the build-time embedded openai-config.json
         // (scripts/embed-openai-app-config.sh), so no runner-side key injection is needed.

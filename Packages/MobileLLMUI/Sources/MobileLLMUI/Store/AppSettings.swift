@@ -218,7 +218,8 @@ public final class AppSettings {
         // Absent in pre-D2 snapshots → the default disabled set (privacy tools off), matching
         // `BuiltInToolConfig.defaultEnabled`, so an upgraded install behaves exactly like a fresh one.
         disabledBuiltInTools = snap?.disabledBuiltInTools ?? Self.defaultDisabledBuiltInTools
-        var loadedEngines = snap?.searchEngines ?? [.duckduckgo, .bing, .brave]
+        var loadedEngines = snap?.searchEngines
+            ?? [.duckduckgo, .bing, .brave, .yahoo, .marginalia]
         // Upgrade: installs that predate the Brave fallback kept the legacy two-engine default. Adding
         // Brave matches the fresh-install default and keeps the executor engine list and the run
         // ceiling in lockstep (the plan must never name a fallback the ceiling did not grant).
@@ -345,7 +346,9 @@ public final class AppSettings {
     /// `ToolRegistry.assemble(config:…)` — the single mapping from Settings to the live registry.
     public var builtInToolConfig: BuiltInToolConfig {
         let enabled = Set(ToolID.allCases).subtracting(disabledBuiltInTools.compactMap(ToolID.init(rawValue:)))
-        let engines = searchEngines.isEmpty ? [SearchEngine.duckduckgo, .bing, .brave] : searchEngines
+        let engines = searchEngines.isEmpty
+            ? [SearchEngine.duckduckgo, .bing, .brave, .yahoo, .marginalia]
+            : searchEngines
         return BuiltInToolConfig(searchEngines: engines, enabled: enabled)
     }
 
@@ -466,7 +469,7 @@ public final class AppSettings {
         dictationLocale = nil
         mcpServers = []
         disabledBuiltInTools = Self.defaultDisabledBuiltInTools
-        searchEngines = [.duckduckgo, .bing, .brave]
+        searchEngines = [.duckduckgo, .bing, .brave, .yahoo, .marginalia]
         temperature = 0.7
         topP = 0.95
         topK = 20

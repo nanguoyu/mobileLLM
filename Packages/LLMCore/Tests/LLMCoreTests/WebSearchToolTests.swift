@@ -54,6 +54,27 @@ final class WebSearchToolTests: XCTestCase {
         XCTAssertTrue(results[1].title.contains("OpenAI API"))
     }
 
+    func testParsesYahooResultsAndUnwrapsRedirects() {
+        let results = WebSearchTool.parseYahoo(Fixtures.yahoo)
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results[0].title, "Example Page")
+        XCTAssertEqual(results[0].url, "https://example.com/page")
+        XCTAssertTrue(results[0].snippet.contains("example snippet"))
+        XCTAssertEqual(
+            WebSearchTool.cleanYahooURL("https://plain.example/"),
+            "https://plain.example/"
+        )
+    }
+
+    func testParsesMarginaliaResultsWithDirectLinks() {
+        let results = WebSearchTool.parseMarginalia(Fixtures.marginalia)
+        XCTAssertEqual(results.count, 2)
+        XCTAssertEqual(results[0].url, "https://example.org/doc")
+        XCTAssertEqual(results[0].title, "Marginalia Doc")
+        XCTAssertTrue(results[0].snippet.contains("description"))
+        XCTAssertEqual(results[1].title, "Another Page")
+    }
+
     func testTrackerUnwrapHelpers() {
         XCTAssertEqual(
             WebSearchTool.cleanDuckDuckGoURL("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa&amp;rut=xyz"),
@@ -68,6 +89,8 @@ final class WebSearchToolTests: XCTestCase {
         XCTAssertEqual(WebSearchTool.parseBing("not even html"), [])
         XCTAssertEqual(WebSearchTool.parseBrave("not even html"), [])
         XCTAssertEqual(WebSearchTool.parseDuckDuckGo(""), [])
+        XCTAssertEqual(WebSearchTool.parseYahoo(""), [])
+        XCTAssertEqual(WebSearchTool.parseMarginalia("garbage"), [])
     }
 
     func testEndpointEncodingAndHosts() {
@@ -82,6 +105,10 @@ final class WebSearchToolTests: XCTestCase {
         let brave = WebSearchTool.endpoint(engine: .brave, query: "swift lang")!
         XCTAssertEqual(brave.host, "search.brave.com")
         XCTAssertTrue(brave.absoluteString.contains("q=swift%20lang"))
+        let yahoo = WebSearchTool.endpoint(engine: .yahoo, query: "swift lang")!
+        XCTAssertEqual(yahoo.host, "search.yahoo.com")
+        let marginalia = WebSearchTool.endpoint(engine: .marginalia, query: "swift lang")!
+        XCTAssertEqual(marginalia.host, "search.marginalia.nu")
     }
 
     func testRenderIsNumberedWithURLAndSnippet() {
@@ -264,6 +291,30 @@ private enum Fixtures {
         <description>OpenAI is an American artificial intelligence research organization.</description>
       </item>
     </channel></rss>
+    """
+
+    /// Trimmed from Yahoo's live results page (2026-08): an `algo-sr` block with an h3 title anchor
+    /// and a snippet paragraph; the href is Yahoo's r.search redirect wrapper.
+    static let yahoo = """
+    <!DOCTYPE html><html><body><ol class="reg searchCenterMiddle">
+      <li class="dd algo-sr" data-pos="0">
+        <div class="algo-sr">
+          <h3 class="title"><a href="https://r.search.yahoo.com/..&amp;RU=https%3A%2F%2Fexample.com%2Fpage&amp;RV=1" >Example Page</a></h3>
+          <div class="compText aAbs"><p class="fc-falcon">This is an example snippet.</p></div>
+        </div>
+      </li>
+    </ol></body></html>
+    """
+
+    /// Trimmed from Marginalia's live results (2026-08): `<h2>` headings with direct links and a
+    /// following description paragraph.
+    static let marginalia = """
+    <!DOCTYPE html><html><body>
+      <h2><a href="https://example.org/doc">Marginalia Doc</a></h2>
+      <p>A short description of the document.</p>
+      <h2><a href="https://example.org/other">Another Page</a></h2>
+      <p>No snippet here.</p>
+    </body></html>
     """
 }
 
