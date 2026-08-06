@@ -3,10 +3,126 @@
 @_spi(AgentRuntime) import AgentContracts
 import Foundation
 
+/// Per-run serialization state for budget-settling tool commits (see `commitEventsSettling`).
+struct ToolCommitGate {
+    var inFlight = false
+    var waiters: [CheckedContinuation<Void, Never>] = []
+}
+
 extension AgentRunController {
     struct CommittedEventBatch {
         let events: [AgentEventEnvelope]
         let receipt: RuntimeJournalMutationReceipt
+    }
+
+    func commitEvents(
+        runID: AgentRunID,
+        identity: RunJournalMutationIdentity,
+        budgetOperations: [BudgetLedgerOperation] = [],
+        build: (inout ExecutionEventBuilder) throws -> [AgentEventEnvelope]
+    ) async throws -> CommittedEventBatch {
+        try await commitEventsInner(
+            runID: runID,
+            identity: identity,
+            budgetOperations: budgetOperations,
+            build: build
+        )
+    }
+
+    /// Variant that computes the budget settlement atomically with the append and retries on a
+    /// stale head, so concurrent parallel tool outcomes can never build events against a stale
+    /// cumulative-usage snapshot (which the journal rejects as usage regression).
+    func commitEventsSettling(
+        runID: AgentRunID,
+        identity: RunJournalMutationIdentity,
+        settle: (BudgetLedgerSnapshot) throws -> (
+            BudgetLedgerSnapshot,
+            [BudgetLedgerOperation]
+        ),
+        build: (inout ExecutionEventBuilder, BudgetLedgerSnapshot) throws -> [AgentEventEnvelope]
+    ) async throws -> CommittedEventBatch {
+        await waitForToolCommitGate(runID: runID)
+        defer { releaseToolCommitGate(runID: runID) }
+        for _ in 0 ..< 8 {
+            guard let facts = try await repository.loadRunFacts(for: runID),
+                  let currentLedger = facts.budgetLedger
+            else { throw AgentExecutionError.invalidRecoveryBoundary }
+            let (settled, operations) = try settle(currentLedger)
+            var builder = ExecutionEventBuilder(projection: facts.projection)
+            let events: [AgentEventEnvelope]
+            do {
+                events = try build(&builder, settled)
+            } catch RunJournalContractError.eventUsageRegression {
+                continue
+            }
+            let request: RunJournalAppendRequest
+            do {
+                request = try RunJournalAppendRequest(
+                    mutationIdentity: identity,
+                    runID: runID,
+                    expectedRunStateVersion: facts.projection.stateVersion,
+                    events: events
+                )
+            } catch RunJournalContractError.eventUsageRegression,
+                    RunJournalContractError.discontinuousEventBatch
+            {
+                continue
+            }
+            let receipt = try await repository.commit(
+                RuntimeJournalMutation(append: request, budgetOperations: operations)
+            )
+            switch receipt.appendReceipt.disposition {
+            case .appended:
+                broadcast(events, handleID: facts.projection.executionHandleID)
+                return CommittedEventBatch(events: events, receipt: receipt)
+            case .replayed:
+                guard let snapshot = try await repository.loadRunSnapshot(for: runID) else {
+                    throw AgentExecutionError.invalidRecoveryBoundary
+                }
+                let byID = Dictionary(uniqueKeysWithValues: snapshot.events.map {
+                    ($0.payload.eventID, $0)
+                })
+                let committed = try receipt.appendReceipt.eventIDs.map { eventID in
+                    guard let event = byID[eventID] else {
+                        throw AgentExecutionError.invalidRecoveryBoundary
+                    }
+                    return event
+                }
+                return CommittedEventBatch(events: committed, receipt: receipt)
+            case .stale:
+                continue
+            case .rejected:
+                throw AgentExecutionError.internalInvariant(
+                    "journal rejected event mutation: \(String(describing: receipt.appendReceipt.diagnostic))"
+                )
+            }
+        }
+        throw AgentExecutionError.invalidRecoveryBoundary
+    }
+
+    private func waitForToolCommitGate(runID: AgentRunID) async {
+        if let gate = toolCommitGates[runID], gate.inFlight {
+            await withCheckedContinuation { continuation in
+                var updated = gate
+                updated.waiters.append(continuation)
+                toolCommitGates[runID] = updated
+            }
+        }
+        var gate = toolCommitGates[runID] ?? ToolCommitGate()
+        gate.inFlight = true
+        toolCommitGates[runID] = gate
+    }
+
+    private func releaseToolCommitGate(runID: AgentRunID) {
+        guard var gate = toolCommitGates[runID] else { return }
+        gate.inFlight = false
+        if !gate.waiters.isEmpty {
+            let next = gate.waiters.removeFirst()
+            toolCommitGates[runID] = gate
+            next.resume()
+        } else {
+            toolCommitGates[runID] = nil
+        }
     }
 
     func loadRun(
@@ -21,8 +137,7 @@ extension AgentRunController {
         )
     }
 
-    @discardableResult
-    func commitEvents(
+    private func commitEventsInner(
         runID: AgentRunID,
         identity: RunJournalMutationIdentity,
         budgetOperations: [BudgetLedgerOperation] = [],

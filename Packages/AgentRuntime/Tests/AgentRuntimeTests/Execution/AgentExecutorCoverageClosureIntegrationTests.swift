@@ -1638,12 +1638,12 @@ final class AgentExecutorCoverageClosureIntegrationTests: XCTestCase {
             invocationID: invocationID
         )
         await assertCapturedExecutionError(
-            .internalInvariant("run already owns a live tool cancellation")
+            .internalInvariant("invocation already owns a live tool cancellation")
         ) {
             try await harness.executor.controller.registerToolCancellation(
                 ExecutionCancellationToken(),
                 runID: harness.request.runID,
-                invocationID: ExecutorTestID.invocation(offset + 1)
+                invocationID: invocationID
             )
         }
         await harness.executor.controller.clearToolCancellation(

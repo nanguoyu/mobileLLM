@@ -118,13 +118,14 @@ public actor AgentRunController {
     let arbiter: ResourceArbiter
 
     var workers: [AgentRunID: Task<Void, Never>] = [:]
-    var activeToolCancellations: [AgentRunID: (
-        invocationID: ToolInvocationID,
-        token: ExecutionCancellationToken
-    )] = [:]
+    /// Parallel tool batches may own one live cancellation token per invocation.
+    var activeToolCancellations: [AgentRunID: [ToolInvocationID: ExecutionCancellationToken]] = [:]
     private var subscriptions: [AgentExecutionHandleID: [UUID: Subscription]] = [:]
     var ephemeralSubscriptions: [AgentExecutionHandleID: [UUID: EphemeralContinuation]] = [:]
     let commandOwner = "mobilellm.agent-run-controller.v1"
+    /// Per-run serialization for budget-settling tool commits only. Commands and other plain
+    /// commits stay ungated so pause/cancel can always interrupt a parallel batch.
+    var toolCommitGates: [AgentRunID: ToolCommitGate] = [:]
 
     public init(
         repository: any RuntimeRepository,
@@ -485,20 +486,27 @@ public actor AgentRunController {
         runID: AgentRunID,
         invocationID: ToolInvocationID
     ) throws {
-        guard activeToolCancellations[runID] == nil else {
-            throw AgentExecutionError.internalInvariant("run already owns a live tool cancellation")
+        var cancellations = activeToolCancellations[runID] ?? [:]
+        guard cancellations[invocationID] == nil else {
+            throw AgentExecutionError.internalInvariant("invocation already owns a live tool cancellation")
         }
-        activeToolCancellations[runID] = (invocationID, token)
+        cancellations[invocationID] = token
+        activeToolCancellations[runID] = cancellations
     }
 
     func clearToolCancellation(runID: AgentRunID, invocationID: ToolInvocationID) {
-        guard activeToolCancellations[runID]?.invocationID == invocationID else { return }
-        activeToolCancellations[runID] = nil
+        guard activeToolCancellations[runID]?[invocationID] != nil else { return }
+        activeToolCancellations[runID]?[invocationID] = nil
+        if activeToolCancellations[runID]?.isEmpty == true {
+            activeToolCancellations[runID] = nil
+        }
     }
 
     func cancelActiveTool(runID: AgentRunID) async {
         guard let active = activeToolCancellations[runID] else { return }
-        await active.token.cancel()
+        for token in active.values {
+            await token.cancel()
+        }
     }
 
     static let publicRedaction = try! RedactionMetadata(

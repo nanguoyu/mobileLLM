@@ -668,7 +668,7 @@ extension AgentRunController {
     ) async throws -> AgentCommandReceipt {
         let unresolved = history.toolIntents.first { history.toolOutcomes[$0.key] == nil }
         let hasLiveCancellableAttempt = unresolved.map {
-            activeToolCancellations[command.runID]?.invocationID == $0.key
+            activeToolCancellations[command.runID]?.keys.contains($0.key) == true
         } ?? false
         if !hasLiveCancellableAttempt, unresolved != nil,
            let recovery = try await interruptedToolRecoveryFacts(

@@ -540,6 +540,9 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
     public let provenance: AgentRequestProvenance
     /// Per-conversation approval mode frozen with this run (decides asking, never authority).
     public let approvalMode: AgentApprovalMode
+    /// Bounded fan-out cap for one tool batch. 1 (default) keeps the proven serial barrier; values
+    /// 2...4 opt this run into bounded concurrent tool execution (spec §12 roadmap step 2).
+    public let parallelToolBatchLimit: UInt16
 
     /// Creates a root or strictly attenuated future-child request.
     public init(
@@ -559,10 +562,14 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
         sandboxRequirement: SandboxRequirement? = nil,
         labels: some Sequence<AgentRequestLabel> = [],
         provenance: AgentRequestProvenance,
-        approvalMode: AgentApprovalMode = .ask
+        approvalMode: AgentApprovalMode = .ask,
+        parallelToolBatchLimit: UInt16 = 1
     ) throws {
         let normalizedLabels = Array(Set(labels)).sorted()
         try outputRequirement.validate()
+        guard (1 ... 4).contains(parallelToolBatchLimit) else {
+            throw AgentContractError.invalidName("parallel tool batch limit")
+        }
         guard AgentWireValidation.isNonblankControlFree(role, maximumLength: 128),
               Self.isValidInstruction(instruction),
               Set(normalizedLabels.map(\.key)).count == normalizedLabels.count,
@@ -606,6 +613,7 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
         self.labels = normalizedLabels
         self.provenance = provenance
         self.approvalMode = approvalMode
+        self.parallelToolBatchLimit = parallelToolBatchLimit
     }
 
     /// User instructions are ordinary chat text: line breaks and tabs are legitimate content, while
@@ -643,7 +651,11 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
                 labels: labels,
                 provenance: container.decode(AgentRequestProvenance.self, forKey: .provenance),
                 approvalMode: container.decodeIfPresent(AgentApprovalMode.self, forKey: .approvalMode)
-                    ?? .ask
+                    ?? .ask,
+                parallelToolBatchLimit: container.decodeIfPresent(
+                    UInt16.self,
+                    forKey: .parallelToolBatchLimit
+                ) ?? 1
             )
             guard self.labels == labels else { throw AgentContractError.invalidName("noncanonical labels") }
         } catch {
@@ -657,7 +669,7 @@ public struct AgentRequest: Hashable, Codable, Sendable, AgentContractPayload {
         case id, runID, conversationID, userTurnID, parent, role, instruction, outputRequirement
         case modelPolicy, capabilityCeiling, budget, contextReferences, artifactReferences
         case sandboxRequirement, labels, provenance
-        case approvalMode
+        case approvalMode, parallelToolBatchLimit
     }
 }
 

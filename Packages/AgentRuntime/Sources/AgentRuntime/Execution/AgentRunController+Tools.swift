@@ -3,6 +3,16 @@
 @_spi(AgentRuntime) import AgentContracts
 import Foundation
 
+/// One fully authorized tool invocation ready for execution (serial or parallel).
+struct AuthorizedParallelTool {
+    let tool: any ToolV2
+    let authorized: AuthorizedToolInvocation
+    let prepared: PreparedExternalOperationRequest
+    let proposed: ProposedToolCall
+    let stepID: AgentStepID
+    let timestamp: AgentTimestamp
+}
+
 private actor ExecutionToolBoundaryUsageAccumulator: ToolBoundaryUsageObserving {
     private struct Charge: Sendable {
         let scope: ToolBoundaryUsageScope
@@ -290,7 +300,7 @@ extension AgentRunController {
         )
     }
 
-    private func frozenInputsForTools(_ facts: RuntimeRunFacts) async throws -> FrozenAgentRunInputs {
+    func frozenInputsForTools(_ facts: RuntimeRunFacts) async throws -> FrozenAgentRunInputs {
         guard let submission = facts.submission else {
             throw AgentExecutionError.invalidRecoveryBoundary
         }
@@ -305,6 +315,36 @@ extension AgentRunController {
         facts: RuntimeRunFacts,
         history: ExecutionHistory
     ) async throws {
+        guard let authorizedTool = try await prepareAndAuthorizeTool(
+            tool,
+            descriptor: descriptor,
+            proposed: proposed,
+            facts: facts,
+            history: history
+        ) else { return }
+        try await executeAuthorizedTool(
+            authorizedTool.tool,
+            authorized: authorizedTool.authorized,
+            prepared: authorizedTool.prepared,
+            proposed: authorizedTool.proposed,
+            stepID: authorizedTool.stepID,
+            initialTimestamp: authorizedTool.timestamp,
+            hasMore: hasMore,
+            budget: facts.submission!.request.payload.budget,
+            history: history
+        )
+    }
+
+    /// Prepares and authorizes one tool call, returning nil when the run stopped at an approval
+    /// request or a policy denial (both already journaled). Shared by the serial and parallel batch
+    /// paths so every invocation crosses the same prepare -> authorize boundary exactly once.
+    func prepareAndAuthorizeTool(
+        _ tool: any ToolV2,
+        descriptor: AgentToolDescriptor,
+        proposed: ProposedToolCall,
+        facts: RuntimeRunFacts,
+        history: ExecutionHistory
+    ) async throws -> AuthorizedParallelTool? {
         guard let request = facts.submission?.request.payload else {
             throw AgentExecutionError.invalidRecoveryBoundary
         }
@@ -387,7 +427,7 @@ extension AgentRunController {
                 code: "execution.approved-tool-plan-changed",
                 message: "The tool plan changed after approval and cannot be executed."
             )
-            return
+            return nil
         }
         let authorization: AuthorizedExternalOperationRequest
         switch evaluation.authorization.decision {
@@ -414,7 +454,7 @@ extension AgentRunController {
                 prepared: prepared.externalOperation,
                 createdAt: now
             )
-            return
+            return nil
         case .deny:
             try await failRun(
                 runID: request.runID,
@@ -422,26 +462,23 @@ extension AgentRunController {
                 code: "execution.tool-authorization-denied",
                 message: "The tool operation was denied by local policy."
             )
-            return
+            return nil
         }
         let authorized = try AuthorizedToolInvocation(
             prepared: prepared,
             authorization: authorization
         )
-        try await executeAuthorizedTool(
-            tool,
+        return AuthorizedParallelTool(
+            tool: tool,
             authorized: authorized,
             prepared: prepared.externalOperation,
             proposed: proposed,
             stepID: stepID,
-            initialTimestamp: now,
-            hasMore: hasMore,
-            budget: request.budget,
-            history: history
+            timestamp: now
         )
     }
 
-    private func executeAuthorizedTool(
+    func executeAuthorizedTool(
         _ tool: any ToolV2,
         authorized: AuthorizedToolInvocation,
         prepared: PreparedExternalOperationRequest,
@@ -449,6 +486,7 @@ extension AgentRunController {
         stepID: AgentStepID,
         initialTimestamp: AgentTimestamp,
         hasMore: Bool,
+        deferTerminalDecisions: Bool = false,
         budget: AgentBudget,
         history: ExecutionHistory
     ) async throws {
@@ -543,6 +581,7 @@ extension AgentRunController {
                     ),
                     invocationID: invocationID,
                     hasMore: hasMore,
+                    deferTerminalDecisions: deferTerminalDecisions,
                     history: history
                 )
                 return
@@ -599,6 +638,7 @@ extension AgentRunController {
                     ),
                     invocationID: invocationID,
                     hasMore: hasMore,
+                    deferTerminalDecisions: deferTerminalDecisions,
                     history: history
                 )
                 return
@@ -617,6 +657,7 @@ extension AgentRunController {
                     ),
                     invocationID: invocationID,
                     hasMore: hasMore,
+                    deferTerminalDecisions: deferTerminalDecisions,
                     history: history
                 )
                 return
@@ -641,6 +682,7 @@ extension AgentRunController {
                     actualUsage: .zero,
                     invocationID: invocationID,
                     hasMore: hasMore,
+                    deferTerminalDecisions: deferTerminalDecisions,
                     history: history
                 )
                 return
@@ -873,6 +915,7 @@ extension AgentRunController {
                 actualUsage: finalUsage,
                 invocationID: invocationID,
                 hasMore: hasMore,
+                deferTerminalDecisions: deferTerminalDecisions,
                 history: finalHistory
             )
             return
@@ -961,22 +1004,23 @@ extension AgentRunController {
                 .persistedOutputBytes: persistedBytes,
             ])))
         }
-        guard let facts = try await repository.loadRunFacts(for: prepared.runID),
-              let ledger = facts.budgetLedger
-        else { throw AgentExecutionError.invalidRecoveryBoundary }
-        let settled = try ledger.settling(
-            reservationID: reservation.id,
-            actualUsage: usage
-        )
         let eventID = ExecutionStableID.event(
             runID: prepared.runID,
             key: "tool-attempt-interrupted-\(invocationID.description)-\(attemptNumber)"
         )
-        _ = try await commitEvents(
+        _ = try await commitEventsSettling(
             runID: prepared.runID,
-            identity: .outcome(eventID),
-            budgetOperations: [.settle(reservationID: reservation.id, actualUsage: usage)]
-        ) { builder in
+            identity: .outcome(eventID)
+        ) { currentLedger in
+            let settled = try currentLedger.settling(
+                reservationID: reservation.id,
+                actualUsage: usage
+            )
+            return (
+                settled,
+                [.settle(reservationID: reservation.id, actualUsage: usage)]
+            )
+        } build: { builder, settled in
             var events = [try builder.append(
                 id: eventID,
                 event: .diagnostic(diagnostic),
@@ -1088,22 +1132,6 @@ extension AgentRunController {
         intent: PreparedExternalOperationRequest?,
         previous: (reservation: BudgetReservation, usage: AgentUsage)?
     ) async throws {
-        guard let facts = try await repository.loadRunFacts(for: prepared.runID),
-              var ledger = facts.budgetLedger
-        else { throw AgentExecutionError.invalidRecoveryBoundary }
-        var operations: [BudgetLedgerOperation] = []
-        if let previous {
-            ledger = try ledger.settling(
-                reservationID: previous.reservation.id,
-                actualUsage: previous.usage
-            )
-            operations.append(.settle(
-                reservationID: previous.reservation.id,
-                actualUsage: previous.usage
-            ))
-        }
-        ledger = try ledger.reserving(reservation)
-        operations.append(.reserve(reservation))
         let eventID = ExecutionStableID.event(
             runID: prepared.runID,
             key: "tool-attempt-start-\(invocationID.description)-\(attemptNumber)"
@@ -1122,11 +1150,26 @@ extension AgentRunController {
             ],
             redaction: Self.publicRedaction
         )
-        _ = try await commitEvents(
+        _ = try await commitEventsSettling(
             runID: prepared.runID,
-            identity: .outcome(eventID),
-            budgetOperations: operations
-        ) { builder in
+            identity: .outcome(eventID)
+        ) { currentLedger in
+            var ledger = currentLedger
+            var operations: [BudgetLedgerOperation] = []
+            if let previous {
+                ledger = try ledger.settling(
+                    reservationID: previous.reservation.id,
+                    actualUsage: previous.usage
+                )
+                operations.append(.settle(
+                    reservationID: previous.reservation.id,
+                    actualUsage: previous.usage
+                ))
+            }
+            ledger = try ledger.reserving(reservation)
+            operations.append(.reserve(reservation))
+            return (ledger, operations)
+        } build: { builder, ledger in
             var events: [AgentEventEnvelope] = []
             if let intent {
                 events.append(try builder.append(
@@ -1395,45 +1438,44 @@ extension AgentRunController {
         actualUsage: AgentUsage,
         invocationID: ToolInvocationID,
         hasMore: Bool,
+        deferTerminalDecisions: Bool = false,
         history: ExecutionHistory
     ) async throws {
-        guard let facts = try await repository.loadRunFacts(for: prepared.runID),
-              let currentLedger = facts.budgetLedger
-        else { throw AgentExecutionError.invalidRecoveryBoundary }
-        let settled: BudgetLedgerSnapshot
-        let budgetOperations: [BudgetLedgerOperation]
-        if let reservation {
-            settled = try currentLedger.settling(
-                reservationID: reservation.id,
-                actualUsage: actualUsage
-            )
-            budgetOperations = [
-                .settle(reservationID: reservation.id, actualUsage: actualUsage),
-            ]
-        } else {
-            guard actualUsage == .zero else {
-                throw AgentExecutionError.internalInvariant(
-                    "settled tool outcome cannot add unreserved usage"
-                )
-            }
-            settled = currentLedger
-            budgetOperations = []
-        }
         let id = ExecutionStableID.event(
             runID: prepared.runID,
             key: "tool-outcome-\(invocationID.description)"
         )
-        _ = try await commitEvents(
+        _ = try await commitEventsSettling(
             runID: prepared.runID,
-            identity: .outcome(id),
-            budgetOperations: budgetOperations
-        ) { builder in
+            identity: .outcome(id)
+        ) { currentLedger in
+            if let reservation {
+                let settled = try currentLedger.settling(
+                    reservationID: reservation.id,
+                    actualUsage: actualUsage
+                )
+                return (
+                    settled,
+                    [.settle(reservationID: reservation.id, actualUsage: actualUsage)]
+                )
+            } else {
+                guard actualUsage == .zero else {
+                    throw AgentExecutionError.internalInvariant(
+                        "settled tool outcome cannot add unreserved usage"
+                    )
+                }
+                return (currentLedger, [])
+            }
+        } build: { builder, settled in
             var events = [try builder.append(
                 id: id,
                 event: .toolOutcomeRecorded(invocationID: invocationID, outcome: outcome),
                 cumulativeUsage: settled.consumed,
                 redaction: Self.publicRedaction
             )]
+            // Parallel batches defer every terminal/no-progress/next-state decision to one
+            // deterministic barrier after all fan-out invocations have committed their outcomes.
+            if deferTerminalDecisions { return events }
             if builder.state == .pausing {
                 if case .uncertain(let value) = outcome {
                     let waiting = try self.status(
@@ -1524,7 +1566,7 @@ extension AgentRunController {
         }
     }
 
-    private func isSemanticNoProgress(_ outcome: AgentToolInvocationOutcome) -> Bool {
+    func isSemanticNoProgress(_ outcome: AgentToolInvocationOutcome) -> Bool {
         switch outcome {
         case .failed, .uncertain:
             return true

@@ -114,7 +114,9 @@ extension AgentRunController {
             case .validatingAction:
                 try await resolveValidatedAction(facts: facts, history: history)
             case .executingTools:
-                try await executeNextTool(facts: facts, history: history)
+                // Serial for one pending call; bounded concurrent fan-out + deterministic barrier
+                // for multi-call batches (spec §12 roadmap step 2).
+                try await executeToolBatch(facts: facts, history: history)
             case .generating:
                 // A scheduled worker can observe `generating` only after process recovery. An
                 // incomplete decode is not a stable result and is never silently restarted.
@@ -178,6 +180,10 @@ extension AgentRunController {
            case .internalInvariant(let detail) = executionError
         {
             return ["detail": detail]
+        }
+        if let journalError = error as? RunJournalContractError {
+            // Stable case names only; never prompts, arguments, or external content.
+            return ["detail": String(describing: journalError)]
         }
         // Typed runtime errors carry only stable identities and safe messages — never prompts,
         // tool arguments, or external content — so their case text is redaction-safe diagnostics.

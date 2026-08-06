@@ -165,7 +165,8 @@ struct ExecutorTestHarness {
         clock: any AgentExecutionClock = FixedExecutorClock(),
         budget suppliedBudget: AgentBudget? = nil,
         policyEngine suppliedPolicyEngine: (any ApprovalPolicyEngine)? = nil,
-        repositoryFactory: ((SQLiteRunJournal) -> any RuntimeRepository)? = nil
+        repositoryFactory: ((SQLiteRunJournal) -> any RuntimeRepository)? = nil,
+        parallelToolBatchLimit: UInt16 = 1
     ) throws {
         self.model = model
         let runID = ExecutorTestID.run(offset)
@@ -192,7 +193,8 @@ struct ExecutorTestHarness {
             ),
             capabilityCeiling: capabilityCeiling,
             budget: budget,
-            provenance: AgentRequestProvenance(source: .user)
+            provenance: AgentRequestProvenance(source: .user),
+            parallelToolBatchLimit: parallelToolBatchLimit
         )
         let logicalIDs = toolDescriptors.map(\.id.logicalID)
         frozenInputs = try FrozenAgentRunInputs(
