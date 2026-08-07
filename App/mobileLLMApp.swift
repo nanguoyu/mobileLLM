@@ -266,6 +266,16 @@ struct MobileLLMApp: App {
                 container.settings.openAIOnlineEnabled = true
             }
         }
+        // DEBUG-only convenience for simulator/device E2E: arm the workflow research toolset
+        // (web search + webpage reader) exactly like the user enabling them in Settings → Tools.
+        // Production builds never contain this block; a normal DEBUG launch without the flag keeps
+        // the default off state and exercises the workflow tool gate.
+        if ProcessInfo.processInfo.environment["MOBILELLM_DEBUG_ENABLE_WORKFLOW_TOOLS"] == "1" {
+            container.settings.toolsEnabled = true
+            container.settings.disabledBuiltInTools.subtract(
+                WorkflowToolPolicyGate.requiredToolIDs.map(\.rawValue)
+            )
+        }
         #endif
         // Attach the durable agent runtime (spec §6 / §20): SQLite journal, artifact store, local
         // model providers over the same routing engine, and the run store the UI projects. A failure

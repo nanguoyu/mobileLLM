@@ -144,71 +144,6 @@ public struct AgentRunRequestSnapshot: Sendable {
 }
 
 extension AgentRunRequestSnapshot {
-    /// Workflow children are exploration/planning/audit agents: they need the built-in tools
-    /// regardless of the chat's tool master switch. The ceiling is rebuilt from this snapshot, so
-    /// web search / Wikipedia / webpage / memory destinations join the run exactly once.
-    func withWorkflowTools() -> AgentRunRequestSnapshot {
-        // The frozen inputs use the snapshot's toolPolicy verbatim; a conversation that disabled the
-        // tool master would otherwise strip workflow children of every tool. Force a master-enabled
-        // policy covering the built-in + discovered MCP tools.
-        let builtinIDs = ToolID.allCases.map {
-            // Valid constant names; safe by construction.
-            try! AgentToolLogicalID(providerID: "builtin", name: $0.rawValue)
-        }
-        let mcpIDs = mcpToolDescriptors.map(\.id.logicalID)
-        let allowed = builtinIDs + mcpIDs
-        let forcedPolicy = try! ConversationToolPolicy(
-            masterEnabled: true,
-            allowedToolIDs: allowed,
-            pinnedToolIDs: allowed,
-            selectionPolicyVersion: 1,
-            materializedFromGlobalTemplate: true
-        )
-        // The conversation may have the tool master off, which empties webSearchDestinations; the
-        // workflow ceiling must still name the configured search-engine hosts so web_search can pass
-        // prepare→authorize inside children.
-        let engineDestinations = SearchEngine.allCases.compactMap { engine in
-            try? AppWebSearchToolAdapter.destination(engine: engine)
-        }
-        return AgentRunRequestSnapshot(
-            conversationID: conversationID,
-            userTurnID: userTurnID,
-            text: text,
-            imageRefs: imageRefs,
-            messages: messages,
-            systemPrompt: systemPrompt,
-            memoryFacts: memoryFacts,
-            activeSkill: activeSkill,
-            model: model,
-            variant: variant,
-            weightsDirectory: weightsDirectory,
-            thinkingEnabled: thinkingEnabled,
-            contextLength: contextLength,
-            maxTokens: maxTokens,
-            temperature: temperature,
-            topP: topP,
-            topK: topK,
-            repetitionPenalty: repetitionPenalty,
-            toolsEnabled: true,
-            localToolNames: Set(ToolID.allCases.map(\.rawValue)).sorted(),
-            memorySeamAvailable: memorySeamAvailable,
-            eventSeamAvailable: eventSeamAvailable,
-            locationSeamAvailable: locationSeamAvailable,
-            mcpToolDescriptors: mcpToolDescriptors,
-            webSearchDestinations: engineDestinations,
-            toolPolicy: forcedPolicy,
-            onlineModelEnabled: onlineModelEnabled,
-            onlineModelID: onlineModelID,
-            onlineServiceID: onlineServiceID,
-            onlineReasoningEnabled: onlineReasoningEnabled,
-            onlineContextLength: onlineContextLength,
-            onlineOutputBudgetAuto: onlineOutputBudgetAuto,
-            onlineMaximumOutputTokens: onlineMaximumOutputTokens,
-            approvalMode: approvalMode,
-            onlineReasoningEffort: onlineReasoningEffort
-        )
-    }
-
     /// The input freezer rebuilds snapshots per request instruction; workflow children carry the
     /// same (conversation, userTurn) as their root but a different task text.
     func withText(_ text: String) -> AgentRunRequestSnapshot {
@@ -252,9 +187,10 @@ extension AgentRunRequestSnapshot {
     }
 }
 
-/// The input freezer rebuilds snapshots from Settings, which would strip workflow children of their
-/// forced tool set. This registry lets the assembly's snapshot closure return the workflow template
-/// (with tools on) for every run anchored to one `/workflow` message.
+/// The input freezer rebuilds snapshots from Settings, which would otherwise lose the workflow's
+/// inherited conversation tool policy. This registry lets the assembly's snapshot closure return the
+/// workflow template (the conversation's exact policy — never force-enabled, spec §2/§14/§33) for
+/// every run anchored to one `/workflow` message.
 @MainActor
 final class AppWorkflowSnapshotRegistry {
     static let shared = AppWorkflowSnapshotRegistry()

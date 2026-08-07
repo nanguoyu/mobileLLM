@@ -167,6 +167,25 @@ struct ChatDetailView: View {
                 showRename = false
             }
         }
+        // Workflow tool gate (spec §33 gap 1): the launcher refused because a required research tool
+        // is off for this conversation. Enabling is an explicit tool-selection decision, not an
+        // approval-mode shortcut; the same stable workflow ids relaunch after confirmation.
+        .alert(
+            "Enable tools for this workflow?",
+            isPresented: Binding(
+                get: { chat.workflowToolGate != nil },
+                set: { if !$0 { chat.cancelWorkflowToolGate() } }
+            )
+        ) {
+            Button("Enable & Start") { chat.confirmWorkflowToolGate() }
+            Button("Cancel", role: .cancel) { chat.cancelWorkflowToolGate() }
+        } message: {
+            Text(chat.workflowToolGate.map {
+                let names = $0.missingTools.map(WorkflowToolPolicyGate.displayName).joined(separator: ", ")
+                let verb = $0.missingTools.count == 1 ? "is" : "are"
+                return "This workflow needs \(names), which \(verb) currently off for this conversation. Enable and start?"
+            } ?? "")
+        }
         .confirmationDialog(
             "Delete this conversation?",
             isPresented: $showDeleteConfirm,

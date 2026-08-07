@@ -14,6 +14,10 @@ final class WorkflowUITests: XCTestCase {
     @MainActor
     func testWorkflowCommandShowsMessageAnchoredRecord() throws {
         let app = XCUIApplication()
+        // The workflow tool gate (spec §33 gap 1) refuses to start until the conversation allows the
+        // research toolset; the DEBUG build arms it from this flag for E2E exactly like a user
+        // enabling Tools → Web search / Webpage reader.
+        app.launchEnvironment["MOBILELLM_DEBUG_ENABLE_WORKFLOW_TOOLS"] = "1"
         app.launch()
 
         let newChat = app.buttons.matching(identifier: "New chat").firstMatch

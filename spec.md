@@ -1575,9 +1575,13 @@ Implemented foundations:
 
 Open conformance gaps:
 
-1. **Workflow tool policy:** `withWorkflowTools()` currently forces the tool master on and permits all built-ins and
-   discovered MCP descriptors. This violates §2 decision 3 and §14. Workflow children must derive a subset of the
-   initiating conversation's allowed set; approval is not a substitute for tool selection.
+1. **Workflow tool policy:** CLOSED (2026-08-07). `withWorkflowTools()` was removed; workflow roots and children
+   inherit the initiating conversation's exact tool policy, never force-enabled. `WorkflowToolPolicyGate` refuses
+   to launch when a required research tool (`web_search` / `fetch_webpage`) is disabled, routing the send to an
+   explicit user enable gate (Enable & Start / Cancel), and `SubagentSpawner` continues to strictly attenuate
+   every child's ceiling. Evidence: `WorkflowToolPolicyGateTests` + `ChatStoreWorkflowToolGateTests`
+   (MobileLLMUI suite green, 397 tests), macOS + iOS builds green, simulator E2E armed via
+   `MOBILELLM_DEBUG_ENABLE_WORKFLOW_TOOLS`.
 2. **Conversation projection:** journal submission/finalization writes durable outbox rows, but the app does not yet
    run a production outbox projector that claims, applies, and acknowledges those rows. `ChatStore` still performs
    direct compatibility projection, so §9.1 and acceptance criteria 2/10 remain incomplete.

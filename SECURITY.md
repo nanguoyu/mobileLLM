@@ -54,9 +54,9 @@ account, analytics, or telemetry service.
 ## Security boundaries
 
 - Master tool access is off by default. The security contract permits only individually selected built-in tools and
-  MCP servers to be advertised; a network-tool call sends its arguments to that service. The current staged-workflow
-  launcher incorrectly forces all built-ins and discovered MCP descriptors on, which is tracked as a release-blocking
-  conformance gap in `spec.md` §33. Tool responses are
+  MCP servers to be advertised; a network-tool call sends its arguments to that service. Workflow roots and children
+  inherit only the initiating conversation's allowed tool set — never force-enabled — and a missing required
+  research tool pauses the launch for the user to explicitly enable it (spec §33 gap 1, closed 2026-08-07). Tool responses are
   framed as untrusted external data before being returned to the model. Every external operation —
   online-model inference and every tool call — passes an immutable `prepare → authorize → execute`
   boundary: a prepared plan (destination, data categories, argument digest, response ceiling) cannot be

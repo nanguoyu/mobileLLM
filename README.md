@@ -57,7 +57,8 @@ discovery/downloads, online models you enable and approve, or tools you explicit
   controls (Streamable HTTP, per-server enable + per-tool mute). Tool access is off by default, only
   selected tools are advertised to the model, and tool results are framed as **untrusted data**
   (prompt-injection fenced) before another model pass. Runtime assembly failure still has a legacy
-  compatibility fallback; workflow tool-policy conformance is an open release blocker in `spec.md` §33.
+  compatibility fallback. Workflows inherit only the conversation's enabled tools; a missing required
+  research tool pauses the launch and asks the user to enable it explicitly.
 - 🧩 **Subagents + parallel tool batches + staged workflows.** The runtime can spawn bounded
   subagents with attenuated ceilings, run tool batches in parallel inside one run, and orchestrate a
   message-anchored **workflow** (`/workflow <goal>`): a planner decomposes the goal into phases
