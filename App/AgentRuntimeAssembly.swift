@@ -1120,6 +1120,7 @@ public final class AgentRuntimeAssembly {
     public let runStore: AgentRunStore
     public let repository: SQLiteRunJournal
     public let artifactStore: ContentAddressedArtifactStore
+    public let payloadStore: ContentAddressedExecutionPayloadStore
     public let executor: DurableAgentExecutor
     let requestBuilder: AppAgentRunRequestBuilder
     let inputFreezer: AppAgentRunInputFreezer
@@ -1247,6 +1248,7 @@ public final class AgentRuntimeAssembly {
             lastSubmission: lastSubmission
         )
         inputFreezer = freezer
+        self.payloadStore = payloadStore
         executor = DurableAgentExecutor(
             repository: repository,
             payloadStore: payloadStore,

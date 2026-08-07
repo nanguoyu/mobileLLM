@@ -342,6 +342,25 @@ struct MobileLLMApp: App {
                 onlineConfiguration: { onlineConfigBox.configuration() }
             ) {
                 container.attachAgentRuns(assembly.runStore)
+                // Production outbox projector (spec §9.1/§33 gap 2): claims journal outbox rows and
+                // applies them to the conversation JSON idempotently. Workflow root/child final
+                // answers are owned by the workflow summary path and are acknowledged without
+                // projecting raw JSON into the chat.
+                let projector = ConversationOutboxProjector(
+                    outbox: SQLiteOutboxProvider(repository: assembly.repository),
+                    payloads: PayloadOutboxProvider(payloadStore: assembly.payloadStore),
+                    store: container.conversationStore,
+                    shouldProject: { item in
+                        guard item.kind == .finalAnswer, let runID = item.runID else { return true }
+                        guard let facts = try? await assembly.repository.loadRunFacts(for: runID) else {
+                            return true
+                        }
+                        return facts.submission?.request.payload.provenance.source != .workflow
+                    }
+                )
+                container.outboxProjector = projector
+                // Bootstrap drain: project any rows committed by a previous run before a crash/quit.
+                Task { await projector.drain() }
                 container.chat.agentMCPToolLogicalIDs = { [weak container] in
                     guard let container else { return [] }
                     return container.mcpDiscovery

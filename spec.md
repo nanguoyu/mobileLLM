@@ -1582,9 +1582,14 @@ Open conformance gaps:
    every child's ceiling. Evidence: `WorkflowToolPolicyGateTests` + `ChatStoreWorkflowToolGateTests`
    (MobileLLMUI suite green, 397 tests), macOS + iOS builds green, simulator E2E armed via
    `MOBILELLM_DEBUG_ENABLE_WORKFLOW_TOOLS`.
-2. **Conversation projection:** journal submission/finalization writes durable outbox rows, but the app does not yet
-   run a production outbox projector that claims, applies, and acknowledges those rows. `ChatStore` still performs
-   direct compatibility projection, so §9.1 and acceptance criteria 2/10 remain incomplete.
+2. **Conversation projection:** CLOSED (2026-08-07). `ConversationOutboxProjector` now claims journal outbox rows
+   (`acceptedUserMessage` / `finalAnswer` / `deleteConversation`), applies them to the conversation JSON
+   idempotently (never duplicating a user message or overwriting a committed answer), and acknowledges delivery.
+   It drains at bootstrap, on run start/terminal, and on foreground resume. Workflow root/child final answers are
+   acknowledged without raw projection (the workflow summary path owns them). `ChatStore`'s live callbacks remain
+   as an optimistic UI projection that the outbox path reconciles; the journal is the recovery authority.
+   Evidence: `ConversationOutboxProjectorTests` (MobileLLMUI suite green, 403 tests), AgentRuntime suite green
+   (436), macOS + iOS builds green.
 3. **Workflow relaunch:** workflow summaries and stable child identities persist, but app bootstrap does not yet
    reconstruct and advance an unfinished workflow. Durable recording alone does not satisfy §9.4 or §23 recovery.
 4. **Compatibility fallback:** an assembly failure still activates the legacy in-process `ToolLoop`. This is an

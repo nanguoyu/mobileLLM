@@ -38,6 +38,9 @@ public final class AppContainer {
     /// The durable agent runtime projection and command surface (spec §20). Nil keeps the legacy
     /// in-process loop (tests/previews and the rollout-off state).
     public private(set) var agentRuns: AgentRunStore?
+    /// Production outbox projector (spec §9.1/§33 gap 2): claims journal outbox rows and applies them
+    /// to the conversation JSON idempotently. Wired by the app shell; nil in tests/previews.
+    public var outboxProjector: ConversationOutboxProjector?
     /// When the agent runtime failed to assemble, the reason (rollout-off state stays functional).
     public private(set) var agentRuntimeError: String?
     /// App-assembled hook that returns the bounded redacted agent-runtime log (diagnostics only).
@@ -160,6 +163,7 @@ public final class AppContainer {
         }
         lifecycle.resumeAdmittingActions = { [weak self] in
             self?.chat.setAcceptingNewActions(true)
+            Task { await self?.outboxProjector?.drain() }
         }
         lifecycle.suspendModel = { [weak self] in
             self?.suspendModel()
@@ -193,9 +197,11 @@ public final class AppContainer {
         }
         chat.onAgentRunStarted = { [weak self] conversationID in
             self?.continuedProcessing.submitIfEligible(conversationID: conversationID)
+            Task { await self?.outboxProjector?.drain() }
         }
         chat.onAgentRunTerminal = { [weak self] conversationID, _ in
             self?.continuedProcessing.runFinished(conversationID: conversationID)
+            Task { await self?.outboxProjector?.drain() }
         }
     }
 

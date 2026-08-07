@@ -101,6 +101,12 @@ public struct OutboxClaim: Hashable, Codable, Sendable {
     public let owner: String
     public let expiresAt: AgentTimestamp
     public let items: [ProjectionOutboxItem]
+
+    public init(owner: String, expiresAt: AgentTimestamp, items: [ProjectionOutboxItem]) {
+        self.owner = owner
+        self.expiresAt = expiresAt
+        self.items = items
+    }
 }
 
 public enum RecoveryDisposition: String, CaseIterable, Codable, Sendable {

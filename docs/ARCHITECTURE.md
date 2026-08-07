@@ -57,9 +57,11 @@ terminal/final answer, with explicit waiting states for approval, user input, fo
 resources. The legacy in-process `ToolLoop` remains only as an assembly-failure/test-preview compatibility path.
 
 Submission and finalization atomically write canonical journal message references plus outbox rows. The SQLite
-claim/ack primitives are implemented, but the app does not yet run a production outbox projector; `ChatStore`
-currently persists the visible compatibility projection from runtime callbacks. Crash-safe journal-to-conversation
-projection is therefore an open conformance item, not a completed architecture guarantee.
+claim/ack primitives feed a production `ConversationOutboxProjector` (App wiring over `SQLiteOutboxProvider` +
+`PayloadOutboxProvider`): it claims `acceptedUserMessage` / `finalAnswer` / `deleteConversation` rows, applies them
+to the conversation JSON idempotently, and acknowledges them. It drains at bootstrap, on run start/terminal, and on
+foreground resume, so crash-safe journal-to-conversation projection is now an implemented guarantee; `ChatStore`'s
+live callbacks are an optimistic UI projection the outbox path reconciles (spec §33 gap 2 closed 2026-08-07).
 
 Every external operation — online-model inference and every network/privacy tool call — passes a single
 `prepare → authorize → execute` boundary:
