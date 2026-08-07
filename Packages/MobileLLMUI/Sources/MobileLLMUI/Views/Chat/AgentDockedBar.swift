@@ -58,7 +58,6 @@ struct AgentDockedBar: View {
                 Text(approval.preview)
                     .font(.caption)
                     .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
@@ -66,7 +65,8 @@ struct AgentDockedBar: View {
                 Text(destination)
                     .font(.caption2)
                     .foregroundStyle(Theme.textTertiary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
             }
             HStack(spacing: Theme.Space.sm) {
                 Button {

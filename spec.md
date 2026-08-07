@@ -1600,8 +1600,10 @@ Open conformance gaps:
    explicit development fallback, not evidence that every production send has AgentRuntime semantics.
 5. **Verification enforcement:** the checked-in simulator/device test plans exist, but CI currently lists them rather
    than executing the simulator suite. Accessibility, exhaustive semantic/fault gates, performance baselines, the
-   complete physical-device matrix, and the consolidated audit remain planned. The static semantic gate is now
-   green (2026-08-07): the verifier's frozen axes include `approvalCommandRouting.operationKind` and
+   complete physical-device matrix, and the consolidated audit remain planned. Accessibility hardening landed
+   (2026-08-07): approval previews/destinations no longer visually truncate and keep VoiceOver-accessible labels;
+   `AHT-PERF-001` (matched latency/resource baselines) still requires a device + recorded baseline and remains
+   planned. The static semantic gate is now green (2026-08-07): the verifier's frozen axes include `approvalCommandRouting.operationKind` and
    `trustedProgressRouting.modelNeedsApproval`, and its expected routes match `AgentRunReducer` /
    `ApprovalDecisionTables` — model-provider approval resumes the model path (`waitingForModel`), denial
    terminates (`failed`/`permissionDenied`), `modelNeedsApproval` parks the run in `waitingForApproval`, and
