@@ -82,6 +82,7 @@ enum SemanticRegistryVerifier {
                 "systemPermissionPromptForeground", "systemPermissionPromptBackground",
                 "systemPermissionDenied",
             ],
+            "operationKind": ["tool", "modelProvider"],
         ],
         "responseCommandRouting": [
             "state": Set(runStates),
@@ -103,7 +104,7 @@ enum SemanticRegistryVerifier {
                 "toolBatchNeedsApproval", "toolBatchAuthorized", "userInputRequested",
                 "repairScheduled", "repairExhausted", "nextToolNeedsApproval",
                 "toolBatchCompleted", "toolBatchStopped", "externalOutcomeUnknown",
-                "foregroundLost", "systemPermissionResolved",
+                "foregroundLost", "systemPermissionResolved", "modelNeedsApproval",
             ],
             "callbackGuard": [
                 "valid", "duplicateOutcome", "staleVersion", "targetMismatch",
@@ -629,10 +630,15 @@ enum SemanticRegistryVerifier {
 
     private static func expectedApprovalCommandRoute(_ cell: [String: String]) -> (String, String?)? {
         guard cell["state"] == "waitingForApproval" else { return nil }
+        let modelProvider = cell["operationKind"] == "modelProvider"
         switch cell["guard"] {
         case "exactApproved", "conversationReadApproved", "systemPermissionReady":
-            return ("executingTools", nil)
-        case "denied", "cancelled": return ("synthesizing", nil)
+            // Approving an online-model request resumes the model path; a tool approval resumes tool
+            // execution (spec §15.2, registry AH-TRANSITION-APPROVAL-COMMAND-013/014/015).
+            return (modelProvider ? "waitingForModel" : "executingTools", nil)
+        case "denied", "cancelled":
+            // Models are not optional tools: denying an online-model request terminates the run.
+            return modelProvider ? ("failed", "permissionDenied") : ("synthesizing", nil)
         case "systemPermissionPromptForeground": return ("waitingForApproval", nil)
         case "systemPermissionPromptBackground": return ("waitingForForeground", nil)
         default: return nil
@@ -680,6 +686,8 @@ enum SemanticRegistryVerifier {
         add("executingTools", "toolBatchStopped", "valid", to: "synthesizing")
         add("executingTools", "externalOutcomeUnknown", "effectOutcomeUncertain",
             to: "waitingForReconciliation")
+        add("waitingForModel", "modelNeedsApproval", "valid", to: "waitingForApproval")
+        add("synthesizing", "modelNeedsApproval", "valid", to: "waitingForApproval")
         for state in ["preparing", "waitingForModel", "generating", "synthesizing"] {
             add(state, "foregroundLost", "foregroundUnavailable", to: "waitingForForeground")
         }
@@ -833,6 +841,13 @@ enum SemanticRegistryVerifier {
                          retry: "none", uncertain: isPotentiallySideEffecting, runState: nil)
         }
         if effect == "externalRead", cell["receipt"] == "usableConversationRead" {
+            return .init(decision: "authorizeMatchingReceipt", scope: "boundedConversationRead",
+                         retry: "none", uncertain: false, runState: nil)
+        }
+        if effect == "strongExact", cell["receipt"] == "usableConversationRead" {
+            // Online-model conversation consent (spec §15.2): a conversation-scoped receipt is
+            // reusable for the approved service across messages; the payload/fingerprint are
+            // deliberately not part of the match (AH-APPROVAL-AUTHORITY-022).
             return .init(decision: "authorizeMatchingReceipt", scope: "boundedConversationRead",
                          retry: "none", uncertain: false, runState: nil)
         }

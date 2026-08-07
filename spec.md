@@ -1596,7 +1596,13 @@ Open conformance gaps:
    explicit development fallback, not evidence that every production send has AgentRuntime semantics.
 5. **Verification enforcement:** the checked-in simulator/device test plans exist, but CI currently lists them rather
    than executing the simulator suite. Accessibility, exhaustive semantic/fault gates, performance baselines, the
-   complete physical-device matrix, and the consolidated audit remain planned.
+   complete physical-device matrix, and the consolidated audit remain planned. The static semantic gate is now
+   green (2026-08-07): the verifier's frozen axes include `approvalCommandRouting.operationKind` and
+   `trustedProgressRouting.modelNeedsApproval`, and its expected routes match `AgentRunReducer` /
+   `ApprovalDecisionTables` — model-provider approval resumes the model path (`waitingForModel`), denial
+   terminates (`failed`/`permissionDenied`), `modelNeedsApproval` parks the run in `waitingForApproval`, and
+   `AH-APPROVAL-AUTHORITY-022` recognizes conversation-scoped online-model consent
+   (`authorizeMatchingReceipt`/`boundedConversationRead`). `agent-harness-verify static` exits 0.
 6. **Evidence freshness:** verification manifests, semantic registries, spec digest, coverage evidence, and device
    results must be regenerated from one source commit. Conflicting `passed`/`pending` claims are not release evidence.
 
