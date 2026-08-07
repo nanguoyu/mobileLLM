@@ -718,6 +718,184 @@ final class MultiAgentWorkflowIntegrationTests: XCTestCase {
         XCTAssertEqual(final.aggregated.subagentCount, 2)
     }
 
+    func testWorkflowAdvanceReEntryDoesNotDoubleCountAlreadySpawnedChildren() async throws {
+        let parent = makeWorkflowParent()
+        let workflowID = UUID()
+        let childRunID = WorkflowIdentity.childRun(workflowID: workflowID, phase: 1, child: 0)
+        let plan = try WorkflowPlan(
+            goal: "Single phase",
+            phases: [
+                WorkflowPhasePlan(
+                    sequence: 1,
+                    title: "Only",
+                    acceptanceCriteria: "Done",
+                    childInstructions: ["Do it"]
+                ),
+            ]
+        )
+        // The child was durably submitted before the app quit; the durable phase already counts it.
+        var seeded = WorkflowSummary(
+            id: workflowID,
+            title: "Interrupted",
+            plan: plan,
+            rootRunID: parent.runID,
+            phases: [
+                WorkflowPhaseRecord(
+                    sequence: 1,
+                    title: "Only",
+                    status: .running,
+                    acceptanceCriteria: "Done",
+                    childRunIDs: [childRunID],
+                    completedChildCount: 1,
+                    stats: WorkflowAggregatedStats(
+                        subagentCount: 1,
+                        elapsedMilliseconds: 50,
+                        inputTokens: 10,
+                        outputTokens: 2,
+                        toolInvocationCount: 1
+                    )
+                ),
+            ]
+        )
+        seeded.refreshAggregates()
+
+        let recording = InMemoryWorkflowRecording()
+        try await recording.save(seeded)
+        let spawner = FakeSubagentSpawner(results: [
+            .completed(
+                answer: try AgentAnswer(text: "first"),
+                usage: usage(input: 999, output: 999, tools: 999, active: 999)
+            ),
+        ])
+        let orchestrator = WorkflowOrchestrator(spawner: spawner, recording: recording)
+
+        let summary = try await orchestrator.advance(
+            workflowID: workflowID,
+            plan: plan,
+            parent: parent,
+            ceilingAttenuator: { ceiling, _, _ in
+                try ceiling.attenuating(
+                    to: AgentAuthorityScope(capabilities: AgentCapabilitySet([.localRead])),
+                    requireStrict: true
+                )
+            },
+            budgetAttenuator: { budget, _, _ in
+                try budget.attenuating(
+                    to: try AgentBudget(
+                        limits: BudgetQuantities(
+                            Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map {
+                                ($0, $0 == .modelAttempts ? 2 : budget.limits[$0])
+                            })
+                        ),
+                        maximumThermalState: budget.maximumThermalState,
+                        memoryPressureResponse: budget.memoryPressureResponse
+                    ),
+                    requireStrict: true
+                )
+            }
+        )
+
+        XCTAssertEqual(summary.phases[0].status, .completed)
+        XCTAssertEqual(summary.phases[0].childRunIDs, [childRunID],
+                       "re-entry must not duplicate the durable child identity")
+        XCTAssertEqual(summary.phases[0].completedChildCount, 1)
+        XCTAssertEqual(summary.phases[0].stats.subagentCount, 1)
+        XCTAssertEqual(summary.phases[0].stats.inputTokens, 10,
+                       "re-collecting an already-counted child must not double-merge usage")
+    }
+
+    func testWorkflowResumeCompletesUnfinishedWorkflowFromDurableSummary() async throws {
+        let parent = makeWorkflowParent()
+        let workflowID = UUID()
+        let plan = try WorkflowPlan(
+            goal: "Two phases",
+            phases: [
+                WorkflowPhasePlan(
+                    sequence: 1,
+                    title: "First",
+                    acceptanceCriteria: "First done",
+                    childInstructions: ["First child"]
+                ),
+                WorkflowPhasePlan(
+                    sequence: 2,
+                    title: "Second",
+                    acceptanceCriteria: "Second done",
+                    childInstructions: ["Second child"]
+                ),
+            ]
+        )
+        var seeded = WorkflowSummary(
+            id: workflowID,
+            title: "Resumable",
+            plan: plan,
+            rootRunID: parent.runID,
+            phases: [
+                WorkflowPhaseRecord(
+                    sequence: 1,
+                    title: "First",
+                    status: .completed,
+                    acceptanceCriteria: "First done",
+                    endTime: Date(),
+                    childRunIDs: [WorkflowIdentity.childRun(workflowID: workflowID, phase: 1, child: 0)],
+                    stats: WorkflowAggregatedStats(
+                        subagentCount: 1,
+                        elapsedMilliseconds: 100,
+                        inputTokens: 10,
+                        outputTokens: 2,
+                        toolInvocationCount: 1
+                    )
+                ),
+                WorkflowPhaseRecord(
+                    sequence: 2,
+                    title: "Second",
+                    acceptanceCriteria: "Second done"
+                ),
+            ]
+        )
+        seeded.refreshAggregates()
+        let recording = InMemoryWorkflowRecording()
+        try await recording.save(seeded)
+        let spawner = FakeSubagentSpawner(results: [
+            .completed(
+                answer: try AgentAnswer(text: "second"),
+                usage: usage(input: 5, output: 1, tools: 0, active: 50)
+            ),
+        ])
+        let orchestrator = WorkflowOrchestrator(spawner: spawner, recording: recording)
+
+        let summary = try await orchestrator.resume(
+            workflowID: workflowID,
+            parent: parent,
+            ceilingAttenuator: { ceiling, _, _ in
+                try ceiling.attenuating(
+                    to: AgentAuthorityScope(capabilities: AgentCapabilitySet([.localRead])),
+                    requireStrict: true
+                )
+            },
+            budgetAttenuator: { budget, _, _ in
+                try budget.attenuating(
+                    to: try AgentBudget(
+                        limits: BudgetQuantities(
+                            Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map {
+                                ($0, $0 == .modelAttempts ? 2 : budget.limits[$0])
+                            })
+                        ),
+                        maximumThermalState: budget.maximumThermalState,
+                        memoryPressureResponse: budget.memoryPressureResponse
+                    ),
+                    requireStrict: true
+                )
+            }
+        )
+
+        XCTAssertEqual(summary.status, .completed)
+        XCTAssertEqual(summary.phases[1].status, .completed)
+        XCTAssertEqual(summary.aggregated.subagentCount, 2)
+        XCTAssertEqual(summary.finalAnswer, "second")
+        XCTAssertEqual(spawner.spawnedRequests.count, 1,
+                       "resume must only spawn the missing child, never the completed phase's child")
+    }
+
     func testStructuredPlanDecodesAndSchemaValidates() throws {
         let json: JSONValue = .object([
             "goal": .string("Deploy Kimi K3 on iPhone 16 Pro"),

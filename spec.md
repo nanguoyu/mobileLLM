@@ -1590,8 +1590,12 @@ Open conformance gaps:
    as an optimistic UI projection that the outbox path reconciles; the journal is the recovery authority.
    Evidence: `ConversationOutboxProjectorTests` (MobileLLMUI suite green, 403 tests), AgentRuntime suite green
    (436), macOS + iOS builds green.
-3. **Workflow relaunch:** workflow summaries and stable child identities persist, but app bootstrap does not yet
-   reconstruct and advance an unfinished workflow. Durable recording alone does not satisfy §9.4 or §23 recovery.
+3. **Workflow relaunch:** CLOSED (2026-08-07). `WorkflowOrchestrator.resume` reconstructs an unfinished workflow
+   from its durable summary/plan; `WorkflowLauncher.resume` rebuilds the child tool-policy template, reconstructs
+   the parent context from the JOURNALED root request (frozen ceiling/budget/model policy), and app bootstrap
+   resumes every running workflow. `advance` re-collects already-durably-spawned children idempotently — no
+   duplicate child IDs, usage, or completion counts. Evidence: `MultiAgentWorkflowIntegrationTests`
+   (AgentRuntime suite green, 438 tests), MobileLLMUI green (403), macOS + iOS builds green.
 4. **Compatibility fallback:** an assembly failure still activates the legacy in-process `ToolLoop`. This is an
    explicit development fallback, not evidence that every production send has AgentRuntime semantics.
 5. **Verification enforcement:** the checked-in simulator/device test plans exist, but CI currently lists them rather

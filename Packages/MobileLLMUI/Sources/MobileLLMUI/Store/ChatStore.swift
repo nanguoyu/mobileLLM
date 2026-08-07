@@ -1297,6 +1297,18 @@ public final class ChatStore {
         persist(conversations[ci])
     }
 
+    /// The initiating user message of one workflow (spec §23 recovery / §33 gap 3): the launcher
+    /// rebuilds the child tool-policy template and the journal tree from this anchor on relaunch.
+    public func workflowInitiatingMessageID(
+        conversationID: UUID,
+        workflowID: UUID
+    ) -> UUID? {
+        guard let ci = conversations.firstIndex(where: { $0.id == conversationID }) else { return nil }
+        return conversations[ci].messages.first {
+            $0.workflowRecord?.workflowID == workflowID
+        }?.id
+    }
+
     /// Live-updates the message-anchored record from the durable workflow summary.
     private func refreshWorkflowRecord(workflowID: UUID) {
         guard let record = workflowStore?.messageRecord(workflowID: workflowID) else { return }

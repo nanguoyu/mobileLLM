@@ -397,6 +397,22 @@ struct MobileLLMApp: App {
                         workflowID: workflowID
                     )
                 }
+                // Relaunch resume (spec §23 recovery / §33 gap 3): reconstruct and advance any
+                // workflow that was still running when the app quit. Children keep stable journal
+                // identities, so this only spawns missing work and re-collects completed children.
+                for workflowID in container.workflowStore.workflows.keys
+                    where container.workflowStore.summary(workflowID: workflowID)?.status == .running
+                {
+                    Task { @MainActor in
+                        do {
+                            try await launcher.resume(workflowID: workflowID)
+                        } catch {
+                            AgentRuntimeAssembly.logger(
+                                "workflow resume failed: \(error.localizedDescription)"
+                            )
+                        }
+                    }
+                }
             } else {
                 // Diagnose the exact assembly failure instead of silently falling back, so device
                 // tests can distinguish a healthy rollout-off state from a wiring bug.

@@ -139,38 +139,135 @@ final class WorkflowLauncher {
             plan: plan,
             conversationID: conversationID,
             parent: parent,
-            ceilingAttenuator: { ceiling, _, _ in
-                let capabilities = AgentCapabilitySet(
-                    ceiling.capabilities.values.filter { $0 != .unknownExternal }
-                )
-                return try ceiling.attenuating(
-                    to: AgentAuthorityScope(
-                        capabilities: capabilities,
-                        destinations: ceiling.authority.destinations,
-                        dataCategories: ceiling.authority.dataCategories
-                    ),
-                    requireStrict: true
-                )
-            },
-            budgetAttenuator: { budget, _, _ in
-                let values = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map {
-                    ($0, budget.limits[$0])
-                })
-                var child = values
-                child[.modelAttempts] = max(1, values[.modelAttempts]! / 2)
-                child[.activeMilliseconds] = values[.activeMilliseconds]! / 2
-                // Exploration/audit children legitimately make several web searches per turn; the
-                // parent's default ceiling is too tight for deep research (searches + page reads).
-                child[.toolInvocations] = 10
-                let attenuated = try AgentBudget(
-                    limits: BudgetQuantities(child),
-                    maximumThermalState: budget.maximumThermalState,
-                    memoryPressureResponse: budget.memoryPressureResponse
-                )
-                _ = try budget.attenuating(to: attenuated, requireStrict: true)
-                return attenuated
-            }
+            ceilingAttenuator: ceilingAttenuator(),
+            budgetAttenuator: budgetAttenuator()
         )
+    }
+
+    /// Relaunch resume (spec §23 recovery / §33 gap 3): reconstructs an unfinished workflow from its
+    /// durable summary, re-registers the inherited tool-policy template for its children, rebuilds the
+    /// parent context from the JOURNALED root request (frozen ceiling/budget/model policy — never a
+    /// fresh guess), and advances every remaining phase. Children keep their stable identities, so the
+    /// orchestrator re-collects completed work idempotently and only spawns missing work.
+    func resume(workflowID: UUID) async throws {
+        guard let container else {
+            throw WorkflowLaunchError.snapshotUnavailable("container deallocated")
+        }
+        guard let summary = container.workflowStore.summary(workflowID: workflowID),
+              summary.status == .running,
+              let plan = summary.plan,
+              let conversationID = summary.conversationID
+        else {
+            throw WorkflowLaunchError.planGenerationFailed(
+                "workflow \(workflowID) is not resumable (missing running summary/plan/conversation)"
+            )
+        }
+        guard let userMessageID = container.chat.workflowInitiatingMessageID(
+            conversationID: conversationID,
+            workflowID: workflowID
+        ) else {
+            throw WorkflowLaunchError.snapshotUnavailable(
+                "initiating message for workflow \(workflowID) is missing"
+            )
+        }
+        guard let snapshot = makeAgentSnapshot(
+            container: container,
+            conversationID: conversationID,
+            userTurnID: userMessageID,
+            text: summary.title,
+            imageRefs: [],
+            downloadBase: downloadBase,
+            onlineConfigBox: onlineConfigBox
+        ) else {
+            throw WorkflowLaunchError.snapshotUnavailable(
+                "activeModel=\(container.chat.activeModel != nil) "
+                    + "online=\(container.chat.onlineModelID ?? "nil")"
+            )
+        }
+        let missingTools = WorkflowToolPolicyGate.missingTools(
+            policy: snapshot.toolPolicy,
+            catalogToolNames: snapshot.localToolNames,
+            toolsEnabled: snapshot.toolsEnabled
+        )
+        guard missingTools.isEmpty else {
+            // The user disabled a required tool while the workflow was suspended: keep the workflow
+            // running and resumable instead of force-enabling anything (spec §2/§14).
+            AgentRuntimeAssembly.logger(
+                "workflow resume deferred: missing tools \(missingTools.map(\.rawValue).joined(separator: ","))"
+            )
+            return
+        }
+        AppWorkflowSnapshotRegistry.shared.register(
+            conversationID: conversationID,
+            userTurnID: userMessageID,
+            template: snapshot
+        )
+        defer {
+            AppWorkflowSnapshotRegistry.shared.unregister(
+                conversationID: conversationID,
+                userTurnID: userMessageID
+            )
+        }
+        let rootRunID = WorkflowIdentity.rootRun(workflowID: workflowID)
+        guard let facts = try await assembly.repository.loadRunFacts(for: rootRunID),
+              let rootRequest = facts.submission?.request.payload
+        else {
+            throw WorkflowLaunchError.snapshotUnavailable(
+                "journaled workflow root request for \(workflowID) is missing"
+            )
+        }
+        let parent = WorkflowParentContext(
+            runID: rootRequest.runID,
+            requestID: rootRequest.id,
+            requestingStepID: WorkflowIdentity.rootStep(workflowID: workflowID),
+            capabilityCeiling: rootRequest.capabilityCeiling,
+            budget: rootRequest.budget,
+            modelPolicy: rootRequest.modelPolicy,
+            approvalMode: rootRequest.approvalMode
+        )
+        _ = try await orchestrator.resume(
+            workflowID: workflowID,
+            parent: parent,
+            ceilingAttenuator: ceilingAttenuator(),
+            budgetAttenuator: budgetAttenuator()
+        )
+    }
+
+    private func ceilingAttenuator() -> WorkflowCeilingAttenuator {
+        { ceiling, _, _ in
+            let capabilities = AgentCapabilitySet(
+                ceiling.capabilities.values.filter { $0 != .unknownExternal }
+            )
+            return try ceiling.attenuating(
+                to: AgentAuthorityScope(
+                    capabilities: capabilities,
+                    destinations: ceiling.authority.destinations,
+                    dataCategories: ceiling.authority.dataCategories
+                ),
+                requireStrict: true
+            )
+        }
+    }
+
+    private func budgetAttenuator() -> WorkflowBudgetAttenuator {
+        { budget, _, _ in
+            let values = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map {
+                ($0, budget.limits[$0])
+            })
+            var child = values
+            child[.modelAttempts] = max(1, values[.modelAttempts]! / 2)
+            child[.activeMilliseconds] = values[.activeMilliseconds]! / 2
+            // Exploration/audit children legitimately make several web searches per turn; the
+            // parent's default ceiling is too tight for deep research (searches + page reads).
+            child[.toolInvocations] = 10
+            let attenuated = try AgentBudget(
+                limits: BudgetQuantities(child),
+                maximumThermalState: budget.maximumThermalState,
+                memoryPressureResponse: budget.memoryPressureResponse
+            )
+            _ = try budget.attenuating(to: attenuated, requireStrict: true)
+            return attenuated
+        }
     }
 
     private func waitForTerminalResult(

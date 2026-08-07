@@ -228,8 +228,13 @@ public struct WorkflowOrchestrator: Sendable {
                     childIndex
                 )
             }
-            phase.childRunIDs.append(childRunID)
-            phase.stats.subagentCount += 1
+            // Relaunch resume (spec §23/§33 gap 3): children already durably spawned keep their
+            // stable identity; re-spawning is idempotent and must never double-count the record.
+            let alreadySpawned = phase.childRunIDs.contains(childRunID)
+            if !alreadySpawned {
+                phase.childRunIDs.append(childRunID)
+                phase.stats.subagentCount += 1
+            }
             summary.phases[index] = phase
             try await recording.save(summary)
 
@@ -252,14 +257,18 @@ public struct WorkflowOrchestrator: Sendable {
             results.append(result)
             switch result.outcome {
             case .completed(let answer, let usage):
-                outputArtifacts.append(contentsOf: answer.artifacts)
-                phase.stats.merge(Self.stats(usage: usage))
+                if !alreadySpawned {
+                    outputArtifacts.append(contentsOf: answer.artifacts)
+                    phase.stats.merge(Self.stats(usage: usage))
+                }
                 if let text = answer.text, !text.trimmingCharacters(in: .whitespaces).isEmpty {
                     lastAnswer = text
                 }
             case .failed(_, let usage):
-                phase.stats.merge(Self.stats(usage: usage))
-                phase.completedChildCount += 1
+                if !alreadySpawned {
+                    phase.stats.merge(Self.stats(usage: usage))
+                    phase.completedChildCount += 1
+                }
                 summary.phases[index] = phase
                 summary.refreshAggregates()
                 try await recording.save(summary)
@@ -276,7 +285,9 @@ public struct WorkflowOrchestrator: Sendable {
                     childIndex
                 )
             case .cancelled:
-                phase.completedChildCount += 1
+                if !alreadySpawned {
+                    phase.completedChildCount += 1
+                }
                 summary.phases[index] = phase
                 summary.refreshAggregates()
                 try await recording.save(summary)
@@ -289,7 +300,9 @@ public struct WorkflowOrchestrator: Sendable {
                 try await recording.save(summary)
                 return summary
             }
-            phase.completedChildCount += 1
+            if !alreadySpawned {
+                phase.completedChildCount += 1
+            }
             summary.phases[index] = phase
             summary.refreshAggregates()
             try await recording.save(summary)
@@ -311,6 +324,34 @@ public struct WorkflowOrchestrator: Sendable {
         summary.refreshAggregates()
         try await recording.save(summary)
         return summary
+    }
+
+    /// Relaunch resume (spec §23 recovery / §33 gap 3): reconstructs an unfinished workflow from its
+    /// durable summary + plan and advances it to completion. Children already durably submitted keep
+    /// their stable identities and are re-collected idempotently by `advance`.
+    public func resume(
+        workflowID: UUID,
+        parent: WorkflowParentContext,
+        ceilingAttenuator: @escaping WorkflowCeilingAttenuator,
+        budgetAttenuator: @escaping WorkflowBudgetAttenuator
+    ) async throws -> WorkflowSummary {
+        guard let summary = try await recording.load(workflowID: workflowID) else {
+            throw WorkflowOrchestratorError.workflowNotFound
+        }
+        guard summary.status == .running, let plan = summary.plan else {
+            throw WorkflowOrchestratorError.workflowNotRunning
+        }
+        var current = summary
+        while current.status == .running {
+            current = try await advance(
+                workflowID: workflowID,
+                plan: plan,
+                parent: parent,
+                ceilingAttenuator: ceilingAttenuator,
+                budgetAttenuator: budgetAttenuator
+            )
+        }
+        return current
     }
 
     private static func composedInstruction(
