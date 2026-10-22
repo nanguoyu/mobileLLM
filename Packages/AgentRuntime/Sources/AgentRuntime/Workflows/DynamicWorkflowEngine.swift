@@ -767,6 +767,16 @@ private actor DynamicWorkflowSession {
             do {
                 try await spawner.cancel(handle, runID: call.childRunID)
             } catch {
+                if let terminal = try? await spawner.terminalResult(handle),
+                   terminal.runID == call.childRunID, terminal.handleID == handle {
+                    if case .failed(let failure, _) = terminal.outcome, failure.externalEffect == .uncertain {
+                        try await suspendForReconciliation(callID: call.callID, reason: failure.safeMessage)
+                        throw WorkflowScriptRuntimeError.hostFailure("child cancellation requires reconciliation")
+                    }
+                    // The active collection task (or stopAndDrain after recovery) still commits
+                    // the exact terminal result and usage; no external operation is repeated.
+                    continue
+                }
                 try await suspendForReconciliation(
                     callID: call.callID,
                     reason: "Unable to durably cancel a submitted child."

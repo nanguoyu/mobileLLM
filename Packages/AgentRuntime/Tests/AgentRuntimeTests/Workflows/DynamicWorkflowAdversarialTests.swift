@@ -1390,6 +1390,7 @@ private actor ADControlledSpawner: SubagentSpawning {
     }
 
     func terminalResult(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult? {
+        if case .uncertain = mode { return nil }
         guard cancelled.contains(handleID), let binding = bindings[handleID] else { return nil }
         return SubagentResult(runID: binding.runID, handleID: handleID, outcome: .cancelled,
             terminalUsage: losesCancellationAcknowledgement ? AgentUsage(quantities: BudgetQuantities([.inputTokens: 14])) : nil)
