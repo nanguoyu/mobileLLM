@@ -1,10 +1,34 @@
 # Current implementation and validation status
 
-Updated **2026-10-22** on `main` after [PR #7](https://github.com/nanguoyu/mobileLLM/pull/7)
+Updated **2026-10-22** for the DeepSeek web integration on `codex/deepseek-search`, based on `main`
+after [PR #7](https://github.com/nanguoyu/mobileLLM/pull/7)
 merged as [`fa68377`](https://github.com/nanguoyu/mobileLLM/commit/fa68377078a69222dd016d87579a16fa53dba701).
-The merged task branch was deleted locally and remotely; only `main` remains.
+The earlier merged audit branch was deleted locally and remotely.
 [spec.md](../spec.md) defines requirements, [ARCHITECTURE.md](ARCHITECTURE.md) describes the code,
 and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
+
+## DeepSeek Search and Fetch integration
+
+The optional web service uses DeepSeek's independent JSON APIs. Select the configured account in
+Settings → Choose tools → Web service; keep Web search and Webpage reader enabled for the conversation.
+The selection applies to local models, online models, and workflow children through the same frozen
+tool catalog. Public search/direct page reading remain the default. Provider-hosted model tools in
+spec §15.5 are still a separate future surface.
+
+On 2026-10-22, the signed iPhone 17 / iOS 27 Simulator used the configured DeepSeek v4 flash model
+to search for the official Search/Fetch documentation, read its guide, and answer with source links.
+`test16DeepSeekSearchAndFetchThroughConfiguredWebService` passed in **70.798 seconds** including UI
+navigation and polling. The SQLite journal contains exactly two completed tool invocations, both
+bound to `https://api.deepseek.com` and the selected account, with no allowed fallbacks. The answer
+reported both official POST endpoints and the guide's billing terms. This exercises the actual APIs.
+
+Five client tests, 20 settings-persistence tests, and two new app adapter/account-binding regressions
+passed. The existing ten app adapter regressions also passed during integration. The final static
+verifier passed with updated spec anchors and all five digests. A first simulator build caught a
+missing App-module import and was corrected before the successful live run. An intermediate test
+fixture string delimiter was also corrected. No full repository suite was repeated for this feature.
+Evidence is local under `/tmp/mobilellm-deepseek-search-20261022/`, including `DeepSeekWebLive.xcresult`,
+`journal-evidence.json`, and `live-answer.txt`.
 
 ## Corrections delivered
 
