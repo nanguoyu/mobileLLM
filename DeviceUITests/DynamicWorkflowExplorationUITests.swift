@@ -369,6 +369,11 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
                     + "\(scenario.minimumAnswerCharacters)"
             )
         }
+        if scenario.id != "ad-hoc",
+           let decoded = try? JSONSerialization.jsonObject(with: Data(answer.utf8)),
+           decoded is [String: Any] || decoded is [Any] {
+            failures.append("The final chat answer exposes a raw internal JSON result instead of readable analysis")
+        }
         if !answer.contains(scenario.marker) {
             failures.append("answer lost acceptance marker \(scenario.marker)")
         }

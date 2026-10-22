@@ -871,7 +871,8 @@ public final class AgentRuntimeAssembly {
         independent agents sequentially. Each independent child appears exactly once, only as a
         thunk in that fan-out—do not pre-run, pre-declare, or duplicate it. A dependent
         synthesis/review agent runs only after the fan-out. Give every agent a bounded concrete
-        instruction and return one useful final JSON value. If a later agent reviews or synthesizes
+        instruction. \(Self.workflowFinalDeliveryInstruction)
+        If a later agent reviews or synthesizes
         earlier outputs, explicitly include those outputs in its prompt; variables are not ambient
         child context. Prefer quoted-string `+` concatenation for dependent prompts; do not use
         backtick template literals or `${...}` interpolation.
@@ -935,6 +936,7 @@ public final class AgentRuntimeAssembly {
         use backtick template literals or `${...}` interpolation.
         A downstream review/synthesis agent must receive upstream outputs explicitly in its prompt;
         merely keeping them in variables does not share them with that child.
+        \(Self.workflowFinalDeliveryInstruction)
         The optional agent options value must be a direct object literal containing only label,
         phase, schema, model, agentType, isolation, or stallMs. Remove tools, timeout, temperature,
         token limits, and every other option; child agents inherit the frozen host tool policy. Omit
@@ -962,6 +964,15 @@ public final class AgentRuntimeAssembly {
             operation: "repair-candidate"
         )
     }
+
+    private static let workflowFinalDeliveryInstruction = """
+    Unless the user explicitly requests JSON, the workflow must return a readable answer string, not
+    an internal JSON object. Use structured schemas for intermediate findings. Ask the final synthesis
+    agent for a concise, coherent answer in the user's language, with no schema option, and return its
+    text directly. If the final agent needs a schema, include an answer string and return that field.
+    The final answer must separate observed facts from hypotheses, avoid presenting inferred details
+    as facts, and prioritize useful conclusions and actions over repeating every child finding.
+    """
 
     private func makeDynamicWorkflowGenerator(
         snapshot: AgentRunRequestSnapshot,
