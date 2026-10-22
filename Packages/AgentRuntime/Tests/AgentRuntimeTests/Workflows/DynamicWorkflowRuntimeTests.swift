@@ -7,6 +7,17 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowRuntimeTests: XCTestCase {
+
+    func testChildCollectionTimesOutOnlyWhenProgressStops() async throws {
+        let handle = AgentExecutionHandleID(rawValue: UUID())
+        do {
+            _ = try await InactivityProbeSpawner(reportsProgress: false).collect(handle, stallMilliseconds: 100)
+            XCTFail("A stalled child must not wait indefinitely")
+        } catch let timeout as SubagentStallTimeout { XCTAssertEqual(timeout.milliseconds, 100) }
+        let result = try await InactivityProbeSpawner(reportsProgress: true).collect(handle, stallMilliseconds: 150)
+        XCTAssertEqual(result.handleID, handle)
+    }
+
     func testAnalyzerExtractsPureMetadataAndInstrumentsEveryBracedLoop() throws {
         let analysis = try analyze("""
         // Leading comments are allowed before the first statement.
@@ -478,5 +489,24 @@ private func XCTAssertThrowsErrorAsync<T>(
         XCTFail("Expected an error", file: file, line: line)
     } catch {
         if let expected { XCTAssertEqual(error as? WorkflowScriptRuntimeError, expected, file: file, line: line) }
+    }
+}
+
+private struct InactivityProbeSpawner: SubagentSpawning {
+    let reportsProgress: Bool
+    func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID {
+        throw SubagentSpawnError.resultUnavailable
+    }
+    func collect(_ handle: AgentExecutionHandleID) async throws -> SubagentResult {
+        try await collect(handle, onProgress: {})
+    }
+    func collect(_ handle: AgentExecutionHandleID,
+                 onProgress: @escaping @Sendable () async -> Void) async throws -> SubagentResult {
+        if !reportsProgress { try await Task.sleep(for: .seconds(30)) }
+        for _ in 0..<8 {
+            try await Task.sleep(for: .milliseconds(30))
+            await onProgress()
+        }
+        return SubagentResult(runID: AgentRunID(rawValue: UUID()), handleID: handle, outcome: .cancelled)
     }
 }

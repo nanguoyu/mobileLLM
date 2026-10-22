@@ -896,7 +896,10 @@ private actor DynamicWorkflowSession {
         }
         let result: SubagentResult
         do {
-            result = try await spawner.collect(handleID)
+            result = try await spawner.collect(handleID, stallMilliseconds: call.options.stallMilliseconds)
+        } catch let timeout as SubagentStallTimeout {
+            try await settleAfterCancellation(call: call, handleID: handleID, admission: admission)
+            throw WorkflowScriptRuntimeError.hostFailure("Child agent made no observable progress for \(timeout.milliseconds) ms and was stopped.")
         } catch SubagentSpawnError.reconciliationRequired(let failure) {
             projection = try await append([
                 .reconciliationRequired(callID: call.callID, reason: failure.safeMessage),

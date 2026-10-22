@@ -118,7 +118,7 @@ public struct ContextCompiler: Sendable {
         }
 
         let mandatoryKeys = Set([base.key, current.key])
-        let optionalAllocationOrder = ContextRendering.optionalAllocationOrder(candidates)
+        let optionalAllocationOrder = ContextRendering.optionalAllocationOrder(candidates, policyVersion: snapshot.contextPolicyVersion)
         for candidate in optionalAllocationOrder where !mandatoryKeys.contains(candidate.key) {
             let available = budget.maximumInputTokens - consumedTokens
             let selection = try bestSelection(candidate, availableTokens: available)
@@ -382,10 +382,20 @@ enum ContextRendering {
         return result
     }
 
-    static func optionalAllocationOrder(_ candidates: [ContextCandidate]) -> [ContextCandidate] {
+    static func optionalAllocationOrder(_ candidates: [ContextCandidate], policyVersion: UInt32 = 1) -> [ContextCandidate] {
         func values(_ kinds: Set<ContextSourceKind>, reversed: Bool = false) -> [ContextCandidate] {
             let selected = candidates.filter { kinds.contains($0.kind) }
             return reversed ? selected.reversed() : selected
+        }
+        if policyVersion >= 2 {
+            // The current tool observation and active task state take precedence over background
+            // memory and old conversation. Version 1 remains reproducible for persisted runs.
+            return values([.runState])
+                + values([.untrustedToolResult], reversed: true)
+                + values([.skill])
+                + values([.canonicalEnglishMemory])
+                + values([.conversationUser, .conversationAssistant], reversed: true)
+                + values([.artifactExcerpt])
         }
         return values([.skill])
             + values([.canonicalEnglishMemory])
