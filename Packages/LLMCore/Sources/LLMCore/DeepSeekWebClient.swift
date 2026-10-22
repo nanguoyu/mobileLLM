@@ -66,7 +66,8 @@ public struct DeepSeekWebClient: Sendable {
         }
     }
 
-    public func perform(operation: DeepSeekWebOperation, argument: String, apiKey: String) async throws -> DeepSeekWebResponse {
+    public func perform(operation: DeepSeekWebOperation, argument: String, apiKey: String,
+                        consumeResponseBytes: @Sendable (UInt64) async throws -> Void = { _ in }) async throws -> DeepSeekWebResponse {
         let body = try Self.requestBody(operation: operation, argument: argument)
         guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !apiKey.contains("\r"), !apiKey.contains("\n") else { throw DeepSeekWebError.missingAPIKey }
@@ -80,6 +81,8 @@ public struct DeepSeekWebClient: Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = body
         let response = try await client.get(request, maxBytes: Self.maximumResponseBytes)
+        // Failed HTTP responses still consume the authorized network budget.
+        try await consumeResponseBytes(UInt64(response.body.count))
         guard !response.wasTruncated else { throw DeepSeekWebError.responseTooLarge }
         guard response.response.statusCode == 200 else { throw DeepSeekWebError.httpStatus(response.response.statusCode) }
         let text: String

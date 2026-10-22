@@ -8,6 +8,7 @@ import LLMEngineMLX
 import LLMEngineLlama
 import LLMEngineApple
 import AgentRuntime
+import AgentContracts
 
 
 #if DEBUG && os(macOS)

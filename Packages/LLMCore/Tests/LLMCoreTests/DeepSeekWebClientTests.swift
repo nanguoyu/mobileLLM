@@ -50,13 +50,17 @@ final class DeepSeekWebClientTests: XCTestCase {
 
     func testErrorsAndOversizedResponsesFailWithoutLeakingServerBody() async throws {
         for status in [401, 402, 429, 500] {
+            let probe = DeepSeekRequestProbe(status: status)
             do {
-                _ = try await makeClient(DeepSeekRequestProbe(status: status)).perform(operation: .search, argument: "test", apiKey: "test-key")
+                _ = try await makeClient(probe).perform(operation: .search, argument: "test", apiKey: "test-key",
+                    consumeResponseBytes: { await probe.account($0) })
                 XCTFail("HTTP error must fail")
             } catch let error as DeepSeekWebError {
                 XCTAssertEqual(error, .httpStatus(status))
                 XCTAssertFalse(error.localizedDescription.contains("server-secret"))
             }
+            let accounted = await probe.accountedBytes
+            XCTAssertEqual(accounted, UInt64(Data("server-secret".utf8).count))
         }
         do {
             _ = try await makeClient(DeepSeekRequestProbe(truncated: true)).perform(operation: .search, argument: "test", apiKey: "test-key")
@@ -87,6 +91,8 @@ final class DeepSeekWebClientTests: XCTestCase {
 
 private actor DeepSeekRequestProbe {
     var requests: [URLRequest] = []
+    var accountedBytes: UInt64 = 0
+    func account(_ bytes: UInt64) { accountedBytes += bytes }
     let status: Int
     let truncated: Bool
     init(status: Int = 200, truncated: Bool = false) { self.status = status; self.truncated = truncated }

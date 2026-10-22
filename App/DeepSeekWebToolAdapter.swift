@@ -114,8 +114,8 @@ final class AppDeepSeekWebToolAdapter: ToolV2, Sendable {
                         trustRevision: descriptor.id.trustRevision
                     ), operation: { control in
                         guard let key = try await self.resolveKey(self.serviceID) else { throw DeepSeekWebError.missingAPIKey }
-                        let response = try await self.client.perform(operation: self.operation, argument: value, apiKey: key)
-                        try await control.consumeResponseBytes(response.responseBytes)
+                        let response = try await self.client.perform(operation: self.operation, argument: value, apiKey: key,
+                            consumeResponseBytes: { try await control.consumeResponseBytes($0) })
                         return try AppToolV2Support.canonicalText(response.text)
                     })
                     guard let text = try AppToolV2Support.textValue(boundary.value) else { throw DeepSeekWebError.invalidResponse }
