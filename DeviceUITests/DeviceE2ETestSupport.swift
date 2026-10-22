@@ -111,6 +111,8 @@ enum DeviceE2EHarnessError: LocalizedError {
 /// a hard boundary: screenshot, Home, terminate, fail — never open Settings, Mail, or an account flow.
 class DeviceE2ETestCase: XCTestCase {
     var activeApp: XCUIApplication?
+    var usesIsolatedStorage: Bool { false }
+    private let storageNamespace = UUID().uuidString
     private var systemAlertMonitor: NSObjectProtocol?
 
     override func setUpWithError() throws {
@@ -187,6 +189,7 @@ class DeviceE2ETestCase: XCTestCase {
         // state, camera — skip themselves at their own precondition instead of blocking the shell.
         let app = XCUIApplication()
         app.launchEnvironment["MOBILELLM_DEVICE_E2E"] = "1"
+        if usesIsolatedStorage { app.launchEnvironment["MOBILELLM_E2E_STORAGE_NAMESPACE"] = storageNamespace }
         app.launchEnvironment["MOBILELLM_DEVICE_E2E_FIXTURE"] = visionFixture ? "1" : "0"
         // The OpenAI-compatible service config is stored ONCE on the Mac at ~/.mobilellm/openai.json
         // (never in Git). Environment variables win when present; otherwise the file is read here and

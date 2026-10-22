@@ -174,7 +174,9 @@ struct MobileLLMApp: App {
             ThermalGovernor.isPacingEnabled = false
         }
         // Multi-GB weights live under Application Support (a no-backup dir so they don't hit iCloud).
-        let base = URL.applicationSupportDirectory.appending(path: "mobileLLM", directoryHint: .isDirectory)
+        let defaultBase = URL.applicationSupportDirectory.appending(path: "mobileLLM", directoryHint: .isDirectory)
+        let testStorage = UITestStorageScope.current(relativeTo: defaultBase)
+        let base = testStorage?.root ?? defaultBase
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         let downloader = ModelDownloader(downloadBase: base)
         // App.init runs on the main thread; adopt that isolation to build the @MainActor container.
@@ -214,13 +216,18 @@ struct MobileLLMApp: App {
                     _ = try await downloader.download(repoId: repoId, revision: revision,
                                                       matching: globs, progress: progress)
                 },
+                settings: testStorage.map { AppSettings(defaults: $0.defaults,
+                    keychain: KeychainBox(service: $0.defaultsDomain + ".settings")) },
+                conversationStore: testStorage.map { ConversationStore(directory: $0.root.appending(path: "conversations")) },
                 // The model layer is engine-free, so only this layer can ask the OS about its own model.
                 // This IS the system model's install state: available ⇒ ready to use, nothing downloaded.
                 systemModelProbe: { AppleSystemModel.status() },
                 eventStore: eventStore,
                 locationProvider: locationProvider,
+                openAICredentials: testStorage.map { KeychainOpenAICredentialStore(service: $0.credentialService) },
                 lifecycle: lifecycle,
-                continuedProcessing: continuedProcessing
+                continuedProcessing: continuedProcessing,
+                mcpDiscovery: testStorage.map { MCPDiscoveryCache(defaults: $0.defaults) } ?? .shared
             )
         }
         container.mcpDiscovery.setCredentialResolver { server in

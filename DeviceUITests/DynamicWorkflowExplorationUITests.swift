@@ -136,6 +136,7 @@ private extension DynamicWorkflowExplorationScenario {
 /// generator decomposes diverse complex goals and whether the final answer is actually useful.
 /// Every run retains the exact source, child-call evidence, final answer, and screenshot in xcresult.
 final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
+    override var usesIsolatedStorage: Bool { true }
     @MainActor
     func test01KimiLocalWeightsFeasibility() throws {
         try run(.kimiLocal)

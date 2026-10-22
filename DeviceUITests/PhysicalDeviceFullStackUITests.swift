@@ -1765,6 +1765,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
 /// the physical-device matrix uses. Non-approval cases run on the product default (Safe preset) so
 /// safe in-app/read/online operations proceed without prompts; approval has dedicated cases.
 final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
+    override var usesIsolatedStorage: Bool { true }
 
     @MainActor
     private func selectApprovalMode(_ title: String, in app: XCUIApplication) throws {
