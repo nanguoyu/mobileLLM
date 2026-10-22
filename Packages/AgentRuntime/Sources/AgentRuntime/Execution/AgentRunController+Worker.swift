@@ -386,7 +386,7 @@ extension AgentRunController {
         ]
         if let lastRepair = history.pendingRepair {
             stateFields["repairInstruction"] = .string(
-                lastRepair.1.code == "execution.repeated-tool-call"
+                lastRepair.1.code == "execution.tool-budget-repair" ? lastRepair.1.safeMessage : lastRepair.1.code == "execution.repeated-tool-call"
                     ? "Your last tool call already executed in this turn. Do NOT call any tool again — "
                         + "answer the user's request directly with text only."
                     : "Return exactly one valid action matching the advertised response contract. "

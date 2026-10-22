@@ -184,6 +184,45 @@ extension AgentRunController {
                 maximumCalls: UInt16(clamping: remaining),
                 previouslyExecutedFingerprints: previous
             )
+        } catch ToolBatchValidationError.callBudgetExceeded where remaining > 0 && proposedCalls.count > remaining {
+            // Reject the entire batch, then allow one budgeted planning correction. Do not execute
+            // a prefix or relax authorization/argument checks because the model overestimated capacity.
+            do {
+                _ = try ToolBatchValidator().validate(
+                    proposedCalls: proposedCalls,
+                    advertisedDescriptors: selected.descriptors,
+                    maximumCalls: .max,
+                    previouslyExecutedFingerprints: previous
+                )
+            } catch {
+                try await failRun(runID: facts.projection.runID, reason: .internalFailure,
+                    code: "execution.invalid-tool-batch",
+                    message: "The proposed tool batch also violates a non-budget constraint: \(error)")
+                return
+            }
+            guard !history.diagnostics.contains(where: { $0.1.code == "execution.tool-budget-repair" }) else {
+                try await failRun(runID: facts.projection.runID, reason: .budgetExceeded,
+                    code: "execution.tool-budget-repair-exhausted",
+                    message: "The model again proposed more tool calls than the remaining allowance.")
+                return
+            }
+            let repair = try AgentFailure(
+                code: "execution.tool-budget-repair", classification: .transient,
+                safeMessage: "The whole proposed batch of \(proposedCalls.count) calls was rejected and NONE executed. "
+                    + "Only \(remaining) tool calls remain. Submit at most \(remaining) calls, or answer from existing evidence.",
+                retryAdvice: .never, externalEffect: .confirmedNone, requiredUserAction: .none,
+                redaction: Self.publicRedaction
+            )
+            let id = ExecutionStableID.event(runID: facts.projection.runID,
+                key: "tool-budget-repair-\(facts.projection.eventCount + 1)")
+            _ = try await commitEvents(runID: facts.projection.runID, identity: .outcome(id)) { builder in
+                var events = [try builder.append(id: id, event: .diagnostic(repair), redaction: Self.publicRedaction)]
+                let waiting = try self.status(after: builder, state: .waitingForModel, blockingReason: .modelResource)
+                events.append(try builder.append(id: self.nextEventID(builder, key: "tool-budget-repair-waiting"),
+                    event: .statusChanged(waiting), transitionTo: .waitingForModel, redaction: Self.publicRedaction))
+                return events
+            }
+            return
         } catch ToolBatchValidationError.previouslyExecutedCall {
             // Small local models routinely repeat the tool call that just succeeded instead of
             // answering. Suppress the duplicate with one explicit repair instruction; only a second
