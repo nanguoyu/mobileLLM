@@ -226,6 +226,16 @@ class DeviceE2ETestCase: XCTestCase {
             app.terminate()
             throw DeviceE2EHarnessError.precondition("DEBUG DeviceE2E diagnostics handshake is missing")
         }
+        let runtimeDeadline = Date().addingTimeInterval(15)
+        var agent = diagnosticValue("device-e2e.agent", in: app)
+        while !agent.contains("enabled=true"), agent.contains("error=none"), Date() < runtimeDeadline {
+            Thread.sleep(forTimeInterval: 0.1)
+            agent = diagnosticValue("device-e2e.agent", in: app)
+        }
+        guard agent.contains("enabled=true") else {
+            attachDiagnostics(app, name: "runtime-bootstrap-failed")
+            throw DeviceE2EHarnessError.precondition("Production runtime did not initialize: \(agent)")
+        }
         assertNoMemoryInterlock(in: app)
         return app
     }
@@ -1280,5 +1290,9 @@ class DeviceE2ETestCase: XCTestCase {
         hierarchy.name = name + "-hierarchy"
         hierarchy.lifetime = .keepAlways
         add(hierarchy)
+        let runtime = XCTAttachment(string: diagnosticValue("device-e2e.agent", in: app))
+        runtime.name = name + "-runtime"
+        runtime.lifetime = .keepAlways
+        add(runtime)
     }
 }

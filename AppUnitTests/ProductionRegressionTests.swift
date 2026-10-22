@@ -14,6 +14,18 @@ final class ProductionRegressionTests: XCTestCase, @unchecked Sendable {
     private let attestor = try! LocalSanitizationAttestor(key: Data(repeating: 0x3d, count: 32), policyRevision: 1)
 
     @MainActor
+    func testProductionRuntimeInitializesWithAFileHintOnItsStorageDirectory() throws {
+        let path = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)
+        let root = URL(fileURLWithPath: path.path, isDirectory: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let assembly = try AgentRuntimeAssembly(
+            engine: MockLLMEngine(script: .init()), downloadBase: root, conversationDirectory: root,
+            models: [], snapshot: { _, _, _, _ in nil }
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: assembly.artifactStore.rootURL.path))
+    }
+
+    @MainActor
     private func makeContainer() -> (AppContainer, URL, String) {
         let directory = FileManager.default.temporaryDirectory.appending(component: "mobilellm-audit-\(UUID().uuidString)")
         let suite = "mobilellm-audit-\(UUID().uuidString)"

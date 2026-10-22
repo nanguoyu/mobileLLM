@@ -469,7 +469,7 @@ struct MobileLLMApp: App {
             } catch {
                 container.recordAgentRuntimeFailure(error)
                 AgentRuntimeAssembly.logger(
-                    "Agent runtime unavailable; sending disabled: \(error.localizedDescription)"
+                    "Agent runtime unavailable; sending disabled: \(String(describing: error))"
                 )
             }
         }

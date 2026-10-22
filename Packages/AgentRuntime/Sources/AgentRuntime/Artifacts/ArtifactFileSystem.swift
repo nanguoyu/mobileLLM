@@ -30,7 +30,10 @@ final class ArtifactFileSystem: @unchecked Sendable {
         }
         try Self.rejectSymlinkIfPresent(requestedRoot)
 
-        rootURL = requestedRoot.resolvingSymlinksInPath().standardizedFileURL
+        rootURL = URL(
+            fileURLWithPath: requestedRoot.resolvingSymlinksInPath().path,
+            isDirectory: true
+        ).standardizedFileURL
         objectsURL = rootURL.appendingPathComponent("objects", isDirectory: true)
         stagingURL = rootURL.appendingPathComponent("staging", isDirectory: true)
         metadataURL = rootURL.appendingPathComponent("metadata", isDirectory: true)
@@ -369,7 +372,9 @@ final class ArtifactFileSystem: @unchecked Sendable {
         var current = url.deletingLastPathComponent()
         while current.path.count >= rootURL.path.count {
             try Self.requireDirectoryWithoutSymlink(current)
-            if current == rootURL { return }
+            // URL equality also compares the directory hint/trailing slash. Confinement is about
+            // the canonical filesystem path; each ancestor was still checked with lstat above.
+            if current.standardizedFileURL.pathComponents == rootURL.pathComponents { return }
             current.deleteLastPathComponent()
         }
         throw ArtifactStoreError.unconfinedPath
