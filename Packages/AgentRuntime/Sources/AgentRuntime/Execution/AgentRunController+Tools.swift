@@ -356,7 +356,10 @@ extension AgentRunController {
         let executionRequest = try ToolExecutionRequest(
             proposedCall: proposed,
             descriptor: descriptor,
-            sanitizedArguments: sanitized
+            sanitizedArguments: sanitized,
+            userSourceText: request.provenance.source.projectsConversation
+                && descriptor.id.logicalID.providerID == "builtin" && descriptor.id.logicalID.name == "remember"
+                ? String(request.instruction.prefix(4_096)) : nil
         )
         let grant = try StepCapabilityGrant(
             runCeiling: request.capabilityCeiling,

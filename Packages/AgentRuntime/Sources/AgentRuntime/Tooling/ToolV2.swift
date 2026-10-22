@@ -15,12 +15,16 @@ public struct ToolExecutionRequest: Hashable, Codable, Sendable {
     public let sanitizedArguments: SanitizedCanonicalJSON
     public let argumentValidation: ToolArgumentValidation
     public let maximumArgumentBytes: UInt64
+    /// Runtime-owned source utterance for retrieval aliases, never a model-supplied argument.
+    public let userSourceText: String?
+    public var userSourceTextDigest: StableDigest? { userSourceText.map { StableDigest.sha256(Data($0.utf8)) } }
 
     public init(
         proposedCall: ProposedToolCall,
         descriptor: AgentToolDescriptor,
         sanitizedArguments: SanitizedCanonicalJSON,
-        maximumArgumentBytes: UInt64 = 256 * 1_024
+        maximumArgumentBytes: UInt64 = 256 * 1_024,
+        userSourceText: String? = nil
     ) throws {
         guard proposedCall.toolID == descriptor.id.logicalID else {
             throw ToolV2ContractError.descriptorMismatch
@@ -44,6 +48,8 @@ public struct ToolExecutionRequest: Hashable, Codable, Sendable {
         case .partiallyEnforced:
             argumentValidation = .partiallyValidatedConservative
         }
+        guard (userSourceText?.utf8.count ?? 0) <= 16_384 else { throw ToolV2ContractError.invalidArguments }
+        self.userSourceText = userSourceText
         self.proposedCall = proposedCall
         self.descriptor = descriptor
         self.sanitizedArguments = sanitizedArguments
@@ -67,7 +73,8 @@ public struct ToolExecutionRequest: Hashable, Codable, Sendable {
                 maximumArgumentBytes: container.decode(
                     UInt64.self,
                     forKey: .maximumArgumentBytes
-                )
+                ),
+                userSourceText: container.decodeIfPresent(String.self, forKey: .userSourceText)
             )
             guard argumentValidation == encodedValidation else {
                 throw ToolV2ContractError.invalidArguments
@@ -80,7 +87,7 @@ public struct ToolExecutionRequest: Hashable, Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case proposedCall, descriptor, sanitizedArguments, argumentValidation, maximumArgumentBytes
+        case proposedCall, descriptor, sanitizedArguments, argumentValidation, maximumArgumentBytes, userSourceText
     }
 }
 
@@ -123,6 +130,7 @@ public struct PreparedToolInvocation: Hashable, Codable, Sendable {
               plan.schemaDigest == descriptor.id.schemaDigest,
               plan.trustRevision == descriptor.id.trustRevision,
               plan.canonicalArguments == request.sanitizedArguments,
+              request.userSourceText == nil || plan.executionConstraintDigest == request.userSourceTextDigest,
               plan.payloadDigest == request.sanitizedArguments.fingerprint,
               plan.effects == descriptor.effects,
               descriptor.requiredCapabilities.isSubset(of: plan.requiredCapabilities),
@@ -168,6 +176,7 @@ public struct PreparedToolInvocation: Hashable, Codable, Sendable {
               externalOperation.plan.trustRevision == descriptor.id.trustRevision,
               externalOperation.plan.canonicalArguments == request.sanitizedArguments,
               externalOperation.payload == request.sanitizedArguments,
+              request.userSourceText == nil || externalOperation.plan.executionConstraintDigest == request.userSourceTextDigest,
               externalOperation.plan.effects == descriptor.effects,
               descriptor.requiredCapabilities.isSubset(
                 of: externalOperation.plan.requiredCapabilities

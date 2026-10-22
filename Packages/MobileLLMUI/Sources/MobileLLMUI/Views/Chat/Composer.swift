@@ -468,7 +468,7 @@ struct Composer: View {
             if tool.name == "recall" { return "Recall memory" }
             return BuiltInToolRow.all.first { $0.toolIDs.contains { $0.rawValue == tool.name } }?.title ?? tool.name
         }
-        let server = settings.mcpServers.first { "mcp." + $0.id.uuidString.lowercased() == tool.providerID }
+        let server = settings.mcpServers.first { "mcp." + $0.id.lowercased() == tool.providerID }
         return server.map { tool.name + " · " + $0.name } ?? tool.name
     }
 

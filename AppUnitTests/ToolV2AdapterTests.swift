@@ -508,7 +508,7 @@ final class ToolV2AdapterTests: XCTestCase {
         )
         let rememberRequest = try makeRequest(descriptor: rememberAdapter.descriptor, arguments: [
             "text": .string("The user is named Dong"),
-        ])
+        ], userSourceText: "我的名字是 Dong，请记住。")
         let memoryPreparation = try makePreparationContext(
             destinations: [try ExternalDestination(
                 kind: .privateDataStore,
@@ -526,6 +526,10 @@ final class ToolV2AdapterTests: XCTestCase {
               case .text(let rememberText) = rememberResults.first
         else { return XCTFail("expected completed remember, got \(rememberOutcome)") }
         XCTAssertTrue(rememberText.value.contains("Saved to memory."))
+        let saved = await store.list()
+        XCTAssertEqual(saved.first?.sourceText, "我的名字是 Dong，请记住。")
+        XCTAssertEqual(rememberPrepared.externalOperation.plan.executionConstraintDigest,
+                       rememberRequest.userSourceTextDigest)
 
         let recallAdapter = try AppMemoryToolAdapter(
             tool: RecallTool(store: store),
@@ -558,7 +562,8 @@ final class ToolV2AdapterTests: XCTestCase {
 
     private func makeRequest(
         descriptor: AgentToolDescriptor,
-        arguments: [String: JSONValue]
+        arguments: [String: JSONValue],
+        userSourceText: String? = nil
     ) throws -> ToolExecutionRequest {
         let json = try CanonicalJSON(.object(arguments))
         let sanitized = try attestor.attest(
@@ -572,7 +577,8 @@ final class ToolV2AdapterTests: XCTestCase {
                 arguments: json
             ),
             descriptor: descriptor,
-            sanitizedArguments: sanitized
+            sanitizedArguments: sanitized,
+            userSourceText: userSourceText
         )
     }
 
@@ -742,7 +748,10 @@ private actor FakeMemoryStore: MemoryStoring {
 
     func saveIfAbsent(_ text: String, source: MemoryFact.Source, sourceText: String?) async throws
         -> MemorySaveResult {
-        try await saveIfAbsent(text, source: source)
+        if let fact = facts.first(where: { $0.text == text }) { return .duplicate(fact) }
+        let fact = MemoryFact(text: text, source: source, sourceText: sourceText)
+        facts.append(fact)
+        return .saved(fact)
     }
 
     func list() async -> [MemoryFact] { facts }

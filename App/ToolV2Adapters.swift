@@ -930,9 +930,10 @@ public final class AppMemoryToolAdapter: ToolV2, @unchecked Sendable {
             ),
             dataCategories: [try AgentDataCategory(rawValue: "user.memory")],
             payloadDigest: request.sanitizedArguments.fingerprint,
+            executionConstraintDigest: request.userSourceTextDigest,
             effects: descriptor.effects,
             requiredCapabilities: descriptor.requiredCapabilities,
-            maximumRequestBytes: request.maximumArgumentBytes,
+            maximumRequestBytes: request.maximumArgumentBytes + UInt64(request.userSourceText?.utf8.count ?? 0),
             maximumResponseBytes: maximumResponseBytes,
             timeoutMilliseconds: timeoutMilliseconds,
             retryPolicy: descriptor.retryPolicy,
@@ -968,16 +969,21 @@ public final class AppMemoryToolAdapter: ToolV2, @unchecked Sendable {
                             ),
                             dataCategories: [try AgentDataCategory(rawValue: "user.memory")],
                             effects: effects,
-                            requestBytes: UInt64(arguments.utf8.count),
+                            requestBytes: UInt64(arguments.utf8.count + (prepared.prepared.request.userSourceText?.utf8.count ?? 0)),
                             responseBytesLimit: maximumResponseBytes,
                             payloadDigest: prepared.prepared.request.sanitizedArguments.fingerprint,
+                            executionConstraintDigest: prepared.prepared.request.userSourceTextDigest,
                             descriptorID: descriptor.id.description,
                             schemaDigest: descriptor.id.schemaDigest,
                             trustRevision: descriptor.id.trustRevision
                         ),
                         operation: { control in
                             if await context.cancellation.isCancelled() { throw CancellationError() }
-                            let text = await self.tool.execute(argumentsJSON: arguments)
+                            let text: String
+                            if let remember = self.tool as? RememberTool {
+                                text = await remember.execute(argumentsJSON: arguments,
+                                    userSourceText: prepared.prepared.request.userSourceText)
+                            } else { text = await self.tool.execute(argumentsJSON: arguments) }
                             try await control.consumeResponseBytes(UInt64(text.utf8.count))
                             return try AppToolV2Support.canonicalText(text)
                         }
