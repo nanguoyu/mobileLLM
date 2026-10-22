@@ -16,6 +16,10 @@ final class ToolSelectorTests: XCTestCase {
         }
         XCTAssertEqual(try select("Search the web for current Vienna weather").count, 1, "English positive control")
         XCTAssertEqual(try select("请搜索维也纳今天的天气").count, 1, "Chinese explicit search intent receives no advertised tool")
+        XCTAssertEqual(try select("实际检索关键一手来源，查询聚焦单个国家或官方域名").count, 1)
+        XCTAssertEqual(try select("檢索官方研究組頁面").count, 1)
+        XCTAssertEqual(try select("阅读研究组官网").count, 1)
+        XCTAssertTrue(try select("检索本地笔记中的研究组名单").isEmpty)
     }
 
     func testConversationPolicyCanonicalizesAndRejectsPinnedExpansion() throws {

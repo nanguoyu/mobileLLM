@@ -296,6 +296,13 @@ public struct DeterministicToolSelector: Sendable {
         for (phrase, aliases) in chineseIntentAliases where normalized.contains(phrase) {
             result.formUnion(aliases)
         }
+        // Regional research prompts often say 检索 instead of 搜索. Require web context so a
+        // request to search local files does not gain a network advertisement from that synonym.
+        if normalized.contains("检索") || normalized.contains("檢索"),
+           ["官方", "网页", "網頁", "网站", "網站", "在线", "联网", "域名", "一手来源", "https://", "http://"]
+            .contains(where: normalized.contains) {
+            result.formUnion(["search", "web", "source"])
+        }
         return result
     }
 
@@ -305,6 +312,7 @@ public struct DeterministicToolSelector: Sendable {
         ("最新", ["latest", "current"]), ("今天", ["today", "current"]),
         ("天气", ["weather", "search"]), ("天氣", ["weather", "search"]),
         ("网页", ["web", "page", "fetch"]), ("網頁", ["web", "page", "fetch"]),
+        ("官网", ["web", "website"]), ("官網", ["web", "website"]),
         ("维基", ["wikipedia"]), ("維基", ["wikipedia"]),
         ("几点", ["clock", "time"]), ("时间", ["clock", "time"]),
         ("计算", ["calculator", "calculate"]), ("計算", ["calculator", "calculate"]),
