@@ -148,7 +148,9 @@ every `Verification/**` JSON and `.xctestplan` must parse, every `scripts/verifi
 `bash -n`, and the `spec.md` SHA-256 recorded in `Verification/AgentHarness/requirements.v1.json` and the
 four semantic registries must match the checked-in `spec.md`. The separate `portable-swift` job uses the pinned Swift 6.2.4 container to compile and test `AgentContracts`, `AgentSandboxAPI`, and
 `AgentHarnessVerification`, then runs the semantic/architecture verifier. Apple platforms keep CryptoKit;
-Linux uses Apple's pinned Swift Crypto 4.5.2 implementation. Pushes to `codex/**` run the same gates.
+Linux uses Apple's pinned Swift Crypto 4.5.2 implementation. Pull requests and pushes to `main`
+run these gates; feature-branch pushes do not launch a duplicate run for an open pull request.
+Use manual dispatch when branch validation is needed before opening a pull request.
 
 Paid macOS runners remain disabled. A maintainer can enable the `macos-behavior` job by registering a
 trusted self-hosted macOS runner and setting `MOBILELLM_SELF_HOSTED_MAC=true` in repository variables.

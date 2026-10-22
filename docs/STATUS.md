@@ -128,6 +128,7 @@ sandbox; five automatic live-provider cases failed in the restricted environment
 record is separate from the explicit live request and simulator evidence above. Earlier August and
 September device, mutation, coverage, and audit records retain their original dates and scope.
 
-Hosted Linux CI selects document checks and portable Swift suites by impact. Paid hosted macOS
+Hosted Linux CI selects document checks and portable Swift suites by impact. Pull requests and main
+pushes trigger validation; feature-branch pushes do not duplicate a pull-request run. Paid hosted macOS
 runners remain disabled; a trusted self-hosted Mac is opt-in. The implementation review in this task
 was performed by the repairing agent and does not close the independent release-audit requirement.
