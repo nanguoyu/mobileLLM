@@ -37,6 +37,8 @@ public struct AnalyzedWorkflowScriptV1: Hashable, Sendable {
     public let instrumentedSource: String
     public let analysisDigest: StableDigest
     public let staticAgentCallSites: UInt32
+    public let staticPhaseCallSites: UInt32
+    public let staticParallelCallSites: UInt32
     public let checkpointSites: UInt32
     public let savedWorkflowNames: [String]
 
@@ -46,6 +48,8 @@ public struct AnalyzedWorkflowScriptV1: Hashable, Sendable {
         executableSource: String,
         instrumentedSource: String,
         staticAgentCallSites: UInt32,
+        staticPhaseCallSites: UInt32,
+        staticParallelCallSites: UInt32,
         checkpointSites: UInt32,
         savedWorkflowNames: [String]
     ) {
@@ -54,6 +58,8 @@ public struct AnalyzedWorkflowScriptV1: Hashable, Sendable {
         self.executableSource = executableSource
         self.instrumentedSource = instrumentedSource
         self.staticAgentCallSites = staticAgentCallSites
+        self.staticPhaseCallSites = staticPhaseCallSites
+        self.staticParallelCallSites = staticParallelCallSites
         self.checkpointSites = checkpointSites
         self.savedWorkflowNames = savedWorkflowNames
         analysisDigest = StableDigest.fingerprint(
@@ -88,12 +94,19 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
         let callSites = tokens.reduce(into: UInt32(0)) { count, token in
             if token.identifier == "agent" { count &+= UInt32(1) }
         }
+        func calls(_ name: String) -> UInt32 {
+            UInt32(tokens.indices.filter {
+                tokens[$0].identifier == name && $0 + 1 < tokens.count && tokens[$0 + 1].symbol == "("
+            }.count)
+        }
         return AnalyzedWorkflowScriptV1(
             script: script,
             metadata: extraction.metadata,
             executableSource: body,
             instrumentedSource: instrumentation.source,
             staticAgentCallSites: callSites,
+            staticPhaseCallSites: calls("phase"),
+            staticParallelCallSites: calls("parallel"),
             checkpointSites: UInt32(instrumentation.insertions.count),
             savedWorkflowNames: savedWorkflowNames
         )

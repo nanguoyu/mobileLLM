@@ -312,7 +312,14 @@ final class WorkflowLauncher {
             failure: projection.failure
         )
         summary.status = summary.dynamic!.state.workflowStatus
-        if projection.state.isTerminal { summary.endTime = Date() }
+        if projection.state.isTerminal, summary.endTime == nil { summary.endTime = Date() }
+        summary.aggregated = WorkflowAggregatedStats(
+            subagentCount: projection.childCalls.filter { $0.handleID != nil }.count,
+            elapsedMilliseconds: Int64(max(0, (summary.endTime ?? Date()).timeIntervalSince(summary.startTime) * 1000)),
+            inputTokens: Int64(clamping: projection.usage.quantities[.inputTokens]),
+            outputTokens: Int64(clamping: projection.usage.quantities[.outputTokens]),
+            toolInvocationCount: Int64(clamping: projection.usage.quantities[.toolInvocations])
+        )
         if projection.output != nil,
            let output = try await assembly.dynamicWorkflows.resolvedOutput(runID: runID)
         {
@@ -671,6 +678,9 @@ public actor AppDynamicWorkflowService {
         )
         let analyzed = try analyzer.analyze(script)
         let parent = try await loadParent(runID: initiatingRunID)
+        if parent.request.role == "workflow-generator" {
+            try Self.validateDeclaredStages(analyzed)
+        }
         let owner = workflowScriptOwner(scope: scope, conversationID: parent.request.conversationID)
         let saved = SavedWorkflowScriptV1(
             script: script,
@@ -710,6 +720,26 @@ public actor AppDynamicWorkflowService {
         try childRequestBuilder.register(launch: launch, parent: parent)
         let preview = try await engine.prepareLaunch(script: saved, snapshot: launch)
         return AppDynamicWorkflowCandidatePreview(savedScript: saved, launch: preview)
+    }
+
+    /// Candidate-only lint. Archived scripts retain the V1 analyzer/replay contract. A metadata
+    /// promise is not execution: comments and string literals cannot satisfy these call checks.
+    static func validateDeclaredStages(_ analyzed: AnalyzedWorkflowScriptV1) throws {
+        let phases = analyzed.metadata.phases
+        if !phases.isEmpty, analyzed.staticPhaseCallSites == 0 {
+            throw WorkflowScriptAnalysisError.unsupportedConstruct(
+                "declared phases need phase(title) calls at the actual stage boundaries"
+            )
+        }
+        let declaresParallel = phases.contains {
+            let description = $0.title + " " + ($0.detail ?? "")
+            return description.localizedCaseInsensitiveContains("parallel") || description.contains("并行")
+        }
+        if declaresParallel, analyzed.staticParallelCallSites == 0 {
+            throw WorkflowScriptAnalysisError.unsupportedConstruct(
+                "phase metadata declares parallel work but the script has no parallel fan-out"
+            )
+        }
     }
 
     public func approve(

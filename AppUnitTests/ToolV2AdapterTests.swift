@@ -318,6 +318,18 @@ final class ToolV2AdapterTests: XCTestCase {
         }
     }
 
+    func testGeneratedStagePromisesRequireExecutableCallsNotStringsOrComments() throws {
+        let analyzer = DynamicWorkflowScriptAnalyzer()
+        func analyzed(_ body: String, detail: String = "parallel research") throws -> AnalyzedWorkflowScriptV1 {
+            try analyzer.analyze(WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1,
+                source: "export const meta = {name:'research',description:'Research',phases:[{title:'Discovery',detail:'\(detail)'}]};\n" + body))
+        }
+        XCTAssertThrowsError(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("return 'phase(Discovery) parallel([])';")))
+        XCTAssertThrowsError(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); /* parallel([]) */ return await agent('investigate');")))
+        XCTAssertNoThrow(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); return await parallel([() => agent('A'), () => agent('B')]);")))
+        XCTAssertNoThrow(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); return await agent('A');", detail: "sequential research")))
+    }
+
     // TEST-ID: AHT-DYNAMIC-001
     @MainActor
     func testResearchChildCanFinishItsAdmittedModelPassesButCannotExceedTheirBudget() async throws {

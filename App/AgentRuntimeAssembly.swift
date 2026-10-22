@@ -984,6 +984,15 @@ public final class AgentRuntimeAssembly {
     an internal JSON object. For research and review handoffs that another agent will read, prefer
     concise Markdown briefs and omit schema. Use a schema only when the script must inspect fields
     for a calculation or branch. Pass the complete brief, including source URLs, to downstream agents.
+    For each declared stage, emit phase(title) before its work; metadata and agent phase labels alone
+    do not enter a stage. Independent researchers AND independent verifiers belong in separate
+    await parallel([...]) waves, with a barrier between stages. Check those calls before returning
+    source. Each child gets a concise role-specific instruction, the user's actual coverage target,
+    and its tool allowance. Preserve the breadth of the user's research definition.
+    Research briefs must distinguish SEARCH_SUMMARIES_ONLY from FETCHED_PAGE_EXCERPT. A search summary
+    is never a page read, and a fetched excerpt is not necessarily a full page. Keep uncertain fields
+    as unknown instead of discarding an otherwise supported group. Verifiers must preserve the URLs
+    and retrieval kind for every retained finding; synthesis must count actual rows and countries.
     Ask the final synthesis
     agent for a concise, coherent answer in the user's language, with no schema option, and return its
     text directly. If the final agent needs a schema, include an answer string and return that field.
