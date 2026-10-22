@@ -28,6 +28,26 @@ final class SettingsPersistenceTests: XCTestCase {
 
     // MARK: System prompt
 
+    func testDeepSeekWebServicePersistsWithoutSilentlySwitchingOnAccountRemoval() {
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertNil(settings.deepSeekWebServiceID)
+        settings.upsertOnlineService(OnlineService(id: "search-account", name: "DeepSeek", baseURL: "https://api.deepseek.com/v1"))
+        settings.deepSeekWebServiceID = "search-account"
+        let restored = AppSettings(defaults: defaults)
+        XCTAssertEqual(restored.deepSeekWebServiceID, "search-account")
+        XCTAssertTrue(restored.onlineServices.first!.supportsDeepSeekWebAPI)
+        restored.removeOnlineService(id: "search-account")
+        XCTAssertEqual(AppSettings(defaults: defaults).deepSeekWebServiceID, "search-account",
+                       "An unavailable selected service must fail closed rather than send the query elsewhere")
+    }
+
+    func testDeepSeekWebCredentialsAreOnlyEligibleForTheOfficialHTTPSService() {
+        for baseURL in ["http://api.deepseek.com", "https://api.deepseek.com.evil.example", "https://user@api.deepseek.com", "https://api.deepseek.com:8443", "https://gateway.example/v1"] {
+            XCTAssertFalse(OnlineService(name: "DeepSeek", baseURL: baseURL).supportsDeepSeekWebAPI, baseURL)
+        }
+        XCTAssertTrue(OnlineService(name: "DeepSeek", baseURL: "https://api.deepseek.com").supportsDeepSeekWebAPI)
+    }
+
     func testFreshInstallStartsWithTheStockPrompt() {
         let settings = AppSettings(defaults: defaults)
         XCTAssertTrue(SystemPrompt.isStandard(settings.systemPrompt))

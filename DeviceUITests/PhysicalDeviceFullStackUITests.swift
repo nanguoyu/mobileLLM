@@ -2114,6 +2114,28 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         XCTAssertFalse(evidence.answer.isEmpty)
     }
 
+    @MainActor
+    func test16DeepSeekSearchAndFetchThroughConfiguredWebService() throws {
+        let app = try launchApp()
+        try configureTools(master: true, enabled: ["Web search", "Webpage reader"], deepSeekWebService: true, in: app)
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
+        let marker = uniqueMarker("DEEPSEEK_WEB")
+        let evidence = try send(
+            "Search for DeepSeek Search Fetch API site:api-docs.deepseek.com. Then use the webpage reader to read "
+                + "https://api-docs.deepseek.com/guides/search/. Call both tools before answering. "
+                + "Report the two POST endpoint paths and how the requests are billed, cite the official page, "
+                + "and finish with \(marker).",
+            model: .bonsai, in: app, timeout: 300, assertEvidence: false
+        )
+        XCTAssertTrue(evidence.toolActivities.contains { $0.localizedCaseInsensitiveContains("web_search") || $0.localizedCaseInsensitiveContains("web search") })
+        XCTAssertTrue(evidence.toolActivities.contains { $0.localizedCaseInsensitiveContains("fetch_webpage") || $0.localizedCaseInsensitiveContains("webpage") })
+        XCTAssertTrue(evidence.answer.contains("/v1/tools/search"), evidence.answer)
+        XCTAssertTrue(evidence.answer.contains("/v1/tools/fetch"), evidence.answer)
+        XCTAssertTrue(evidence.answer.contains("api-docs.deepseek.com"), evidence.answer)
+        XCTAssertTrue(evidence.answer.contains(marker), evidence.answer)
+    }
+
     /// Memory is a private-data read/write: Safe preset auto-approves it and the recalled fact must
     /// survive across turns in the same conversation.
     @MainActor

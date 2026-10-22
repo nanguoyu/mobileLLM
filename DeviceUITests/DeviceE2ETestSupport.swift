@@ -902,6 +902,7 @@ class DeviceE2ETestCase: XCTestCase {
     @MainActor
     func configureTools(master: Bool,
                         enabled: Set<String>,
+                        deepSeekWebService: Bool = false,
                         in app: XCUIApplication) throws {
         try goToSettings(in: app)
         let choose = app.buttons.matching(
@@ -928,6 +929,18 @@ class DeviceE2ETestCase: XCTestCase {
             throw DeviceE2EHarnessError.precondition("Tool master switch is unreachable")
         }
         try setSwitch(masterToggle, on: master)
+        if deepSeekWebService {
+            let picker = app.descendants(matching: .any).matching(identifier: "tools.web-provider").firstMatch
+            guard scrollToHittable(picker, in: scroll) else {
+                throw DeviceE2EHarnessError.precondition("Web service picker is unreachable")
+            }
+            picker.tap()
+            let service = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "DeepSeek · ")).firstMatch
+            guard service.waitForExistence(timeout: 10) else {
+                throw DeviceE2EHarnessError.precondition("Configure an official DeepSeek service for this test")
+            }
+            service.tap()
+        }
         app.navigationBars["Tools"].buttons["Done"].tap()
         guard app.navigationBars["Settings"].waitForExistence(timeout: 15) else {
             throw DeviceE2EHarnessError.precondition("Tools settings did not close")

@@ -223,7 +223,7 @@ final class ToolV2AdapterTests: XCTestCase {
     }
 
     @MainActor
-    private func makeSnapshot(userMessageID: UUID) -> AgentRunRequestSnapshot {
+    private func makeSnapshot(userMessageID: UUID, deepSeekWebServiceID: String? = nil) -> AgentRunRequestSnapshot {
         let model = LLMCatalog.bonsai8b
         let variant = model.defaultVariantValue
         return AgentRunRequestSnapshot(
@@ -251,7 +251,7 @@ final class ToolV2AdapterTests: XCTestCase {
             eventSeamAvailable: true,
             locationSeamAvailable: true,
             mcpToolDescriptors: [],
-            webSearchDestinations: [],
+            webSearchDestinations: deepSeekWebServiceID == nil ? [] : [try! AppDeepSeekWebToolAdapter.destination()],
             toolPolicy: nil,
             onlineModelEnabled: false,
             onlineModelID: nil,
@@ -262,11 +262,58 @@ final class ToolV2AdapterTests: XCTestCase {
             onlineOutputBudgetAuto: true,
             onlineMaximumOutputTokens: nil,
             approvalMode: .safePreset,
-            onlineReasoningEffort: nil
+            onlineReasoningEffort: nil,
+            deepSeekWebServiceID: deepSeekWebServiceID
         )
     }
 
     // MARK: - Web search
+
+    @MainActor
+    func testDeepSeekSelectionIsFrozenAndReconstructsWithoutDuplicatePublicTools() async throws {
+        let snapshot = makeSnapshot(userMessageID: UUID(), deepSeekWebServiceID: "account-A")
+        let builder = AppFrozenInputBuilder(capabilityVersion: SemanticVersion("1.0.0")!)
+        let frozen = try builder.frozenInputs(snapshot: snapshot.withText("Search and read a webpage"), artifactReferences: [])
+        let request = try builder.request(snapshot: snapshot, artifactReferences: [])
+        XCTAssertTrue(request.capabilityCeiling.authority.destinations.contains(try AppDeepSeekWebToolAdapter.destination()))
+        XCTAssertFalse(request.capabilityCeiling.authority.destinations.contains {
+            $0.normalizedIdentity == ExternalDestination.anyHTTPSNetworkEndpoint
+        })
+        let catalog = try AppToolCatalog(enabledToolNames: AppLocalToolIDs.names, memoryStore: nil,
+            eventStore: nil, locationProvider: nil, mcpCache: MCPDiscoveryCache())
+        for operation in [DeepSeekWebOperation.search, .fetch] {
+            let descriptors = frozen.toolCatalog.descriptors.filter { $0.id.logicalID.name == operation.toolName }
+            XCTAssertEqual(descriptors.count, 1, "One capability must not advertise competing implementations")
+            let descriptor = try XCTUnwrap(descriptors.first)
+            XCTAssertEqual(AppDeepSeekWebToolAdapter.serviceID(from: descriptor.id), "account-A")
+            let restored = try await catalog.tool(for: descriptor.id)
+            XCTAssertEqual(restored?.descriptor, descriptor, "Recovery reconstructs the exact account-bound adapter")
+            let other = try AppDeepSeekWebToolAdapter.makeDescriptor(operation: operation, serviceID: "account-B")
+            XCTAssertNotEqual(descriptor.id, other.id, "Changing account invalidates descriptor-bound approval")
+        }
+        let disabled = try builder.frozenInputs(snapshot: snapshot.withText("Hello", toolsEnabled: false), artifactReferences: [])
+        XCTAssertFalse(disabled.toolCatalog.descriptors.contains { ["web_search", "fetch_webpage"].contains($0.id.logicalID.name) })
+    }
+
+    func testDeepSeekReadsCredentialsOnlyAfterAuthorizationAndFailsWithoutFallback() async throws {
+        let reads = DeepSeekCredentialReadProbe()
+        let adapter = try AppDeepSeekWebToolAdapter(operation: .search, serviceID: "account-A") { serviceID in
+            await reads.record(serviceID)
+            return nil
+        }
+        let request = try makeRequest(descriptor: adapter.descriptor, arguments: ["query": .string("Swift documentation")])
+        let preparation = try makePreparationContext(destinations: [AppDeepSeekWebToolAdapter.destination()],
+            dataCategories: [AgentDataCategory(rawValue: "web.search")], capabilities: AgentCapabilitySet([.networkRead]))
+        let prepared = try await adapter.prepare(request: request, context: preparation)
+        let before = await reads.ids
+        XCTAssertTrue(before.isEmpty, "Preparation must not access credentials or the network")
+        XCTAssertTrue(prepared.externalOperation.plan.allowedFallbacks.isEmpty)
+        let outcome = try await execute(adapter, prepared: prepared)
+        guard case .failed(let failure) = outcome else { return XCTFail("Missing key must not look like a successful or public-engine search") }
+        XCTAssertTrue(failure.safeMessage.contains("API key"))
+        let after = await reads.ids
+        XCTAssertEqual(after, ["account-A"])
+    }
 
     func testWebSearchAdapterPreparesPlanAndExecutesInsideBoundary() async throws {
         let configuration = URLSessionConfiguration.ephemeral
@@ -792,6 +839,11 @@ private actor TestRecordingLogger: ToolRedactedLogging {
 
 private struct TestFixedAuthorizationClock: AgentAuthorizationClock {
     func now() async throws -> AgentTimestamp { AgentTimestamp(rawValue: 1_000) }
+}
+
+private actor DeepSeekCredentialReadProbe {
+    var ids: [String] = []
+    func record(_ id: String) { ids.append(id) }
 }
 
 private struct TestAlwaysClaimableAttemptLedger: ExternalOperationAttemptClaiming {
