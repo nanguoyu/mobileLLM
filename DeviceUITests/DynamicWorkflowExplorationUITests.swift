@@ -120,12 +120,12 @@ private extension DynamicWorkflowExplorationScenario {
         minimumAnswerCharacters: 350,
         requireParallelSource: true,
         requiredConceptGroups: [
-            ["untrusted", "prompt injection"],
-            ["authority", "capability"],
-            ["approval", "consent"],
-            ["static analysis", "parser", "analyzer"],
-            ["fail", "reject", "deny"],
-            ["inspect", "audit", "evidence"],
+            ["untrusted", "prompt injection", "不可信", "提示注入"],
+            ["authority", "capability", "权限", "能力"],
+            ["approval", "consent", "审批", "批准", "同意"],
+            ["static analysis", "parser", "analyzer", "静态分析", "解析器", "分析器"],
+            ["fail", "reject", "deny", "失败", "拒绝"],
+            ["inspect", "audit", "evidence", "检查", "审计", "证据"],
         ]
     )
 }
