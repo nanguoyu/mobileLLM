@@ -185,9 +185,8 @@ extension AgentRunRequestSnapshot {
             locationSeamAvailable: locationSeamAvailable,
             mcpToolDescriptors: mcpToolDescriptors,
             webSearchDestinations: webSearchDestinations,
-            // Candidate/repair generation is a pure source-compilation pass. When its caller turns
-            // tools off, discard the conversation policy too; otherwise the frozen manifest could
-            // still advertise policy entries from the parent even though its catalog is empty.
+            // Explicitly disabling tools also discards the conversation policy. Generator-only
+            // suppression is separate: it must preserve the user's policy for delegated work.
             toolPolicy: resolvedToolsEnabled ? toolPolicy : nil,
             onlineModelEnabled: onlineModelEnabled,
             onlineModelID: onlineModelID,

@@ -269,6 +269,7 @@ final class ToolV2AdapterTests: XCTestCase {
 
     // MARK: - Web search
 
+    // TEST-ID: AHT-DYNAMIC-001
     @MainActor
     func testWorkflowGeneratorSuppressesItsOwnToolsWithoutErasingDelegatedPolicy() async throws {
         let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)

@@ -1878,6 +1878,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowStorageTests/testContentAddressedValueStoreMovesLargeCanonicalJSONOutOfJournalAndVerifiesRoundTrip"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testWorkflowGeneratorSuppressesItsOwnToolsWithoutErasingDelegatedPolicy"
         }
       ],
       "platforms": [

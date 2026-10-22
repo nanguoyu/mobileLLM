@@ -133,6 +133,10 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   The `/workflow` marker may appear anywhere in the message; the remaining text is the goal. `WorkflowLauncher`
   (App) first submits an ordinary durable *generator* run — tools disabled — whose answer is a small
   JavaScript orchestration script beginning with a literal `export const meta = {...}`.
+  The generator's `suppressModelTools` flag hides tools from its own model passes while preserving the
+  initiating conversation's full catalog and policy in the durable snapshot. Research children inherit
+  those original tools and the pinned web-service account; they do not inherit the generator-only
+  suppression. Recovery uses the same persisted catalog rather than rereading current settings.
   `DynamicWorkflowScriptAnalyzer` rejects anything outside the closed vocabulary (no `eval`, classes, `this`,
   regex literals, `Date`, `Symbol`, `Proxy`, template-literal tricks, or agent options other than
   `label/phase/schema/model/agentType/isolation/stallMs`); one analyzer-guided repair pass is allowed. The
