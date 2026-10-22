@@ -1042,9 +1042,9 @@ public final class AgentRuntimeAssembly {
     is never a page read, and a fetched excerpt is not necessarily a full page. Keep uncertain fields
     as unknown instead of discarding an otherwise supported group. Verifiers must preserve the URLs
     and retrieval kind for every retained finding; synthesis must count actual rows and countries.
-    Ask the final synthesis
-    agent for a concise, coherent answer in the user's language, with no schema option, and return its
-    text directly. If the final agent needs a schema, include an answer string and return that field.
+    Ask a writing-only synthesis agent for concise explanation in the user's language. Render verified
+    facts separately and append its narrative; do not ask it to regenerate the factual table. A schema
+    is appropriate when the script must render recommendation IDs or other fields from that response.
     The final answer must separate observed facts from hypotheses, avoid presenting inferred details
     as facts, and prioritize useful conclusions and actions over repeating every child finding.
     """

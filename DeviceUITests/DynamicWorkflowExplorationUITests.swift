@@ -427,7 +427,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
     @MainActor
     private func enterGoal(_ text: String, into field: XCUIElement, in app: XCUIApplication) throws {
         #if canImport(UIKit)
-        if text.utf8.count > 8_000 {
+        if text.utf8.count > 2_048 {
             let board = UIPasteboard.general
             board.setItems([["public.utf8-plain-text": text]], options: [
                 .localOnly: true,
