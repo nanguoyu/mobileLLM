@@ -212,7 +212,7 @@ final class LocalModelRegistrationAndPromptTests: XCTestCase {
             "required": .array([.string("answer")]),
             "additionalProperties": .bool(false),
         ]))
-        let output = try LocalModelPromptRenderer.structuredOutputBlock(schema)
+        let output = try ModelOutputInstructions.structured(schema)
         XCTAssertTrue(output.contains(try CanonicalJSON(schema.root).string))
     }
 

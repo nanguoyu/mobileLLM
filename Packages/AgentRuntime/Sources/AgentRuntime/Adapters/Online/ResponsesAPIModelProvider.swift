@@ -874,9 +874,16 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         stream: Bool = false
     ) throws -> Data {
         let parameters = request.generationParameters
+        var messages = chatMessagesPayload(request.messages, selection: request.selection)
+        if case .structured(let schema) = request.outputRequirement {
+            messages.insert(.object([
+                "role": .string("system"),
+                "content": .string(try ModelOutputInstructions.structured(schema))
+            ]), at: 0)
+        }
         var fields: [String: JSONValue] = [
             "model": .string(request.selection.modelID.rawValue),
-            "messages": .array(chatMessagesPayload(request.messages, selection: request.selection)),
+            "messages": .array(messages),
             "temperature": .number(parameters.temperature),
             "top_p": .number(parameters.topP),
         ]
@@ -961,7 +968,10 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         stream: Bool = false
     ) throws -> Data {
         let parameters = request.generationParameters
-        let (instructions, input) = try messagesPayload(request.messages, selection: request.selection)
+        var (instructions, input) = try messagesPayload(request.messages, selection: request.selection)
+        if case .structured(let schema) = request.outputRequirement {
+            instructions += "\n" + (try ModelOutputInstructions.structured(schema))
+        }
         var fields: [String: JSONValue] = [
             "model": .string(request.selection.modelID.rawValue),
             "input": .array(input),

@@ -358,7 +358,21 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
               case .object(let responseFormat)? = object["response_format"],
               case .object(let streamOptions)? = object["stream_options"]
         else { return XCTFail("expected documented Chat Completions request: \(value)") }
-        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.count, fixture.request.messages.count + 1)
+        guard case .object(let outputInstruction) = messages.first,
+              case .string(let instruction)? = outputInstruction["content"]
+        else { return XCTFail("structured calls must send their output contract") }
+        XCTAssertEqual(outputInstruction["role"], .string("system"))
+        XCTAssertTrue(instruction.contains("JSON"), "DeepSeek JSON mode requires a JSON instruction")
+        XCTAssertTrue(instruction.contains(try CanonicalJSON(descriptor.inputSchema.root).string))
+        let responsesData = try ResponsesAPIModelProvider.requestBody(
+            request: structuredRequest, baseURL: "https://gateway.example/v1"
+        )
+        let responsesValue = try AgentWireDecoder.decode(JSONValue.self, from: responsesData, limits: .inlineValue)
+        guard case .object(let responsesObject) = responsesValue,
+              case .string(let responsesInstructions)? = responsesObject["instructions"]
+        else { return XCTFail("Responses requests also need the complete output contract") }
+        XCTAssertTrue(responsesInstructions.contains(instruction))
         XCTAssertNil(object["input"])
         XCTAssertNil(object["instructions"])
         XCTAssertEqual(object["max_tokens"], .integer(1_024))
