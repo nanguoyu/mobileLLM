@@ -560,6 +560,7 @@ private actor DynamicWorkflowSession {
     private let budgetCounter: WorkflowBudgetCounter
     private var projection: WorkflowRunProjectionV1
     private var stopped = false
+    private var evidenceCache: (sequence: UInt64, value: JSONValue)?
 
     init(
         projection: WorkflowRunProjectionV1,
@@ -710,6 +711,8 @@ private actor DynamicWorkflowSession {
     }
 
     private func recordedWebEvidence() async throws -> JSONValue {
+        let sequence = projection.lastSequence
+        if let cached = evidenceCache, cached.sequence == sequence { return cached.value }
         var latest: [UInt32: WorkflowAgentCallV1] = [:]
         for call in projection.calls { latest[call.ordinal] = call }
         let calls = latest.values.sorted { $0.ordinal < $1.ordinal }
@@ -722,7 +725,9 @@ private actor DynamicWorkflowSession {
             }
             if records.count > WorkflowWebEvidence.maximumObservations { break }
         }
-        return try WorkflowWebEvidence.packet(records)
+        let value = try WorkflowWebEvidence.packet(records)
+        if projection.lastSequence == sequence { evidenceCache = (sequence, value) }
+        return value
     }
 
     private func executeSavedWorkflow(

@@ -58,6 +58,18 @@ final class DynamicWorkflowRuntimeTests: XCTestCase {
         XCTAssertEqual(read["excerpt"], .string(text))
         XCTAssertEqual(read["contentDigest"], .string(StableDigest.sha256(Data(text.utf8)).rawValue))
         XCTAssertEqual(missing["status"], .string("failed"))
+        let large = String(repeating: "证据", count: 2000) + " Award date September 2025. "
+        let clipped = try WorkflowWebEvidence.packet((0..<33).map {
+            ("investigator", WorkflowWebObservation(invocationID: "\($0)", toolID: fetch,
+                requestedURL: "https://example.edu/\($0)", status: "completed", text: large))
+        })
+        guard case .object(let bounded) = clipped, case .array(let excerpts)? = bounded["observations"],
+              case .object(let first)? = excerpts.first, case .string(let prefix)? = first["excerpt"] else { return XCTFail("Missing bounded excerpts") }
+        XCTAssertEqual(excerpts.count, 32)
+        XCTAssertEqual(bounded["truncated"], .bool(true))
+        XCTAssertEqual(first["excerptTruncated"], .bool(true))
+        XCTAssertLessThanOrEqual(prefix.utf8.count, 1200)
+        XCTAssertTrue(large.hasPrefix(prefix), "Clipping must preserve the original Unicode text")
     }
 
     func testChildCollectionTimesOutOnlyWhenProgressStops() async throws {

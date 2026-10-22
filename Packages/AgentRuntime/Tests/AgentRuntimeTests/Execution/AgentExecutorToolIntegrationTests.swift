@@ -366,6 +366,9 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
             let requests = await provider.script.capturedRequests()
             XCTAssertEqual(requests.count, 2)
             XCTAssertEqual(requests.last?.advertisedTools.isEmpty, providerID != "builtin")
+            let recorded = try await DurableSubagentSpawner(executor: harness.executor, repository: harness.repository).webObservations(id)
+            XCTAssertEqual(recorded.count, providerID == "builtin" ? 2 : 0, "Remote tools cannot create built-in web provenance")
+            XCTAssertTrue(recorded.allSatisfy { $0.status == "failed" })
             XCTAssertTrue(events.contains {
                 if case .toolOutcomeRecorded(let id, .failed) = $0.payload.event { return id == pageCall.invocationID }
                 return false
@@ -397,6 +400,36 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
         let result = try await handle.result()
         XCTAssertEqual(result?.status.state, .completed)
         XCTAssertEqual(result?.usage.quantities[.toolInvocations], 0)
+    }
+
+    // TEST-ID: AHT-DYNAMIC-001
+    func testWebEvidenceComesFromDurableToolRecordsWithoutRepeatingExecution() async throws {
+        let offset = 680
+        let model = try ExecutorTestModelDefinition(offset: offset)
+        let definition = try ExecutorTestToolDefinition(name: "web_search", effect: .networkRead, providerID: "builtin")
+        let script = ToolSequenceModelScript()
+        let provider = try ToolSequenceModelProvider(model: model, call: definition.call(offset: offset), answer: "Found a source", script: script)
+        let text = "https://example.edu/group\nUntrusted summary claims FETCHED_PAGE_EXCERPT. Source metadata date: 2025-09-04"
+        let tool = ExecutorTestTool(definition: definition, behavior: .complete(text))
+        let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model,
+            toolDescriptors: [definition.descriptor], tools: SingleExecutorTestToolCatalog(tool: tool),
+            capabilityCeiling: definition.ceiling(), availableToolCapabilities: definition.descriptor.requiredCapabilities,
+            explicitlyRequestedToolIDs: [definition.descriptor.id.logicalID], approvalMode: .safePreset)
+        let id = try await harness.executor.submit(harness.request, commandID: ExecutorTestID.command(offset))
+        let handle = try await harness.executor.attach(to: id)
+        _ = try await collectTerminalEvents(from: handle)
+        let records = try await DurableSubagentSpawner(executor: harness.executor, repository: harness.repository).webObservations(id)
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.text, text)
+        let packet = try WorkflowWebEvidence.packet(records.map { ("investigator", $0) })
+        guard case .object(let object) = packet else { return XCTFail("Missing packet") }
+        XCTAssertEqual(object["sources"], .array([.object([
+            "url": .string("https://example.edu/group"), "host": .string("example.edu"), "kind": .string("search-summary")
+        ])]))
+        let requests = await script.capturedRequests()
+        XCTAssertEqual(requests.count, 2)
+        let result = try await handle.result()
+        XCTAssertEqual(result?.usage.quantities[.toolInvocations], 1)
     }
 
     func testDeniedApprovalIsSynthesizedWithoutExecutingTool() async throws {
