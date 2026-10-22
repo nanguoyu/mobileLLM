@@ -125,4 +125,3 @@ func agentRuntimeURLSession() -> URLSession {
     .shared
     #endif
 }
-
