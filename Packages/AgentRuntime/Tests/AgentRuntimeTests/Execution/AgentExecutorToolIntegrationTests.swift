@@ -351,12 +351,16 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
             ])
             let missing = ExecutorTestTool(definition: page, behavior: .failWithoutBoundary(failure))
             let following = ExecutorTestTool(definition: next, behavior: .complete("other observation"))
+            let defaults = try AgentBudget.firstReleaseDefaults(contextTokensPerAttempt: 4096, outputTokens: 1024, peakMemoryBytes: 1_073_741_824)
+            var capacity = Dictionary(uniqueKeysWithValues: defaults.limits.entries.map { ($0.dimension, $0.value) })
+            capacity[.toolInvocations] = 4 // Leave one call after the three-call batch to test continuation.
+            let budget = try AgentBudget(limits: BudgetQuantities(capacity), maximumThermalState: defaults.maximumThermalState, memoryPressureResponse: defaults.memoryPressureResponse)
             let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model,
                 toolDescriptors: [page.descriptor, next.descriptor],
                 tools: ExecutorTestToolCatalog(tools: [missing, following]), capabilityCeiling: page.ceiling(),
                 availableToolCapabilities: page.descriptor.requiredCapabilities,
                 explicitlyRequestedToolIDs: [page.descriptor.id.logicalID, next.descriptor.id.logicalID],
-                parallelToolBatchLimit: parallelism, approvalMode: .safePreset)
+                budget: budget, parallelToolBatchLimit: parallelism, approvalMode: .safePreset)
             let id = try await harness.executor.submit(harness.request, commandID: ExecutorTestID.command(offset))
             let handle = try await harness.executor.attach(to: id)
             let events = try await collectTerminalEvents(from: handle)
