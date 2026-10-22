@@ -52,8 +52,8 @@ AppUI       (SwiftUI, no deps)         ink-wash design tokens + shared controls 
 The app is built with `xcodebuild` (MLX Metal kernels require it); the eight MLX-free product packages
 test with SwiftPM on a Mac. AgentContracts and the verification tool use pinned Swift Crypto on Linux;
 AgentRuntime still requires Apple frameworks. See [WIRING.md](WIRING.md#toolchain-compatibility) for
-compiler/SDK compatibility. Inference is validated on real devices; the simulator has no Metal path for the 1-bit MLX
-kernels or GGUF Metal (agent/online/workflow behavior is validated on the simulator instead).
+compiler/SDK compatibility. Simulator plus online models exercise production agent/workflow behavior;
+local GPU/MLX performance and device resource behavior require Apple hardware.
 
 ## Agent runtime: durable runs, approvals, online models
 
@@ -106,7 +106,7 @@ streamed text. The provider is itself an authorized external operation
 (destination `openai.responses:<serviceID>:<modelName>`), so Ask mode requests bounded conversation consent;
 Safe preset and Full access bind authorization without presenting a prompt. Multiple services can be configured in Settings → Online
 models; at most one is active. Hosts under `api.deepseek.com` are spoken to over the Chat Completions wire
-shape (`thinking` + `reasoning_effort`) because DeepSeek's `/responses` route ignores the thinking toggle;
+shape (`thinking` + `reasoning_effort`), the path covered by the current live service checks;
 every other service uses the Responses shape. Gateway quirks get exactly one bounded retry each: a 400 that
 names `max_output_tokens` falls back from Auto to the runtime ceiling, a 400 that names reasoning omits the
 directive, a reasoning-only reply is re-asked without reasoning, and byte-identical repeated
@@ -115,7 +115,7 @@ directive, a reasoning-only reply is re-asked without reasoning, and byte-identi
 Calls retain their provider call IDs, original wire names/arguments, and bounded reasoning state through
 the journal and context compiler. Follow-up requests emit matching native call/result pairs only to
 the same frozen model selection. Distinct IDs remain distinct even when arguments match. Responses
-requests use `store=false`; official OpenAI requests include encrypted reasoning for stateless replay.
+requests to official OpenAI use `store=false` and include encrypted reasoning for stateless replay.
 Older records lacking native IDs retain the explicit text-result fallback. This is client-executed
 function calling; provider-hosted tools in spec §15.5 remain deferred.
 

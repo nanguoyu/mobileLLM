@@ -845,10 +845,9 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
 
     static func wireDialect(baseURL: String, modelID: String) -> WireDialect {
         let host = URL(string: baseURL)?.host?.lowercased() ?? ""
-        // DeepSeek's public OpenAI-format contract is Chat Completions. Its undocumented
-        // `/responses` compatibility route currently ignores the thinking toggle, which can spend
-        // the whole output budget without an answer. Only select this transport for the official
-        // service host; third-party gateways keep their explicitly configured Responses contract.
+        // Keep the official service on the Chat Completions path covered by our live thinking-mode
+        // checks. Only select it for the service host; third-party gateways keep their explicitly
+        // configured Responses contract.
         if host == "api.deepseek.com" || host.hasSuffix(".deepseek.com") {
             return .deepSeekChatCompletions
         }
