@@ -289,7 +289,9 @@ enum RepositoryDocumentVerifier {
                                         diagnostics: &diagnostics) as? [String: Any],
                   let options = object["defaultOptions"] as? [String: Any],
                   let targets = object["testTargets"] as? [[String: Any]] else { continue }
-            if options["codeCoverage"] as? Bool != true {
+            // Live device/online evaluations measure actual behavior and latency without default
+            // coverage instrumentation. Release coverage commands enable it explicitly.
+            if plan.lastPathComponent != "DeviceE2E.xctestplan", options["codeCoverage"] as? Bool != true {
                 add(&diagnostics, "AHV-TESTPLAN-COVERAGE", plan.path,
                     "code coverage must be enabled")
             }
