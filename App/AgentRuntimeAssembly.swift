@@ -1096,8 +1096,9 @@ public final class AgentRuntimeAssembly {
                 // policy. Using the whole context as output makes admission impossible; a fixed
                 // output number also breaks local models with smaller native contexts. The 24K cap
                 // still gives reasoning-first compatible services room to emit source.
-                maximumOutputTokens: generatorOutputTokens,
-                reasoningEnabled: false
+                // Children inherit this frozen generation policy. Preserve the conversation's
+                // reasoning choice rather than silently disabling it for every delegated task.
+                maximumOutputTokens: generatorOutputTokens
             ),
             artifactReferences: [],
             // The generator cannot invoke tools, but its durable parent snapshot must retain the

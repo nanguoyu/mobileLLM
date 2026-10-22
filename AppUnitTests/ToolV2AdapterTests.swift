@@ -285,6 +285,7 @@ final class ToolV2AdapterTests: XCTestCase {
         XCTAssertEqual(frozen.toolPolicy, expected.toolPolicy)
         XCTAssertTrue(frozen.toolPolicy.masterEnabled)
         let recovered = try JSONDecoder().decode(FrozenAgentRunInputs.self, from: JSONEncoder().encode(frozen))
+        XCTAssertEqual(recovered.generationParameters.thinkingMode, expected.generationParameters.thinkingMode)
         XCTAssertEqual(recovered.toolCatalog, expected.toolCatalog, "Recovery must preserve the delegated tools")
         XCTAssertTrue(try recovered.selectedTools(latestUserRequest: "Search the web").descriptors.isEmpty)
         let ordinaryJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(expected)) as? [String: Any])
@@ -295,6 +296,13 @@ final class ToolV2AdapterTests: XCTestCase {
         let disabled = try await assembly.inputFreezer.freeze(disabledGenerator)
         XCTAssertFalse(disabled.toolPolicy.masterEnabled)
         XCTAssertTrue(disabled.toolCatalog.descriptors.isEmpty, "Suppression cannot re-enable user-disabled tools")
+        for enabled in [true, false] {
+            let choice = snapshot.withText("Research", reasoningEnabled: enabled)
+            let reasoningGenerator = try assembly.makeDynamicWorkflowGenerator(snapshot: choice)
+            let reasoningFrozen = try await assembly.inputFreezer.freeze(reasoningGenerator)
+            XCTAssertEqual(reasoningFrozen.generationParameters.thinkingMode, enabled ? .enabled : .disabled,
+                "The generator's durable parent is inherited by research children")
+        }
     }
 
     // TEST-ID: AHT-DYNAMIC-001
