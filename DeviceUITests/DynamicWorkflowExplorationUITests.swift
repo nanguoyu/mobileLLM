@@ -197,6 +197,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
         try configureTools(
             master: !scenario.enabledTools.isEmpty,
             enabled: scenario.enabledTools,
+            deepSeekWebService: ProcessInfo.processInfo.environment["MOBILELLM_WORKFLOW_EVAL_DEEPSEEK_WEB"] == "1",
             in: app
         )
         try openNewChat(in: app)
