@@ -2061,7 +2061,7 @@ public final class ChatStore {
     /// composing, and the meter shows whatever the last refresh left.
     private func memoryBlock(for query: String, enabled: Bool? = nil) -> String? {
         guard enabled ?? settings.memoryEnabled,
-              let facts = memoryBook?.facts, !facts.isEmpty else { return nil }
+              let facts = memoryBook?.snapshotFacts, !facts.isEmpty else { return nil }
         return Self.memoryBlock(facts, query: query)
     }
 

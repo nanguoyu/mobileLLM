@@ -27,6 +27,9 @@ public final class MemoryBook {
     /// the memory screen would disagree about what is saved.
     public let store: any MemoryStoring
 
+    /// Submission uses the committed store view so tool writes are visible before any UI refresh.
+    public var snapshotFacts: [MemoryFact] { store.committedFacts ?? facts }
+
     public init(store: any MemoryStoring) { self.store = store }
 
     public var count: Int { facts.count }

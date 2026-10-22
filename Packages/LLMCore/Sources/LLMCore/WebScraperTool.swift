@@ -111,7 +111,7 @@ public struct WebScraperTool: Tool {
         } catch WebNetworkError.blockedHost {
             return "Error: that host isn't allowed (local/private addresses are blocked)."
         } catch WebNetworkError.unsafeRedirect {
-            return "Error: the page redirected to a local, private, or otherwise unsafe address."
+            return "Error: the page redirected outside the approved origin or to an unsafe address. Request the destination URL separately."
         } catch WebNetworkError.tooManyRedirects {
             return "Error: the page redirected too many times."
         } catch WebNetworkError.invalidRedirect {

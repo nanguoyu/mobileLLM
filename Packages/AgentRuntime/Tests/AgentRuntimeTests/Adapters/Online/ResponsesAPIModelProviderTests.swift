@@ -52,6 +52,17 @@ final class MockResponsesURLProtocol: URLProtocol {
 }
 
 final class ResponsesAPIModelProviderTests: XCTestCase {
+    func testOnlineWirePreservesUniqueNamesForTwoMCPServers() throws {
+        let spec = MCPToolSpec(name: "lookup", description: "Look up current information", inputSchemaJSON: "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}")
+        let descriptors = try [UUID(), UUID()].map { try MCPToolV2Adapter.descriptor(spec: spec, serverStableID: $0, trustRevision: "audit.v1") }
+        XCTAssertNotEqual(descriptors[0].id.logicalID, descriptors[1].id.logicalID)
+        let payload = try ResponsesAPIModelProvider.toolsPayload(descriptors)
+        let names = payload.compactMap { value -> String? in
+            guard case .object(let object) = value, case .string(let name)? = object["name"] else { return nil }; return name
+        }
+        XCTAssertEqual(Set(names).count, descriptors.count, "Distinct registered MCP tools collapse to wire names: \(names)")
+    }
+
     func testMessagesPayloadMapsRolesAndToolFallback() throws {
         let messages = try [
             AgentModelMessage(role: .system, content: "sys", isUntrustedData: false),

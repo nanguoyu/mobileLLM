@@ -919,11 +919,12 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
     private static func chatCompletionsToolsPayload(
         _ descriptors: [AgentToolDescriptor]
     ) -> [JSONValue] {
-        descriptors.map { descriptor in
-            .object([
+        ModelToolNames.bindings(for: descriptors).map { binding in
+            let descriptor = binding.descriptor
+            return .object([
                 "type": .string("function"),
                 "function": .object([
-                    "name": .string(descriptor.id.logicalID.name),
+                    "name": .string(binding.wireName),
                     "description": .string(descriptor.summary),
                     "parameters": descriptor.inputSchema.root,
                 ]),
@@ -1038,14 +1039,15 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
     }
 
     static func toolsPayload(_ descriptors: [AgentToolDescriptor]) throws -> [JSONValue] {
-        descriptors.map { descriptor in
+        ModelToolNames.bindings(for: descriptors).map { binding in
+            let descriptor = binding.descriptor
             let schema = descriptor.inputSchema.root
             return .object([
                 "type": .string("function"),
                 // Responses API tool items are FLAT: name/description/parameters sit next to type.
                 // The Chat Completions nesting ({type, function:{...}}) is rejected by strict
                 // Responses-compatible gateways with "tools[0]: missing field name".
-                "name": .string(descriptor.id.logicalID.name),
+                "name": .string(binding.wireName),
                 "description": .string(descriptor.summary),
                 "parameters": schema,
             ])
@@ -1241,9 +1243,9 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         index: Int,
         request: AgentModelRequest
     ) throws -> ProposedToolCall {
-        guard let descriptor = request.advertisedTools.first(where: {
-            $0.id.logicalID.name == name
-        }), let data = argumentsJSON.data(using: .utf8) else {
+        guard let descriptor = ModelToolNames.bindings(for: request.advertisedTools).first(where: {
+            $0.wireName == name
+        })?.descriptor, let data = argumentsJSON.data(using: .utf8) else {
             throw AgentModelProviderFailure(try Self.toolFailure("The online model called unknown tool \(name)."))
         }
         let value = try AgentWireDecoder.decode(JSONValue.self, from: data, limits: .inlineValue)

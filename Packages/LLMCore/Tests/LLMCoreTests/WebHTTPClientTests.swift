@@ -75,17 +75,17 @@ final class WebHTTPClientTests: XCTestCase {
         XCTAssertEqual(requested.map(\.host), ["public.example"])
     }
 
-    func testPublicRedirectIsRevalidatedAndFollowed() async throws {
+    func testSameOriginRedirectIsRevalidatedAndFollowed() async throws {
         let resolver = ResolverSpy(addressesByHost: [
             "public.example": ["93.184.216.34"],
             "cdn.example": ["1.1.1.1"],
         ])
         let server = RedirectServer { request, _ in
-            if request.url?.host == "public.example" {
+            if request.url?.path == "/start" {
                 return Self.response(
                     url: request.url!,
                     status: 301,
-                    headers: ["Location": "https://cdn.example/final"]
+                    headers: ["Location": "https://public.example/final"]
                 )
             }
             return Self.response(url: request.url!, status: 200, body: Data("done".utf8))
@@ -105,10 +105,10 @@ final class WebHTTPClientTests: XCTestCase {
         let requested = await server.requestedURLs
         XCTAssertEqual(requested.map(\.absoluteString), [
             "https://public.example/start",
-            "https://cdn.example/final",
+            "https://public.example/final",
         ])
         let resolved = await resolver.calls
-        XCTAssertEqual(resolved, ["public.example", "cdn.example"])
+        XCTAssertEqual(resolved, ["public.example", "public.example"])
     }
 
     func testRedirectLoopIsBounded() async {
@@ -285,7 +285,7 @@ private final class RedirectingProtocol: URLProtocol {
     override func startLoading() {
         switch request.url?.path {
         case "/public-redirect":
-            redirect(to: URL(string: "https://cdn.example/final")!)
+            redirect(to: URL(string: "https://public.example/final")!)
         case "/private-redirect":
             redirect(to: URL(string: "http://169.254.169.254/latest/meta-data/")!)
         case "/final":
