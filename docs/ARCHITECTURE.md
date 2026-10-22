@@ -144,7 +144,7 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   is the launch intent, so no extra Once/Always/Deny prompt), then `DynamicWorkflowEngine` runs it in
   `JavaScriptCoreWorkflowRuntime`: the script sees only `agent(prompt, options)`, `parallel(thunks)`,
   `pipeline(items, ...stages)`, `workflow(name, args)` (one nesting level, digest-pinned saved scripts),
-  `phase`, `log`, `serialize`, `args`, and `budget`. It has no filesystem, network, tool, model, secret,
+  `phase`, `log`, `serialize`, `unique`, `webEvidence`, `args`, and `budget`. It has no filesystem, network, tool, model, secret,
   clock, or RNG of its own — every `agent()` call becomes an ordinary attenuated subagent run whose tool
   policy is the conversation's frozen policy verbatim. The realm is a logical boundary, not an OS sandbox
   (spec §34.3). Execution is event-sourced in `SQLiteDynamicWorkflowJournal` (hash-chained, CAS appends);
@@ -167,6 +167,16 @@ source URLs explicitly. A schema is recommended when the script needs fields for
 branching. These prompt instructions do not guarantee useful answers or compliance with the user's
 requested parallel plan. The [2026-10-22 research evaluation](evaluations/2026-10-22-dynamic-research.md)
 distinguishes actual handoff evidence from task-quality failures.
+
+`unique(strings)` performs bounded, checkpointed whole-string deduplication in first-occurrence order.
+It rejects non-string entries, getters, and oversized collections without invoking a user iterator.
+`webEvidence()` reads settled children from the current workflow and returns journal-derived web
+observations, bounded verbatim excerpts, and observed source URLs. It performs no site requests, cannot
+select another workflow, excludes non-web and remote tool namespaces, and keeps failed reads distinct
+from retrieved pages. Search summaries never become page reads because a model calls them verified.
+The packet contains truncation flags and content digests; the external content itself remains untrusted.
+The session caches a packet only while its durable workflow sequence remains unchanged. Fact-checking
+stages consume this evidence, while final narrative synthesis should not regenerate verified rows.
 
 The app's workflow envelope admits 32 model attempts and 24 tool calls by default. Cumulative input
 and output capacities cover the admitted model passes while per-attempt ceilings stay unchanged.
@@ -389,7 +399,9 @@ write paths retain their stop/reconciliation rules. Distinct page misses provide
 the normal fingerprint and total-call guards still prevent repeated or unbounded attempts.
 
 DeepSeek Chat Completions explicitly sends `tools: []` and `tool_choice: none` for tool-free synthesis,
-while preserving prior native call/result history. Raw DSML envelopes are never accepted as final
+and projects completed observations as untrusted read-only text in that request. Native call identities
+and provider continuation remain in the journal and in active tool-use requests; only the no-tool wire
+projection omits native call tokens. Raw DSML envelopes are never accepted as final
 answers or executed as unadvertised calls; they follow the bounded malformed-response path.
 
 ## Memory
