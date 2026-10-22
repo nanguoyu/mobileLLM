@@ -378,6 +378,8 @@ extension AgentRunController {
             "modelAttempt": .unsignedInteger(attempt),
             "structuredRepair": .bool(history.repairCount > 0),
             "toolFreeSynthesis": .bool(toolFree),
+            "toolInvocationsUsed": .unsignedInteger(facts.budgetLedger?.consumed.quantities[.toolInvocations] ?? 0),
+            "toolInvocationsRemaining": .unsignedInteger(facts.budgetLedger?.availableCapacity[.toolInvocations] ?? 0),
         ]
         if history.repairCount > 0 {
             let lastRepair = history.diagnostics.last { $0.1.code == "execution.structured-repair" }
