@@ -36,6 +36,7 @@ public struct DeepSeekWebResponse: Sendable {
 
 /// Official Search/Fetch JSON APIs. Credentials never follow redirects or enter tool arguments.
 /// Authentication is supplied only by the authorized caller. No model inference occurs here.
+/// API contract: https://api-docs.deepseek.com/guides/search/
 public struct DeepSeekWebClient: Sendable {
     public static let maximumResponseBytes = 1_048_576
     private let transport: WebHTTPTransport

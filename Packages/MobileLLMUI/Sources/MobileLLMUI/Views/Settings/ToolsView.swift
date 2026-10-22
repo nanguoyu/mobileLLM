@@ -99,7 +99,7 @@ struct ToolsView: View {
                 }
             }
             .accessibilityIdentifier("tools.web-provider")
-            Text("DeepSeek uses the API key from the selected service in Online models and bills successful search/page requests. "
+            Text("Search queries and page URLs are sent to DeepSeek using the selected service's API key. Successful requests are billed by DeepSeek. "
                  + "It works with local and online models. Web search and Webpage reader still require their own tool switches.")
                 .font(.caption).foregroundStyle(Theme.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
