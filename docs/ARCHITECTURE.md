@@ -174,7 +174,9 @@ It rejects non-string entries, getters, and oversized collections without invoki
 observations, bounded verbatim excerpts, and observed source URLs. It performs no site requests, cannot
 select another workflow, excludes non-web and remote tool namespaces, and keeps failed reads distinct
 from retrieved pages. Search summaries never become page reads because a model calls them verified.
-The packet contains truncation flags and content digests; the external content itself remains untrusted.
+The packet has exact top-level keys `observations`, `sources`, and `truncated`. Observations contain
+per-excerpt truncation flags and content digests; the external content itself remains untrusted.
+Generated scripts pass the complete packet with `serialize(packet)` to avoid reconstructing optional fields.
 The session caches a packet only while its durable workflow sequence remains unchanged. Fact-checking
 stages consume this evidence, while final narrative synthesis should not regenerate verified rows.
 
@@ -191,6 +193,11 @@ three per verifier instead of the first verifier hoarding a full six-call share.
 tool capacity suppresses advertisement and results in an explicit `tool_choice: none`. Missing
 caps retain legacy policy, and changing a cap invalidates the affected replay prefix.
 
+A model-proposed batch larger than its positive remaining allowance is rejected as a whole. If its
+authorization, arguments and duplicate checks otherwise pass, one repair pass may propose fewer calls
+or a final answer. That pass consumes the existing model and repair budgets. A second oversized batch
+fails; no prefix of a rejected batch executes and the tool ceiling never increases.
+
 Generated candidates with phase metadata must contain a real `phase()` call; metadata declaring
 parallel work must contain a real `parallel()` call. Comments and quoted strings do not satisfy these
 checks. This candidate lint uses the existing single repair and does not change archived V1 replay.
@@ -203,7 +210,8 @@ repair phase; a later independent error can consume another repair only if the f
 budget permits it. Failure of the immediate repair still terminates. Failed model responses preserve
 reported token usage; missing metering after a contract violation conservatively consumes its reserved
 token capacity. Cancellation acknowledgements are checked against committed child results before
-escalating to reconciliation, and cancelled-child usage is preserved in optional `terminalUsage`.
+escalating to reconciliation. After observer loss, cleanup may wait a total of 350 ms for a durable
+terminal commit, without resubmitting the child. Cancelled-child usage is preserved in optional `terminalUsage`.
 Workflow summary counters also remain visible on failure.
 
 Online children share one admitted root family but use independent attempt lanes, allowing up to
