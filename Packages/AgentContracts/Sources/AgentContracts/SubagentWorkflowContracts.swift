@@ -121,15 +121,27 @@ public struct SubagentResult: Hashable, Codable, Sendable {
     public let runID: AgentRunID
     public let handleID: AgentExecutionHandleID
     public let outcome: SubagentOutcome
+    /// Cancelled outcomes historically had no usage field. Preserve metered work without changing
+    /// that enum's wire shape; old records omit this field and continue to decode.
+    public let terminalUsage: AgentUsage?
+
+    public var usage: AgentUsage {
+        switch outcome {
+        case .completed(_, let usage), .failed(_, let usage): usage
+        case .cancelled: terminalUsage ?? .zero
+        }
+    }
 
     public init(
         runID: AgentRunID,
         handleID: AgentExecutionHandleID,
-        outcome: SubagentOutcome
+        outcome: SubagentOutcome,
+        terminalUsage: AgentUsage? = nil
     ) {
         self.runID = runID
         self.handleID = handleID
         self.outcome = outcome
+        self.terminalUsage = terminalUsage
     }
 }
 

@@ -376,16 +376,14 @@ extension AgentRunController {
             "state": .string(facts.projection.state.rawValue),
             "stateVersion": .unsignedInteger(facts.projection.stateVersion),
             "modelAttempt": .unsignedInteger(attempt),
-            "structuredRepair": .bool(history.repairCount > 0),
+            "structuredRepair": .bool(history.pendingRepair != nil),
             "toolFreeSynthesis": .bool(toolFree),
             "toolInvocationsUsed": .unsignedInteger(facts.budgetLedger?.consumed.quantities[.toolInvocations] ?? 0),
             "toolInvocationsRemaining": .unsignedInteger(facts.budgetLedger?.availableCapacity[.toolInvocations] ?? 0),
         ]
-        if history.repairCount > 0 {
-            let lastRepair = history.diagnostics.last { $0.1.code == "execution.structured-repair" }
-                ?? history.diagnostics.last { $0.1.code == "execution.repeated-tool-call" }
+        if let lastRepair = history.pendingRepair {
             stateFields["repairInstruction"] = .string(
-                lastRepair?.1.code == "execution.repeated-tool-call"
+                lastRepair.1.code == "execution.repeated-tool-call"
                     ? "Your last tool call already executed in this turn. Do NOT call any tool again — "
                         + "answer the user's request directly with text only."
                     : "Return exactly one valid action matching the advertised response contract. "
@@ -652,7 +650,7 @@ extension AgentRunController {
         )
         let generation = try generationParameters(
             frozen.generationParameters,
-            repair: history.repairCount > 0
+            repair: history.pendingRepair != nil
         )
         let modelRequest = try AgentModelRequest(
             requestID: facts.projection.requestID,
@@ -816,7 +814,7 @@ extension AgentRunController {
             request: modelRequest,
             budget: facts.submission!.request.payload.budget,
             maximumActiveMilliseconds: attemptActiveReservation,
-            structuredRepair: history.repairCount > 0
+            structuredRepair: history.pendingRepair != nil
         )
         guard let durableLedger = facts.budgetLedger else {
             throw AgentExecutionError.invalidRecoveryBoundary
@@ -870,12 +868,15 @@ extension AgentRunController {
             )
         } catch let error as AgentModelRuntimeError {
             _ = await arbiter.cancelDrainAndReleaseDecode(decodeLease)
-            if case .providerContractViolation = error {
+            if case .providerContractViolation(let contractError) = error {
                 try await commitMalformedModelAttempt(
                     runID: facts.projection.runID,
                     stepID: modelRequest.stepID,
                     reservation: reservation,
-                    repairAlreadyAttempted: history.structuredRepairCount > 0
+                    repairAlreadyAttempted: history.structuredRepairCount > 0,
+                    diagnostic: String(contractError.localizedDescription.unicodeScalars.filter {
+                        !CharacterSet.controlCharacters.contains($0)
+                    }.map(Character.init).prefix(512))
                 )
                 return
             }
@@ -896,7 +897,9 @@ extension AgentRunController {
                 runID: facts.projection.runID,
                 stepID: modelRequest.stepID,
                 reservation: reservation,
-                repairAlreadyAttempted: history.structuredRepairCount > 0
+                repairAlreadyAttempted: history.structuredRepairCount > 0,
+                diagnostic: failure.code,
+                reportedUsage: execution.reportedUsage
             )
             return
         }
@@ -1226,16 +1229,28 @@ extension AgentRunController {
         runID: AgentRunID,
         stepID: AgentStepID,
         reservation: BudgetReservation,
-        repairAlreadyAttempted: Bool
+        repairAlreadyAttempted: Bool,
+        diagnostic: String,
+        reportedUsage: AgentModelUsage? = nil
     ) async throws {
         let facts = try await repository.loadRunFacts(for: runID)
         guard let facts, let currentLedger = facts.budgetLedger else {
             throw AgentExecutionError.invalidRecoveryBoundary
         }
-        let actual = AgentUsage(quantities: BudgetQuantities([
-            .modelAttempts: 1,
-            .structuredRepairs: reservation.maximumUsage.quantities[.structuredRepairs] > 0 ? 1 : 0,
-        ]))
+        let isRepair = reservation.maximumUsage.quantities[.structuredRepairs] > 0
+        let actual: AgentUsage
+        if let reportedUsage {
+            actual = usage(reportedUsage, structuredRepair: isRepair)
+        } else {
+            // A provider-contract failure may have spent tokens before validation failed. Do not
+            // turn missing metering into a free model pass; retain conservative token consumption.
+            actual = AgentUsage(quantities: BudgetQuantities([
+                .modelAttempts: 1, .structuredRepairs: isRepair ? 1 : 0,
+                .inputTokens: reservation.maximumUsage.quantities[.inputTokens],
+                .outputTokens: reservation.maximumUsage.quantities[.outputTokens],
+                .contextTokensPerAttempt: reservation.maximumUsage.quantities[.contextTokensPerAttempt],
+            ]))
+        }
         let settled = try currentLedger.settling(
             reservationID: reservation.id,
             actualUsage: actual
@@ -1243,7 +1258,7 @@ extension AgentRunController {
         let malformed = try AgentFailure(
             code: "execution.malformed-model-action",
             classification: .permanent,
-            safeMessage: "The model returned an invalid structured action.",
+            safeMessage: "The model returned an invalid action: \(diagnostic)",
             retryAdvice: .never,
             externalEffect: .confirmedNone,
             requiredUserAction: .none,
@@ -1268,7 +1283,7 @@ extension AgentRunController {
                 let exhausted = try ExecutionFailureFactory.make(
                     reason: .internalFailure,
                     code: "execution.structured-repair-exhausted",
-                    message: "The model could not produce a valid structured action after one repair attempt."
+                    message: "The model could not produce a valid action after one repair attempt: \(diagnostic)"
                 )
                 let terminalStatus = try self.status(
                     after: builder,

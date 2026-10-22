@@ -970,8 +970,8 @@ private actor DynamicWorkflowSession {
             let nextUsage = try await commitSettlement(
                 call: call,
                 admission: admission,
-                outcome: .stopped(usage: .zero),
-                usage: .zero
+                outcome: .stopped(usage: result.usage),
+                usage: result.usage
             )
             budgetCounter.update(spent: nextUsage.quantities[.outputTokens])
             return .stopped
@@ -1010,8 +1010,15 @@ private actor DynamicWorkflowSession {
         if projection.outcomes[call.callID] != nil { return }
         let spawner = self.spawner
         let cleanup = Task.detached {
-            try await spawner.cancel(handleID, runID: call.childRunID)
-            return try await spawner.collect(handleID)
+            do {
+                try await spawner.cancel(handleID, runID: call.childRunID)
+                return try await spawner.collect(handleID)
+            } catch {
+                // Cancellation acknowledgement/event-stream races do not invalidate a committed
+                // terminal result. Unknown live outcomes still require reconciliation below.
+                if let terminal = try await spawner.terminalResult(handleID) { return terminal }
+                throw error
+            }
         }
         let result: SubagentResult
         do {
@@ -1041,8 +1048,8 @@ private actor DynamicWorkflowSession {
             _ = try await commitSettlement(
                 call: call,
                 admission: admission,
-                outcome: .stopped(usage: .zero),
-                usage: .zero
+                outcome: .stopped(usage: result.usage),
+                usage: result.usage
             )
         case .completed, .failed:
             if case .failed(let failure, _) = result.outcome,

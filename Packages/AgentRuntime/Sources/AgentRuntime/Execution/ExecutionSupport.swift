@@ -416,6 +416,15 @@ struct ExecutionHistory: Sendable {
         structuredRepairCount + duplicateRepairCount
     }
 
+    /// A repair constrains and charges only the immediately following model attempt. A successful
+    /// repaired tool call must not turn every later normal continuation into another repair.
+    var pendingRepair: (AgentEventRecord, AgentFailure)? {
+        guard let repair = diagnostics.last(where: {
+            $0.1.code == "execution.structured-repair" || $0.1.code == "execution.repeated-tool-call"
+        }), modelOutcomes.last.map({ $0.0.sequence < repair.0.sequence }) ?? true else { return nil }
+        return repair
+    }
+
     var structuredRepairCount: UInt64 {
         UInt64(diagnostics.lazy.filter { $0.1.code == "execution.structured-repair" }.count)
     }

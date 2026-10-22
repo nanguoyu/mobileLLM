@@ -18,6 +18,8 @@ public enum SubagentSpawnError: Error, Hashable, Sendable {
 /// parent ceiling, carry independent budgets, return structured results and artifacts, and can never
 /// approve their own external access.
 public protocol SubagentSpawning: Sendable {
+    /// Read a committed terminal result without starting or resuming a child.
+    func terminalResult(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult?
     /// Submits one child run under a reserved parent identity and returns its execution handle.
     func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID
     /// Waits for the child's durable terminal result.
@@ -44,6 +46,7 @@ public protocol SubagentSpawning: Sendable {
 }
 
 public extension SubagentSpawning {
+    func terminalResult(_: AgentExecutionHandleID) async throws -> SubagentResult? { nil }
     func collect(_ handleID: AgentExecutionHandleID,
                  onProgress: @escaping @Sendable () async -> Void) async throws -> SubagentResult {
         try await collect(handleID)
@@ -179,6 +182,11 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
         return try await collectHandle(handle, onProgress: nil)
     }
 
+    public func terminalResult(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult? {
+        let handle = try await executor.attach(to: handleID)
+        return try await handle.result().map(Self.normalize)
+    }
+
     public func collect(_ handleID: AgentExecutionHandleID,
                         onProgress: @escaping @Sendable () async -> Void) async throws -> SubagentResult {
         let handle = try await executor.attach(to: handleID)
@@ -192,6 +200,7 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
 
     private func collectHandle(_ handle: any AgentExecutionHandle,
                                onProgress: (@Sendable () async -> Void)?) async throws -> SubagentResult {
+        if let result = try await handle.result() { return try Self.normalize(result) }
         try Self.rejectReconciliationWait(try await handle.status())
         for try await envelope in handle.events(after: nil) {
             await onProgress?()
@@ -204,6 +213,7 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
             }
             return try Self.normalize(result)
         }
+        if let result = try await handle.result() { return try Self.normalize(result) }
         throw SubagentSpawnError.resultUnavailable
     }
 
@@ -346,7 +356,8 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
         return SubagentResult(
             runID: result.runID,
             handleID: result.executionHandleID,
-            outcome: outcome
+            outcome: outcome,
+            terminalUsage: result.status.state == .cancelled ? result.usage : nil
         )
     }
 

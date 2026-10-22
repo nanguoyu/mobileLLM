@@ -82,6 +82,10 @@ final class MultiAgentWorkflowIntegrationTests: XCTestCase {
         }
         XCTAssertEqual(answer.text, "parent answer")
         XCTAssertEqual(childResult.runID, childRunID)
+        let durableResult = try await spawner.terminalResult(childHandleID)
+        XCTAssertEqual(durableResult, childResult)
+        let recollected = try await spawner.collect(childHandleID)
+        XCTAssertEqual(recollected, childResult, "Collection must work after the original stream has finished")
 
         _ = try await collectTerminalEvents(
             from: try await harness.executor.attach(to: parentHandleID)

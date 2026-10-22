@@ -44,19 +44,23 @@ public struct AgentModelExecutionResult: Hashable, Sendable {
     public let provisionalAnswer: AgentModelProvisionalAnswerDisposition
     public let responseBytes: UInt64?
     public let responseDigest: StableDigest?
+    /// Last validated provider usage, including when a malformed response has no terminal answer.
+    public let reportedUsage: AgentModelUsage?
 
     fileprivate init(
         outcome: AgentModelAttemptOutcome,
         interruption: AgentModelInterruption?,
         provisionalAnswer: AgentModelProvisionalAnswerDisposition,
         responseBytes: UInt64?,
-        responseDigest: StableDigest?
+        responseDigest: StableDigest?,
+        reportedUsage: AgentModelUsage?
     ) {
         self.outcome = outcome
         self.interruption = interruption
         self.provisionalAnswer = provisionalAnswer
         self.responseBytes = responseBytes
         self.responseDigest = responseDigest
+        self.reportedUsage = reportedUsage
     }
 }
 
@@ -243,7 +247,8 @@ public struct AgentModelExecutor: Sendable {
             interruption: interruption,
             provisionalAnswer: disposition,
             responseBytes: responseBytes,
-            responseDigest: responseDigest
+            responseDigest: responseDigest,
+            reportedUsage: snapshot.lastUsage
         )
     }
 
@@ -268,7 +273,8 @@ public struct AgentModelExecutor: Sendable {
             interruption: nil,
             provisionalAnswer: disposition,
             responseBytes: nil,
-            responseDigest: nil
+            responseDigest: nil,
+            reportedUsage: snapshot.lastUsage
         )
     }
 
@@ -294,7 +300,8 @@ public struct AgentModelExecutor: Sendable {
             interruption: try interruption(reason: reason, usage: snapshot.lastUsage),
             provisionalAnswer: disposition,
             responseBytes: nil,
-            responseDigest: nil
+            responseDigest: nil,
+            reportedUsage: snapshot.lastUsage
         )
     }
 

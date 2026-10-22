@@ -235,6 +235,33 @@ final class DynamicWorkflowAdversarialTests: XCTestCase {
         XCTAssertTrue(cancelled)
     }
 
+    func testCancellationUsesCommittedResultWhenAcknowledgementIsLostAndKeepsUsage() async throws {
+        let fixture = try ADWorkflowFixture(body: "return await agent('held');")
+        let spawner = ADControlledSpawner(mode: .held, losesCancellationAcknowledgement: true)
+        let engine = ADWorkflowFixture.engine(journal: InMemoryDynamicWorkflowJournal(), spawner: spawner)
+        let launch = fixture.launch()
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: launch)
+        try await engine.approveLaunch(runID: launch.runID, approvalID: ApprovalID())
+        try await engine.start(runID: launch.runID)
+        let started = try await ADEventually { await spawner.collectCount == 1 }
+        XCTAssertTrue(started)
+        try await engine.stop(runID: launch.runID)
+        let stopped = try await ADEventually { try await engine.projection(runID: launch.runID)?.state == .cancelled }
+        XCTAssertTrue(stopped)
+        let loaded = try await engine.projection(runID: launch.runID)
+        let projection = try XCTUnwrap(loaded)
+        XCTAssertNil(projection.reconciliationCallID)
+        XCTAssertEqual(projection.usage.quantities[.inputTokens], 14)
+        let handle = try XCTUnwrap(projection.submittedHandles.values.first)
+        let committed = await spawner.terminalResult(handle)
+        let terminal = try XCTUnwrap(committed)
+        let encoded = try JSONEncoder().encode(terminal)
+        XCTAssertEqual(try JSONDecoder().decode(SubagentResult.self, from: encoded).usage, terminal.usage)
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        legacy.removeValue(forKey: "terminalUsage")
+        XCTAssertEqual(try JSONDecoder().decode(SubagentResult.self, from: JSONSerialization.data(withJSONObject: legacy)).usage, .zero)
+    }
+
     func testUncertainChildStopsForReconciliationWithoutSettlingOrRetrying() async throws {
         let fixture = try ADWorkflowFixture(body: "return await agent('external-effect');")
         let journal = InMemoryDynamicWorkflowJournal()
@@ -1349,6 +1376,7 @@ private actor ADControlledSpawner: SubagentSpawning {
     enum Mode { case held, releasable, uncertain }
 
     let mode: Mode
+    let losesCancellationAcknowledgement: Bool
     private var bindings: [AgentExecutionHandleID: (runID: AgentRunID, prompt: String)] = [:]
     private var cancelled: Set<AgentExecutionHandleID> = []
     private var released = false
@@ -1356,7 +1384,16 @@ private actor ADControlledSpawner: SubagentSpawning {
     private(set) var collectCount = 0
     private(set) var cancelCount = 0
 
-    init(mode: Mode) { self.mode = mode }
+    init(mode: Mode, losesCancellationAcknowledgement: Bool = false) {
+        self.mode = mode
+        self.losesCancellationAcknowledgement = losesCancellationAcknowledgement
+    }
+
+    func terminalResult(_ handleID: AgentExecutionHandleID) -> SubagentResult? {
+        guard cancelled.contains(handleID), let binding = bindings[handleID] else { return nil }
+        return SubagentResult(runID: binding.runID, handleID: handleID, outcome: .cancelled,
+            terminalUsage: losesCancellationAcknowledgement ? AgentUsage(quantities: BudgetQuantities([.inputTokens: 14])) : nil)
+    }
 
     func spawn(_ request: SubagentSpawnRequest) -> AgentExecutionHandleID {
         spawnCount += 1
@@ -1392,7 +1429,7 @@ private actor ADControlledSpawner: SubagentSpawning {
             while !cancelled.contains(handleID) {
                 try await Task.sleep(nanoseconds: 2_000_000)
             }
-            return SubagentResult(runID: binding.runID, handleID: handleID, outcome: .cancelled)
+            return terminalResult(handleID)!
         case .releasable:
             while !released, !cancelled.contains(handleID) {
                 try await Task.sleep(nanoseconds: 2_000_000)
@@ -1408,9 +1445,10 @@ private actor ADControlledSpawner: SubagentSpawning {
         }
     }
 
-    func cancel(_ handleID: AgentExecutionHandleID, runID: AgentRunID) {
+    func cancel(_ handleID: AgentExecutionHandleID, runID: AgentRunID) throws {
         guard bindings[handleID]?.runID == runID else { return }
         if cancelled.insert(handleID).inserted { cancelCount += 1 }
+        if losesCancellationAcknowledgement { throw SubagentSpawnError.resultUnavailable }
     }
 
     func releaseAll() { released = true }

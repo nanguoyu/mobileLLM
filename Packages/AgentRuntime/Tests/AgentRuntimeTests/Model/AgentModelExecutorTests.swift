@@ -153,7 +153,7 @@ final class AgentModelExecutorTests: XCTestCase {
         let thrownProvider = ScriptedModelProvider(
             descriptor: fixture.descriptor,
             capabilities: fixture.capabilities,
-            emissions: [ScriptedEmission(.answerDelta("Uncommitted"))],
+            emissions: [ScriptedEmission(.answerDelta("Uncommitted")), ScriptedEmission(.usage(try AgentModelUsage(inputTokens: 17, outputTokens: 4, activeMilliseconds: 3, peakMemoryBytes: 0)))],
             termination: .providerFailure(failure)
         )
         let thrown = try await AgentModelExecutor().execute(
@@ -162,6 +162,8 @@ final class AgentModelExecutorTests: XCTestCase {
         )
         XCTAssertEqual(thrown.outcome, .failed(failure))
         XCTAssertEqual(thrown.provisionalAnswer, .discarded("Uncommitted"))
+        XCTAssertEqual(thrown.reportedUsage?.inputTokens, 17)
+        XCTAssertEqual(thrown.reportedUsage?.outputTokens, 4)
         XCTAssertNil(thrown.responseBytes)
 
         let unknownProvider = ScriptedModelProvider(
