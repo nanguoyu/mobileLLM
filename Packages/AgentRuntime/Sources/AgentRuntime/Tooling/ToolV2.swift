@@ -19,6 +19,13 @@ public struct ToolExecutionRequest: Hashable, Codable, Sendable {
     public let userSourceText: String?
     public var userSourceTextDigest: StableDigest? { userSourceText.map { StableDigest.sha256(Data($0.utf8)) } }
 
+    /// Scalar boundaries preserve valid UTF-8 and guarantee the 16 KiB evidence limit, including emoji.
+    static func sourceTextPrefix(_ text: String) -> String {
+        var result = ""
+        for scalar in text.unicodeScalars.prefix(4_096) { result.unicodeScalars.append(scalar) }
+        return result
+    }
+
     public init(
         proposedCall: ProposedToolCall,
         descriptor: AgentToolDescriptor,

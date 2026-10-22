@@ -366,7 +366,7 @@ extension AgentRunController {
             sanitizedArguments: sanitized,
             userSourceText: canBindSource && request.provenance.source.projectsConversation
                 && descriptor.id.logicalID.providerID == "builtin" && descriptor.id.logicalID.name == "remember"
-                ? String(request.instruction.prefix(4_096)) : nil
+                ? ToolExecutionRequest.sourceTextPrefix(request.instruction) : nil
         )
         let grant = try StepCapabilityGrant(
             runCeiling: request.capabilityCeiling,

@@ -38,7 +38,7 @@ final class ChatMappingTests: XCTestCase {
     func testNativeToolCallIsForwardedWithoutExposingOrTruncatingItsMarkup() throws {
         let wire = try MLXLLMEngine.toolCallText(name: "lookup",
             argumentsJSON: Data("{\"value\":\"</tool_call>\"}".utf8))
-        var parser = ToolCallProcessor()
+        var parser = LLMCore.ToolCallProcessor()
         let events = parser.feed(wire) + parser.finish()
         guard case .call(let call)? = events.first else { return XCTFail("Expected one parsed tool call") }
         XCTAssertEqual(events.count, 1)

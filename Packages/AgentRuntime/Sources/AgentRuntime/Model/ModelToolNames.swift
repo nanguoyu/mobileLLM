@@ -10,9 +10,12 @@ enum ModelToolNames {
     ) -> [LocalModelToolBinding] {
         let nameCounts = Dictionary(grouping: descriptors, by: { $0.id.logicalID.name })
             .mapValues(\.count)
+        let reserved = Set(descriptors.map { $0.id.logicalID.name })
+        var used = Set<String>()
         return descriptors.enumerated().map { index, descriptor in
             let name = descriptor.id.logicalID.name
             if nameCounts[name] == 1, isSafeWireName(name) {
+                used.insert(name)
                 return LocalModelToolBinding(wireName: name, descriptor: descriptor)
             }
             let digest = StableDigest.fingerprint(
@@ -20,10 +23,15 @@ enum ModelToolNames {
                 components: [Data(descriptor.id.logicalID.description.utf8)]
             ).rawValue.prefix(10)
             let stem = sanitizedStem(name)
-            return LocalModelToolBinding(
-                wireName: "tool_\(index + 1)_\(stem)_\(digest)",
-                descriptor: descriptor
-            )
+            let base = "tool_\(index + 1)_\(stem)_\(digest)"
+            var alias = base
+            var suffix = 0
+            while reserved.contains(alias) || used.contains(alias) {
+                suffix += 1
+                alias = base + "_" + String(suffix)
+            }
+            used.insert(alias)
+            return LocalModelToolBinding(wireName: alias, descriptor: descriptor)
         }
     }
 
@@ -34,7 +42,7 @@ enum ModelToolNames {
         else { return false }
         return name.unicodeScalars.dropFirst().allSatisfy {
             isASCIIAlpha($0) || (0x30 ... 0x39).contains($0.value)
-                || $0 == "_" || $0 == "-" || $0 == "."
+                || $0 == "_" || $0 == "-"
         }
     }
 

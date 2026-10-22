@@ -54,6 +54,21 @@ final class MockResponsesURLProtocol: URLProtocol {
 
 final class ResponsesAPIModelProviderTests: XCTestCase {
 
+    func testWireAliasesCannotCollideWithARealToolNameAndExcludeDots() throws {
+        func descriptor(_ name: String) throws -> AgentToolDescriptor {
+            try MCPToolV2Adapter.descriptor(spec: MCPToolSpec(name: name, description: "Lookup", inputSchemaJSON: "{\"type\":\"object\"}"),
+                                           serverStableID: UUID(), trustRevision: "test")
+        }
+        let dotted = try descriptor("lookup.v2")
+        let reserved = try XCTUnwrap(ModelToolNames.bindings(for: [dotted]).first?.wireName)
+        let spoof = try descriptor(reserved)
+        let names = ModelToolNames.bindings(for: [dotted, spoof]).map(\.wireName)
+        XCTAssertEqual(Set(names).count, 2)
+        XCTAssertFalse(names.contains { $0.contains(".") })
+        XCTAssertEqual(names[1], reserved)
+    }
+
+
     func testNativeToolResultsReplayCallIdentityAndReasoningAfterSerialization() throws {
         let fixture = try ModelFixture(location: .remote, providerID: ResponsesAPIModelProvider.providerID)
         let reasoning: JSONValue = .object(["type": .string("reasoning"), "id": .string("rs_1"),
