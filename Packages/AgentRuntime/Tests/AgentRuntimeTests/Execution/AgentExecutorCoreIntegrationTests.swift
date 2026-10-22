@@ -333,7 +333,7 @@ final class AgentExecutorCoreIntegrationTests: XCTestCase {
         )
         let acceptedMessage = try AcceptedUserMessagePayload.decode(userBytes)
         XCTAssertEqual(acceptedMessage.text, harness.frozenInputs.currentUser.frozen.content)
-        XCTAssertEqual(acceptedMessage.attachments, harness.frozenInputs.currentUser.artifacts)
+        XCTAssertEqual(acceptedMessage.attachments, harness.frozenInputs.currentUser.attachments)
 
         let structuredArtifacts = events.compactMap { event -> ArtifactReference? in
             if case .artifactCommitted(let reference) = event.payload.event { return reference }
