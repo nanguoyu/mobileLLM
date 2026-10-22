@@ -2,6 +2,9 @@
 
 import Foundation
 import XCTest
+#if canImport(UIKit)
+import UIKit
+#endif
 
 private struct DynamicWorkflowExplorationScenario {
     enum MarkerPlacement {
@@ -210,7 +213,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
             throw DeviceE2EHarnessError.precondition("Composer missing for \(scenario.id)")
         }
         field.tap()
-        field.typeText(scenario.command)
+        try enterGoal(scenario.command, into: field, in: app)
         let send = app.buttons["Send"]
         guard waitForEnabled(send, timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Send disabled for \(scenario.id)")
@@ -417,6 +420,38 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
             "Complex workflow \(scenario.id) failed quality checks:\n- "
                 + failures.joined(separator: "\n- ")
         )
+    }
+
+    /// Long evidence packets should enter through the same native composer in one paste event,
+    /// instead of spending minutes synthesizing thousands of individual keyboard events.
+    @MainActor
+    private func enterGoal(_ text: String, into field: XCUIElement, in app: XCUIApplication) throws {
+        #if canImport(UIKit)
+        if text.utf8.count > 8_000 {
+            let board = UIPasteboard.general
+            board.setItems([["public.utf8-plain-text": text]], options: [
+                .localOnly: true,
+                .expirationDate: Date().addingTimeInterval(120)
+            ])
+            let ownChange = board.changeCount
+            defer { if board.changeCount == ownChange { board.items = [] } }
+            field.press(forDuration: 1)
+            let paste = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@", "Paste")).firstMatch
+            guard paste.waitForExistence(timeout: 8) else {
+                throw DeviceE2EHarnessError.precondition("Native Paste action unavailable for long workflow goal")
+            }
+            paste.tap()
+            let inserted = NSPredicate { element, _ in
+                (element as? XCUIElement)?.value as? String == text
+            }
+            guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: inserted, object: field)], timeout: 15) == .completed else {
+                throw DeviceE2EHarnessError.precondition("Composer did not receive the complete pasted workflow goal")
+            }
+            return
+        }
+        #endif
+        field.typeText(text)
     }
 
     @MainActor
