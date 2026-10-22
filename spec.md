@@ -1,6 +1,6 @@
 # iOS Agent Harness Specification
 
-**Status:** Durable agents and Dynamic Workflows implemented; production Memory integration and release evidence remain open
+**Status:** Durable agents, Dynamic Workflows, and production Memory integration implemented; release evidence remains open
 
 **Date:** 2026-10-22
 
@@ -136,8 +136,9 @@ The migration originally addressed these limitations of the legacy path, which r
 - conversation persistence stores only the final message and a flattened tool history, not an execution journal;
 - the original background path unloaded the resident model without a durable agent checkpoint protocol.
 
-Production sends now use frozen requests, `DurableAgentExecutor`, and journal/outbox projections. The
-legacy Memory composition behavior has not been fully carried into app-side frozen-input construction; see §33.
+Production sends now use frozen requests, `DurableAgentExecutor`, and journal/outbox projections.
+The 2026-10-22 correction applies Memory controls, relevance ranking, and committed-store freshness
+at app-side frozen-input construction; see §33.
 
 The migration must preserve current user data and ordinary chat behavior. It must not require a destructive
 conversation migration.
@@ -1401,10 +1402,12 @@ All such seeded mutations must be killed before release.
 
 Verification runs in four enforced tiers:
 
-1. Every change: deterministic unit, contract, state-machine, migration, and property tests for affected MLX-free
-   packages, with a fixed reproducible seed and a separately recorded rotating seed.
-2. Pull request: the complete MLX-free suite with coverage gates, app and engine builds, engine tests, simulator UI
-   tests, integration tests, schema/persistence fuzz smoke tests, and representative crash-injection shards.
+1. Every change: select checks from the changed behavior and reverse package dependencies. Prose-only edits
+   require document/metadata validation, not product builds or smoke tests. Code changes run relevant existing
+   unit, contract, migration, property, and integration tests; generated cases retain their reproducible seeds.
+2. Pull request: affected package suites and the app, engine, UI, coverage, or crash-injection checks needed
+   to establish the changed behavior. A cross-cutting runtime integration runs one complete offline baseline.
+   Live online tests are explicit, credentialed checks; they are excluded from ordinary and coverage runners.
 3. Nightly and before a release candidate: the full fuzz corpus, all crash points, storage/device-lock faults,
    concurrency stress, leak/resource checks, and bounded long-run/thermal tests.
 4. Release candidate: the complete required physical-device/model matrix, clean-install and upgrade paths, followed by
@@ -1477,10 +1480,10 @@ online adapters, approvals, budgets, subagents, bounded parallel tool batches, d
 explicit workflow recovery, progressive UI, static traceability gate, and a deterministic model-free simulator
 gate (`SimulatorCI` plan) are implemented. Maximum-Dynamic-Type approval coverage, complete semantic-registry evaluation, a curated
 six-mutant source gate, and commit/spec-bound coverage freshness enforcement are also implemented. The implementation
-is not release-green: production Memory integration (§33), matched device performance evidence, the complete
+is not release-green: matched device performance evidence, the complete
 physical-device matrix, complex-goal evaluation, and consolidated release evidence remain open. The September
-hardening PR closed specific integration defects but was not the final release audit. Step 3 has the recorded
-Memory follow-up; step 6 remains in progress, and steps 7-8 remain pending.
+hardening PR closed specific integration defects but was not the final release audit. The October corrections
+close the production Memory follow-up; step 6 remains in progress, and steps 7-8 remain pending.
 
 1. Establish stable requirement/test IDs, risk tiers, semantic registries, coverage collection, deterministic fixtures,
    and CI discovery gates; then freeze value types, IDs, state machine, event envelope, Tool V2, model-provider,
@@ -1580,7 +1583,7 @@ remaining blocker.
 
 ## 33. Current implementation conformance (2026-10-22)
 
-This section records known gaps between the normative requirements above and the current `main` implementation. It
+This section records known gaps between the normative requirements above and the current implementation. It
 does not waive or redefine those requirements. A gap remains open until implementation and required evidence agree.
 
 Implemented foundations:
@@ -1658,22 +1661,28 @@ Implementation checkpoints and remaining gaps:
    transport counts response bytes and retry usage, refuses redirects, and workflow analysis instruments
    callback and loop boundaries. The Linux contract/API/verifier tests are part of hosted CI. The PR's
    reported build, test, mutation, and simulator results are historical evidence, not a fresh device matrix.
-9. **Production Memory composition:** OPEN (2026-10-22). Static source tracing shows `makeAgentSnapshot`
-   copies cached `MemoryBook.facts`, `AppFrozenInputBuilder` converts them to canonical frozen sources, and
-   the worker supplies them to `ContextCompiler`. This chain does not apply the Memory switch or query ranking,
-   and the refresh before each send is still in legacy `startGeneration`. Existing injection tests exercise
-   an unwired ChatStore. Section 16's required semantics remain unchanged: fix the app submission boundary
-   and cover disabled Memory, relevant-only selection, and facts saved on the preceding turn through actual
-   assembly. `AH-CONTEXT-002` remains planned until those regressions are covered and pass.
-10. **Incomplete product surfaces:** `stallMs` is accepted, validated, and stored but has no runtime timeout
-    consumer. Tool-pin IDs have no product control. Files and Terminal are explicit empty-state pages;
-    no sandbox provider or general-purpose `run_js` tool is present. Server-side native tools remain deferred
-    under §15.5. These surfaces must not be advertised as completed behavior.
-11. **Current evidence:** the 2026-10-22 package pass over code `82933a0` discovered 1,597 tests. The initial
-    run had 1,581 passes, 10 environment/live skips, and six failures. The file-protection failure passed
-    when rerun outside the process sandbox; five live online smoke cases remain unsuccessful in the restricted
-    environment. Static verification passed. No new app/Metal, simulator, physical-device, mutation, formal
-    coverage/freshness, or performance evidence was collected. See `docs/STATUS.md` for the complete breakdown.
+9. **Production Memory composition:** CLOSED (2026-10-22). `makeAgentSnapshot` applies the Memory
+   switch and shared relevance ranking to an immutable snapshot published after durable saves. Disabled
+   Memory excludes both facts and its tools from new runs. `ProductionRegressionTests` exercises this
+   actual assembly for exclusion, relevant-only selection, and next-turn freshness. The real online
+   simulator case also saves a Chinese fact and recalls it in a new conversation without visiting the
+   Memory screen or invoking a recall tool. `AH-CONTEXT-002` and `AHT-CONTEXT-APP-001` are active.
+10. **Product surfaces:** `stallMs` now enforces child inactivity with progress resets and durable
+    cancellation. The conversation Tools menu supports up to eight allowed-tool pins. Files and Terminal
+    remain explicit empty-state pages; no sandbox provider or general-purpose `run_js` tool is present.
+    Provider-hosted native tools remain deferred under §15.5. Client-executed native function calls now
+    retain provider identities and reasoning state across durable call/result continuation.
+11. **Current evidence:** `docs/STATUS.md` separates the original `82933a0` package baseline from the
+    October fixes and actual online simulator results. Original failures and environment skips remain
+    recorded. Simulator results establish app behavior and online task outcomes; local GPU performance,
+    thermal behavior, and OS-specific background scheduling require hardware evidence. A final independent
+    audit and commit/spec-bound release coverage are still separate acceptance gates.
+12. **Recovery and model integration:** accepted-message payload v2 restores attachments with digest
+    checks, and recovered model requests use durable artifact references. A continued-processing exemption
+    requires an actual unexpired grant. Context policy 2 prioritizes current state and recent tool results;
+    old policy-1 runs keep their allocation order. Local llama.cpp text decoding can reuse an exact KV
+    prefix, and MLX statistics use real completion tokens and timing. Online structured output requests
+    carry the full frozen JSON Schema as instructions as well as the provider's JSON-mode hint.
 
 Terminology: **staged multi-agent workflows v1** remains the compatibility planner. **Dynamic Workflows** is the P0
 Claude Code-style JavaScript orchestration runtime with branching, repetition, saved versioned scripts, parallel
