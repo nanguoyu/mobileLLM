@@ -485,6 +485,17 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         if calls.isEmpty {
             let structured = Self.isStructured(request)
             let finalText = structured ? Self.structuredJSONText(parsed.text) : parsed.text
+            let trimmed = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if ["<｜｜DSML｜｜tool_calls>", "<｜DSML｜tool_calls>", "<tool_call>"].contains(where: trimmed.hasPrefix) {
+                // Tool protocol text is neither an answer nor an authorized native invocation.
+                // The controller owns a single recorded repair, including for text-only children.
+                throw AgentModelProviderFailure(try AgentFailure(
+                    code: "model.online.malformed-action", classification: .permanent,
+                    safeMessage: "The model returned raw tool protocol text instead of a native tool call or answer.",
+                    retryAdvice: .never, externalEffect: .confirmedNone, requiredUserAction: .none,
+                    redaction: RedactionMetadata(classification: .publicMetadata, policyVersion: 1)
+                ))
+            }
             guard !finalText.isEmpty else {
                 // Empty JSON-mode content is malformed structured output, not a successful answer
                 // or a permanent configuration failure. The controller already owns one bounded,

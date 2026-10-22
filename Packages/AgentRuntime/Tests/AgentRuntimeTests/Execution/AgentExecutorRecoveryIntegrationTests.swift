@@ -169,6 +169,10 @@ final class AgentExecutorRecoveryIntegrationTests: XCTestCase {
         )
     }
 
+    func testOnlineToolProtocolTextGetsOneRecordedRepairInsteadOfACompletedAnswer() async throws {
+        try await assertTrustedStructuredFailureIsRepaired(code: "model.online.malformed-action", offset: 104)
+    }
+
     func testNonRetryableModelFailureClassificationMapsToStableTerminalReason() async throws {
         let cases: [(AgentFailureClassification, ExternalEffectDisposition, AgentTerminalReason)] = [
             (.budgetRelated, .confirmedNone, .budgetExceeded),

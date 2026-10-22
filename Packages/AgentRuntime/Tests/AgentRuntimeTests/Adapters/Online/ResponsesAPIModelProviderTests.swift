@@ -397,104 +397,121 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
     }
 
     func testGenerateUsesOfficialDeepSeekChatEndpointAndStreamsAnswer() async throws {
-        let streamBody = """
-        data: {"choices":[{"delta":{"reasoning_content":"private plan"}}]}
+        for answerText in [
+            "Kimi K3 cannot run locally on an iPhone 16 Pro.",
+            "The literal marker `<｜｜DSML｜｜tool_calls>` identifies a tool envelope.",
+            "<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name=\"fetch_webpage\">\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>"
+        ] {
+            let encodedText = String(decoding: try JSONEncoder().encode(answerText), as: UTF8.self)
+            let streamBody = """
+            data: {"choices":[{"delta":{"reasoning_content":"private plan"}}]}
 
-        data: {"choices":[{"delta":{"content":"Kimi K3 cannot run locally on an iPhone 16 Pro."}}]}
+            data: {"choices":[{"delta":{"content":\(encodedText)}}]}
 
-        data: {"choices":[{"finish_reason":"stop","delta":{}}],"usage":{"prompt_tokens":31,"completion_tokens":11}}
+            data: {"choices":[{"finish_reason":"stop","delta":{}}],"usage":{"prompt_tokens":31,"completion_tokens":11}}
 
-        data: [DONE]
+            data: [DONE]
 
-        """
-        MockResponsesURLProtocol.handler = { request in
-            XCTAssertEqual(request.url?.absoluteString, "https://api.deepseek.com/v1/chat/completions")
-            let body = MockResponsesURLProtocol.requestBodyString(request)
-            XCTAssertTrue(body.contains("\"messages\""), body)
-            XCTAssertTrue(body.contains("\"thinking\":{\"type\":\"disabled\"}"), body)
-            XCTAssertFalse(body.contains("\"input\""), body)
-            return (
-                HTTPURLResponse(
-                    url: request.url!,
-                    statusCode: 200,
-                    httpVersion: nil,
-                    headerFields: ["Content-Type": "text/event-stream"]
-                )!,
-                Data(streamBody.utf8)
-            )
-        }
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockResponsesURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        defer {
-            MockResponsesURLProtocol.handler = nil
-            MockResponsesURLProtocol.capturedRequest = nil
-        }
-
-        let fixture = try ModelFixture(
-            location: .remote,
-            thinkingMode: .disabled,
-            providerID: ResponsesAPIModelProvider.providerID,
-            remoteDestination: "openai.responses:responses-api-key:deepseek-v4-flash",
-            modelID: "deepseek-v4-flash"
-        )
-        let provider = try ResponsesAPIModelProvider(
-            configurationProvider: {
-                ResponsesAPIConfiguration(
-                    baseURL: "https://api.deepseek.com/v1",
-                    apiKey: "sk-test"
+            """
+            MockResponsesURLProtocol.handler = { request in
+                XCTAssertEqual(request.url?.absoluteString, "https://api.deepseek.com/v1/chat/completions")
+                let body = MockResponsesURLProtocol.requestBodyString(request)
+                XCTAssertTrue(body.contains("\"messages\""), body)
+                XCTAssertTrue(body.contains("\"thinking\":{\"type\":\"disabled\"}"), body)
+                XCTAssertFalse(body.contains("\"input\""), body)
+                return (
+                    HTTPURLResponse(
+                        url: request.url!,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "text/event-stream"]
+                    )!,
+                    Data(streamBody.utf8)
                 )
-            },
-            session: session
-        )
-        let cloudPolicy = try AgentModelPolicy(
-            localOnly: false,
-            allowedSelections: [fixture.request.selection],
-            strategy: .pinned,
-            requiredCapabilities: AgentModelCapabilitySet([])
-        )
-        let cloudContext = try ModelPreparationContext(
-            conversationID: fixture.context.conversationID,
-            modelPolicy: cloudPolicy,
-            capabilityGrant: fixture.context.capabilityGrant,
-            authorizationPayload: fixture.context.authorizationPayload,
-            maximumRequestBytes: fixture.context.maximumRequestBytes,
-            maximumResponseBytes: fixture.context.maximumResponseBytes,
-            timeoutMilliseconds: fixture.context.timeoutMilliseconds
-        )
-        let prepared = try await AgentModelRequestPreparer().prepare(
-            provider: provider,
-            request: fixture.request,
-            context: cloudContext
-        )
-        let policy = TestApprovalPolicyEngine()
-        let authorization = try await policy.bindLocalPolicy(
-            prepared: prepared.preparedRequest.externalOperation,
-            approvalID: ApprovalID(rawValue: ModelFixture.uuid(5)),
-            trustedRunAuthority: fixture.authority,
-            at: AgentTimestamp(rawValue: 1_000)
-        )
-        let authorized = AuthorizedAgentModelAttempt(
-            preparedAttempt: prepared,
-            request: try AuthorizedModelRequest(
-                request: fixture.request,
-                authorization: authorization,
-                clock: FixedAuthorizationClock(),
-                policyValidator: policy,
-                attemptLedger: TestAttemptLedger()
-            )
-        )
+            }
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [MockResponsesURLProtocol.self]
+            let session = URLSession(configuration: configuration)
+            defer {
+                MockResponsesURLProtocol.handler = nil
+                MockResponsesURLProtocol.capturedRequest = nil
+            }
 
-        let result = try await AgentModelExecutor().execute(
-            provider: provider,
-            authorized: authorized
-        )
-        guard case .completed(let completion) = result.outcome,
-              case .finalAnswer(let answer) = completion.action
-        else { return XCTFail("expected final answer, got \(result.outcome)") }
-        XCTAssertEqual(answer.text, "Kimi K3 cannot run locally on an iPhone 16 Pro.")
-        XCTAssertEqual(completion.usage.inputTokens, 31)
-        XCTAssertEqual(completion.usage.outputTokens, 11)
+            let fixture = try ModelFixture(
+                location: .remote,
+                thinkingMode: .disabled,
+                providerID: ResponsesAPIModelProvider.providerID,
+                remoteDestination: "openai.responses:responses-api-key:deepseek-v4-flash",
+                modelID: "deepseek-v4-flash"
+            )
+            let provider = try ResponsesAPIModelProvider(
+                configurationProvider: {
+                    ResponsesAPIConfiguration(
+                        baseURL: "https://api.deepseek.com/v1",
+                        apiKey: "sk-test"
+                    )
+                },
+                session: session
+            )
+            let cloudPolicy = try AgentModelPolicy(
+                localOnly: false,
+                allowedSelections: [fixture.request.selection],
+                strategy: .pinned,
+                requiredCapabilities: AgentModelCapabilitySet([])
+            )
+            let cloudContext = try ModelPreparationContext(
+                conversationID: fixture.context.conversationID,
+                modelPolicy: cloudPolicy,
+                capabilityGrant: fixture.context.capabilityGrant,
+                authorizationPayload: fixture.context.authorizationPayload,
+                maximumRequestBytes: fixture.context.maximumRequestBytes,
+                maximumResponseBytes: fixture.context.maximumResponseBytes,
+                timeoutMilliseconds: fixture.context.timeoutMilliseconds
+            )
+            let prepared = try await AgentModelRequestPreparer().prepare(
+                provider: provider,
+                request: fixture.request,
+                context: cloudContext
+            )
+            let policy = TestApprovalPolicyEngine()
+            let authorization = try await policy.bindLocalPolicy(
+                prepared: prepared.preparedRequest.externalOperation,
+                approvalID: ApprovalID(rawValue: ModelFixture.uuid(5)),
+                trustedRunAuthority: fixture.authority,
+                at: AgentTimestamp(rawValue: 1_000)
+            )
+            let authorized = AuthorizedAgentModelAttempt(
+                preparedAttempt: prepared,
+                request: try AuthorizedModelRequest(
+                    request: fixture.request,
+                    authorization: authorization,
+                    clock: FixedAuthorizationClock(),
+                    policyValidator: policy,
+                    attemptLedger: TestAttemptLedger()
+                )
+            )
+
+            let result = try await AgentModelExecutor().execute(
+                provider: provider,
+                authorized: authorized
+            )
+            if answerText.hasPrefix("<｜｜DSML｜｜tool_calls>") {
+                guard case .failed(let failure) = result.outcome else {
+                    XCTFail("Raw tool markup must not be committed as an answer or executed as a tool")
+                    continue
+                }
+                XCTAssertEqual(failure.code, "model.online.malformed-action")
+                XCTAssertEqual(failure.externalEffect, .confirmedNone)
+                XCTAssertEqual(failure.retryAdvice, .never)
+                continue
+            }
+            guard case .completed(let completion) = result.outcome,
+                  case .finalAnswer(let answer) = completion.action
+            else { return XCTFail("expected final answer, got \(result.outcome)") }
+            XCTAssertEqual(answer.text, answerText)
+            XCTAssertEqual(completion.usage.inputTokens, 31)
+            XCTAssertEqual(completion.usage.outputTokens, 11)
+        }
     }
 
     func testStructuredDeepSeekStreamNormalizesBeforePublishingProvisionalAnswer() async throws {

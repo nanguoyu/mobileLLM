@@ -99,11 +99,13 @@ public struct DeepSeekWebClient: Sendable {
                     let summary = item.summary.isEmpty ? item.snippet : item.summary
                     return "[\(index + 1)] \(item.title.prefix(512))\n\(item.url)\n\(summary.prefix(6000))"
                 }
-                text = entries.isEmpty ? "No web results found for: \(argument)" : entries.joined(separator: "\n\n")
+                text = "Retrieval: SEARCH_SUMMARIES_ONLY. No source page was fetched by this call.\n\n"
+                    + (entries.isEmpty ? "No web results found for: \(argument)" : entries.joined(separator: "\n\n"))
             case .fetch:
                 let page = try JSONDecoder().decode(PageResponse.self, from: response.body)
                 guard !page.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DeepSeekWebError.invalidResponse }
-                text = "\(page.title.prefix(512))\nSource: \(argument)\n\n\(page.content.prefix(20000))"
+                text = "Retrieval: FETCHED_PAGE_EXCERPT (up to 20000 characters, not necessarily the full page).\n"
+                    + "\(page.title.prefix(512))\nSource: \(argument)\n\n\(page.content.prefix(20000))"
             }
         } catch { throw DeepSeekWebError.invalidResponse }
         return DeepSeekWebResponse(text: text, requestBytes: UInt64(body.count), responseBytes: UInt64(response.body.count))

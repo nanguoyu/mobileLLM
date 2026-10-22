@@ -361,8 +361,7 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         let share = try attenuatedBudget(
             from: launch.budget,
             maximumConcurrentAgents: launch.limits.maximumConcurrentAgents,
-            schemaRepairAttempts: launch.limits.schemaRepairAttempts,
-            requiresStructuredOutput: call.options.schema != nil
+            schemaRepairAttempts: launch.limits.schemaRepairAttempts
         )
         let childBudget = try Self.budget(share, limitedBy: budgetLimit)
         let modelPolicy = try resolvedModelPolicy(
@@ -485,8 +484,7 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
     private func attenuatedBudget(
         from parent: AgentBudget,
         maximumConcurrentAgents: UInt16,
-        schemaRepairAttempts: UInt8,
-        requiresStructuredOutput: Bool
+        schemaRepairAttempts: UInt8
     ) throws -> AgentBudget {
         let share = try parent.limits.sharingCumulativeCapacity(
             among: UInt64(maximumConcurrentAgents)
@@ -503,26 +501,15 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         })) else {
             throw AppDynamicWorkflowIntegrationError.childBudgetCannotAttenuate
         }
-        values[.structuredRepairs] = callStructuredRepairLimit(
-            sharedLimit: values[.structuredRepairs, default: 0],
-            configuredAttempts: schemaRepairAttempts,
-            requiresStructuredOutput: requiresStructuredOutput
-        )
+        // Text-only children can also violate the native tool-call contract. Keep the same
+        // bounded repair allowance regardless of the requested final-answer representation.
+        values[.structuredRepairs] = min(values[.structuredRepairs, default: 0], UInt64(schemaRepairAttempts))
         let child = try AgentBudget(
             limits: BudgetQuantities(values),
             maximumThermalState: parent.maximumThermalState,
             memoryPressureResponse: parent.memoryPressureResponse
         )
         return try parent.attenuating(to: child, requireStrict: true)
-    }
-
-    private func callStructuredRepairLimit(
-        sharedLimit: UInt64,
-        configuredAttempts: UInt8,
-        requiresStructuredOutput: Bool
-    ) -> UInt64 {
-        guard requiresStructuredOutput else { return 0 }
-        return min(sharedLimit, UInt64(configuredAttempts))
     }
 
     private func resolvedModelPolicy(

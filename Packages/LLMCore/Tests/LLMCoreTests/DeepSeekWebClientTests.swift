@@ -26,8 +26,10 @@ final class DeepSeekWebClientTests: XCTestCase {
         let search = try await client.perform(operation: .search, argument: "test query", apiKey: "test-key")
         XCTAssertTrue(search.text.contains("https://example.com/article"))
         XCTAssertTrue(search.text.contains("Long summary"))
+        XCTAssertTrue(search.text.hasPrefix("Retrieval: SEARCH_SUMMARIES_ONLY"))
         let page = try await client.perform(operation: .fetch, argument: "https://example.com/article", apiKey: "test-key")
         XCTAssertTrue(page.text.contains("# Article body"))
+        XCTAssertTrue(page.text.hasPrefix("Retrieval: FETCHED_PAGE_EXCERPT"))
         XCTAssertGreaterThan(page.responseBytes, 0)
         let requests = await spy.requests
         XCTAssertEqual(requests.map { $0.url!.absoluteString }, [

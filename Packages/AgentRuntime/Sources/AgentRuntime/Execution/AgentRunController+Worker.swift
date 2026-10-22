@@ -387,7 +387,8 @@ extension AgentRunController {
                     ? "Your last tool call already executed in this turn. Do NOT call any tool again — "
                         + "answer the user's request directly with text only."
                     : "Return exactly one valid action matching the advertised response contract. "
-                        + "Do not include prose outside that action."
+                        + "Use native function calls for tools, never DSML/XML tool markup in answer text. "
+                        + "If no tools are advertised, return the requested final answer."
             )
         }
         let stateJSON = try CanonicalJSON(.object(stateFields))
@@ -910,6 +911,7 @@ extension AgentRunController {
             && failure.requiredUserAction == .none
             && failure.retryAdvice == .never
             && (failure.code == "model.local.malformed-action"
+                || failure.code == "model.online.malformed-action"
                 || failure.code == "model.local.structured-output-invalid"
                 || failure.code == "model.online.structured-output-invalid")
     }
