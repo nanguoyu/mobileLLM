@@ -81,6 +81,7 @@ struct EmptyChatState: View {
     /// The skill activated for this thread, if any — surfaced under the title so a thread's configuration
     /// is visible before the first message (Skills v1, S5).
     var activeSkill: Skill? = nil
+    var isOnline = false
 
     private let examples = [
         "Explain how sleep affects memory.",
@@ -116,7 +117,9 @@ struct EmptyChatState: View {
                         .multilineTextAlignment(.center)
                         .accessibilityLabel("Active skill: \(activeSkill.name)")
                 }
-                Text("Private, on-device, no account. Ask anything to get started.")
+                Text(isOnline
+                     ? "Messages are sent to your selected online service."
+                     : "Your model runs on this device. Ask anything to get started.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)

@@ -20,7 +20,7 @@ final class ProductionRegressionTests: XCTestCase, @unchecked Sendable {
         defer { try? FileManager.default.removeItem(at: root) }
         let assembly = try AgentRuntimeAssembly(
             engine: MockLLMEngine(script: .init()), downloadBase: root, conversationDirectory: root,
-            models: [], snapshot: { _, _, _, _ in nil }
+            models: [LLMCatalog.bonsai8b], snapshot: { _, _, _, _ in nil }
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: assembly.artifactStore.rootURL.path))
     }

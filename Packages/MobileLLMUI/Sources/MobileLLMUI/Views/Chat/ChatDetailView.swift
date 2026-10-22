@@ -237,7 +237,7 @@ struct ChatDetailView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Active model")
-        .accessibilityValue(chat.activeModel?.subtitle ?? "No model loaded")
+        .accessibilityValue(chat.isOnlineActive ? chat.activeModelLabel : chat.activeModel?.subtitle ?? "No model loaded")
         .accessibilityHint("Switch model")
     }
 }
