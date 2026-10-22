@@ -873,7 +873,7 @@ extension AgentRunController {
                     runID: facts.projection.runID,
                     stepID: modelRequest.stepID,
                     reservation: reservation,
-                    repairAlreadyAttempted: history.structuredRepairCount > 0,
+                    repairAlreadyAttempted: history.pendingRepair?.1.code == "execution.structured-repair",
                     diagnostic: String(contractError.localizedDescription.unicodeScalars.filter {
                         !CharacterSet.controlCharacters.contains($0)
                     }.map(Character.init).prefix(512))
@@ -897,7 +897,7 @@ extension AgentRunController {
                 runID: facts.projection.runID,
                 stepID: modelRequest.stepID,
                 reservation: reservation,
-                repairAlreadyAttempted: history.structuredRepairCount > 0,
+                repairAlreadyAttempted: history.pendingRepair?.1.code == "execution.structured-repair",
                 diagnostic: failure.code,
                 reportedUsage: execution.reportedUsage
             )
