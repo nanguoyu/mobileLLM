@@ -1,112 +1,133 @@
 # Current implementation and validation status
 
-Reviewed **2026-10-22** against code commit
-[`82933a0`](https://github.com/nanguoyu/mobileLLM/commit/82933a03203cc3447817da49d4d8893a93482d05).
-This is the implementation/evidence snapshot. [spec.md](../spec.md) remains the requirements source,
-[ARCHITECTURE.md](ARCHITECTURE.md) describes the code, and [CONTRIBUTING.md](../CONTRIBUTING.md)
-provides the validation commands.
+Updated **2026-10-22** for branch `codex/audit-fixes-20261022`, with implementation through
+[`f3f6cf6`](https://github.com/nanguoyu/mobileLLM/commit/f3f6cf6) and follow-up test/document corrections.
+[spec.md](../spec.md) defines requirements, [ARCHITECTURE.md](ARCHITECTURE.md) describes the code,
+and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
 
-## Implemented foundation
+## Corrections delivered
 
-Normal app sends use frozen inputs and `DurableAgentExecutor`, with SQLite journal/CAS, budgets,
-authorization, explicit recovery, content-addressed artifacts, and an idempotent conversation outbox.
-Three local engines and an optional online provider share run semantics. New `/workflow` launches
-use analyzed JavaScript and durable subagents; the staged orchestrator remains for old records.
-Online siblings can overlap requests within one admitted root family; local decoding remains serial.
+- Production Memory now applies the switch and relevance ranking to the latest durable snapshot.
+  Disabling it also excludes its tools from new runs. Original Chinese user text supplies a bounded,
+  authorization-bound retrieval alias, without trusting a model-supplied source field.
+- Online function calls preserve provider call IDs, wire names, arguments, and bounded reasoning state
+  through journal recovery and native call/result continuation. Shared local/online tool aliases avoid
+  collisions and unsupported characters. Structured online requests include the full output schema.
+- Webpage redirects cannot leave the approved scheme, host, or effective port. Existing public-address,
+  response-size, symlink, and artifact-integrity checks remain enforced.
+- Accepted-message payload v2 retains image references; projection restores their bytes and drains all
+  pages. Resumed local-model requests resolve exact durable references without an in-memory allowlist.
+  Artifact-root comparison no longer mistakes a directory URL hint for a confinement violation.
+- A continued-processing exemption requires an actual unexpired OS grant. It preserves eligible work
+  and weights, includes llama.cpp GPU eligibility, and reports the real terminal outcome.
+- `stallMs` now enforces child inactivity, with resets on progress and cancellation on expiry. The
+  conversation tool menu supports up to eight pins within the allowed set. New context policy 2 gives
+  current state and recent tool results priority; old frozen policy-1 runs retain their order.
+- llama.cpp reuses exact compatible text-prompt KV prefixes and invalidates them when replacing context,
+  changing model/KV settings, handling vision, or failing/cancelling. MLX uses completion-token metrics
+  and forwards native tool calls. No measured local-weight speedup is claimed.
+- Workflow analysis distinguishes pure literal schema fields such as `test` from executable operations.
+  Generated workflows request readable final answers while retaining structured intermediate results.
+- Live UI tests use isolated real stores, preferences, and Keychain services. Fixed-response fixtures
+  live separately. Hidden prompt retries, answer-containing calculator prompts, fake child-detail
+  padding, automatic live API calls in ordinary suites, and default thermal bypasses were removed.
+- Test selection follows changed files and reverse package dependencies. Prose-only changes select no
+  Swift suites. Full offline baselines and coverage instrumentation are explicit choices.
 
-[PR #6](https://github.com/nanguoyu/mobileLLM/pull/6), merged 2026-09-06, added credential-free MCP
-discovery persistence, coordinated runtime erasure, rejection of stale UI work after erasure,
-append-only model registration, bounded online response/retry accounting, workflow checkpoints,
-lifecycle wiring, online sibling lanes, and portable Swift CI. Those implementations should not
-be listed as outstanding based on older August notes.
+## Direct simulator and online results
 
-## Open implementation items
+Host: **Xcode 27.1 / Swift 6.4**. Simulator: **iPhone 17 / iOS 27.0**, ad-hoc signed so Keychain works.
+Service: **api.deepseek.com / deepseek-v4-flash**, using actual production transport and runtime.
+No local weights or fixed-response fixture were used for these four flows.
 
-**Production Memory composition remains incomplete.** Static inspection follows
-`App/mobileLLMApp.swift:makeAgentSnapshot` to `App/AgentRunInputs.swift:AppFrozenInputBuilder` and the
-runtime context compiler. That path forwards cached canonical Memory facts without applying the
-Memory switch, query ranking, or the legacy path's refresh before each send. The existing injection
-tests construct ChatStore without the production AgentRunStore. A disabled Memory UI therefore does
-not currently guarantee exclusion from model context, including online-provider context.
+| Flow | Observed result | Result bundle |
+| --- | --- | --- |
+| Calculator | Actual tool invocation returned `9449772114007`; the prompt did not contain the answer | `CalculatorRuntime.xcresult` |
+| Multi-turn context | Correctly reused information from the earlier turn | `LiveCoreFlows.xcresult` |
+| Chinese Memory across conversations | Saved through the actual tool, then recalled the exact token in a new conversation without opening Memory Settings or invoking recall | `LiveCoreFlows.xcresult` |
+| Incident-analysis workflow | Three investigators plus synthesis completed; final output was readable analysis with containment, durable fixes, migration concerns, and crash-boundary tests | `WorkflowReadable.xcresult` |
 
-`AH-CONTEXT-002` is planned pending correction and `AHT-CONTEXT-APP-001` production assembly tests
-for Memory off, relevant-only selection, and facts saved during the preceding turn. This finding is
-from source tracing; the review did not run a device reproduction. The required Memory semantics
-in spec §16 remain unchanged.
+The final workflow journal records investigator submissions at offsets **0, 15, and 21 ms**, with
+settlement at **7,891, 8,223, and 7,356 ms**. Their in-flight intervals overlap by about **7.3 seconds**;
+synthesis starts at **8,269 ms**, after all three settle. This is direct execution evidence, not an
+inference from the generated script containing `parallel(...)`.
 
-Other incomplete or intentionally unavailable surfaces:
+The four UI test durations were 63.587, 34.697, 73.978, and 107.846 seconds respectively. These include
+UI navigation and polling and must not be reported as model latency. A separate explicitly enabled
+live-provider request also passed. Artifacts and logs for this maintainer session are under
+`/tmp/mobilellm-fixes-20261022/`; they are local evidence, not a committed release bundle.
 
-- `stallMs` is decoded and stored but does not drive a runtime stall timeout.
-- Tool pinning exists in the contract but has no product control; app-created policies have no pins.
-- Files and Terminal show explicit empty states. `AgentSandboxAPI` has no production provider.
-- The workflow JavaScriptCore realm has cooperative limits, not a hard heap limit or OS isolation.
-  It does not expose the Gallery's general-purpose `run_js` tool.
-- Provider-executed native tools are specified in §15.5 but not implemented.
+First outcomes are retained. Unsigned simulator attempts could not seed Keychain; the subsequent
+runtime startup failure exposed the artifact-directory bug. The workflow first failed with HTTP 400
+because its JSON contract was missing from the prompt, then exposed the schema-field false rejection.
+After those fixes it completed, but manual review found raw JSON displayed in chat. The final delivery
+correction passed the strengthened readable-answer check. None of these failures was erased by retries.
 
-## Release acceptance still pending
+Manual review found the final analysis useful and substantially more readable, but it still assigned
+high confidence to some unsupported hypotheses, including missing provider idempotency. The user had
+not supplied provider logs or keys. Functional success therefore does not establish factual accuracy
+across complex tasks. The other four exploratory scenario shapes and repeated provider-quality
+measurements remain necessary before making broad reliability or SOTA claims.
 
-The requirement manifest now has **70 requirements: 66 active and four planned**. The test manifest
-has **75 entries: 71 active and four planned**; these are traceability entries, not XCTest counts.
-The planned requirements are production Memory semantics (`AH-CONTEXT-002`), the physical-device
-model matrix (`AH-TEST-003`), matched latency/resource baselines (`AH-PERF-001`), and the consolidated
-independent release audit (`AH-AUDIT-001`).
+## Final scoped offline verification
 
-[device-matrix.v1.json](../Verification/AgentHarness/device-matrix.v1.json) retains 29 historical
-scenarios, with 23 pass and six pending. Pending work includes memory/web reruns, every built-in
-adapter, iOS continued-processing outcomes with the required provisioning capabilities, full dynamic
-workflow delivery, and the five-shape real-model exploratory matrix. Existing passes and archived
-coverage percentages are not fresh release-candidate evidence. The August implementation review
-and September hardening review do not close the final independent audit requirement.
+One dependency-selected baseline ran **1,599 tests across eight affected packages**, excluding live
+online requests. AppUI was unchanged and was not rerun. The initial baseline had **two failing test
+cases**: one verifier coverage-policy mismatch, and one outbox-v1 expectation with four failed
+assertions after the deliberate v2 format migration. Both were corrected and passed targeted reruns.
 
-`DynamicWorkflowExplorationUITests` defines five complex scenarios and an ad-hoc goal entry point.
-Its source location and real-model intent do not mean those scenarios have passed on the current
-candidate. The checked-in DeviceE2E target is configured for physical iOS; the model-free
-`WorkflowUITests` simulator fixture tests mechanics rather than real-model answer quality.
-
-## Recorded verification on 2026-10-22
-
-The host reported **Xcode 27.1 / Swift 6.4**. Eight MLX-free product packages plus the verification
-tool were compiled and tested. No implementation changed during this run.
-
-| Package | Tests discovered | Initial outcome |
+| Package | Discovered | Initial baseline result |
 | --- | ---: | --- |
-| AppUI | 4 | Passed |
-| AppRuntime | 106 | Passed with four Keychain-environment skips |
-| LLMCore | 365 | Passed with one opt-in live MCP skip |
 | AgentContracts | 97 | Passed |
-| AgentRuntime | 505 | Six failures |
+| AgentHarnessVerification | 38 | One case failed; corrected verifier suite passed 10/10 |
+| AgentRuntime | 508 | One case failed; corrected outbox case passed |
 | AgentSandboxAPI | 29 | Passed |
-| MobileLLMUI | 412 | Passed with three Keychain-environment skips |
-| LLMEngineApple | 41 | Passed with two system-model/live availability skips |
-| AgentHarnessVerification | 38 | Passed |
+| AppRuntime | 106 | Passed |
+| LLMCore | 366 | Passed; one opt-in live MCP skip |
+| LLMEngineApple | 41 | Passed; two OS/system-model availability skips |
+| MobileLLMUI | 414 | Passed |
 
-The initial aggregate was **1,597 tests: 1,581 passed, 10 skipped, six failed**. One failure,
-`ContentAddressedArtifactStoreTests/testCoverageClosureFileProtectionIOAndAtomicFailureSurfaces`,
-passed when rerun outside the process sandbox. The first-attempt failure remains part of the record.
-The other five failures were `LiveOnlineProviderSmokeTests` against the configured online service
-in the restricted environment; they were not rerun with unrestricted network access and remain
-unresolved by this pass. The test class automatically uses a local developer configuration unless
-explicitly excluded; see the offline commands in CONTRIBUTING.md.
+The final static verifier passed. JSON/test-plan parsing, shell syntax, all five spec digests, and
+prose-only check selection also passed. Overlapping targeted runs are not added to the baseline count.
 
-Static `agent-harness-verify` passed on the code baseline. This review did not rerun app/Metal builds,
-app-module units, simulator/physical-device tests, source mutations, measured coverage/freshness, or
-thermal/performance gates. The local package results above predate this documentation refresh and
-are a dated summary, not a replacement for commit/spec-bound release evidence bundles.
+Xcode engine tests passed **56/56**: eight MLX mapping/governance tests and 48 llama.cpp tests.
+The actual macOS App module passed **16/16** assembly/adapter regressions. Its first ad-hoc-signed
+host stalled in `_libsecinit_appsandbox` before XCTest started; a process sample was retained and
+that run was stopped. The tests then passed with signing and App Sandbox disabled only for the test
+command. Production signing/entitlement settings were unchanged. This result proves App-module
+behavior, not macOS sandbox launch or distribution acceptance.
 
-The September PR records earlier successful app/engine builds, app tests, simulator checks, six
-mutation kills, and Linux CI. Keep that evidence tied to its original source and toolchain.
-The newer host toolchain still needs a full macro/Metal compatibility check before an engine build;
-see [WIRING.md](WIRING.md#toolchain-compatibility).
+The current toolchain built simulator and macOS app/engine targets after installing Apple's Metal
+Toolchain component. Local-weight inference, matched resource/latency measurements, new source-mutant
+runs, and release coverage/freshness bundles were not performed in this repair pass.
 
-## CI and documentation maintenance
+## Remaining product boundaries and release work
 
-Hosted CI has two Linux jobs: verification documents/scripts/digests, and portable Swift
-contract/API/verifier behavior. Paid hosted macOS runners are disabled. A trusted self-hosted Mac
-can run the Apple package job when explicitly enabled; the remaining Apple and release-evidence
-gates run through maintainer commands.
+The manifest has **70 requirements: 67 active and three planned**, and **75 test entries: 72 active
+and three planned**. These are traceability entries, not XCTest counts. Production Memory conformance
+is active. The planned gates are the physical-device/model matrix, matched performance baselines,
+and the consolidated independent release audit.
 
-`docs/DESIGN.md`, historical device results, and earlier audit findings retain their original dates.
-When changing the implementation, update this status, the architecture reference, relevant spec
-conformance items, and requirement/test mappings together. A spec change must also refresh all five
-recorded spec digests and requirement line anchors. Keep successful old evidence separate from new
-required runs, and preserve failures and skips rather than promoting a documentation edit to a pass.
+Simulator plus online models are sufficient for functional app and online-task validation. Physical
+hardware is needed for local GPU/MLX performance, thermal and memory-pressure behavior, and OS
+background scheduling. The historical physical-device matrix remains **23 pass / six pending**;
+those dated outcomes were not promoted by simulator results. Continued-processing device outcomes,
+clean-install/upgrade acceptance, and the complete real-model exploratory matrix remain open.
+
+Files and Terminal deliberately show empty states. `AgentSandboxAPI` has no production provider,
+and the JavaScriptCore workflow realm has cooperative limits rather than an OS sandbox or hard heap
+limit. General-purpose `run_js` and provider-hosted native tools in spec §15.5 remain unavailable.
+The legacy ToolLoop is still used by compatibility paths, previews, tests, and smoke executables;
+WorkflowOrchestrator remains necessary for old records. Removing them wholesale would break those uses.
+
+## Historical baseline retained
+
+The initial 2026-10-22 review at code `82933a0`, before implementation changes, discovered **1,597
+tests: 1,581 passed, 10 skipped, six failed**. Its file-protection failure passed outside the process
+sandbox; five automatic live-provider cases failed in the restricted environment. That historical
+record is separate from the explicit live request and simulator evidence above. Earlier August and
+September device, mutation, coverage, and audit records retain their original dates and scope.
+
+Hosted Linux CI selects document checks and portable Swift suites by impact. Paid hosted macOS
+runners remain disabled; a trusted self-hosted Mac is opt-in. The implementation review in this task
+was performed by the repairing agent and does not close the independent release-audit requirement.
