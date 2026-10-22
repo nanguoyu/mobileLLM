@@ -969,7 +969,10 @@ public final class AgentRuntimeAssembly {
 
     private static let workflowFinalDeliveryInstruction = """
     Unless the user explicitly requests JSON, the workflow must return a readable answer string, not
-    an internal JSON object. Use structured schemas for intermediate findings. Ask the final synthesis
+    an internal JSON object. For research and review handoffs that another agent will read, prefer
+    concise Markdown briefs and omit schema. Use a schema only when the script must inspect fields
+    for a calculation or branch. Pass the complete brief, including source URLs, to downstream agents.
+    Ask the final synthesis
     agent for a concise, coherent answer in the user's language, with no schema option, and return its
     text directly. If the final agent needs a schema, include an answer string and return that field.
     The final answer must separate observed facts from hypotheses, avoid presenting inferred details
