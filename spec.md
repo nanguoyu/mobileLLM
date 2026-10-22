@@ -1758,6 +1758,11 @@ The injected V1 surface is deliberately small:
 - `serialize(value)` converts a JSON-compatible value to bounded JSON handoff text only after checkpointed
   node, depth, collection, and conservative byte-limit validation; raw `JSON.stringify`, array `join`, and other
   non-preemptible amplification APIs remain unavailable;
+- `unique(strings)` returns distinct string values in first-occurrence order using bounded, checkpointed traversal;
+  getters, non-string entries and oversized collections are rejected without invoking user iterators;
+- `webEvidence()` reads bounded excerpts and source URLs from this workflow's settled children's recorded built-in
+  web operations. It cannot read another workflow or perform new network requests. Source content stays untrusted;
+  tool status and retrieval kind come from the journal, and failed reads never count as retrieved page evidence;
 - `args` is the immutable JSON input supplied at launch;
 - `budget.total`, `budget.spent()`, and `budget.remaining()` expose read-only run accounting;
 - a saved-workflow call primitive may be enabled only with one-level nesting and a registry-pinned script digest. It

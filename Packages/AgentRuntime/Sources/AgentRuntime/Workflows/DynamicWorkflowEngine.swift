@@ -701,8 +701,28 @@ private actor DynamicWorkflowSession {
             callSavedWorkflow: savedCall,
             phase: { [signals] in signals.recordPhase($0) },
             log: { [signals] in signals.recordLog($0) },
-            budget: { [budgetCounter] in budgetCounter.snapshot() }
+            budget: { [budgetCounter] in budgetCounter.snapshot() },
+            webEvidence: { [weak self] in
+                guard let self else { throw CancellationError() }
+                return try await self.recordedWebEvidence()
+            }
         )
+    }
+
+    private func recordedWebEvidence() async throws -> JSONValue {
+        var latest: [UInt32: WorkflowAgentCallV1] = [:]
+        for call in projection.calls { latest[call.ordinal] = call }
+        let calls = latest.values.sorted { $0.ordinal < $1.ordinal }
+        var records: [(label: String, observation: WorkflowWebObservation)] = []
+        for call in calls where projection.outcomes[call.callID] != nil {
+            try Task.checkCancellation()
+            guard let handle = projection.submittedHandles[call.callID] else { continue }
+            for observation in try await spawner.webObservations(handle) {
+                records.append((call.options.label ?? "agent-\(call.ordinal)", observation))
+            }
+            if records.count > WorkflowWebEvidence.maximumObservations { break }
+        }
+        return try WorkflowWebEvidence.packet(records)
     }
 
     private func executeSavedWorkflow(

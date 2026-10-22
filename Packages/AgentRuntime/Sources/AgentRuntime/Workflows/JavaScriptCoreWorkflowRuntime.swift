@@ -199,6 +199,9 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             [weak self] requestID, name, argsJSON in
             self?.startSavedWorkflow(requestID: requestID, name: name, argsJSON: argsJSON)
         }
+        let startEvidence: @convention(block) (Int32) -> Void = { [weak self] requestID in
+            self?.startEvidence(requestID: requestID)
+        }
         let finished: @convention(block) (Bool, String) -> Void = { [weak self] succeeded, payload in
             self?.scriptFinished(succeeded: succeeded, payload: payload)
         }
@@ -216,12 +219,13 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         context.setObject(budgetSpent, forKeyedSubscript: "__mllmBudgetSpent" as NSString)
         context.setObject(startAgent, forKeyedSubscript: "__mllmStartAgent" as NSString)
         context.setObject(startWorkflow, forKeyedSubscript: "__mllmStartWorkflow" as NSString)
+        context.setObject(startEvidence, forKeyedSubscript: "__mllmStartEvidence" as NSString)
         context.setObject(finished, forKeyedSubscript: "__mllmFinished" as NSString)
     }
 
     private func userFunctionSource() -> String {
         """
-        (async function(agent, parallel, pipeline, workflow, phase, log, serialize, args, budget, console,
+        (async function(agent, parallel, pipeline, workflow, phase, log, serialize, unique, webEvidence, args, budget, console,
                         __workflowCheckpoint) {
         'use strict';
         \(script.instrumentedSource)
@@ -245,10 +249,11 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
           const __budgetSpentNative = globalThis.__mllmBudgetSpent;
           const __startAgentNative = globalThis.__mllmStartAgent;
           const __startWorkflowNative = globalThis.__mllmStartWorkflow;
+          const __startEvidenceNative = globalThis.__mllmStartEvidence;
           const __finishedNative = globalThis.__mllmFinished;
           const __userFunction = globalThis.__mllmUserFunction;
           for (const __name of ['__mllmCheckpoint','__mllmStopCode','__mllmPhase','__mllmLog',
-            '__mllmCollectionAllowed','__mllmSerializedEstimateAllowed','__mllmBudgetTotal',
+            '__mllmCollectionAllowed','__mllmSerializedEstimateAllowed','__mllmBudgetTotal','__mllmStartEvidence',
             '__mllmBudgetSpent','__mllmStartAgent','__mllmStartWorkflow','__mllmFinished',
             '__mllmUserFunction']) { try { delete globalThis[__name]; } catch (_) {} }
 
@@ -411,6 +416,27 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
           // Public bounded structured handoff. Unlike JSON.stringify/Array.join, this route runs
           // the checkpointed node/depth/collection/size validator before the native serializer.
           const serialize = value => __stringify(value);
+          // String sets are bounded and checkpointed. Do not use a user-provided iterator/getter,
+          // or a model-written character-by-character comparison of multi-character identifiers.
+          const unique = values => {
+            __checkpoint();
+            if (!Array.isArray(values) || !__collectionAllowedNative(values.length)) {
+              throw __validationError('unique requires a bounded array of strings');
+            }
+            const seen = new __RealMap();
+            const result = [];
+            let bytes = 2;
+            for (let i = 0; i < values.length; i++) {
+              __checkpoint();
+              const entry = Object.getOwnPropertyDescriptor(values, i);
+              if (!entry || typeof entry.value !== 'string') throw __validationError('unique accepts string values only');
+              bytes += 3 + entry.value.length * 6;
+              if (!__serializedEstimateAllowedNative(bytes)) throw __validationError('unique input exceeds size limit');
+              if (!seen.has(entry.value)) { seen.set(entry.value, true); result.push(entry.value); }
+            }
+            return result;
+          };
+          const webEvidence = () => __request(__startEvidenceNative, []);
           const workflow = (name, value) => {
             if (typeof name !== 'string' || name.trim().length === 0) {
               return __RealPromise.reject(new Error('workflow name is required'));
@@ -487,7 +513,7 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             try { __finishedNative(true, __stringify(value === undefined ? null : value)); }
             catch (error) { __finishedNative(false, __safeMessage(error)); }
           };
-          __userFunction(agent, parallel, pipeline, workflow, phase, log, serialize, args, budget, console,
+          __userFunction(agent, parallel, pipeline, workflow, phase, log, serialize, unique, webEvidence, args, budget, console,
                          __checkpoint).then(
             __finishSuccess,
             error => __finishedNative(false, __safeMessage(error))
@@ -534,6 +560,22 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             }
         }
         pendingTasks[requestID] = task
+    }
+
+    private func startEvidence(requestID: Int32) {
+        guard pendingTasks[requestID] == nil, !isCompleted else { return }
+        pendingTasks[requestID] = Task { [weak self, host] in
+            guard let self else { return }
+            do {
+                let value = try await host.webEvidence()
+                try Task.checkCancellation()
+                try resolve(requestID: requestID, value: value)
+            } catch is CancellationError {
+                reject(requestID: requestID, error: .cancelled, fatal: true)
+            } catch {
+                reject(requestID: requestID, error: .hostFailure(Self.sanitize(String(describing: error))), fatal: true)
+            }
+        }
     }
 
     private func startSavedWorkflow(requestID: Int32, name: String, argsJSON: String) {

@@ -335,7 +335,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
                         )
                     }
                     if embedded.contains(where: {
-                        ["agent", "parallel", "pipeline", "workflow", "phase", "log"]
+                        ["agent", "parallel", "pipeline", "workflow", "phase", "log", "webEvidence", "unique"]
                             .contains($0.identifier ?? "")
                     }) {
                         throw WorkflowScriptAnalysisError.unsupportedConstruct(

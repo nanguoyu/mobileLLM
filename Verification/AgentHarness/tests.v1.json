@@ -1926,6 +1926,14 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.ToolV2AdapterTests/testRoleCapsReserveBothVerifiersBeforeSynthesisWithoutIncreasingTotalBudget"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testBoundedUniqueCountsWholeCodesAndWebEvidenceIsAReadOnlyHostSnapshot"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testWebEvidenceKeepsRecordedFailuresAndDoesNotPromoteRemoteToolsOrUnreadLinks"
         }
       ],
       "platforms": [
