@@ -200,18 +200,31 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
 
     private func collectHandle(_ handle: any AgentExecutionHandle,
                                onProgress: (@Sendable () async -> Void)?) async throws -> SubagentResult {
-        if let result = try await handle.result() { return try Self.normalize(result) }
-        try Self.rejectReconciliationWait(try await handle.status())
-        for try await envelope in handle.events(after: nil) {
-            await onProgress?()
-            if case .statusChanged(let status) = envelope.payload.event {
-                try Self.rejectReconciliationWait(status)
+        var cursor: AgentEventCursor?
+        // A dropped/out-of-order notification must not turn an accepted cancellation into an
+        // uncertain external effect. Reattach read-only from the last trusted durable cursor.
+        // Every reattachment first validates a fresh snapshot; corrupt journal facts still fail.
+        for attachment in 0 ..< 3 {
+            try Task.checkCancellation()
+            if let result = try await handle.result() { return try Self.normalize(result) }
+            let initialStatus = try await handle.status()
+            try Self.rejectReconciliationWait(initialStatus)
+            do {
+                for try await envelope in handle.events(after: cursor) {
+                    cursor = envelope.payload.cursor
+                    await onProgress?()
+                    if case .statusChanged(let status) = envelope.payload.event,
+                       status.stateVersion >= initialStatus.stateVersion {
+                        try Self.rejectReconciliationWait(status)
+                    }
+                    guard case .terminal = envelope.payload.event else { continue }
+                    guard let result = try await handle.result() else { throw SubagentSpawnError.resultUnavailable }
+                    return try Self.normalize(result)
+                }
+            } catch {
+                if let result = try await handle.result() { return try Self.normalize(result) }
+                guard error as? AgentExecutionError == .invalidRecoveryBoundary, attachment < 2 else { throw error }
             }
-            guard case .terminal = envelope.payload.event else { continue }
-            guard let result = try await handle.result() else {
-                throw SubagentSpawnError.resultUnavailable
-            }
-            return try Self.normalize(result)
         }
         if let result = try await handle.result() { return try Self.normalize(result) }
         throw SubagentSpawnError.resultUnavailable

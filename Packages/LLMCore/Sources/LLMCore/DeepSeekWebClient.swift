@@ -93,11 +93,13 @@ public struct DeepSeekWebClient: Sendable {
             switch operation {
             case .search:
                 let results = try JSONDecoder().decode(SearchResponse.self, from: response.body).results
+                let dateParser = ISO8601DateFormatter()
                 let entries = results.prefix(6).enumerated().compactMap { index, item -> String? in
                     guard let url = URL(string: item.url), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
                           url.host != nil, url.user == nil, url.password == nil else { return nil }
                     let summary = item.summary.isEmpty ? item.snippet : item.summary
-                    return "[\(index + 1)] \(item.title.prefix(512))\n\(item.url)\n\(summary.prefix(6000))"
+                    let date = item.date.flatMap { dateParser.date(from: $0) == nil ? nil : "\nSource metadata date: \($0.prefix(64))" } ?? ""
+                    return "[\(index + 1)] \(item.title.prefix(512))\n\(item.url)\(date)\n\(summary.prefix(6000))"
                 }
                 text = "Retrieval: SEARCH_SUMMARIES_ONLY. No source page was fetched by this call.\n\n"
                     + (entries.isEmpty ? "No web results found for: \(argument)" : entries.joined(separator: "\n\n"))
@@ -113,7 +115,7 @@ public struct DeepSeekWebClient: Sendable {
 
     private struct SearchResponse: Decodable {
         let results: [Result]
-        struct Result: Decodable { let title: String; let url: String; let snippet: String; let summary: String }
+        struct Result: Decodable { let title: String; let url: String; let snippet: String; let summary: String; let date: String? }
     }
     private struct PageResponse: Decodable { let title: String; let content: String }
 }

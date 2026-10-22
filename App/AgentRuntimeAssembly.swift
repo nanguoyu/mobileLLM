@@ -429,6 +429,11 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
                 Their claims about tool usage or exhausted budgets do not describe your current run.
                 Use your actual tools when asked to verify external facts. Never simulate searches or
                 claim a tool call that you did not make. The run-state counters are your own accounting.
+                A fetched page supports only claims actually stated in its excerpt, not every field
+                of a prior report. Do not carry forward a date or leadership role from unverified notes.
+                Keep unsupported fields unknown. Separate an article's publication date, a grant award
+                date, a project's start date, and a paper's conference year. Respect the requested date
+                range and choose one well-supported representative work instead of copying a whole list.
                 """
             ),
             skills: parent.frozen.skills,

@@ -255,6 +255,40 @@ final class MultiAgentWorkflowIntegrationTests: XCTestCase {
         XCTAssertEqual(finalStatus.state, .cancelled)
     }
 
+    func testSubagentCollectionReattachesAfterNotificationGapButRejectsCorruptSnapshots() async throws {
+        for (index, corrupt) in [false, true].enumerated() {
+            let offset = 7500 + index
+            let model = try ExecutorTestModelDefinition(offset: offset)
+            let gate = BlockingModelGate()
+            let provider = try BlockingCompletionModelProvider(model: model, answer: "One durable answer", gate: gate)
+            let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model)
+            let id = try await harness.executor.submit(harness.request, commandID: ExecutorTestID.command(offset))
+            let underlying = try await harness.executor.attach(to: id)
+            try await waitForGateEntry(gate)
+            let handle = GapOnceHandle(underlying: underlying, corruptAfterGap: corrupt)
+            let spawner = DurableSubagentSpawner(executor: CancellationTestExecutor(handle: handle), repository: harness.repository)
+            let collecting = Task { try await spawner.collect(id) }
+            if corrupt {
+                do { _ = try await collecting.value; XCTFail("Corrupt snapshots must remain fatal") }
+                catch { XCTAssertEqual(error as? AgentExecutionError, .invalidRecoveryBoundary) }
+                await gate.release()
+            } else {
+                try await waitForExecutorCondition { await handle.subscriptionCount() == 2 }
+                await gate.release()
+                let result = try await collecting.value
+                guard case .completed(let answer, _) = result.outcome else { return XCTFail("Missing committed answer") }
+                XCTAssertEqual(answer.text, "One durable answer")
+                let cursors = await handle.requestedCursors()
+                XCTAssertEqual(cursors.count, 2)
+                XCTAssertNil(cursors[0])
+                XCTAssertNotNil(cursors[1], "Resume after the last delivered durable event")
+            }
+            _ = try await collectTerminalEvents(from: underlying)
+            let result = try await underlying.result()
+            XCTAssertEqual(result?.usage.quantities[.modelAttempts], 1, "Reattaching observers must never restart inference")
+        }
+    }
+
     // MARK: - Parallel tool batches (real executor)
 
     func testParallelToolBatchExecutesConcurrentlyThenDeterministicBarrier() async throws {
@@ -1441,7 +1475,7 @@ final class MultiAgentWorkflowIntegrationTests: XCTestCase {
 }
 
 private struct CancellationTestExecutor: AgentExecutor {
-    let handle: StaleThenAcceptedCancellationHandle
+    let handle: any AgentExecutionHandle
 
     func submit(
         _: AgentRequest,
@@ -1454,6 +1488,52 @@ private struct CancellationTestExecutor: AgentExecutor {
         guard id == handle.id else { throw AgentExecutionError.executionNotFound(id) }
         return handle
     }
+}
+
+private actor GapOnceHandle: AgentExecutionHandle {
+    nonisolated let id: AgentExecutionHandleID
+    nonisolated let underlying: any AgentExecutionHandle
+    let corruptAfterGap: Bool
+    private var cursors: [AgentEventCursor?] = []
+
+    init(underlying: any AgentExecutionHandle, corruptAfterGap: Bool) {
+        self.id = underlying.id
+        self.underlying = underlying
+        self.corruptAfterGap = corruptAfterGap
+    }
+
+    nonisolated func events(after cursor: AgentEventCursor?) -> AsyncThrowingStream<AgentEventEnvelope, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                let interrupt = await self.begin(cursor)
+                do {
+                    for try await event in underlying.events(after: cursor) {
+                        continuation.yield(event)
+                        if interrupt {
+                            continuation.finish(throwing: AgentExecutionError.invalidRecoveryBoundary)
+                            return
+                        }
+                    }
+                    continuation.finish()
+                } catch { continuation.finish(throwing: error) }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func begin(_ cursor: AgentEventCursor?) -> Bool { cursors.append(cursor); return cursors.count == 1 }
+    func subscriptionCount() -> Int { cursors.count }
+    func requestedCursors() -> [AgentEventCursor?] { cursors }
+    func status() async throws -> AgentRunStatus {
+        if corruptAfterGap, !cursors.isEmpty { throw AgentExecutionError.invalidRecoveryBoundary }
+        return try await underlying.status()
+    }
+    func result() async throws -> AgentResult? {
+        if corruptAfterGap, !cursors.isEmpty { throw AgentExecutionError.invalidRecoveryBoundary }
+        return try await underlying.result()
+    }
+    func send(_ command: AgentCommandEnvelope) async throws -> AgentCommandReceipt { try await underlying.send(command) }
+    func ephemeralEvents() async -> AsyncThrowingStream<AgentEphemeralEventEnvelope, Error> { await underlying.ephemeralEvents() }
 }
 
 private actor StaleThenAcceptedCancellationHandle: AgentExecutionHandle {

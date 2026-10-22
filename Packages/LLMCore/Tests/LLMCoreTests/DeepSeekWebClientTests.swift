@@ -27,6 +27,7 @@ final class DeepSeekWebClientTests: XCTestCase {
         XCTAssertTrue(search.text.contains("https://example.com/article"))
         XCTAssertTrue(search.text.contains("Long summary"))
         XCTAssertTrue(search.text.hasPrefix("Retrieval: SEARCH_SUMMARIES_ONLY"))
+        XCTAssertTrue(search.text.contains("Source metadata date: 2025-09-04T00:00:00+00:00"))
         let page = try await client.perform(operation: .fetch, argument: "https://example.com/article", apiKey: "test-key")
         XCTAssertTrue(page.text.contains("# Article body"))
         XCTAssertTrue(page.text.hasPrefix("Retrieval: FETCHED_PAGE_EXCERPT"))
@@ -101,7 +102,7 @@ private actor DeepSeekRequestProbe {
     func load(_ request: URLRequest, limit: Int) -> WebHTTPResponse {
         requests.append(request)
         let body = status != 200 ? "server-secret" : request.url!.path.hasSuffix("search")
-            ? #"{"results":[{"title":"Article","url":"https://example.com/article","snippet":"Short","summary":"Long summary"}]}"#
+            ? #"{"results":[{"title":"Article","url":"https://example.com/article","snippet":"Short","summary":"Long summary","date":"2025-09-04T00:00:00+00:00"}]}"#
             : ##"{"title":"Article","content":"# Article body"}"##
         return WebHTTPResponse(response: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
             headerFields: status == 302 ? ["Location": "https://api.deepseek.com/redirect"] : [:])!,
