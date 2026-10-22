@@ -34,7 +34,11 @@ final class ProductionRegressionTests: XCTestCase, @unchecked Sendable {
     private func frozen(_ container: AppContainer, directory: URL, query: String) throws -> FrozenAgentRunInputs {
         let model = LLMCatalog.bonsai8b
         let message = Message(role: .user, answer: query)
-        let conversation = Conversation(modelID: model.id, variantID: model.defaultVariantValue.id, messages: [message])
+        let memoryTools = try ["remember", "recall"].map { try AgentToolLogicalID(providerID: "builtin", name: $0) }
+        let policy = try ConversationToolPolicy(masterEnabled: true, allowedToolIDs: memoryTools,
+                                                pinnedToolIDs: [], selectionPolicyVersion: 1, materializedFromGlobalTemplate: false)
+        let conversation = Conversation(modelID: model.id, variantID: model.defaultVariantValue.id,
+                                        messages: [message], toolPolicy: policy)
         container.chat.conversations = [conversation]
         container.chat.activeID = conversation.id
         let config = OpenAIOnlineConfigurationBox(baseURL: "https://unused.invalid/v1", modelID: nil, credentials: container.openAICredentials)
@@ -50,6 +54,8 @@ final class ProductionRegressionTests: XCTestCase, @unchecked Sendable {
         container.settings.memoryEnabled = false
         let result = try frozen(container, directory: directory, query: "Hello")
         XCTAssertTrue(result.memories.isEmpty, "Memory is OFF, but frozen input contains: \(result.memories.map { $0.frozen.content })")
+        XCTAssertFalse(result.toolCatalog.descriptors.contains { ["remember", "recall"].contains($0.id.logicalID.name) },
+                       "Disabling Memory also revokes the previously selected memory tools")
     }
 
     @MainActor

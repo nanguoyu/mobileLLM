@@ -2,7 +2,7 @@
   "configurations" : [
     {
       "id" : "BC2EBBF3-A794-4A67-A170-5FFFE9A57BB7",
-      "name" : "Physical Device E2E",
+      "name" : "Simulator and Device E2E",
       "options" : {
 
       }

@@ -553,7 +553,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         try activate(.gemma, in: app)
 
         let marker = uniqueMarker("MCP")
-        var evidence = try send(
+        let evidence = try send(
             marker + "\nUse the MCP tool read_wiki_structure exactly once with repoName "
                 + "\"deepwiki/deepwiki\" to look up the deepwiki server's structure, then answer in one "
                 + "short line.",
@@ -1073,7 +1073,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         let app = try prepare(model, tools: true, selected: ["Calculator"], thinking: false)
         let marker = uniqueMarker(model == .bonsai ? "BONSAI_CALC" : "GEMMA_CALC")
         let evidence = try send(
-            marker + "\nUse the calculator exactly once to multiply 1234567 by 7654321. Then reply exactly RESULT=9449772114007.",
+            marker + "\nUse the calculator exactly once to multiply 1234567 by 7654321. Then reply with RESULT= followed by the computed integer.",
             model: model, in: app)
         XCTAssertEqual(evidence.toolActivities.count, 1, "unexpected tool chain: \(evidence.toolActivities)")
         XCTAssertEqual(evidence.toolActivities.first, "Calculator returned 9449772114007")
@@ -1087,7 +1087,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     private func exerciseClock(_ model: DeviceTestModel) throws {
         let app = try prepare(model, tools: true, selected: ["Clock"], thinking: false)
         let marker = uniqueMarker(model == .bonsai ? "BONSAI_CLOCK" : "GEMMA_CLOCK")
-        var evidence = try send(
+        let evidence = try send(
             marker + "\nUse the clock exactly once to get the current local date and time, then answer in one short line.",
             model: model, in: app)
         XCTAssertEqual(evidence.toolActivities.count, 1, "unexpected tool chain: \(evidence.toolActivities)")
@@ -1098,7 +1098,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     private func exerciseWebSearch(_ model: DeviceTestModel) throws {
         let app = try prepare(model, tools: true, selected: ["Web search"], thinking: false)
         let marker = uniqueMarker(model == .bonsai ? "BONSAI_WEB" : "GEMMA_WEB")
-        var evidence = try send(
+        let evidence = try send(
             marker + "\nCall the web_search tool exactly once for the query OpenAI official website. Then answer with the first result's title.",
             model: model, in: app, timeout: 720)
         XCTAssertEqual(evidence.toolActivities.count, 1, "unexpected tool chain: \(evidence.toolActivities)")
@@ -1174,7 +1174,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         // Defer all content assertions: a wrong acknowledgement must not prevent us from observing whether
         // the Memory tool ran, whether it wrote durable state, or whether another model consumed that state.
         do {
-            var evidence = try send(
+            let evidence = try send(
                 marker + "\nMy temporary device-test name is \(code). Call the remember tool exactly once "
                     + "with text \"The user's temporary device-test name is \(code).\" to save this "
                     + "lasting fact. Do not use web search. After it is saved, reply exactly "
@@ -2071,10 +2071,10 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try selectOnlineModel(in: app)
 
         let marker = uniqueMarker("ONLINE_CALC")
-        var evidence = try send(
+        let evidence = try send(
             marker + "\nWhat is 1234567 * 7654321? You do not know this product from memory. "
                 + "You MUST call the calculator tool exactly once to compute it, "
-                + "then reply exactly RESULT=9449772114007.",
+                + "then reply with RESULT= followed by the computed integer.",
             model: .bonsai, in: app, timeout: 300, assertEvidence: false
         )
         XCTAssertEqual(
@@ -2097,7 +2097,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try selectOnlineModel(in: app)
 
         let marker = uniqueMarker("ONLINE_SEARCH")
-        var evidence = try send(
+        let evidence = try send(
             marker + "\nWhat is today's date? You do not know today's date reliably from memory. "
                 + "You MUST call the web search tool EXACTLY ONCE to look it up, then reply with the date "
                 + "and one sentence of context.",
@@ -2122,20 +2122,22 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let fact = "E2E_SKY_\(Int.random(in: 10_000...99_999))"
+        let fact = "E2E_MINT_\(Int.random(in: 10_000...99_999))"
         let first = try send(
-            "Remember this fact: the sky color is \(fact). Reply with only CONFIRMED.",
+            "请记住：我的临时代号是 \(fact)。保存后只回答 CONFIRMED。",
             model: .bonsai, in: app, timeout: 300, assertEvidence: false
         )
-        XCTAssertFalse(first.answer.isEmpty)
+        XCTAssertTrue(first.toolActivities.contains("Saved to memory"), "The fact must be durably saved")
+        // A new conversation excludes the original sentence. Do not visit Memory settings here:
+        // a settings refresh would conceal a stale production snapshot.
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
         let second = try send(
-            "According to my memory, what is the sky color? Reply with only the fact.",
+            "我的临时代号是什么？只回答代号。",
             model: .bonsai, in: app, timeout: 300, assertEvidence: false
         )
-        XCTAssertTrue(
-            second.answer.contains(fact),
-            "recalled fact is missing from the answer: \(second.answer)"
-        )
+        XCTAssertEqual(second.answer, fact, "Cross-conversation recall must come from saved memory")
+        XCTAssertTrue(second.toolActivities.isEmpty, "The saved fact should already be present in context")
     }
 
     /// Approval-specific network read: with Ask pinned, a first-use web search must pause for an

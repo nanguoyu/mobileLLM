@@ -5,11 +5,9 @@ import XCTest
 @testable import LLMCore
 import AppRuntime
 
-/// The wiring that makes memory work without the model's cooperation: `startGeneration` must compose the
-/// saved facts relevant to THIS turn into the system prompt and thread that into the `ChatTurn`s the engine
-/// receives. Everything memory did before depended on a small model choosing to call `recall` — which is
-/// exactly what small models don't do — so a regression here wouldn't fail a tool test; it would just
-/// quietly make the assistant forget you again. A `RecordingEngine` captures the real turns.
+/// Compatibility coverage for the legacy preview/smoke path. Production Memory injection is covered
+/// by AppUnitTests/ProductionRegressionTests through makeAgentSnapshot and AppFrozenInputBuilder.
+/// Pure ranking/context-meter assertions below remain shared UI contracts.
 @MainActor
 final class ChatStoreMemoryInjectionTests: XCTestCase {
 
