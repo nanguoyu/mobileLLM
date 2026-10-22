@@ -988,7 +988,9 @@ public final class AgentRuntimeAssembly {
         // search -> observation -> answer cycle. This is an app-owned upper bound, not authority:
         // children still receive strict quarter shares and the workflow ledger accounts aggregate
         // actual usage across every wave.
-        let workflowBudget = try dynamicWorkflowBudget(from: source.budget)
+        let generatorOutputTokens = dynamicWorkflowGeneratorOutputTokens(for: snapshot)
+        let workflowBudget = try dynamicWorkflowBudget(from: source.budget,
+            maximumOutputTokensPerAttempt: UInt64(generatorOutputTokens))
         let request = try AgentRequest(
             id: AgentRequestID(),
             runID: AgentRunID(),
@@ -1016,7 +1018,7 @@ public final class AgentRuntimeAssembly {
                 // policy. Using the whole context as output makes admission impossible; a fixed
                 // output number also breaks local models with smaller native contexts. The 24K cap
                 // still gives reasoning-first compatible services room to emit source.
-                maximumOutputTokens: dynamicWorkflowGeneratorOutputTokens(for: snapshot),
+                maximumOutputTokens: generatorOutputTokens,
                 reasoningEnabled: false
             ),
             artifactReferences: [],
@@ -1077,7 +1079,10 @@ public final class AgentRuntimeAssembly {
         )
     }
 
-    private func dynamicWorkflowBudget(from baseline: AgentBudget) throws -> AgentBudget {
+    private func dynamicWorkflowBudget(
+        from baseline: AgentBudget,
+        maximumOutputTokensPerAttempt: UInt64? = nil
+    ) throws -> AgentBudget {
         var values = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map {
             ($0, baseline.limits[$0])
         })
@@ -1092,6 +1097,20 @@ public final class AgentRuntimeAssembly {
         // the ordinary single repair among four children would otherwise produce zero and turn one
         // malformed structured answer into an immediate budget failure.
         raise(.modelAttempts, to: 32)
+        // The ordinary token totals cover six chat passes. Expanding attempts without expanding
+        // those totals left each research child only 1.5 context windows for up to eight passes.
+        // Reserve enough cumulative capacity for the permitted passes, keeping per-pass ceilings.
+        let attempts = values[.modelAttempts, default: 0]
+        let outputPerAttempt = maximumOutputTokensPerAttempt
+            ?? (baseline.limits[.outputTokens] / max(1, baseline.limits[.modelAttempts]))
+        for (dimension, perAttempt) in [
+            (BudgetDimension.inputTokens, baseline.limits[.contextTokensPerAttempt]),
+            (.outputTokens, outputPerAttempt)
+        ] {
+            let (total, overflow) = perAttempt.multipliedReportingOverflow(by: attempts)
+            guard !overflow else { throw AgentContractError.arithmeticOverflow(dimension: dimension) }
+            raise(dimension, to: total)
+        }
         raise(.toolInvocations, to: 24)
         raise(.structuredRepairs, to: 8)
         raise(.networkRequestBytes, to: 32 * 1_024 * 1_024)

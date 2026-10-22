@@ -297,6 +297,33 @@ final class ToolV2AdapterTests: XCTestCase {
         XCTAssertTrue(disabled.toolCatalog.descriptors.isEmpty, "Suppression cannot re-enable user-disabled tools")
     }
 
+    // TEST-ID: AHT-DYNAMIC-001
+    @MainActor
+    func testResearchChildCanFinishItsAdmittedModelPassesButCannotExceedTheirBudget() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let assembly = try AgentRuntimeAssembly(engine: MockLLMEngine(script: .init()), downloadBase: root,
+            conversationDirectory: root, models: [LLMCatalog.bonsai8b], snapshot: { _, _, _, _ in nil })
+        let generator = try assembly.makeDynamicWorkflowGenerator(snapshot: makeSnapshot(userMessageID: UUID()))
+        let frozen = try await assembly.inputFreezer.freeze(generator)
+        let child = try generator.budget.attenuating(to: AgentBudget(
+            limits: generator.budget.limits.sharingCumulativeCapacity(among: 4),
+            maximumThermalState: generator.budget.maximumThermalState,
+            memoryPressureResponse: generator.budget.memoryPressureResponse), requireStrict: true)
+        var ledger = try BudgetLedgerSnapshot(budget: child)
+        let pass = AgentUsage(quantities: BudgetQuantities([
+            .modelAttempts: 1, .inputTokens: child.limits[.contextTokensPerAttempt],
+            .outputTokens: frozen.generationParameters.maximumOutputTokens
+        ]))
+        for _ in 0 ..< child.limits[.modelAttempts] {
+            let reservation = try BudgetReservation(id: BudgetReservationID(), maximumUsage: pass, reason: "research-model-pass")
+            ledger = try ledger.reserving(reservation)
+            ledger = try ledger.settling(reservationID: reservation.id, actualUsage: pass)
+        }
+        let excess = try BudgetReservation(id: BudgetReservationID(), maximumUsage: pass, reason: "excess-pass")
+        XCTAssertThrowsError(try ledger.reserving(excess), "The fixed model/token ceiling must still be enforced")
+    }
+
     @MainActor
     func testDeepSeekSelectionIsFrozenAndReconstructsWithoutDuplicatePublicTools() async throws {
         let snapshot = makeSnapshot(userMessageID: UUID(), deepSeekWebServiceID: "account-A")
