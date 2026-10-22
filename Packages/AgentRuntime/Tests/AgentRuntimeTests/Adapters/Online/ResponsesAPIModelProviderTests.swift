@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import XCTest
+import LLMCore
 @_spi(AgentRuntime) import AgentContracts
 @testable import AgentRuntime
 

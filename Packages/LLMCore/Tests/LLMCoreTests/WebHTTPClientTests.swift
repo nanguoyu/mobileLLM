@@ -5,6 +5,24 @@ import XCTest
 
 final class WebHTTPClientTests: XCTestCase {
 
+    func testChangedHostSchemeOrPortIsRejectedBeforeContact() async throws {
+        for destination in ["https://other.example/", "http://public.example/", "https://public.example:8443/"] {
+            let server = RedirectServer { request, _ in
+                Self.response(url: request.url!, status: 302, headers: ["Location": destination])
+            }
+            let client = WebHTTPClient(
+                policy: WebURLPolicy(resolve: { _ in ["1.1.1.1"] }),
+                transport: WebHTTPTransport { request, limit in try await server.load(request, maxBytes: limit) }
+            )
+            do {
+                _ = try await client.get(URLRequest(url: URL(string: "https://public.example/start")!), maxBytes: 1024)
+                XCTFail("Unauthorized redirect must fail: \(destination)")
+            } catch let error as WebNetworkError { XCTAssertEqual(error, .unsafeRedirect) }
+            let requests = await server.requestedURLs
+            XCTAssertEqual(requests.map(\.absoluteString), ["https://public.example/start"])
+        }
+    }
+
     func testPolicyRejectsPrivateOrReservedDNSAnswers() async {
         let blocked = [
             "127.0.0.1", "10.0.0.1", "100.64.0.1", "169.254.169.254",
@@ -160,7 +178,7 @@ final class WebHTTPClientTests: XCTestCase {
             maxBytes: 1024
         )
 
-        XCTAssertEqual(result.response.url?.host, "cdn.example")
+        XCTAssertEqual(result.response.url?.host, "public.example")
         XCTAssertEqual(String(decoding: result.body, as: UTF8.self), "redirected")
     }
 
