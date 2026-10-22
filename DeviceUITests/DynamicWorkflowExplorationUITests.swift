@@ -31,7 +31,7 @@ private extension DynamicWorkflowExplorationScenario {
     static let kimiLocal = Self(
         id: "kimi-local-feasibility",
         goal: """
-        Assess whether the COMPLETE Kimi K3 open-weight model can be installed as local weights and run fully offline on an iPhone 16 Pro. Do not substitute the official app or a cloud API for local inference. Use independent research tracks for model scale, iPhone memory/storage limits, and deployment alternatives, then synthesize a direct verdict with an order-of-magnitude calculation, important uncertainty, and realistic alternatives. Use current sources where available. The final answer must include the exact token EVAL_KIMI_LOCAL.
+        Assess whether the COMPLETE Kimi K3 open-weight model can be installed as local weights and run fully offline on an iPhone 16 Pro. Do not substitute the official app or a cloud API for local inference. Use independent research tracks for model scale, iPhone memory/storage limits, and deployment alternatives, then synthesize a direct verdict with an order-of-magnitude calculation, important uncertainty, and realistic alternatives. Use current sources where available and cite at least two independent HTTPS source hosts. The final answer must include the exact token EVAL_KIMI_LOCAL.
         """,
         marker: "EVAL_KIMI_LOCAL",
         enabledTools: ["Web search", "Webpage reader", "Wikipedia", "Calculator"],
@@ -50,7 +50,7 @@ private extension DynamicWorkflowExplorationScenario {
     static let accessibleTrip = Self(
         id: "accessible-trip-planning",
         goal: """
-        Build a realistic seven-day wheelchair-accessible Austria itinerary for two adults starting and ending in Vienna with a total ground budget of EUR 1,800. Independently investigate accessible transport, lodging/attraction constraints, and budget/risk tradeoffs before synthesis. Give daily routing, a budget table, reservation dependencies, and fallbacks when an elevator or train is unavailable. Clearly separate verified facts from assumptions. The final answer must include the exact token EVAL_TRIP_7D.
+        Build a realistic seven-day wheelchair-accessible Austria itinerary for two adults starting and ending in Vienna with a total ground budget of EUR 1,800. Independently investigate accessible transport, lodging/attraction constraints, and budget/risk tradeoffs before synthesis. Give daily routing, a budget table, reservation dependencies, and fallbacks when an elevator or train is unavailable. Clearly separate verified facts from assumptions and cite at least two independent HTTPS source hosts. The final answer must include the exact token EVAL_TRIP_7D.
         """,
         marker: "EVAL_TRIP_7D",
         enabledTools: ["Web search", "Webpage reader", "Wikipedia", "Calculator"],
@@ -325,12 +325,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
                 let projected = callEvidence.split(separator: "\n").dropFirst().map(String.init)
                 childCalls.append(contentsOf: projected.dropFirst(childCalls.count))
             }
-            if childCalls.count < callCount {
-                childCalls.append(contentsOf: repeatElement(
-                    "projected child call (detail unavailable)",
-                    count: callCount - childCalls.count
-                ))
-            }
+
         }
 
         if workflowBar.buttons.firstMatch.exists {
@@ -357,6 +352,15 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
             failures.append(
                 "only \(childCalls.count) child calls; expected at least \(scenario.minimumAgentCalls)"
             )
+        }
+        if childCalls.contains(where: { $0.localizedCaseInsensitiveContains("failed") || $0.localizedCaseInsensitiveContains("detail unavailable") }) {
+            failures.append("A child failed or its execution evidence is missing")
+        }
+        if scenario.enabledTools.contains("Web search") {
+            let detector = try NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+            let links = detector.matches(in: answer, range: NSRange(answer.startIndex..., in: answer)).compactMap(\.url)
+            let hosts = Set(links.filter { $0.scheme == "https" }.compactMap(\.host))
+            if hosts.count < 2 { failures.append("Research answer needs citations from at least two source hosts") }
         }
         if answer.count < scenario.minimumAnswerCharacters {
             failures.append(

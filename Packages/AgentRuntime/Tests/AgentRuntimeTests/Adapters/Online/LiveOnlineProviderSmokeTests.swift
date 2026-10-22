@@ -20,6 +20,9 @@ final class LiveOnlineProviderSmokeTests: XCTestCase {
     }
 
     private func loadConfig() throws -> LocalConfig {
+        guard ProcessInfo.processInfo.environment["MOBILELLM_RUN_LIVE_ONLINE_TESTS"] == "1" else {
+            throw XCTSkip("Live provider checks require MOBILELLM_RUN_LIVE_ONLINE_TESTS=1")
+        }
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".mobilellm/openai.json")
         guard let data = try? Data(contentsOf: url),

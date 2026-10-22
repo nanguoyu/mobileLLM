@@ -87,7 +87,7 @@ enum DeviceTestModel: CaseIterable, Equatable {
     var generationTimeout: TimeInterval { self == .bonsai ? 480 : 600 }
 }
 
-struct GenerationEvidence {
+struct GenerationEvidence: Codable {
     let answer: String
     let stats: String
     let toolActivities: [String]
@@ -158,6 +158,10 @@ class DeviceE2ETestCase: XCTestCase {
     /// a graceful "already gone". Button existence queries return false for a vanished alert.
     @MainActor
     private static func grantToolPermissionIfRequested(_ alert: XCUIElement) -> Bool {
+        guard alert.exists else { return false }
+        let text = alert.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " ").lowercased()
+        guard text.contains("mobilellm"),
+              ["calendar", "reminder", "location"].contains(where: text.contains) else { return false }
         for buttonLabel in ["Allow While Using App", "Allow Once", "Allow"] {
             let button = alert.buttons[buttonLabel]
             if button.exists, button.isHittable {
@@ -205,7 +209,9 @@ class DeviceE2ETestCase: XCTestCase {
         }
         // Long-form device tests measure engine behavior, not the cooling duty cycle: the harness
         // opts out of cooperative thermal pacing (production is unaffected).
-        app.launchEnvironment["MOBILELLM_DISABLE_THERMAL"] = "1"
+        if ProcessInfo.processInfo.environment["MOBILELLM_E2E_DISABLE_THERMAL"] == "1" {
+            app.launchEnvironment["MOBILELLM_DISABLE_THERMAL"] = "1"
+        }
         activeApp = app
         app.launch()
 
@@ -342,6 +348,9 @@ class DeviceE2ETestCase: XCTestCase {
     /// fact on the device, otherwise a small reader model can pick the wrong one of two similar notes.
     @MainActor
     func clearAllMemories(in app: XCUIApplication) throws {
+        guard ProcessInfo.processInfo.environment["MOBILELLM_E2E_ALLOW_DATA_RESET"] == "1" else {
+            throw DeviceE2EHarnessError.precondition("Memory reset requires an isolated test installation and MOBILELLM_E2E_ALLOW_DATA_RESET=1")
+        }
         try goToSettings(in: app)
         let memory = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Memory")

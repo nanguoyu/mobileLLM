@@ -558,14 +558,6 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
                 + "\"deepwiki/deepwiki\" to look up the deepwiki server's structure, then answer in one "
                 + "short line.",
             model: .gemma, in: app, timeout: 360)
-        if evidence.toolActivities.isEmpty {
-            let retryMarker = uniqueMarker("MCP_RETRY")
-            evidence = try send(
-                retryMarker + "\nYou MUST call the MCP tool read_wiki_structure (the tool from your "
-                    + "configured MCP server) exactly once with repoName \"deepwiki/deepwiki\" before "
-                    + "answering. Then reply briefly.",
-                model: .gemma, in: app, timeout: 360)
-        }
         XCTAssertGreaterThanOrEqual(
             evidence.toolActivities.count, 1,
             "MCP tool did not execute; activities: \(evidence.toolActivities)"
@@ -1098,16 +1090,6 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         var evidence = try send(
             marker + "\nUse the clock exactly once to get the current local date and time, then answer in one short line.",
             model: model, in: app)
-        if evidence.toolActivities.isEmpty {
-            // A 1-bit local model occasionally answers from its training prior instead of calling
-            // the clock. A wiring regression fails earlier with run=failed diagnostics, so a single
-            // retry keeps the functional tool contract from depending on sampling luck.
-            let retryMarker = uniqueMarker(model == .bonsai ? "BONSAI_CLOCK_RETRY" : "GEMMA_CLOCK_RETRY")
-            evidence = try send(
-                retryMarker + "\nYou must call the clock tool before answering. Use the clock exactly once "
-                    + "to get the current local date and time, then answer in one short line.",
-                model: model, in: app)
-        }
         XCTAssertEqual(evidence.toolActivities.count, 1, "unexpected tool chain: \(evidence.toolActivities)")
         XCTAssertTrue(evidence.toolActivities.first?.hasPrefix("Current Datetime returned ") == true)
     }
@@ -1119,16 +1101,6 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         var evidence = try send(
             marker + "\nCall the web_search tool exactly once for the query OpenAI official website. Then answer with the first result's title.",
             model: model, in: app, timeout: 720)
-        if evidence.toolActivities.isEmpty {
-            // A 1-bit local model occasionally answers from its training prior instead of calling the
-            // tool. A wiring regression fails earlier with run=failed diagnostics, so a single retry
-            // keeps the functional tool contract from depending on sampling luck.
-            let retryMarker = uniqueMarker(model == .bonsai ? "BONSAI_WEB_RETRY" : "GEMMA_WEB_RETRY")
-            evidence = try send(
-                retryMarker + "\nYou MUST call the web_search tool exactly once for the query OpenAI "
-                    + "official website. Then answer with the first result's title.",
-                model: model, in: app, timeout: 720)
-        }
         XCTAssertEqual(evidence.toolActivities.count, 1, "unexpected tool chain: \(evidence.toolActivities)")
         guard let activity = evidence.toolActivities.first else { return }
         // The functional contract is that the tool really returned organic results: the row must show
@@ -1208,30 +1180,13 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
                     + "lasting fact. Do not use web search. After it is saved, reply exactly "
                     + "MEMORY_SAVED_OK.",
                 model: writer, in: app, assertEvidence: false)
-            if !evidence.toolActivities.contains("Saved to memory") {
-                // A 1-bit local model occasionally answers without calling the tool. A wiring regression
-                // fails earlier with run=failed diagnostics, so a single retry keeps the durable-memory
-                // contract from depending on sampling luck.
-                let retryMarker = uniqueMarker(
-                    writer == .bonsai ? "BONSAI_MEMORY_RETRY" : "GEMMA_MEMORY_RETRY"
-                )
-                evidence = try send(
-                    retryMarker + "\nMy temporary device-test name is \(code). You MUST call the remember "
-                        + "tool (the tool named remember) exactly once with text \"The user's temporary "
-                        + "device-test name is \(code).\" to save this lasting fact, then reply exactly "
-                        + "MEMORY_SAVED_OK. Do not use web search.",
-                    model: writer, in: app, assertEvidence: false)
-            }
             writerEvidence = evidence
             failures += generationEvidenceFailures(evidence, model: writer)
                 .map { "Writer generation: \($0)" }
-            // A 1-bit model may acknowledge by echoing the saved fact instead of the literal
-            // MEMORY_SAVED_OK. The durable Memory row and the reader's exact recall below are the real
-            // contract; only a reply that carries neither the marker nor the code is a genuine miss.
-            if evidence.answer != "MEMORY_SAVED_OK", !evidence.answer.contains(code) {
+            if evidence.answer != "MEMORY_SAVED_OK" {
                 failures.append(
                     "Writer answer was \(String(reflecting: evidence.answer)), "
-                        + "expected MEMORY_SAVED_OK or the saved code"
+                        + "expected MEMORY_SAVED_OK"
                 )
             }
             if !evidence.toolActivities.contains("Saved to memory") {
@@ -1537,21 +1492,13 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         var allActivities: [String] = []
         for scenario in scenarios {
             var sawTool = false
-            for attempt in 0..<2 {
-                if sawTool { break }
-                let prompt = attempt == 0
-                    ? scenario.prompt
-                    : "\(uniqueMarker("TOOLV2_RETRY"))\nYou MUST call the \(scenario.tool) tool "
-                        + "exactly once and then reply briefly."
-                do {
-                    let evidence = try send(prompt, model: .bonsai, in: app,
-                                            timeout: 300, assertEvidence: false)
-                    allActivities += evidence.toolActivities
-                    sawTool = matchesTool(evidence.toolActivities, scenario.tool)
-                } catch {
-                    // A run-level rejection (e.g. the model repeated a call) is retried once with a
-                    // tighter instruction; the durable runtime keeps the protection itself.
-                }
+            do {
+                let evidence = try send(scenario.prompt, model: .bonsai, in: app,
+                                        timeout: 300, assertEvidence: false)
+                allActivities += evidence.toolActivities
+                sawTool = matchesTool(evidence.toolActivities, scenario.tool)
+            } catch {
+                allActivities.append("\(scenario.tool) failed: \(error.localizedDescription)")
             }
             if !sawTool { missing.append(scenario.tool) }
         }
@@ -2130,16 +2077,6 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
                 + "then reply exactly RESULT=9449772114007.",
             model: .bonsai, in: app, timeout: 300, assertEvidence: false
         )
-        if evidence.toolActivities.isEmpty {
-            // Online models sometimes answer from arithmetic knowledge instead of calling the tool.
-            // Retry once with the tool-call made mandatory (same wiring the device clock test uses).
-            evidence = try send(
-                marker + "\nYou cannot multiply these numbers from memory. You MUST call the "
-                    + "calculator tool exactly once before answering. Use the calculator to multiply "
-                    + "1234567 by 7654321, then reply exactly RESULT=9449772114007.",
-                model: .bonsai, in: app, timeout: 300, assertEvidence: false
-            )
-        }
         XCTAssertEqual(
             evidence.toolActivities.count,
             1,
@@ -2166,13 +2103,6 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
                 + "and one sentence of context.",
             model: .bonsai, in: app, timeout: 300, assertEvidence: false
         )
-        if evidence.toolActivities.isEmpty {
-            evidence = try send(
-                marker + "\nYou MUST call the web search tool exactly once before answering. Use web search to "
-                    + "look up today's date, then reply with the date and one sentence of context.",
-                model: .bonsai, in: app, timeout: 300, assertEvidence: false
-            )
-        }
         XCTAssertTrue(
             evidence.toolActivities.contains(where: {
                 $0.localizedCaseInsensitiveContains("web_search")

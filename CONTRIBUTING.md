@@ -136,7 +136,7 @@ Linux uses Apple's pinned Swift Crypto 4.5.2 implementation. Pushes to `codex/**
 Paid macOS runners remain disabled. A maintainer can enable the `macos-behavior` job by registering a
 trusted self-hosted macOS runner and setting `MOBILELLM_SELF_HOSTED_MAC=true` in repository variables.
 It runs only on main or manual dispatch, never on pull-request code. The same local gate is
-`bash scripts/verification/run-behavior-tests.sh`; set `MOBILELLM_TEST_OUTPUT` to retain logs at a chosen path.
+`bash scripts/verification/run-behavior-tests.sh --all` for a full baseline. The default selects packages affected since `origin/main`; pass `--base-ref <ref>` to choose another comparison. Pure prose changes select no Swift suites. Set `MOBILELLM_TEST_OUTPUT` to retain logs at a chosen path.
 
 **Apple-platform and release-evidence gates run on a maintainer Mac.** The local commands below
 also include the portable verifier for use before pushing:
@@ -186,6 +186,15 @@ packages, app/engine builds, simulator, coverage, mutations, or physical-device 
 
 Note the simulator runs **llama.cpp on CPU only and cannot run MLX at all** — activation refuses MLX
 variants there by design; anything MLX is validated on real hardware.
+
+Live online checks are opt-in: use `MOBILELLM_RUN_LIVE_ONLINE_TESTS=1` with an explicit
+`--filter LiveOnlineProviderSmokeTests`. The ordinary package runner and coverage runner exclude them.
+Simulator plus configured online models cover app behavior and real-model task outcomes. Physical
+hardware is needed for local GPU/MLX performance, thermal behavior, memory pressure, and OS scheduling.
+Device/UI tests retain production thermal pacing by default. Set `MOBILELLM_E2E_DISABLE_THERMAL=1`
+only for a separately labelled functional experiment. Memory-clearing scenarios require an isolated
+installation and `MOBILELLM_E2E_ALLOW_DATA_RESET=1`. Real-model cases use one prompt attempt; a later
+manual retry is separate evidence and cannot erase the first failure.
 
 ## Updating documentation and verification metadata
 

@@ -164,7 +164,7 @@ write_report() {
 # SwiftPM 6.2 emits XCTest xUnit only through its parallel runner. One worker preserves deterministic
 # serialization while still producing structured per-test evidence; each discovered test runs once.
 set +e
-swift test \
+swift test --skip LiveOnlineProviderSmokeTests \
     --package-path "$package_dir" \
     --scratch-path "$scratch_path" \
     --enable-code-coverage \
