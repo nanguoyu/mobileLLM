@@ -819,7 +819,7 @@ must all produce it rather than implementing parallel approval formats.
 ### 15.5 Server-side native tools (design decision, NOT yet implemented)
 
 Some online services execute tools on the server instead of returning a function call for the app to run
-(e.g. DeepSeek's Responses API supports `web_search` / `web_search_2025_08_26` executed server-side).
+(e.g. DeepSeek's Responses API supports `web_search` on supported models, executed server-side).
 This section fixes the policy for when such support is added; no production code implements it today.
 
 - Each online service declares its native server-side tools as per-service capability metadata
@@ -844,6 +844,20 @@ hashes, and user decision. The run capability ceiling is immutable for the run; 
 subset. Approval authorizes an operation inside that ceiling and never expands it. Future child agents may receive
 only a subset of the parent's ceiling. Any time-of-check/time-of-use mismatch invalidates authorization before
 external I/O.
+
+### 15.6 Standalone authenticated web APIs
+
+DeepSeek's independent Search and Fetch JSON APIs are client-invoked Tool V2 operations, separate from
+the provider-hosted model tools in §15.5. A user may select a configured official DeepSeek account for
+search/page reading while using either a local or online model. Public search engines remain the default.
+
+The selected service identity is frozen in the tool descriptor and approval binding. Each logical
+capability has one advertised implementation. Query/URL arguments cross the existing `networkRead`
+authorization boundary before credential resolution or HTTP I/O. Credentials remain in Keychain and
+may only be used against the fixed official HTTPS API origin; redirects are rejected. Responses are
+bounded, budget-accounted, and framed as untrusted content. Missing or removed accounts, invalid keys,
+service errors, and empty results must not trigger a silent switch to another provider. The settings
+UI must disclose that successful Search/Fetch requests are billed by DeepSeek.
 
 ## 16. Context compiler, Memory, and Skills
 

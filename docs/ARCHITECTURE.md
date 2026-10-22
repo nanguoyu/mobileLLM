@@ -324,6 +324,23 @@ calls from plain text and hides any hallucinated call markup in the final pass.
   remains for the legacy loop and tests. Tokens are resolved from Keychain at invocation time and
   are absent from persisted discovery metadata.
 
+## Authenticated web service selection
+
+`AppSettings.deepSeekWebServiceID` optionally selects a configured official DeepSeek account for both
+search and page reading, independently of the model selected for inference. `makeAgentSnapshot`
+captures that identity. The frozen catalog substitutes `AppDeepSeekWebToolAdapter` descriptors for the
+same `builtin.web_search` and `builtin.fetch_webpage` logical IDs, preserving conversation tool choices
+without advertising duplicates. The descriptor trust revision encodes the non-secret account identity;
+the executable catalog can reconstruct the exact adapter after recovery without an in-memory registry.
+
+Each call crosses the normal Tool V2 prepare/authorize/execute boundary with `web.search` or `web.page`
+data categories and the fixed `https://api.deepseek.com` destination. The selected account must still
+be configured for that origin before its Keychain credential is read. `DeepSeekWebClient` calls
+`/v1/tools/search` or `/v1/tools/fetch` through the bounded nonredirecting transport. Search returns
+links and summaries; Fetch returns bounded Markdown. Neither operation calls a model. The UI leaves
+public engines/direct page reads as the default; choosing DeepSeek replaces both, with no fallback.
+These standalone APIs are separate from provider-hosted model tools in spec §15.5.
+
 ## Memory
 
 `MemoryStore` persists facts atomically with provenance, content revision, canonicalization status,

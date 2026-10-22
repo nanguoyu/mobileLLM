@@ -2580,6 +2580,14 @@
         {
           "kind": "xctest",
           "value": "LLMCoreTests.ToolSchemaConsistencyTests/testStaticSchemasMatchInstanceSchemas"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testDeepSeekSelectionIsFrozenAndReconstructsWithoutDuplicatePublicTools"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testDeepSeekReadsCredentialsOnlyAfterAuthorizationAndFailsWithoutFallback"
         }
       ],
       "platforms": [

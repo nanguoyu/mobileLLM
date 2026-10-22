@@ -63,6 +63,11 @@ and release-validation work. See [Current status](docs/STATUS.md) for known gaps
   (prompt-injection fenced) before another model pass. Runtime assembly failures are visible and
   fail closed instead of silently changing execution semantics. Workflows inherit only the conversation's enabled tools —
   never force-enabled, and with no hard-coded dependency on web search or the page reader.
+- 🔎 **Optional DeepSeek Search + Fetch.** In Settings → Choose tools → Web service, select a configured
+  official DeepSeek service to use its authenticated search and Markdown page-reading APIs. The same
+  tools work with local models, online models, and workflows. Keys stay in Keychain; search and page
+  reading keep their individual switches and approvals. DeepSeek bills successful requests. Public
+  engines remain the default, and errors never silently switch the selected service.
 - 🧩 **Subagents + parallel tool batches + dynamic workflows.** The runtime can spawn bounded
   subagents with attenuated ceilings, run tool batches in parallel inside one run, and orchestrate a
   message-anchored **workflow** (`/workflow <goal>`, the marker may sit anywhere in the message): the
@@ -163,6 +168,8 @@ These optional features use the network:
 - **Models:** Explore metadata and model downloads contact Hugging Face.
 - **Network tools:** web search, webpage reading, and Wikipedia send a query or URL to public services.
   Each tool must be allowed by the conversation and its operation must be authorized.
+  Selecting DeepSeek as the web service sends search queries and page URLs to its official API using
+  the selected account; it does not send the full conversation to the search service.
 - **MCP:** explicit server setup/refresh discovers tools; authorized invocations contact that server.
   Discovery metadata is cached without bearer tokens, and execution resolves credentials from Keychain.
 - **Skills:** browsing the community gallery and importing a skill by URL fetch remote content.

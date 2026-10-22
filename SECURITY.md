@@ -96,6 +96,13 @@ account, analytics, or telemetry service.
   TLS hostname validation, so a DNS rebinding race between validation and CFNetwork's connection remains a
   platform-level residual risk. Eliminating it would require a separately audited, IP-pinned HTTP/TLS
   transport rather than URLSession; the project does not claim that stronger guarantee.
+- The optional DeepSeek web service uses fixed official Search/Fetch endpoints. Its account identity
+  is frozen in the tool descriptor and bound to approval; only one implementation of each search/read
+  capability is advertised. Keys are resolved from Keychain only inside authorized execution, and only
+  while that account still names the official HTTPS service. API requests never follow redirects;
+  responses are bounded and charged to the network budget, including HTTP errors. Fetch rejects local
+  names, private/reserved addresses, embedded URL credentials, and non-HTTPS input. Deleted accounts
+  and missing keys fail explicitly without changing providers. Results remain untrusted context data.
 
 ## Developer configuration and DEBUG artifacts
 
