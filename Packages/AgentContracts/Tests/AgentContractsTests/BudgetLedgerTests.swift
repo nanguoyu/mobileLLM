@@ -4,6 +4,22 @@ import XCTest
 @testable import AgentContracts
 
 final class BudgetLedgerTests: XCTestCase {
+    func testAvailableCapacitySubtractsSettledAndInflightWorkButRetainsOperationCeilings() throws {
+        let budget = try makeBudget(limit: 24)
+        let spent = AgentUsage(quantities: BudgetQuantities([.toolInvocations: 19, .contextTokensPerAttempt: 24]))
+        var ledger = try BudgetLedgerSnapshot(budget: budget, consumed: spent)
+        XCTAssertEqual(ledger.availableCapacity[.toolInvocations], 5)
+        XCTAssertEqual(ledger.availableCapacity[.contextTokensPerAttempt], 24)
+        let claim = try makeReservation(id: 1, .toolInvocations, 3)
+        ledger = try ledger.reserving(claim)
+        XCTAssertEqual(ledger.availableCapacity[.toolInvocations], 2)
+        ledger = try ledger.settling(reservationID: claim.id, actualUsage: usage(.toolInvocations, 1))
+        XCTAssertEqual(ledger.availableCapacity[.toolInvocations], 4)
+        let reopened = try JSONDecoder().decode(BudgetLedgerSnapshot.self, from: JSONEncoder().encode(ledger))
+        XCTAssertEqual(reopened.availableCapacity, ledger.availableCapacity)
+        XCTAssertThrowsError(try ledger.reserving(makeReservation(id: 2, .toolInvocations, 5)))
+    }
+
     private static let cumulativeDimensions: Set<BudgetDimension> = [
         .modelAttempts,
         .toolInvocations,

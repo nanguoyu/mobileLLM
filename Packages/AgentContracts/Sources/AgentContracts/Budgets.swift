@@ -419,6 +419,22 @@ public struct BudgetLedgerSnapshot: Hashable, Codable, Sendable {
     /// Outstanding maximum reservations in stable identifier order.
     public let reservations: [BudgetReservation]
 
+    /// Capacity that a new reservation may claim. Already consumed work and in-flight claims
+    /// subtract only from cumulative dimensions; per-operation ceilings remain reusable.
+    public var availableCapacity: BudgetQuantities {
+        BudgetQuantities(Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map { dimension in
+            var available = budget.limits[dimension]
+            if dimension.accounting == .cumulative {
+                // Construction validates the sum, so these subtractions cannot underflow.
+                available -= consumed.quantities[dimension]
+                for reservation in reservations {
+                    available -= reservation.maximumUsage.quantities[dimension]
+                }
+            }
+            return (dimension, available)
+        }))
+    }
+
     /// Creates and fully validates a ledger snapshot.
     public init(
         budget: AgentBudget,

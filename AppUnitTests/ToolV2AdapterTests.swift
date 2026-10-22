@@ -298,6 +298,27 @@ final class ToolV2AdapterTests: XCTestCase {
     }
 
     // TEST-ID: AHT-DYNAMIC-001
+    func testWorkflowChildUsesRemainingToolCapacityWithoutIncreasingItsShare() throws {
+        let baseline = try AgentBudget.firstReleaseDefaults(contextTokensPerAttempt: 1024, outputTokens: 256, peakMemoryBytes: 1024)
+        var values = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map { ($0, baseline.limits[$0]) })
+        values[.toolInvocations] = 24
+        let root = try AgentBudget(limits: BudgetQuantities(values), maximumThermalState: .fair, memoryPressureResponse: .pause)
+        let share = try AgentBudget(limits: root.limits.sharingCumulativeCapacity(among: 4), maximumThermalState: .fair, memoryPressureResponse: .pause)
+        for spent in [UInt64(19), 24] {
+            let ledger = try BudgetLedgerSnapshot(budget: root, consumed: AgentUsage(quantities: BudgetQuantities([.toolInvocations: spent])))
+            let remaining = try AgentBudget(limits: ledger.availableCapacity, maximumThermalState: .fair, memoryPressureResponse: .pause)
+            let child = try AppDynamicWorkflowChildRequestBuilder.budget(share, limitedBy: remaining)
+            XCTAssertEqual(child.limits[.toolInvocations], 24 - spent)
+            XCTAssertEqual(child.limits[.contextTokensPerAttempt], share.limits[.contextTokensPerAttempt])
+            XCTAssertTrue(child.limits.isComponentwiseAtMost(share.limits))
+            let claim = try BudgetReservation(id: BudgetReservationID(), maximumUsage: AgentUsage(quantities: child.limits), reason: "final-synthesis")
+            let reserved = try ledger.reserving(claim)
+            XCTAssertEqual(reserved.availableCapacity[.toolInvocations], 0)
+            XCTAssertThrowsError(try reserved.reserving(BudgetReservation(id: BudgetReservationID(), maximumUsage: AgentUsage(quantities: BudgetQuantities([.toolInvocations: 1])), reason: "overcommit")))
+        }
+    }
+
+    // TEST-ID: AHT-DYNAMIC-001
     @MainActor
     func testResearchChildCanFinishItsAdmittedModelPassesButCannotExceedTheirBudget() async throws {
         let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)

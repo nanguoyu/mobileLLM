@@ -342,6 +342,15 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         call: WorkflowAgentCallV1,
         prompt: String
     ) throws -> SubagentSpawnRequest {
+        try makeRequest(launch: launch, call: call, prompt: prompt, budgetLimit: launch.budget)
+    }
+
+    func makeRequest(
+        launch: WorkflowLaunchSnapshotV1,
+        call: WorkflowAgentCallV1,
+        prompt: String,
+        budgetLimit: AgentBudget
+    ) throws -> SubagentSpawnRequest {
         guard let parent = lock.withLock({ parents[launch.runID] }) else {
             throw AppDynamicWorkflowIntegrationError.parentRunUnavailable
         }
@@ -349,12 +358,13 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
             from: launch.capabilityCeiling,
             requiresIsolation: call.options.requiresIsolatedWorkspace
         )
-        let childBudget = try attenuatedBudget(
+        let share = try attenuatedBudget(
             from: launch.budget,
             maximumConcurrentAgents: launch.limits.maximumConcurrentAgents,
             schemaRepairAttempts: launch.limits.schemaRepairAttempts,
             requiresStructuredOutput: call.options.schema != nil
         )
+        let childBudget = try Self.budget(share, limitedBy: budgetLimit)
         let modelPolicy = try resolvedModelPolicy(
             requested: call.options.requestedModel,
             parent: launch.defaultModelPolicy
@@ -432,6 +442,21 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         )
         pendingSubmissions.storeWorkflow(spawn, parent: parent.request, frozenInputs: frozen)
         return spawn
+    }
+
+    static func budget(_ share: AgentBudget, limitedBy remaining: AgentBudget) throws -> AgentBudget {
+        let limits = BudgetQuantities(Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map {
+            ($0, min(share.limits[$0], remaining.limits[$0]))
+        }))
+        for dimension in [BudgetDimension.modelAttempts, .inputTokens, .outputTokens, .activeMilliseconds]
+            where limits[dimension] == 0 {
+            throw AgentContractError.budgetExceeded(dimension: dimension, limit: 0, requested: 1)
+        }
+        return try share.attenuating(to: AgentBudget(
+            limits: limits,
+            maximumThermalState: min(share.maximumThermalState, remaining.maximumThermalState),
+            memoryPressureResponse: share.memoryPressureResponse
+        ))
     }
 
     private func attenuatedCeiling(

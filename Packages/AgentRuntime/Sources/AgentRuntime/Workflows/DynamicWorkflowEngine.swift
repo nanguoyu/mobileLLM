@@ -40,6 +40,28 @@ public protocol WorkflowChildRequestBuilding: Sendable {
         call: WorkflowAgentCallV1,
         prompt: String
     ) throws -> SubagentSpawnRequest
+
+    /// Called inside atomic admission. Implementations may shrink their usual child share to
+    /// fit remaining capacity, and must freeze/cache that exact request before returning it.
+    func makeRequest(
+        launch: WorkflowLaunchSnapshotV1,
+        call: WorkflowAgentCallV1,
+        prompt: String,
+        budgetLimit: AgentBudget
+    ) throws -> SubagentSpawnRequest
+}
+
+public extension WorkflowChildRequestBuilding {
+    func makeRequest(
+        launch: WorkflowLaunchSnapshotV1,
+        call: WorkflowAgentCallV1,
+        prompt: String,
+        budgetLimit: AgentBudget
+    ) throws -> SubagentSpawnRequest {
+        // Existing host policies retain their exact request. The ledger still rejects any
+        // reservation that does not fit; it never silently changes an already frozen request.
+        try makeRequest(launch: launch, call: call, prompt: prompt)
+    }
 }
 
 public struct ClosureWorkflowChildRequestBuilder: WorkflowChildRequestBuilding, Sendable {
@@ -871,21 +893,18 @@ private actor DynamicWorkflowSession {
                 isRecoveredSubmission: true
             )
         } else {
-            let request = try requestBuilder.makeRequest(
-                launch: projection.launch,
-                call: call,
-                prompt: prompt
-            )
-            try childRequestValidator.validate(
-                request,
-                launch: projection.launch,
-                call: call
-            )
-            admission = try await workflowBudget.admit(
-                request: request,
-                call: call,
-                isRecoveredSubmission: false
-            )
+            let launch = projection.launch
+            let builder = requestBuilder
+            let validator = childRequestValidator
+            let admitted = try await workflowBudget.admitAvailable(call: call) { remaining in
+                let request = try builder.makeRequest(
+                    launch: launch, call: call, prompt: prompt, budgetLimit: remaining
+                )
+                try validator.validate(request, launch: launch, call: call)
+                return request
+            }
+            let request = admitted.request
+            admission = admitted.admission
             do {
                 handleID = try await spawner.spawn(request)
             } catch {

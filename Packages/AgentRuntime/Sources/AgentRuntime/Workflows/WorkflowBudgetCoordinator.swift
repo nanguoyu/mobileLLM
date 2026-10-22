@@ -64,6 +64,30 @@ actor WorkflowBudgetCoordinator {
         return .reserved(reservationID)
     }
 
+    /// Computing the remaining capacity, building the exact child request, and reserving it have
+    /// no suspension point between them. Concurrent dispatch cannot spend the same remainder.
+    func admitAvailable(
+        call: WorkflowAgentCallV1,
+        buildRequest: @Sendable (AgentBudget) throws -> SubagentSpawnRequest
+    ) async throws -> (request: SubagentSpawnRequest, admission: WorkflowBudgetAdmission) {
+        try await waitForRecoveredChildren()
+        try Task.checkCancellation()
+        let remaining = try AgentBudget(
+            limits: ledger.availableCapacity,
+            maximumThermalState: ledger.budget.maximumThermalState,
+            memoryPressureResponse: ledger.budget.memoryPressureResponse
+        )
+        let request = try buildRequest(remaining)
+        let reservationID = BudgetReservationID(rawValue: call.callID.rawValue)
+        let reservation = try BudgetReservation(
+            id: reservationID,
+            maximumUsage: AgentUsage(quantities: request.budget.limits),
+            reason: "dynamic-workflow-child"
+        )
+        ledger = try ledger.reserving(reservation)
+        return (request, .reserved(reservationID))
+    }
+
     /// Commits actual child usage and releases its admission claim. The returned usage is the
     /// accounting-correct workflow aggregate after this stable settlement.
     func settle(
