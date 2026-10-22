@@ -197,8 +197,9 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
         return try history.toolOutcomes.sorted { $0.value.0.sequence < $1.value.0.sequence }.compactMap { id, recorded in
             guard let plan = history.toolIntents[id]?.1.plan, plan.kind == .tool,
                   plan.effects == [.networkRead], plan.idempotency == .pureRead,
-                  let toolID = ids.first(where: { $0.description == plan.subjectID }) else { return nil }
-            let arguments = try AgentWireDecoder.decode(JSONValue.self, from: plan.canonicalArguments.value.data, limits: .inlineValue)
+                  let toolID = ids.first(where: { $0.description == plan.subjectID }),
+                  let argumentsPayload = plan.canonicalArguments else { return nil }
+            let arguments = try AgentWireDecoder.decode(JSONValue.self, from: argumentsPayload.value.data, limits: .inlineValue)
             let url: String?
             if case .object(let object) = arguments, case .string(let value)? = object["url"] { url = value }
             else { url = nil }
