@@ -253,7 +253,7 @@ final class DynamicWorkflowAdversarialTests: XCTestCase {
         XCTAssertNil(projection.reconciliationCallID)
         XCTAssertEqual(projection.usage.quantities[.inputTokens], 14)
         let handle = try XCTUnwrap(projection.submittedHandles.values.first)
-        let committed = await spawner.terminalResult(handle)
+        let committed = try await spawner.terminalResult(handle)
         let terminal = try XCTUnwrap(committed)
         let encoded = try JSONEncoder().encode(terminal)
         XCTAssertEqual(try JSONDecoder().decode(SubagentResult.self, from: encoded).usage, terminal.usage)
@@ -1389,7 +1389,7 @@ private actor ADControlledSpawner: SubagentSpawning {
         self.losesCancellationAcknowledgement = losesCancellationAcknowledgement
     }
 
-    func terminalResult(_ handleID: AgentExecutionHandleID) -> SubagentResult? {
+    func terminalResult(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult? {
         guard cancelled.contains(handleID), let binding = bindings[handleID] else { return nil }
         return SubagentResult(runID: binding.runID, handleID: handleID, outcome: .cancelled,
             terminalUsage: losesCancellationAcknowledgement ? AgentUsage(quantities: BudgetQuantities([.inputTokens: 14])) : nil)
@@ -1429,7 +1429,7 @@ private actor ADControlledSpawner: SubagentSpawning {
             while !cancelled.contains(handleID) {
                 try await Task.sleep(nanoseconds: 2_000_000)
             }
-            return terminalResult(handleID)!
+            return try await terminalResult(handleID)!
         case .releasable:
             while !released, !cancelled.contains(handleID) {
                 try await Task.sleep(nanoseconds: 2_000_000)
