@@ -78,6 +78,26 @@ final class DynamicWorkflowRuntimeTests: XCTestCase {
         )
     }
 
+    func testLiteralSchemaFieldNamesAreDataButExecutableBuiltinsStillFail() throws {
+        XCTAssertNoThrow(try analyze(wrapped("""
+        const schema = { type: 'object', properties: {
+          test: { type: 'string', minLength: 1 },
+          search: { type: 'number', minimum: -1 }
+        }, required: ['test', 'search'], additionalProperties: false };
+        return await agent('Analyze the incident', { schema: schema });
+        """)))
+        for body in [
+            "const schema = {type: 'object', properties: {test: fetch('https://example.com')}}; return schema;",
+            "const schema = {type: 'object', test() { return true; }}; return schema;",
+            "const schema = {type: 'object', properties: {['te' + 'st']: {type: 'string'}}}; return schema;",
+            "const schema = {type: 'object', properties: {__proto__: {type: 'string'}}}; return schema;",
+            "const schema = {type: 'object', required: ['test']}; return args.value.test('x');",
+            "const schema = {type: 'object', required: ['test']}; return args.value['test']('x');",
+        ] {
+            XCTAssertThrowsError(try analyze(wrapped(body)), body)
+        }
+    }
+
     func testTemplateAnalysisIgnoresRawProseAndChecksEveryInterpolation() throws {
         XCTAssertNoThrow(try analyze(wrapped(
             "return `Synthesize with ${args.model} and review with ${args.device.name}.`;"

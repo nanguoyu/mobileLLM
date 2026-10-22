@@ -281,6 +281,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
     ]
 
     private static func rejectForbiddenCapabilities(_ tokens: [JSToken]) throws {
+        let schemaData = literalSchemaTokenIndices(tokens)
         let protectedIntrinsics: Set<String> = [
             "Object", "Array", "Promise", "Map", "JSON", "Math",
         ]
@@ -324,10 +325,13 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
             }
             if let string = token.stringValue,
                ["constructor", "prototype", "__proto__"].contains(string)
-                    || forbiddenSynchronousBuiltins.contains(string)
+                    || (forbiddenSynchronousBuiltins.contains(string) && !schemaData.contains(index))
             {
                 throw WorkflowScriptAnalysisError.forbiddenCapability(string)
             }
+            // A fully parsed literal schema contains no expressions, getters, or computed keys.
+            // Names such as `test` in properties/required are data, not RegExp method access.
+            if schemaData.contains(index) { continue }
             guard let identifier = token.identifier else { continue }
             if identifier.hasPrefix("__") {
                 throw WorkflowScriptAnalysisError.forbiddenCapability("reserved runtime binding")
@@ -377,6 +381,22 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
                 throw WorkflowScriptAnalysisError.forbiddenCapability("Math.random")
             }
         }
+    }
+
+    private static func literalSchemaTokenIndices(_ tokens: [JSToken]) -> Set<Int> {
+        var result = Set<Int>()
+        var index = 0
+        while index < tokens.count {
+            defer { index += 1 }
+            guard tokens[index].symbol == "{" else { continue }
+            var parser = LiteralParser(tokens: tokens, index: index)
+            guard let value = try? parser.parseValue(depth: 0), case .object(let object) = value,
+                  object["type"] != nil || object["properties"] != nil || object["$schema"] != nil
+            else { continue }
+            result.formUnion(index ..< parser.index)
+            index = parser.index - 1
+        }
+        return result
     }
 
     /// Extracts exactly the JavaScript inside each `${...}` interpolation while ignoring template
@@ -717,6 +737,17 @@ private struct LiteralParser {
         }
         let token = tokens[index]
         if let string = token.stringValue { index += 1; return .string(string) }
+        if case .number(let number) = token.kind {
+            let value = try JSONDecoder().decode(JSONValue.self, from: Data(number.utf8))
+            index += 1
+            return value
+        }
+        if token.symbol == "-", index + 1 < tokens.count,
+           case .number(let number) = tokens[index + 1].kind {
+            let value = try JSONDecoder().decode(JSONValue.self, from: Data(("-" + number).utf8))
+            index += 2
+            return value
+        }
         if token.identifier == "true" { index += 1; return .bool(true) }
         if token.identifier == "false" { index += 1; return .bool(false) }
         if token.identifier == "null" { index += 1; return .null }
