@@ -217,8 +217,7 @@ public final class ContinuedProcessingCoordinator {
 
     // MARK: - Terminal outcomes
 
-    /// The run reached a durable terminal state (completed/failed/cancelled). Completes the task
-    /// successfully and clears the scheduling slot.
+    /// The run reached a durable terminal state. Reports its actual outcome and clears the slot.
     public func runFinished(conversationID: UUID, success: Bool = true) {
         guard activeConversationID == conversationID else { return }
         phase = .finished

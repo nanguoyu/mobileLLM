@@ -215,6 +215,7 @@ public actor LlamaEngine: LLMEngine {
         // `context` must not keep pointing at the freed allocation (a retry would double-free, and the
         // reuse branch above would retain freed memory — a user-reachable UAF via kvBits).
         context = nil; contextCap = 0; contextKVBits = -1
+        cachedTokens.removeAll(keepingCapacity: true)
         var cp = llama_context_default_params()
         cp.n_ctx = UInt32(target)
         cp.n_batch = 512                                          // small compute buffer; prefill is chunked
