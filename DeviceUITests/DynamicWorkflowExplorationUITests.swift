@@ -362,7 +362,24 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
             let detector = try NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
             let links = detector.matches(in: answer, range: NSRange(answer.startIndex..., in: answer)).compactMap(\.url)
             let hosts = Set(links.filter { $0.scheme == "https" }.compactMap(\.host))
-            if hosts.count < 2 { failures.append("Research answer needs citations from at least two source hosts") }
+            let environment = ProcessInfo.processInfo.environment
+            let minimumHosts = scenario.id == "ad-hoc"
+                ? max(2, Int(environment["MOBILELLM_WORKFLOW_EVAL_MIN_CITATION_HOSTS"] ?? "2") ?? 2) : 2
+            if hosts.count < minimumHosts {
+                failures.append("Research answer has \(hosts.count) HTTPS citation hosts; expected at least \(minimumHosts)")
+            }
+            if scenario.id == "ad-hoc", let minimumRows = Int(environment["MOBILELLM_WORKFLOW_EVAL_MIN_CITED_ROWS"] ?? "") {
+                let citedRows = answer.components(separatedBy: .newlines).filter {
+                    let line = $0.trimmingCharacters(in: .whitespaces)
+                    return line.hasPrefix("|") && line.contains("https://")
+                }.count
+                if citedRows < minimumRows {
+                    failures.append("Research answer has \(citedRows) cited table rows; expected at least \(minimumRows)")
+                }
+            }
+            if answer.contains("<｜｜DSML｜｜tool_calls>") {
+                failures.append("Research answer contains raw tool protocol markup")
+            }
         }
         if answer.count < scenario.minimumAnswerCharacters {
             failures.append(
