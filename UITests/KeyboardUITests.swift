@@ -26,7 +26,7 @@ final class KeyboardUITests: XCTestCase {
         let newChat = app.buttons.matching(identifier: "New chat").firstMatch
         if newChat.waitForExistence(timeout: 5) { newChat.tap() }
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20),
                       "the composer field never appeared — did the seeded model fail to activate?")
 
@@ -66,13 +66,13 @@ final class KeyboardUITests: XCTestCase {
 
         let newChat = app.buttons.matching(identifier: "New chat").firstMatch
         if newChat.waitForExistence(timeout: 5) { newChat.tap() }
-        XCTAssertTrue(app.textFields["composer.field"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch.waitForExistence(timeout: 20))
 
         XCUIDevice.shared.press(.home)
         Thread.sleep(forTimeInterval: 0.8)
         app.activate()
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10), "the active thread should survive foregrounding")
         field.tap()
         field.typeText("foreground keyboard regression")
@@ -132,7 +132,7 @@ final class DeviceSmokeUITests: XCTestCase {
         XCTAssertTrue(modelsTab.exists, "Models tab is missing")
         XCTAssertTrue(settingsTab.exists, "Settings tab is missing")
         XCTAssertTrue(app.navigationBars["Chat"].exists, "cold launch must stay on the Chat list")
-        XCTAssertFalse(app.textFields["composer.field"].exists,
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch.exists,
                        "cold launch must not enter a conversation automatically")
 
         modelsTab.tap()
@@ -206,7 +206,7 @@ final class DeviceSmokeUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.navigationBars["Chat"].waitForExistence(timeout: 30),
                       "relaunch did not return to the Chat list")
-        XCTAssertFalse(app.textFields["composer.field"].exists,
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch.exists,
                        "relaunch must not reopen the previous conversation")
     }
 
@@ -220,7 +220,7 @@ final class DeviceSmokeUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Chat"].waitForExistence(timeout: 30),
                       "cold launch did not reach the Chat list")
-        XCTAssertFalse(app.textFields["composer.field"].exists,
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch.exists,
                        "cold launch unexpectedly entered a conversation")
 
         // `newConversation()` intentionally reuses an existing empty thread. Never run a destructive smoke
@@ -253,7 +253,7 @@ final class DeviceSmokeUITests: XCTestCase {
                                    timeout: 180),
                       "the current default Bonsai 8B · 1-bit model did not become active")
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(waitForComposer(field, in: app, timeout: 180),
                       "the Bonsai composer never became ready")
 

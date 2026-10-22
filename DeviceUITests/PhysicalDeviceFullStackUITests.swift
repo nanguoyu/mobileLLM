@@ -12,7 +12,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     func test01ColdLaunchRestoresIdentityWithoutConversationOrWeights() throws {
         let app = try launchApp()
         XCTAssertTrue(app.navigationBars["Chat"].exists)
-        XCTAssertFalse(app.textFields["composer.field"].exists,
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch.exists,
                        "launch must never reopen the most recent conversation")
         let runtime = diagnosticValue("device-e2e.runtime", in: app)
         XCTAssertTrue(runtime.contains("resident=false"),
@@ -129,7 +129,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         XCTAssertFalse(thinking.exists,
                        "Gemma 4 E2B is catalogued non-thinking and must not expose a Thinking toggle")
         try dismissChatOptionsSelectingNoSkill(in: app)
-        XCTAssertTrue(waitForEnabled(app.textFields["composer.field"], timeout: 10),
+        XCTAssertTrue(waitForEnabled(app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch, timeout: 10),
                       "composer did not recover after the deterministic menu dismissal")
 
         let marker = uniqueMarker("GEMMA_CORE")
@@ -151,7 +151,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         let marker = uniqueMarker("BONSAI_THINK")
         let copies = app.buttons.matching(identifier: "Copy answer").count
         let stats = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         field.tap()
         field.typeText(
             marker + "\nThink step by step: multiply 123 by 4, and explain each step before the final number."
@@ -357,7 +357,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try activate(.gemma, in: app)
         let marker = uniqueMarker("VISION_GATE")
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         field.tap()
         field.typeText(marker + " describe this image")
         try activate(.bonsai, in: app)
@@ -451,7 +451,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
 
         let copies = app.buttons.matching(identifier: "Copy answer").count
         let stats = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         field.tap()
         field.typeText(uniqueMarker("TOOL_RACE") + "\nSearch the web for OpenAI's official website and return its title.")
         app.buttons["Send"].tap()
@@ -639,7 +639,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         // A send must produce a durable run projection and a committed assistant answer. Drive the
         // send manually so a generation failure reports the complete agent diagnostics instead of
         // the generic UI message.
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         guard field.waitForExistence(timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Composer missing before agent send")
         }
@@ -694,7 +694,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     @MainActor
     func test27AgentRuntimeDiagnosticProbe() throws {
         let app = try prepare(.bonsai, tools: false, selected: [], thinking: true)
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         guard field.waitForExistence(timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Composer missing before agent probe")
         }
@@ -1027,7 +1027,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         let marker = uniqueMarker(model == .bonsai ? "BONSAI_STOP" : "GEMMA_STOP")
         let copies = app.buttons.matching(identifier: "Copy answer").count
         let statsBefore = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         field.tap()
         field.typeText(marker + "\nWrite a detailed 2500-word technical essay comparing ten sorting algorithms, with proofs and examples. Do not finish early.")
         app.buttons["Send"].tap()
@@ -1322,7 +1322,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         // `typeText` immediately after reactivation can surface a cross-device paste permission alert;
         // the safety firewall must not click that alert. Keeping the draft across background and tapping
         // Send after foreground still exercises the real suspend -> lazy-load -> generation boundary.
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         if field.waitForExistence(timeout: 20), field.isHittable {
             afterCopyCount = app.buttons.matching(identifier: "Copy answer").count
             afterStatsCount = app.descendants(matching: .any)
@@ -1536,7 +1536,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         guard field.waitForExistence(timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Composer missing before continued-processing send")
         }
@@ -1629,7 +1629,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         guard field.waitForExistence(timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Composer missing before workflow send")
         }
@@ -1788,7 +1788,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         let runtime = diagnosticValue("device-e2e.runtime", in: app)
         XCTAssertTrue(runtime.contains("resident=false"),
                       "online selection must not allocate local weights: \(runtime)")
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
         field.typeText("hello")
@@ -1802,7 +1802,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         let copyCount = app.buttons.matching(identifier: "Copy answer").count
         let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
@@ -1877,7 +1877,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         let copyCount = app.buttons.matching(identifier: "Copy answer").count
         let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
@@ -1954,7 +1954,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         XCTAssertTrue(ask.waitForExistence(timeout: 5))
         ask.tap()
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         let copyCount = app.buttons.matching(identifier: "Copy answer").count
         let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
@@ -2151,7 +2151,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try selectOnlineModel(in: app)
         try selectApprovalMode("Ask", in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         let copyCount = app.buttons.matching(identifier: "Copy answer").count
         let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
@@ -2192,7 +2192,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         let marker = uniqueMarker("ONLINE_STOP")
         let copies = app.buttons.matching(identifier: "Copy answer").count
         let statsBefore = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
         field.typeText(
@@ -2410,7 +2410,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
         field.typeText("Write a detailed 800-word essay about sleep and memory, with at least ten "

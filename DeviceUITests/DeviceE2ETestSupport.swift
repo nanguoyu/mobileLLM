@@ -331,7 +331,7 @@ class DeviceE2ETestCase: XCTestCase {
 
     @MainActor
     func goToChatList(in app: XCUIApplication) throws {
-        if app.textFields["composer.field"].exists || app.buttons["Active model"].exists {
+        if app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch.exists || app.buttons["Active model"].exists {
             let back = app.navigationBars.buttons["Chat"].firstMatch
             if back.exists, back.isHittable { back.tap() }
         }
@@ -624,7 +624,7 @@ class DeviceE2ETestCase: XCTestCase {
         guard waitForValue(of: active, equalTo: model.headerValue, timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Active-model header did not identify \(model.headerValue)")
         }
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         // The engine can report resident=true just before the model-switch sheet finishes its UI
         // transition. A field behind that sheet technically exists but is not usable; wait for the
         // user-observable ready state rather than sampling isHittable once.
@@ -657,9 +657,10 @@ class DeviceE2ETestCase: XCTestCase {
               timeout: TimeInterval? = nil,
               acceptedStops: [String] = ["eos", "stopSequence", "maxTokens"],
               assertEvidence: Bool = true) throws -> GenerationEvidence {
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         guard field.waitForExistence(timeout: 20), field.isHittable else {
-            throw DeviceE2EHarnessError.precondition("Composer is not ready for \(model.displayName)")
+            attachDiagnostics(app, name: "composer-unavailable")
+            throw DeviceE2EHarnessError.precondition("Composer is unavailable; runtime=\(diagnosticValue("device-e2e.runtime", in: app))")
         }
         // The whole device matrix must exercise the durable agent runtime; a silent fallback to the
         // legacy loop would make tool/vision scenarios pass without ever testing the agent path.

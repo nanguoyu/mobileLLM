@@ -204,7 +204,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
 
         let answers = app.descendants(matching: .any).matching(identifier: "assistant.answer")
         let answerCount = answers.count
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         guard field.waitForExistence(timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Composer missing for \(scenario.id)")
         }
