@@ -53,6 +53,38 @@ final class MockResponsesURLProtocol: URLProtocol {
 }
 
 final class ResponsesAPIModelProviderTests: XCTestCase {
+
+    func testNativeToolResultsReplayCallIdentityAndReasoningAfterSerialization() throws {
+        let fixture = try ModelFixture(location: .remote, providerID: ResponsesAPIModelProvider.providerID)
+        let reasoning: JSONValue = .object(["type": .string("reasoning"), "id": .string("rs_1"),
+                                            "summary": .array([]), "encrypted_content": .string("opaque")])
+        let native = try NativeToolCallContext(
+            selectionDigest: NativeToolCallContext.digest(for: fixture.request.selection),
+            callID: "call_123", name: "lookup", arguments: CanonicalJSON(.object([:])),
+            reasoningItems: [reasoning], reasoningText: "provider reasoning"
+        )
+        let message = try AgentModelMessage(role: .tool, content: "verified result", isUntrustedData: true,
+                                            nativeToolCall: native)
+        let restored = try JSONDecoder().decode(AgentModelMessage.self, from: JSONEncoder().encode(message))
+        let wire = try ResponsesAPIModelProvider.messagesPayload([restored], selection: fixture.request.selection).input
+        XCTAssertEqual(wire, [reasoning, native.functionCallItem, .object([
+            "type": .string("function_call_output"), "call_id": .string("call_123"),
+            "output": .string("verified result"),
+        ])])
+        XCTAssertThrowsError(try AgentModelMessage(role: .user, content: "x", isUntrustedData: false, nativeToolCall: native))
+        XCTAssertThrowsError(try NativeToolCallContext(selectionDigest: native.selectionDigest, callID: "c", name: "lookup",
+                                                       arguments: native.arguments, reasoningItems: [.object(["type": .string("message")])]))
+    }
+
+    func testNativeIdentitySeparatesRepeatedCallsWithEqualArguments() {
+        let calls = [
+            ResponsesAPIModelProvider.ParsedCall(name: "lookup", argumentsJSON: "{}", callID: "a"),
+            ResponsesAPIModelProvider.ParsedCall(name: "lookup", argumentsJSON: "{}", callID: "b"),
+            ResponsesAPIModelProvider.ParsedCall(name: "lookup", argumentsJSON: "{}", callID: "a"),
+        ]
+        XCTAssertEqual(ResponsesAPIModelProvider.deduplicatedCalls(calls).map(\.callID), ["a", "b"])
+    }
+
     func testOnlineWirePreservesUniqueNamesForTwoMCPServers() throws {
         let spec = MCPToolSpec(name: "lookup", description: "Look up current information", inputSchemaJSON: "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}")
         let descriptors = try [UUID(), UUID()].map { try MCPToolV2Adapter.descriptor(spec: spec, serverStableID: $0, trustRevision: "audit.v1") }
@@ -617,6 +649,7 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         XCTAssertEqual(parsed.text, "Hello world")
         XCTAssertEqual(parsed.calls.count, 1)
         XCTAssertEqual(parsed.calls[0].name, "calculator")
+        XCTAssertEqual(parsed.calls[0].callID, "c1")
         XCTAssertEqual(parsed.usage.inputTokens, 12)
         XCTAssertEqual(parsed.usage.outputTokens, 7)
         XCTAssertFalse(parsed.hasReasoning)

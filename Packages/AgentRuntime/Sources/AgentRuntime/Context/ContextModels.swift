@@ -409,13 +409,15 @@ public struct UntrustedToolResultContextSource: Hashable, Codable, Sendable {
     public let invocationID: ToolInvocationID
     public let descriptorID: AgentToolDescriptorID
     public let resultDigest: StableDigest
+    public let nativeToolCall: NativeToolCallContext?
 
     public init(
         invocationID: ToolInvocationID,
         descriptorID: AgentToolDescriptorID,
         resultRevision: String,
         resultContent: String,
-        resultDigest: StableDigest? = nil
+        resultDigest: StableDigest? = nil,
+        nativeToolCall: NativeToolCallContext? = nil
     ) throws {
         frozen = try FrozenContextText(
             sourceID: invocationID.description,
@@ -425,6 +427,7 @@ public struct UntrustedToolResultContextSource: Hashable, Codable, Sendable {
         self.invocationID = invocationID
         self.descriptorID = descriptorID
         self.resultDigest = resultDigest ?? frozen.contentDigest
+        self.nativeToolCall = nativeToolCall
     }
 
     public init(from decoder: Decoder) throws {
@@ -440,7 +443,8 @@ public struct UntrustedToolResultContextSource: Hashable, Codable, Sendable {
                 descriptorID: container.decode(AgentToolDescriptorID.self, forKey: .descriptorID),
                 resultRevision: value.revision,
                 resultContent: value.content,
-                resultDigest: container.decode(StableDigest.self, forKey: .resultDigest)
+                resultDigest: container.decode(StableDigest.self, forKey: .resultDigest),
+                nativeToolCall: container.decodeIfPresent(NativeToolCallContext.self, forKey: .nativeToolCall)
             )
         } catch {
             throw DecodingError.dataCorrupted(
@@ -450,7 +454,7 @@ public struct UntrustedToolResultContextSource: Hashable, Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case frozen, invocationID, descriptorID, resultDigest
+        case frozen, invocationID, descriptorID, resultDigest, nativeToolCall
     }
 }
 
