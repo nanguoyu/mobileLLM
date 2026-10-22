@@ -439,7 +439,7 @@ struct AppFrozenInputBuilder: Sendable {
             activeSkillToolHints: [],
             explicitlyRequestedToolIDs: [],
             maximumAdvertisedTools: online ? 16 : 8,
-            contextPolicyVersion: 1,
+            contextPolicyVersion: 2,
             approvalPolicyVersion: 1
         )
     }

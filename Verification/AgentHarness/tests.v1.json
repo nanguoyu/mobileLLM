@@ -2601,13 +2601,26 @@
     {
       "id": "AHT-CONTEXT-APP-001",
       "title": "Preserve Memory controls and freshness through production app submission",
-      "status": "planned",
+      "status": "active",
       "kind": "integration",
       "riskTier": "P0",
       "requirementIDs": [
         "AH-CONTEXT-002"
       ],
-      "selectors": [],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ProductionRegressionTests/testMemoryOffExcludesSavedFactsFromProductionFrozenInput"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ProductionRegressionTests/testToolSavedFactAppearsOnTheNextProductionSend"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ProductionRegressionTests/testProductionMemorySelectionOmitsUnrelatedFacts"
+        }
+      ],
       "platforms": [
         "macos",
         "ios-simulator"
@@ -2621,7 +2634,7 @@
         "Existing legacy ChatStoreMemoryInjectionTests and pure ContextCompiler tests do not replace app assembly coverage"
       ],
       "determinism": {
-        "fixedSeedRequired": true,
+        "fixedSeedRequired": false,
         "rotatingSeedRequired": false
       }
     }

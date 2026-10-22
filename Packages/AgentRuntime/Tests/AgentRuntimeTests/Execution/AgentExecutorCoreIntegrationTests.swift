@@ -325,14 +325,15 @@ final class AgentExecutorCoreIntegrationTests: XCTestCase {
         let userArtifactID = try XCTUnwrap(ArtifactID(userArtifactIDValue))
         let loadedUserArtifact = await harness.payloadStore.reference(for: userArtifactID)
         let userArtifact = try XCTUnwrap(loadedUserArtifact)
-        XCTAssertEqual(userArtifact.mimeType, "text/plain")
-        XCTAssertEqual(userArtifact.semanticType, "agent-user-message.v1")
+        XCTAssertEqual(userArtifact.mimeType, "application/octet-stream")
+        XCTAssertEqual(userArtifact.semanticType, "agent-user-message.v2")
         let userBytes = try await harness.payloadStore.load(
             userArtifact,
             maximumBytes: userArtifact.byteCount
         )
-        XCTAssertEqual(userBytes, Data(harness.frozenInputs.currentUser.frozen.content.utf8))
-        XCTAssertEqual(String(data: userBytes, encoding: .utf8), harness.frozenInputs.currentUser.frozen.content)
+        let acceptedMessage = try AcceptedUserMessagePayload.decode(userBytes)
+        XCTAssertEqual(acceptedMessage.text, harness.frozenInputs.currentUser.frozen.content)
+        XCTAssertEqual(acceptedMessage.attachments, harness.frozenInputs.currentUser.attachments)
 
         let structuredArtifacts = events.compactMap { event -> ArtifactReference? in
             if case .artifactCommitted(let reference) = event.payload.event { return reference }

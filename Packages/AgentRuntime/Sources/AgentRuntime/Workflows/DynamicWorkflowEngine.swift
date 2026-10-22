@@ -395,8 +395,8 @@ public actor DynamicWorkflowEngine {
 
     public func resumeAfterDataErase() { dataEraseSuspended = false }
 
-    public func quiesceForBackground() async throws {
-        for id in Array(active.keys) { try await deferToForeground(runID: id) }
+    public func quiesceForBackground(excluding runs: Set<WorkflowRunID> = []) async throws {
+        for id in Array(active.keys) where !runs.contains(id) { try await deferToForeground(runID: id) }
     }
 
     public func projection(runID: WorkflowRunID) async throws -> WorkflowRunProjectionV1? {
@@ -896,7 +896,10 @@ private actor DynamicWorkflowSession {
         }
         let result: SubagentResult
         do {
-            result = try await spawner.collect(handleID)
+            result = try await spawner.collect(handleID, stallMilliseconds: call.options.stallMilliseconds)
+        } catch let timeout as SubagentStallTimeout {
+            try await settleAfterCancellation(call: call, handleID: handleID, admission: admission)
+            throw WorkflowScriptRuntimeError.hostFailure("Child agent made no observable progress for \(timeout.milliseconds) ms and was stopped.")
         } catch SubagentSpawnError.reconciliationRequired(let failure) {
             projection = try await append([
                 .reconciliationRequired(callID: call.callID, reason: failure.safeMessage),

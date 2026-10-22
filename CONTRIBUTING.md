@@ -55,8 +55,15 @@ for the MLX-fork + llama.cpp dependency pins.
 
 ## Running the tests
 
-The eight MLX-free packages are the fast inner loop. Point local SwiftPM build output outside the source
-tree so nothing stray lands in the repo:
+Choose validation from the behavior changed. A prose edit needs document/link or metadata checks;
+a code change needs the affected existing tests and dependent packages. Use
+`python3 scripts/verification/changed-checks.py` to inspect scope and
+`bash scripts/verification/run-behavior-tests.sh` to run it. The default comparison is `origin/main`;
+`--base-ref <ref>` changes it and `--all` explicitly requests a complete offline baseline.
+Use a full baseline once for a broad integration or release change, rather than after every edit.
+
+The commands below are individual suite choices, not a mandatory sequence for each change. Point
+SwiftPM build output outside the source tree:
 
 ```sh
 swift test --package-path Packages/AppUI          --scratch-path /tmp/mllm-appui
@@ -72,17 +79,17 @@ swift test --package-path Packages/LLMEngineApple --scratch-path /tmp/mllm-apple
 
 Most tests use deterministic providers and transports. Live checks have different activation rules:
 
-- `LiveOnlineProviderSmokeTests` automatically reads `~/.mobilellm/openai.json` and makes real API
-  requests when usable credentials and a model exist. The command above skips it explicitly. Run it
-  intentionally with `--filter LiveOnlineProviderSmokeTests` when validating the configured service.
+- `LiveOnlineProviderSmokeTests` requires `MOBILELLM_RUN_LIVE_ONLINE_TESTS=1`, then reads
+  `~/.mobilellm/openai.json`. Select it explicitly with `--filter LiveOnlineProviderSmokeTests` when
+  validating that service. Ordinary package and coverage runners exclude it.
 - `MCP_LIVE=1` enables the live MCP test. `APPLE_LLM_LIVE=1` enables real Apple-model inference.
   Other Apple-model tests may skip when the OS/framework or an eligible system model is unavailable.
 - Keychain tests can skip when the execution environment denies access. Record these skips; they
   are not proof that credential storage was tested.
 
-`run-behavior-tests.sh` runs all eight packages plus the verification tool and static gate. It does not
-exclude the online smoke class, so a developer configuration can cause real requests during that run.
-Use the explicit commands above for an offline pass. Keep outputs outside the checkout; in a restricted
+`run-behavior-tests.sh` selects affected packages and the static gate, excluding live online tests.
+`MOBILELLM_TEST_OUTPUT` selects the log directory and `MOBILELLM_BUILD_CACHE` selects a reusable build
+cache. Pure prose changes select no Swift suites. In a restricted
 runner, point `CLANG_MODULE_CACHE_PATH`, `SWIFTPM_MODULECACHE_OVERRIDE`, and SwiftPM's `--cache-path`,
 `--config-path`, and `--security-path` at writable temporary directories. An outer process sandbox may
 also require SwiftPM's `--disable-sandbox` for manifest evaluation. These build flags do not grant
@@ -116,27 +123,39 @@ xcodebuild -skipMacroValidation -scheme EngineTests \
 
 # iOS simulator UI suite (XCUITest). The checked-in plans live in
 # Verification/AgentHarness/TestPlans: SimulatorUI.xctestplan (keyboard/composer geometry, agent-run
-# UI, workflow E2E) and DeviceE2E.xctestplan (physical-device matrix). Online-model scenarios need
+# UI, workflow fixtures) and DeviceE2E.xctestplan (simulator online + physical-device cases).
+# Online-model scenarios need
 # ~/.mobilellm/openai.json and the simulator's hardware keyboard disabled:
 # defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
 xcodebuild -skipMacroValidation -scheme UITests \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
   -only-testing:mobileLLMUITests/WorkflowUITests test
+
+# Actual online model, production runtime, and calculator on Simulator. Keep ad-hoc signing enabled
+# so Keychain credentials are accessible. Each online case uses isolated real stores and preferences.
+xcodebuild -skipMacroValidation -scheme DeviceE2E \
+  -destination 'platform=iOS Simulator,name=iPhone 17' -parallel-testing-enabled NO \
+  -only-testing:mobileLLMDeviceE2ETests/SimulatorOnlineE2EUITests/test07OnlineCalculatorTool \
+  MTL_COMPILER_FLAGS='$(inherited) -Wno-c++17-extensions -Wno-c++20-extensions' \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
 ```
 
 ### What runs where
 
-**Hosted CI runs two Linux jobs.** In `.github/workflows/ci.yml`, `verification-documents` checks that
+**Hosted CI selects two Linux validation jobs from changed paths.** Prose-only changes skip Swift.
+In `.github/workflows/ci.yml`, `verification-documents` checks that
 every `Verification/**` JSON and `.xctestplan` must parse, every `scripts/verification/*.sh` must pass
 `bash -n`, and the `spec.md` SHA-256 recorded in `Verification/AgentHarness/requirements.v1.json` and the
 four semantic registries must match the checked-in `spec.md`. The separate `portable-swift` job uses the pinned Swift 6.2.4 container to compile and test `AgentContracts`, `AgentSandboxAPI`, and
 `AgentHarnessVerification`, then runs the semantic/architecture verifier. Apple platforms keep CryptoKit;
-Linux uses Apple's pinned Swift Crypto 4.5.2 implementation. Pushes to `codex/**` run the same gates.
+Linux uses Apple's pinned Swift Crypto 4.5.2 implementation. Pull requests and pushes to `main`
+run these gates; feature-branch pushes do not launch a duplicate run for an open pull request.
+Use manual dispatch when branch validation is needed before opening a pull request.
 
 Paid macOS runners remain disabled. A maintainer can enable the `macos-behavior` job by registering a
 trusted self-hosted macOS runner and setting `MOBILELLM_SELF_HOSTED_MAC=true` in repository variables.
 It runs only on main or manual dispatch, never on pull-request code. The same local gate is
-`bash scripts/verification/run-behavior-tests.sh`; set `MOBILELLM_TEST_OUTPUT` to retain logs at a chosen path.
+`bash scripts/verification/run-behavior-tests.sh --all` for a full baseline. The default selects packages affected since `origin/main`; pass `--base-ref <ref>` to choose another comparison. Pure prose changes select no Swift suites. Set `MOBILELLM_TEST_OUTPUT` to retain logs at a chosen path.
 
 **Apple-platform and release-evidence gates run on a maintainer Mac.** The local commands below
 also include the portable verifier for use before pushing:
@@ -186,6 +205,15 @@ packages, app/engine builds, simulator, coverage, mutations, or physical-device 
 
 Note the simulator runs **llama.cpp on CPU only and cannot run MLX at all** — activation refuses MLX
 variants there by design; anything MLX is validated on real hardware.
+
+Live online checks are opt-in: use `MOBILELLM_RUN_LIVE_ONLINE_TESTS=1` with an explicit
+`--filter LiveOnlineProviderSmokeTests`. The ordinary package runner and coverage runner exclude them.
+Simulator plus configured online models cover app behavior and real-model task outcomes. Physical
+hardware is needed for local GPU/MLX performance, thermal behavior, memory pressure, and OS scheduling.
+Device/UI tests retain production thermal pacing by default. Set `MOBILELLM_E2E_DISABLE_THERMAL=1`
+only for a separately labelled functional experiment. Memory-clearing scenarios require an isolated
+installation and `MOBILELLM_E2E_ALLOW_DATA_RESET=1`. Real-model cases use one prompt attempt; a later
+manual retry is separate evidence and cannot erase the first failure.
 
 ## Updating documentation and verification metadata
 

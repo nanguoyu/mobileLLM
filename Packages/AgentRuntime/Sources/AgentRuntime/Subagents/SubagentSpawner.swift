@@ -22,6 +22,9 @@ public protocol SubagentSpawning: Sendable {
     func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID
     /// Waits for the child's durable terminal result.
     func collect(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult
+    /// Reports durable and streamed activity while collecting, for a caller's inactivity deadline.
+    func collect(_ handleID: AgentExecutionHandleID,
+                 onProgress: @escaping @Sendable () async -> Void) async throws -> SubagentResult
     /// Idempotently cancels one durable child. Used for explicit workflow stop and un-awaited calls.
     func cancel(_ handleID: AgentExecutionHandleID, runID: AgentRunID) async throws
     /// Resolves the exact uncertain child invocation through its normal durable command path.
@@ -41,6 +44,26 @@ public protocol SubagentSpawning: Sendable {
 }
 
 public extension SubagentSpawning {
+    func collect(_ handleID: AgentExecutionHandleID,
+                 onProgress: @escaping @Sendable () async -> Void) async throws -> SubagentResult {
+        try await collect(handleID)
+    }
+
+    /// Zero or nil disables the inactivity deadline. Cancellation still settles the durable child
+    /// through the workflow engine before the workflow can report a terminal failure.
+    func collect(_ handleID: AgentExecutionHandleID, stallMilliseconds: UInt64?) async throws -> SubagentResult {
+        guard let milliseconds = stallMilliseconds, milliseconds > 0 else { return try await collect(handleID) }
+        guard milliseconds <= 1_800_000 else { throw SubagentSpawnError.invalidResult }
+        let deadline = SubagentProgressDeadline(milliseconds: milliseconds)
+        return try await withThrowingTaskGroup(of: SubagentResult.self) { group in
+            group.addTask { try await collect(handleID, onProgress: { await deadline.markProgress() }) }
+            group.addTask { try await deadline.waitForStall() }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else { throw SubagentSpawnError.resultUnavailable }
+            return result
+        }
+    }
+
     func cancel(_: AgentExecutionHandleID, runID _: AgentRunID) async throws {
         throw SubagentSpawnError.resultUnavailable
     }
@@ -153,8 +176,25 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
 
     public func collect(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult {
         let handle = try await executor.attach(to: handleID)
+        return try await collectHandle(handle, onProgress: nil)
+    }
+
+    public func collect(_ handleID: AgentExecutionHandleID,
+                        onProgress: @escaping @Sendable () async -> Void) async throws -> SubagentResult {
+        let handle = try await executor.attach(to: handleID)
+        let stream = await handle.ephemeralEvents()
+        let observer = Task {
+            do { for try await _ in stream { await onProgress() } } catch { }
+        }
+        defer { observer.cancel() }
+        return try await collectHandle(handle, onProgress: onProgress)
+    }
+
+    private func collectHandle(_ handle: any AgentExecutionHandle,
+                               onProgress: (@Sendable () async -> Void)?) async throws -> SubagentResult {
         try Self.rejectReconciliationWait(try await handle.status())
         for try await envelope in handle.events(after: nil) {
+            await onProgress?()
             if case .statusChanged(let status) = envelope.payload.event {
                 try Self.rejectReconciliationWait(status)
             }

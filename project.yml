@@ -133,7 +133,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.mobileLLMDeviceE2ETests
         SWIFT_VERSION: "6.0"
         TARGETED_DEVICE_FAMILY: "1"
-        SUPPORTED_PLATFORMS: iphoneos
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
     preBuildScripts:
       - name: Embed OpenAI test config
         script: scripts/embed-openai-test-config.sh
@@ -208,8 +208,8 @@ schemes:
       testPlans:
         - path: Verification/AgentHarness/TestPlans/SimulatorCI.xctestplan
           defaultPlan: true
-  # Full clean-install/download/inference matrix. Run only on the connected phone, with one worker and
-  # no randomized ordering because the provisioning phase intentionally creates the model artifacts.
+  # Online scenarios also run on Simulator. The full provisioning/local-weight matrix uses a phone,
+  # one worker, and ordered cases because provisioning intentionally creates the model artifacts.
   DeviceE2E:
     build:
       targets:

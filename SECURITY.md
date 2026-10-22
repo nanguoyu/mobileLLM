@@ -89,7 +89,8 @@ account, analytics, or telemetry service.
   and recorded in a revision-bearing manifest. Community model behavior and licensing are still
   **Unverified**; missing Hub family/license metadata is shown as unknown rather than inferred.
 - The production webpage adapter accepts HTTPS input URLs. Its shared HTTP(S) transport rejects
-  non-public destinations before requests and redirects,
+  non-public destinations before requests and redirects. Redirects must preserve the approved scheme,
+  host, and effective port,
   and enforces its response-body limit while streaming rather than after buffering an arbitrary body.
   URLSession does not expose the peer IP or let the app pin a pre-resolved address while retaining normal
   TLS hostname validation, so a DNS rebinding race between validation and CFNetwork's connection remains a
@@ -116,12 +117,15 @@ Skills, online credentials, MCP credentials/discovery, and settings. The marker 
 and bootstrap completes pending erasure before opening stores. This coordinates logical deletion;
 physical flash erasure is not a product guarantee.
 
-Static review on 2026-10-22 identified an open Memory integration gap: the production snapshot forwards
-cached canonical facts without applying the Memory switch, query ranking, or the legacy path's refresh
-before each send. A saved fact can therefore enter model context even when the Memory UI is off,
-including context sent to a selected online provider. See [Current status](docs/STATUS.md#open-implementation-items)
-and spec §33 for the source trace and required regression scenarios. The existing legacy-path Memory
-tests do not establish the production-path guarantee.
+The 2026-10-22 Memory correction applies the switch and query ranking at production submission,
+using an immutable snapshot published only after a durable save. Memory off also removes Memory tools
+from the next run's catalog. Already submitted runs retain their frozen inputs; changing a setting
+does not rewrite a committed run or remove facts previously quoted in conversation history.
+Production assembly regressions cover exclusion, relevance, and next-turn freshness.
+
+Opt-in DEBUG UI test sessions use a UUID namespace for actual stores, preferences, and Keychain
+services. This isolates test data while exercising production persistence and online transport.
+The fixed-response workflow fixture is separate and provides mechanics evidence only.
 
 ## Supported versions
 

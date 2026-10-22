@@ -8,6 +8,20 @@ import XCTest
 // TEST-ID: AHT-CONTEXT-001
 // TEST-ID: AHT-CONTEXT-002
 final class ContextCompilerTests: XCTestCase {
+
+    func testCurrentToolObservationSurvivesBudgetPressureAheadOfBackgroundMemory() throws {
+        let snapshot = try completeSnapshot()
+        let wide = try ContextCompiler().compile(snapshot, budget: wideBudget())
+        let retainedKinds: Set<ContextSourceKind> = [.baseSystem, .currentUser, .runState, .untrustedToolResult]
+        let required = wide.manifest.sourceRecords.filter { retainedKinds.contains($0.kind) }
+            .reduce(UInt64(0)) { $0 + $1.adoptedEstimatedTokens }
+        let budget = try ContextTokenBudget(maximumContextTokens: required + 16, reservedOutputTokens: 16,
+                                             maximumToolSchemaTokens: 0)
+        let compiled = try ContextCompiler().compile(snapshot, budget: budget)
+        XCTAssertEqual(compiled.manifest.sourceRecords.first { $0.kind == .untrustedToolResult }?.disposition, .included)
+        XCTAssertEqual(compiled.manifest.sourceRecords.first { $0.kind == .canonicalEnglishMemory }?.disposition, .omitted)
+    }
+
     /// Multi-turn vision: an earlier user turn's image artifact must ride the conversation message
     /// into the compiled context, so the follow-up model pass sees the same pixels again.
     func testHistoryUserTurnAttachmentsReachCompiledMessages() throws {

@@ -421,7 +421,7 @@ private enum LocalModelGeneration {
         )
         if !toolBlock.isEmpty { policyBlocks.append(toolBlock) }
         if case .structured(let schema) = request.outputRequirement {
-            policyBlocks.append(try LocalModelPromptRenderer.structuredOutputBlock(schema))
+            policyBlocks.append(try ModelOutputInstructions.structured(schema))
         }
         guard !policyBlocks.isEmpty else { return turns }
         let policy = policyBlocks.joined(separator: "\n\n")

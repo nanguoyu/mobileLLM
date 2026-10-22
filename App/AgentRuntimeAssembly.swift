@@ -13,34 +13,24 @@ import MobileLLMUI
 /// provider verifies byte count and SHA-256 before handing bytes to the engine.
 actor AppAttachmentResolver: LocalModelArtifactBytesResolving {
     private let store: ContentAddressedArtifactStore
-    private var references: [ArtifactID: ArtifactReference] = [:]
 
     init(store: ContentAddressedArtifactStore) {
         self.store = store
     }
 
-    func store(_ reference: ArtifactReference) {
-        references[reference.id] = reference
-    }
-
     func preauthorizedBytes(for reference: ArtifactReference) async throws -> Data {
-        // Keep only the reference in memory; read the bytes from the content-addressed store on
-        // demand. Retaining every image's Data across multi-turn runs doubled each image in RAM and
-        // contributed to device memory pressure on the vision path.
-        guard references[reference.id] == reference else {
-            throw LocalModelAdapterError.artifactUnavailable(reference.id)
-        }
-        return try await store.data(for: reference.id, maximumBytes: reference.byteCount)
+        // The authorized model request already binds this complete reference. Validate it against
+        // durable metadata and bytes so resumed runs do not depend on a process-local allowlist.
+        try await store.data(for: reference, maximumBytes: reference.byteCount)
     }
 }
 
-/// Commits app-owned attachment bytes into the content-addressed artifact store and preloads them for
+/// Commits app-owned attachment bytes into the content-addressed artifact store for
 /// the local model provider. Used for BOTH the current turn's images and the history replay: a
 /// follow-up turn must see the earlier user message's pixels again, so each run resolves every user
 /// attachment still referenced by the conversation.
 struct AppAgentArtifactResolver: Sendable {
     let artifactStore: ContentAddressedArtifactStore
-    let attachmentResolver: AppAttachmentResolver
     let attachmentDirectory: URL
 
     func resolveCurrent(
@@ -98,7 +88,6 @@ struct AppAgentArtifactResolver: Sendable {
                 initialOwner: .conversation(ConversationID(rawValue: conversationID))
             )
         )
-        await attachmentResolver.store(committed)
         return committed
     }
 }
@@ -786,7 +775,6 @@ public final class AgentRuntimeAssembly {
             .appending(component: "attachments")
         let artifactResolver = AppAgentArtifactResolver(
             artifactStore: artifactStore,
-            attachmentResolver: attachmentResolver,
             attachmentDirectory: attachmentDirectory
         )
         pendingSubmissions = PendingSubmissionCache()
@@ -883,7 +871,8 @@ public final class AgentRuntimeAssembly {
         independent agents sequentially. Each independent child appears exactly once, only as a
         thunk in that fan-out—do not pre-run, pre-declare, or duplicate it. A dependent
         synthesis/review agent runs only after the fan-out. Give every agent a bounded concrete
-        instruction and return one useful final JSON value. If a later agent reviews or synthesizes
+        instruction. \(Self.workflowFinalDeliveryInstruction)
+        If a later agent reviews or synthesizes
         earlier outputs, explicitly include those outputs in its prompt; variables are not ambient
         child context. Prefer quoted-string `+` concatenation for dependent prompts; do not use
         backtick template literals or `${...}` interpolation.
@@ -947,6 +936,7 @@ public final class AgentRuntimeAssembly {
         use backtick template literals or `${...}` interpolation.
         A downstream review/synthesis agent must receive upstream outputs explicitly in its prompt;
         merely keeping them in variables does not share them with that child.
+        \(Self.workflowFinalDeliveryInstruction)
         The optional agent options value must be a direct object literal containing only label,
         phase, schema, model, agentType, isolation, or stallMs. Remove tools, timeout, temperature,
         token limits, and every other option; child agents inherit the frozen host tool policy. Omit
@@ -974,6 +964,15 @@ public final class AgentRuntimeAssembly {
             operation: "repair-candidate"
         )
     }
+
+    private static let workflowFinalDeliveryInstruction = """
+    Unless the user explicitly requests JSON, the workflow must return a readable answer string, not
+    an internal JSON object. Use structured schemas for intermediate findings. Ask the final synthesis
+    agent for a concise, coherent answer in the user's language, with no schema option, and return its
+    text directly. If the final agent needs a schema, include an answer string and return that field.
+    The final answer must separate observed facts from hypotheses, avoid presenting inferred details
+    as facts, and prioritize useful conclusions and actions over repeating every child finding.
+    """
 
     private func makeDynamicWorkflowGenerator(
         snapshot: AgentRunRequestSnapshot,

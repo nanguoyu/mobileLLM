@@ -11,7 +11,7 @@ final class DeviceProvisioningUITests: DeviceE2ETestCase {
         let app = try launchApp()
         XCTAssertTrue(app.navigationBars["Chat"].exists)
         XCTAssertTrue(app.staticTexts["No conversations yet"].waitForExistence(timeout: 20))
-        XCTAssertFalse(app.textFields["composer.field"].exists,
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch.exists,
                        "cold launch must not create or enter a conversation")
         let runtime = diagnosticValue("device-e2e.runtime", in: app)
         XCTAssertTrue(runtime.contains("resident=false"), "clean install loaded weights: \(runtime)")
@@ -68,7 +68,7 @@ final class DeviceProvisioningUITests: DeviceE2ETestCase {
         try goToChatList(in: app)
         try relaunch(app)
         XCTAssertTrue(app.navigationBars["Chat"].exists)
-        XCTAssertFalse(app.textFields["composer.field"].exists,
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch.exists,
                        "relaunch must not reopen the prior thread")
         let runtime = diagnosticValue("device-e2e.runtime", in: app)
         XCTAssertTrue(runtime.contains("model=gemma-4-e2b"),

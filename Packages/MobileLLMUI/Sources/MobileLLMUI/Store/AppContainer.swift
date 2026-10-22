@@ -50,7 +50,7 @@ public final class AppContainer {
     public var prepareRuntimeDataErase: (@MainActor () async throws -> Void)?
     public var eraseRuntimeData: (@MainActor () async throws -> Void)?
     public var finishRuntimeDataErase: (@MainActor () async -> Void)?
-    public var quiesceWorkflows: (@MainActor () async throws -> Void)?
+    public var quiesceWorkflows: (@MainActor (UUID?) async throws -> Void)?
     public internal(set) var isErasingData = false
 
     /// A one-shot navigation intent the shell (RootView) honors and clears — e.g. a "not installed" error
@@ -169,9 +169,10 @@ public final class AppContainer {
         // Lifecycle wiring (spec §19.1): the coordinator drives admission, quiescence, and weight
         // unloading through the same stores the UI uses, so tests exercise the real seam.
         lifecycle.quiesce = { [weak self] in
-            do { try await self?.quiesceWorkflows?() }
+            let continued = self?.continuedProcessing.grantedConversationID
+            do { try await self?.quiesceWorkflows?(continued) }
             catch { self?.chat.showToast(Toast(error.localizedDescription, kind: .error)) }
-            await self?.chat.agentRuns?.quiesceForBackground()
+            await self?.chat.agentRuns?.quiesceForBackground(excluding: continued)
         }
         lifecycle.stopAdmittingActions = { [weak self] in
             self?.chat.setAcceptingNewActions(false)
@@ -181,12 +182,13 @@ public final class AppContainer {
             Task { await self?.outboxProjector?.drain() }
         }
         lifecycle.suspendModel = { [weak self] in
+            guard self?.continuedProcessing.grantedConversationID == nil else { return }
             self?.suspendModel()
         }
         // Continued-processing wiring (spec §19.2): submit eligible runs when they start, settle the
         // system task when they terminate, and keep progress truthful.
         continuedProcessing.quiesce = { [weak self] in
-            do { try await self?.quiesceWorkflows?() }
+            do { try await self?.quiesceWorkflows?(nil) }
             catch { self?.chat.showToast(Toast(error.localizedDescription, kind: .error)) }
             await self?.chat.agentRuns?.quiesceForBackground()
         }
@@ -204,7 +206,8 @@ public final class AppContainer {
             guard let self else { return false }
             // Online runs have no local weights; only the resident local MLX engine needs GPU.
             if self.chat.isOnlineActive { return false }
-            return self.chat.activeModel?.variant.engine == .mlx
+            let engine = self.chat.activeModel?.variant.engine
+            return engine == .mlx || engine == .llamaCpp
         }
         continuedProcessing.isEnabled = { [weak self] in
             self?.settings.continuedProcessingEnabled ?? false
@@ -216,8 +219,8 @@ public final class AppContainer {
             self?.continuedProcessing.submitIfEligible(conversationID: conversationID)
             Task { await self?.outboxProjector?.drain() }
         }
-        chat.onAgentRunTerminal = { [weak self] conversationID, _ in
-            self?.continuedProcessing.runFinished(conversationID: conversationID)
+        chat.onAgentRunTerminal = { [weak self] conversationID, reason in
+            self?.continuedProcessing.runFinished(conversationID: conversationID, success: reason == .completed)
             Task { await self?.outboxProjector?.drain() }
         }
     }

@@ -23,7 +23,7 @@ final class SimulatorCISmokeUITests: XCTestCase {
         XCTAssertTrue(models.exists)
         XCTAssertTrue(settings.exists)
         XCTAssertTrue(app.navigationBars["Chat"].exists)
-        XCTAssertFalse(app.textFields["composer.field"].exists,
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch.exists,
                        "cold launch must not reopen a conversation or load a model")
 
         models.tap()

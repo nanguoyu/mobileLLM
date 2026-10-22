@@ -159,6 +159,11 @@ struct WebHTTPClient: Sendable {
             guard let nextURL = URL(string: location, relativeTo: url)?.absoluteURL else {
                 throw WebNetworkError.invalidRedirect
             }
+            // The caller authorized the initial origin. A public address alone is not permission
+            // to contact another origin, nor to downgrade TLS. Check before DNS or network I/O.
+            guard Self.sameOrigin(originalRequest.url!, nextURL) else {
+                throw WebNetworkError.unsafeRedirect
+            }
             redirectCount += 1
             request = Self.redirectedRequest(from: request, to: nextURL)
         }
@@ -167,6 +172,13 @@ struct WebHTTPClient: Sendable {
 
     private static func isRedirect(_ status: Int) -> Bool {
         status == 301 || status == 302 || status == 303 || status == 307 || status == 308
+    }
+
+    private static func sameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
+        func port(_ url: URL) -> Int { url.port ?? (url.scheme?.lowercased() == "https" ? 443 : 80) }
+        return lhs.scheme?.lowercased() == rhs.scheme?.lowercased()
+            && lhs.host?.lowercased() == rhs.host?.lowercased()
+            && port(lhs) == port(rhs)
     }
 
     private static func redirectedRequest(from request: URLRequest, to url: URL) -> URLRequest {

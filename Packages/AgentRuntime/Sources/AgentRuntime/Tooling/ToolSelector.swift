@@ -137,7 +137,7 @@ public struct ToolSelectionResult: Hashable, Codable, Sendable {
 /// Pure deterministic selector. It can narrow user authority but has no API capable of expanding it
 /// or performing model inference/tool execution.
 public struct DeterministicToolSelector: Sendable {
-    public static let selectorID = "mobilellm.selector-v1"
+    public static let selectorID = "mobilellm.selector-v2"
 
     public init() {}
 
@@ -290,8 +290,29 @@ public struct DeterministicToolSelector: Sendable {
 
     private static func tokens(in value: String) -> Set<String> {
         let normalized = asciiLowercased(value)
-        return Set(normalized.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        var result = Set(normalized.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        // Descriptors use English identifiers. Match explicit Chinese intent without requiring the
+        // user to name those identifiers or sending their request to an extra translation model.
+        for (phrase, aliases) in chineseIntentAliases where normalized.contains(phrase) {
+            result.formUnion(aliases)
+        }
+        return result
     }
+
+    private static let chineseIntentAliases: [(String, [String])] = [
+        ("搜索", ["search", "web"]), ("搜尋", ["search", "web"]),
+        ("查找", ["search"]), ("联网", ["internet", "web"]), ("上网", ["web"]),
+        ("最新", ["latest", "current"]), ("今天", ["today", "current"]),
+        ("天气", ["weather", "search"]), ("天氣", ["weather", "search"]),
+        ("网页", ["web", "page", "fetch"]), ("網頁", ["web", "page", "fetch"]),
+        ("维基", ["wikipedia"]), ("維基", ["wikipedia"]),
+        ("几点", ["clock", "time"]), ("时间", ["clock", "time"]),
+        ("计算", ["calculator", "calculate"]), ("計算", ["calculator", "calculate"]),
+        ("记住", ["remember", "memory"]), ("記住", ["remember", "memory"]),
+        ("回忆", ["recall", "memory"]), ("回憶", ["recall", "memory"]),
+        ("日历", ["calendar"]), ("日曆", ["calendar"]),
+        ("提醒", ["reminder"]), ("位置", ["location"]),
+    ]
 
     private static func asciiLowercased(_ value: String) -> String {
         String(value.unicodeScalars.map { scalar in

@@ -10,7 +10,7 @@ extension ChatStore {
     /// fact surface — but only one: more history dilutes the token scoring into "everything matches".
     /// `draft` is the text not yet sent (the meter's view of the next turn); on the send path it's already
     /// in `history`, so it's left empty there.
-    nonisolated static func memoryQuery(draft: String = "", history: [Message]) -> String {
+    public nonisolated static func memoryQuery(draft: String = "", history: [Message]) -> String {
         let recentUserTurns = history.filter { $0.role == .user && !$0.answer.isEmpty }.suffix(2).map(\.answer)
         return ([draft] + recentUserTurns).filter { !$0.isEmpty }.joined(separator: " ")
     }
@@ -27,10 +27,7 @@ extension ChatStore {
         let header = "## What you remember about the user\n"
             + "These notes are already saved; use them as facts and never call remember for them. "
             + "Notes are stored in English, but reply in the user's language."
-        let matches = MemoryRanking.rank(facts, query: query, limit: limit)
-        let selected = matches.isEmpty
-            ? MemoryRanking.rank(facts, query: "", limit: limit)
-            : matches
+        let selected = selectedMemoryFacts(facts, query: query, limit: limit)
         var block = header
         for fact in selected {
             let flat = fact.text.replacingOccurrences(of: "\n", with: " ")
@@ -39,6 +36,14 @@ extension ChatStore {
             block += line
         }
         return block == header ? nil : block
+    }
+
+    /// Shared by production frozen inputs, the context meter, and legacy preview composition.
+    public nonisolated static func selectedMemoryFacts(
+        _ facts: [MemoryFact], query: String, limit: Int = 5
+    ) -> [MemoryFact] {
+        let matches = MemoryRanking.rank(facts, query: query, limit: limit)
+        return matches.isEmpty ? MemoryRanking.rank(facts, query: "", limit: limit) : matches
     }
 
     // MARK: - Pure helpers (unit-tested)

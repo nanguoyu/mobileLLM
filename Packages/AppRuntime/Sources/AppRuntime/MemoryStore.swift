@@ -199,6 +199,9 @@ public enum MemorySourceTextUpdate: Sendable, Hashable {
 /// first), so the UI and the tools observe the same raw set; `search` is the ranked view the `recall` tool
 /// and the prompt injector share.
 public protocol MemoryStoring: Sendable {
+    /// Last durably committed view, available without suspending submission-time input capture.
+    /// Nil means the store has not loaded yet or does not publish synchronous snapshots.
+    var committedFacts: [MemoryFact]? { get }
     @discardableResult func save(_ text: String, source: MemoryFact.Source) async throws -> MemoryFact
     /// Atomically compare the normalized text against every fact and save only when it is new.
     @discardableResult
@@ -228,6 +231,7 @@ public struct MemoryDataDeletionError: LocalizedError, Sendable {
 }
 
 public extension MemoryStoring {
+    var committedFacts: [MemoryFact]? { nil }
     /// Ranking over the full list — correct for any store, so a conformer only has to be able to `list()`.
     /// `MemoryStore` overrides it to rank its own cache without the extra hop.
     func search(_ query: String, limit: Int) async -> [MemoryFact] {
@@ -255,7 +259,11 @@ public extension MemoryStoring {
 /// Application Support (the app). Saved text is whitespace-trimmed; the tool guards against blank input.
 public actor MemoryStore: MemoryStoring {
     private let store: DurableStore<MemoryFact>
-    private var cache: [MemoryFact]?
+    private nonisolated let published = CommittedMemoryView()
+    public nonisolated var committedFacts: [MemoryFact]? { published.read() }
+    private var cache: [MemoryFact]? {
+        didSet { published.write(cache) }
+    }
     private var initialLoad: Task<[MemoryFact], Never>?
 
     // Actor methods are re-entrant at every `await`. The durable store is a separate actor, so a plain
@@ -503,5 +511,21 @@ public actor MemoryStore: MemoryStoring {
             return
         }
         mutationWaiters.removeFirst().resume()
+    }
+}
+
+/// Only immutable value snapshots cross this lock. Publication follows durable writes, never precedes them.
+private final class CommittedMemoryView: @unchecked Sendable {
+    private let lock = NSLock()
+    private var facts: [MemoryFact]?
+    func read() -> [MemoryFact]? {
+        lock.lock()
+        defer { lock.unlock() }
+        return facts
+    }
+    func write(_ value: [MemoryFact]?) {
+        lock.lock()
+        defer { lock.unlock() }
+        facts = value
     }
 }

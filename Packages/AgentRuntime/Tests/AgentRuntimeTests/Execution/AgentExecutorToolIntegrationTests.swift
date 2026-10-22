@@ -87,7 +87,13 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
     func testLocalPureToolRunsAfterDurableIntentThenFeedsOneFollowupModelPass() async throws {
         let model = try ExecutorTestModelDefinition(offset: 300)
         let definition = try ExecutorTestToolDefinition(name: "local-lookup")
-        let call = try definition.call(offset: 300)
+        let original = try definition.call(offset: 300)
+        let native = try NativeToolCallContext(
+            selectionDigest: NativeToolCallContext.digest(for: model.selection), callID: "native-call-300",
+            name: "local-lookup", arguments: original.arguments
+        )
+        let call = ProposedToolCall(invocationID: original.invocationID, toolID: original.toolID,
+                                    arguments: original.arguments, nativeContext: native)
         let modelScript = ToolSequenceModelScript()
         let provider = try ToolSequenceModelProvider(
             model: model,
@@ -129,6 +135,7 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
         guard modelRequests.count == 2 else {
             return XCTFail("expected tool action plus follow-up model pass, got \(modelRequests.count)")
         }
+        XCTAssertEqual(modelRequests[1].messages.first(where: { $0.role == .tool })?.nativeToolCall, native)
         XCTAssertEqual(modelRequests[0].advertisedTools, [definition.descriptor])
         XCTAssertEqual(modelRequests[1].advertisedTools, [definition.descriptor])
         XCTAssertTrue(modelRequests[1].messages.contains { message in

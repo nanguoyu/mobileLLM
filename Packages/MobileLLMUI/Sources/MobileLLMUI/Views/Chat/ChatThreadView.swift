@@ -65,7 +65,8 @@ struct ChatThreadView: View {
                                        chat.send()
                                    },
                                    onSwitchModel: onSwitchModel,
-                                   activeSkill: chat.activeSkill)
+                                   activeSkill: chat.activeSkill,
+                                   isOnline: chat.isOnlineActive)
                 }
             }
         }

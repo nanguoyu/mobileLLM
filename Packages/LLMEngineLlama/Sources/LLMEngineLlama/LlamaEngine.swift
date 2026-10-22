@@ -65,6 +65,7 @@ public actor LlamaEngine: LLMEngine {
     private var model: OpaquePointer?
     private var vocab: OpaquePointer?
     private var context: OpaquePointer?
+    private var cachedTokens: [llama_token] = []
     /// The multimodal (vision) context from the variant's mmproj, initialized at load when the variant
     /// ships a vision projector whose file is present. `nil` for a text-only load. Freed before the model
     /// on unload/reload (it holds a reference to the text model).
@@ -149,6 +150,7 @@ public actor LlamaEngine: LLMEngine {
         eosText = modelSpec.architecture.eos
         promptTemplate = modelSpec.architecture.promptTemplate
         reasoningStyle = modelSpec.architecture.reasoningStyle
+        cachedTokens.removeAll(keepingCapacity: false)
         context = nil; contextCap = 0; contextKVBits = -1
 
         // Vision: RESOLVE the projector now, LOAD it on first use. Bringing the vision encoder up here
@@ -193,6 +195,7 @@ public actor LlamaEngine: LLMEngine {
         if let mtmdContext { mtmd_free(mtmdContext) }
         if let context { llama_free(context) }
         if let model { llama_model_free(model) }
+        cachedTokens.removeAll(keepingCapacity: false)
         mtmdContext = nil
         projectorPath = nil
         context = nil; model = nil; vocab = nil; loadedID = nil; contextCap = 0; contextKVBits = -1
@@ -204,15 +207,15 @@ public actor LlamaEngine: LLMEngine {
     /// 8 = Q8_0. Rebuilds when EITHER the size or the KV width changes.
     private func ensureContext(cap: Int, kvBits: Int) throws {
         let target = max(512, cap)
-        if let context, contextCap == target, contextKVBits == kvBits {
-            llama_memory_clear(llama_get_memory(context), true)   // fresh KV: we re-prefill full history
-            return
+        if context != nil, contextCap == target, contextKVBits == kvBits {
+            return // Exact reusable prefix is selected after rendering this request's prompt.
         }
         if let context { llama_free(context) }
         // Reset BEFORE the fallible init below: if llama_init_from_model throws out of this function,
         // `context` must not keep pointing at the freed allocation (a retry would double-free, and the
-        // reuse branch above would llama_memory_clear freed memory — a user-reachable UAF via kvBits).
+        // reuse branch above would retain freed memory — a user-reachable UAF via kvBits).
         context = nil; contextCap = 0; contextKVBits = -1
+        cachedTokens.removeAll(keepingCapacity: true)
         var cp = llama_context_default_params()
         cp.n_ctx = UInt32(target)
         cp.n_batch = 512                                          // small compute buffer; prefill is chunked
@@ -240,6 +243,24 @@ public actor LlamaEngine: LLMEngine {
         contextKVBits = kvBits
     }
 
+    /// Keep at least the last prompt token for decoding so logits always belong to this request.
+    nonisolated static func reusablePrefixLength(cached: [Int32], prompt: [Int32]) -> Int {
+        let limit = min(cached.count, max(0, prompt.count - 1))
+        var count = 0
+        while count < limit, cached[count] == prompt[count] { count += 1 }
+        return count
+    }
+
+    private func prepareCachedPrefix(_ prompt: [llama_token], context: OpaquePointer) -> Int {
+        var retained = Self.reusablePrefixLength(cached: cachedTokens, prompt: prompt)
+        if retained == 0 || !llama_memory_seq_rm(llama_get_memory(context), 0, Int32(retained), -1) {
+            llama_memory_clear(llama_get_memory(context), true)
+            retained = 0
+        }
+        cachedTokens = Array(cachedTokens.prefix(retained))
+        return retained
+    }
+
     // MARK: - Generation
 
     public nonisolated func generate(messages: [ChatTurn],
@@ -261,7 +282,15 @@ public actor LlamaEngine: LLMEngine {
     private func run(messages: [ChatTurn], params: Sampling,
                      governance: GenerationGovernance, lease: GenerationLifecycle.Lease,
                      into cont: AsyncThrowingStream<EngineDelta, Error>.Continuation) async {
-        defer { generationLifecycle.end(lease) }
+        var generationContext: OpaquePointer?
+        var cacheComplete = false
+        defer {
+            if !cacheComplete, let generationContext, self.context == generationContext {
+                llama_memory_clear(llama_get_memory(generationContext), true)
+                cachedTokens.removeAll(keepingCapacity: true)
+            }
+            generationLifecycle.end(lease)
+        }
         do {
             // Handles cancellation that won the race before this actor task started.
             try await governance.cooperativeCheckpoint()
@@ -293,6 +322,7 @@ public actor LlamaEngine: LLMEngine {
 
             try ensureContext(cap: params.contextTokenCap, kvBits: params.kvBits)
             guard let context else { throw EngineError.contextInitFailed }
+            generationContext = context
 
             let wantThinking = params.thinking && reasoningStyle.canThink
             // `.auto` (Explore's community checkpoints) renders with the GGUF's own embedded template;
@@ -330,14 +360,19 @@ public actor LlamaEngine: LLMEngine {
             let prefillStart = Date()
             let nBatch = 512
             let promptTokenCount: Int
+            var reusedPromptTokens = 0
             let hasImages = kept.contains { !$0.images.isEmpty }
             if hasImages {
+                // Image embeddings do not have a token-only identity. Never reuse a text/vision cache.
+                llama_memory_clear(llama_get_memory(context), true)
+                cachedTokens.removeAll(keepingCapacity: true)
                 promptTokenCount = try await mtmdPrefill(kept: kept, context: context,
                                                          renderPrompt: renderPrompt, nBatch: nBatch,
                                                          governance: governance)
             } else {
                 let promptTokens = Self.tokenize(vocab: vocab, text: renderPrompt(kept), addSpecial: true)
-                var i = 0
+                reusedPromptTokens = prepareCachedPrefix(promptTokens, context: context)
+                var i = reusedPromptTokens
                 while i < promptTokens.count {
                     try await governance.checkpoint()
                     guard self.context == context else { throw CancellationError() }
@@ -347,6 +382,7 @@ public actor LlamaEngine: LLMEngine {
                         llama_decode(context, llama_batch_get_one(buf.baseAddress, Int32(buf.count))) == 0
                     }
                     guard ok else { throw EngineError.decodeFailed }
+                    cachedTokens.append(contentsOf: chunk)
                     i = end
                     // Hand the cooperative pool a breath between chunks so downloads/saves keep progressing
                     // (these C calls have no suspension points of their own). The yield is an actor-reentrancy
@@ -407,6 +443,7 @@ public actor LlamaEngine: LLMEngine {
                     llama_decode(context, llama_batch_get_one(buf.baseAddress, Int32(buf.count))) == 0
                 }
                 guard ok else { throw EngineError.decodeFailed }
+                if !hasImages { cachedTokens.append(tokenID) }
             }
 
             let tail = decoder.flush()
@@ -420,10 +457,12 @@ public actor LlamaEngine: LLMEngine {
             cont.yield(.done(Stats(
                 promptTokens: promptTokenCount,
                 genTokens: genTokens,
-                promptTPS: Double(promptTokenCount) / promptSecs,
+                promptTPS: Double(promptTokenCount - reusedPromptTokens) / promptSecs,
                 tokensPerSecond: Double(genTokens) / genSecs,
                 peakMemoryBytes: peak,
-                stopReason: stop)))
+                stopReason: stop,
+                cachedPromptTokens: reusedPromptTokens)))
+            cacheComplete = true
             cont.finish()
         } catch is CancellationError {
             cont.yield(.done(Stats(promptTokens: 0, genTokens: 0, promptTPS: 0, tokensPerSecond: 0,

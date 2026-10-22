@@ -9,6 +9,49 @@ import AgentRuntime
 /// conversation JSON idempotently, and acknowledges delivery. Failed rows stay leased for retry.
 final class ConversationOutboxProjectorTests: XCTestCase {
 
+    func testRecoveredUserMessageRestoresAttachmentBytesAndReferences() async throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let conversationID = UUID()
+        try await store.save(Conversation(id: conversationID, modelID: "bonsai-8b", variantID: "mlx"))
+        let bytes = Data("image artifact bytes".utf8)
+        let imageID = ArtifactID(rawValue: UUID())
+        let image = try ArtifactReference(
+            id: imageID, contentDigest: StableDigest.sha256(bytes), byteCount: UInt64(bytes.count), mimeType: "image/jpeg",
+            provenance: ArtifactProvenance(providerID: "test"), createdAt: AgentTimestamp(rawValue: 1),
+            retentionPolicy: .conversation, locator: ArtifactLocator(kind: .managedRelativePath, value: "image.jpg"),
+            sensitivity: .personalData, integrityStatus: .verified
+        )
+        let payload = try AcceptedUserMessagePayload(text: "describe this", attachments: [image]).encoded()
+        let outbox = FakeOutboxProvider()
+        await outbox.seed([item(conversationID: conversationID, messageID: UUID(), kind: .acceptedUserMessage, payload: payload)])
+        let projector = makeProjector(store: store, outbox: outbox,
+            payloads: FakePayloadProvider(payloads: [artifactKey: payload, imageID.description: bytes]))
+        await projector.drain()
+        let conversation = try await loadConversation(conversationID, from: store)
+        XCTAssertEqual(conversation.messages.first?.answer, "describe this")
+        XCTAssertEqual(conversation.messages.first?.attachments, [ImageRef(id: imageID.rawValue)])
+        let restored = await store.attachmentData(imageID.rawValue)
+        XCTAssertEqual(restored, bytes)
+    }
+
+    func testDrainConsumesMoreThanOneClaimPage() async throws {
+        let (store, dir) = tempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let conversationID = UUID()
+        try await store.save(Conversation(id: conversationID, modelID: "bonsai-8b", variantID: "mlx"))
+        let payload = Data("accepted".utf8)
+        let outbox = FakeOutboxProvider()
+        await outbox.seed((0..<35).map { index in
+            item(conversationID: conversationID, messageID: UUID(), kind: .acceptedUserMessage,
+                 payload: payload, idempotencyKey: "user:\(index)")
+        })
+        await makeProjector(store: store, outbox: outbox,
+            payloads: FakePayloadProvider(payloads: [artifactKey: payload])).drain(limit: 8)
+        let count = await outbox.deliveredKeys().count
+        XCTAssertEqual(count, 35)
+    }
+
     func testAcceptedUserMessageProjectsOnceAndIsIdempotent() async throws {
         let (store, dir) = tempStore()
         defer { try? FileManager.default.removeItem(at: dir) }

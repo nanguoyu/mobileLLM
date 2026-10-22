@@ -7,6 +7,17 @@ import XCTest
 
 // TEST-ID: AHT-SELECT-002
 final class ToolSelectorTests: XCTestCase {
+    func testChineseSearchRequestAdvertisesTheAllowedWebTool() throws {
+        let descriptor = try descriptor(provider: "builtin", name: "web_search", summary: "Search the web for current information", effects: [.networkRead])
+        let policy = try ConversationToolPolicy(masterEnabled: true, allowedToolIDs: [descriptor.id.logicalID], pinnedToolIDs: [], selectionPolicyVersion: 1, materializedFromGlobalTemplate: false)
+        let catalog = try ToolCatalogSnapshot(revision: 1, descriptors: [descriptor])
+        func select(_ query: String) throws -> [AgentToolDescriptor] {
+            try DeterministicToolSelector().select(ToolSelectionInput(policy: policy, catalog: catalog, availableCapabilities: AgentCapabilitySet([.networkRead]), latestUserRequest: query)).descriptors
+        }
+        XCTAssertEqual(try select("Search the web for current Vienna weather").count, 1, "English positive control")
+        XCTAssertEqual(try select("请搜索维也纳今天的天气").count, 1, "Chinese explicit search intent receives no advertised tool")
+    }
+
     func testConversationPolicyCanonicalizesAndRejectsPinnedExpansion() throws {
         let web = try logical("builtin", "web_search")
         let clock = try logical("builtin", "clock")

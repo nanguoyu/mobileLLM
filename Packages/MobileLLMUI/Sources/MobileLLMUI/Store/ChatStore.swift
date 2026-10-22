@@ -636,7 +636,7 @@ public final class ChatStore {
 
     /// Builds the current user selection into a conversation tool policy. Shared by the one-time
     /// global template copy and the Chat options menu's explicit per-conversation edits.
-    private func currentToolPolicy(materializedFromGlobalTemplate: Bool) -> ConversationToolPolicy? {
+    private func currentToolPolicy(materializedFromGlobalTemplate: Bool, preservingPins: [AgentToolLogicalID] = []) -> ConversationToolPolicy? {
         // The policy is the USER's selection (Tools screen), mapped to logical ids; the runtime's
         // selector and catalog decide which of those are adapted and advertised for a pass.
         var allowed = settings.builtInToolConfig.enabled.compactMap { id in
@@ -647,9 +647,7 @@ public final class ChatStore {
         return try? ConversationToolPolicy(
             masterEnabled: settings.toolsEnabled,
             allowedToolIDs: deduped,
-            // A visible switch grants availability. Pinning is a separate selector override and the
-            // current UI has no pin control, so selected tools must remain eligible for smart ranking.
-            pinnedToolIDs: [],
+            pinnedToolIDs: preservingPins.filter { deduped.contains($0) },
             selectionPolicyVersion: 1,
             materializedFromGlobalTemplate: materializedFromGlobalTemplate
         )
@@ -661,10 +659,29 @@ public final class ChatStore {
     /// explicit edit that does.
     public func applyCurrentToolSelectionToActiveConversation() {
         guard let idx = conversations.firstIndex(where: { $0.id == activeID }),
-              let policy = currentToolPolicy(materializedFromGlobalTemplate: false)
+              let policy = currentToolPolicy(materializedFromGlobalTemplate: false, preservingPins: conversations[idx].toolPolicy?.pinnedToolIDs ?? [])
         else { return }
         conversations[idx].toolPolicy = policy
         persist(conversations[idx])
+    }
+
+    public func setToolPinned(_ tool: AgentToolLogicalID, pinned: Bool) {
+        guard let index = conversations.firstIndex(where: { $0.id == activeID }),
+              let policy = conversations[index].toolPolicy, policy.allowedToolIDs.contains(tool) else { return }
+        var pins = Set(policy.pinnedToolIDs)
+        if pinned {
+            guard pins.contains(tool) || pins.count < 8 else {
+                showToast(Toast("You can pin up to eight tools.", kind: .warning))
+                return
+            }
+            pins.insert(tool)
+        } else { pins.remove(tool) }
+        guard let updated = try? ConversationToolPolicy(
+            masterEnabled: policy.masterEnabled, allowedToolIDs: policy.allowedToolIDs, pinnedToolIDs: pins,
+            selectionPolicyVersion: policy.selectionPolicyVersion, materializedFromGlobalTemplate: false
+        ) else { return }
+        conversations[index].toolPolicy = updated
+        persist(conversations[index])
     }
 
     /// One-time materialization for a legacy conversation on its first agent-runtime edit/run
@@ -2061,7 +2078,7 @@ public final class ChatStore {
     /// composing, and the meter shows whatever the last refresh left.
     private func memoryBlock(for query: String, enabled: Bool? = nil) -> String? {
         guard enabled ?? settings.memoryEnabled,
-              let facts = memoryBook?.facts, !facts.isEmpty else { return nil }
+              let facts = memoryBook?.snapshotFacts, !facts.isEmpty else { return nil }
         return Self.memoryBlock(facts, query: query)
     }
 

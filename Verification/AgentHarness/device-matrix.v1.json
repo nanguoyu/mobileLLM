@@ -11,7 +11,7 @@
   "statusSourceCommit": "82933a03203cc3447817da49d4d8893a93482d05",
   "combinedRun": {
     "status": "pending-device-rerun",
-    "note": "Historical device outcomes captured on 2026-08-04 are retained below. The 23 pass and six pending records do not establish release acceptance for the current source. Test16/test24 require fresh reruns; test29 requires the complete Tool V2 device scenarios; test30 requires confirmed provisioning capabilities and continued-processing outcomes; test31 requires Dynamic Workflow execution and final-answer projection; test32 requires a converged real-model complex-goal matrix. The 2026-10-22 review ran package/static checks only and did not inspect the current device connection or provisioning profile."
+    "note": "Historical device outcomes captured on 2026-08-04 are retained below. The 23 pass and six pending records do not establish release acceptance for the current source. Test16/test24 require fresh reruns; test29 requires the complete Tool V2 device scenarios; test30 requires confirmed provisioning capabilities and continued-processing outcomes; test31 requires Dynamic Workflow execution and final-answer projection; test32 requires a converged real-model complex-goal matrix. Fresh 2026-10-22 simulator/online results are recorded separately in docs/STATUS.md; they do not change these historical physical-device outcomes. Current physical-device provisioning was not rechecked."
   },
   "scenarios": [
     { "id": "test00", "name": "Clean install cold launch", "status": "pass", "evidence": "provisioning 2026-08-04" },

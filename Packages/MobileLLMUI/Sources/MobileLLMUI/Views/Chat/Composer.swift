@@ -3,6 +3,7 @@
 import SwiftUI
 import PhotosUI
 import AppUI
+import AgentContracts
 import LLMCore
 
 /// The chat composer (DESIGN §4): multiline auto-grow field, one morphing Send↔Stop button (no
@@ -437,6 +438,18 @@ struct Composer: View {
                 }
             }
 
+            if let policy = chat.activeConversation?.toolPolicy, !policy.allowedToolIDs.isEmpty {
+                Menu {
+                    Text("Pinned tools get priority each turn.")
+                    ForEach(policy.allowedToolIDs, id: \.self) { tool in
+                        Toggle(pinTitle(tool), isOn: Binding(
+                            get: { chat.activeConversation?.toolPolicy?.pinnedToolIDs.contains(tool) == true },
+                            set: { chat.setToolPinned(tool, pinned: $0) }
+                        ))
+                    }
+                } label: { Label("Pinned tools", systemImage: "pin") }
+            }
+
             Divider()
             Button {
                 focused = false
@@ -447,6 +460,16 @@ struct Composer: View {
         } label: {
             Label("Tools", systemImage: "wrench.and.screwdriver")
         }
+    }
+
+    private func pinTitle(_ tool: AgentToolLogicalID) -> String {
+        if tool.providerID == "builtin" {
+            if tool.name == "remember" { return "Save memory" }
+            if tool.name == "recall" { return "Recall memory" }
+            return BuiltInToolRow.all.first { $0.toolIDs.contains { $0.rawValue == tool.name } }?.title ?? tool.name
+        }
+        let server = settings.mcpServers.first { "mcp." + $0.id.lowercased() == tool.providerID }
+        return server.map { tool.name + " · " + $0.name } ?? tool.name
     }
 
     private static let networkToolRows =

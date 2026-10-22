@@ -873,11 +873,14 @@ public struct ProposedToolCall: Hashable, Codable, Sendable {
     /// Canonical arguments to validate against the resolved exact descriptor.
     public let arguments: CanonicalJSON
 
+    public let nativeContext: NativeToolCallContext?
+
     /// Creates one normalized proposed tool call.
-    public init(invocationID: ToolInvocationID, toolID: AgentToolLogicalID, arguments: CanonicalJSON) {
+    public init(invocationID: ToolInvocationID, toolID: AgentToolLogicalID, arguments: CanonicalJSON, nativeContext: NativeToolCallContext? = nil) {
         self.invocationID = invocationID
         self.toolID = toolID
         self.arguments = arguments
+        self.nativeContext = nativeContext
     }
 
     /// Exact duplicate-suppression input before an effect scope is appended.

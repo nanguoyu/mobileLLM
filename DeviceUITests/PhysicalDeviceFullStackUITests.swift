@@ -12,7 +12,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     func test01ColdLaunchRestoresIdentityWithoutConversationOrWeights() throws {
         let app = try launchApp()
         XCTAssertTrue(app.navigationBars["Chat"].exists)
-        XCTAssertFalse(app.textFields["composer.field"].exists,
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch.exists,
                        "launch must never reopen the most recent conversation")
         let runtime = diagnosticValue("device-e2e.runtime", in: app)
         XCTAssertTrue(runtime.contains("resident=false"),
@@ -129,7 +129,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         XCTAssertFalse(thinking.exists,
                        "Gemma 4 E2B is catalogued non-thinking and must not expose a Thinking toggle")
         try dismissChatOptionsSelectingNoSkill(in: app)
-        XCTAssertTrue(waitForEnabled(app.textFields["composer.field"], timeout: 10),
+        XCTAssertTrue(waitForEnabled(app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch, timeout: 10),
                       "composer did not recover after the deterministic menu dismissal")
 
         let marker = uniqueMarker("GEMMA_CORE")
@@ -151,7 +151,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         let marker = uniqueMarker("BONSAI_THINK")
         let copies = app.buttons.matching(identifier: "Copy answer").count
         let stats = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         field.tap()
         field.typeText(
             marker + "\nThink step by step: multiply 123 by 4, and explain each step before the final number."
@@ -357,7 +357,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try activate(.gemma, in: app)
         let marker = uniqueMarker("VISION_GATE")
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         field.tap()
         field.typeText(marker + " describe this image")
         try activate(.bonsai, in: app)
@@ -451,7 +451,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
 
         let copies = app.buttons.matching(identifier: "Copy answer").count
         let stats = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         field.tap()
         field.typeText(uniqueMarker("TOOL_RACE") + "\nSearch the web for OpenAI's official website and return its title.")
         app.buttons["Send"].tap()
@@ -553,19 +553,11 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         try activate(.gemma, in: app)
 
         let marker = uniqueMarker("MCP")
-        var evidence = try send(
+        let evidence = try send(
             marker + "\nUse the MCP tool read_wiki_structure exactly once with repoName "
                 + "\"deepwiki/deepwiki\" to look up the deepwiki server's structure, then answer in one "
                 + "short line.",
             model: .gemma, in: app, timeout: 360)
-        if evidence.toolActivities.isEmpty {
-            let retryMarker = uniqueMarker("MCP_RETRY")
-            evidence = try send(
-                retryMarker + "\nYou MUST call the MCP tool read_wiki_structure (the tool from your "
-                    + "configured MCP server) exactly once with repoName \"deepwiki/deepwiki\" before "
-                    + "answering. Then reply briefly.",
-                model: .gemma, in: app, timeout: 360)
-        }
         XCTAssertGreaterThanOrEqual(
             evidence.toolActivities.count, 1,
             "MCP tool did not execute; activities: \(evidence.toolActivities)"
@@ -647,7 +639,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         // A send must produce a durable run projection and a committed assistant answer. Drive the
         // send manually so a generation failure reports the complete agent diagnostics instead of
         // the generic UI message.
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         guard field.waitForExistence(timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Composer missing before agent send")
         }
@@ -702,7 +694,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     @MainActor
     func test27AgentRuntimeDiagnosticProbe() throws {
         let app = try prepare(.bonsai, tools: false, selected: [], thinking: true)
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         guard field.waitForExistence(timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Composer missing before agent probe")
         }
@@ -1035,7 +1027,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         let marker = uniqueMarker(model == .bonsai ? "BONSAI_STOP" : "GEMMA_STOP")
         let copies = app.buttons.matching(identifier: "Copy answer").count
         let statsBefore = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         field.tap()
         field.typeText(marker + "\nWrite a detailed 2500-word technical essay comparing ten sorting algorithms, with proofs and examples. Do not finish early.")
         app.buttons["Send"].tap()
@@ -1081,7 +1073,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         let app = try prepare(model, tools: true, selected: ["Calculator"], thinking: false)
         let marker = uniqueMarker(model == .bonsai ? "BONSAI_CALC" : "GEMMA_CALC")
         let evidence = try send(
-            marker + "\nUse the calculator exactly once to multiply 1234567 by 7654321. Then reply exactly RESULT=9449772114007.",
+            marker + "\nUse the calculator exactly once to multiply 1234567 by 7654321. Then reply with RESULT= followed by the computed integer.",
             model: model, in: app)
         XCTAssertEqual(evidence.toolActivities.count, 1, "unexpected tool chain: \(evidence.toolActivities)")
         XCTAssertEqual(evidence.toolActivities.first, "Calculator returned 9449772114007")
@@ -1095,19 +1087,9 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     private func exerciseClock(_ model: DeviceTestModel) throws {
         let app = try prepare(model, tools: true, selected: ["Clock"], thinking: false)
         let marker = uniqueMarker(model == .bonsai ? "BONSAI_CLOCK" : "GEMMA_CLOCK")
-        var evidence = try send(
+        let evidence = try send(
             marker + "\nUse the clock exactly once to get the current local date and time, then answer in one short line.",
             model: model, in: app)
-        if evidence.toolActivities.isEmpty {
-            // A 1-bit local model occasionally answers from its training prior instead of calling
-            // the clock. A wiring regression fails earlier with run=failed diagnostics, so a single
-            // retry keeps the functional tool contract from depending on sampling luck.
-            let retryMarker = uniqueMarker(model == .bonsai ? "BONSAI_CLOCK_RETRY" : "GEMMA_CLOCK_RETRY")
-            evidence = try send(
-                retryMarker + "\nYou must call the clock tool before answering. Use the clock exactly once "
-                    + "to get the current local date and time, then answer in one short line.",
-                model: model, in: app)
-        }
         XCTAssertEqual(evidence.toolActivities.count, 1, "unexpected tool chain: \(evidence.toolActivities)")
         XCTAssertTrue(evidence.toolActivities.first?.hasPrefix("Current Datetime returned ") == true)
     }
@@ -1116,19 +1098,9 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
     private func exerciseWebSearch(_ model: DeviceTestModel) throws {
         let app = try prepare(model, tools: true, selected: ["Web search"], thinking: false)
         let marker = uniqueMarker(model == .bonsai ? "BONSAI_WEB" : "GEMMA_WEB")
-        var evidence = try send(
+        let evidence = try send(
             marker + "\nCall the web_search tool exactly once for the query OpenAI official website. Then answer with the first result's title.",
             model: model, in: app, timeout: 720)
-        if evidence.toolActivities.isEmpty {
-            // A 1-bit local model occasionally answers from its training prior instead of calling the
-            // tool. A wiring regression fails earlier with run=failed diagnostics, so a single retry
-            // keeps the functional tool contract from depending on sampling luck.
-            let retryMarker = uniqueMarker(model == .bonsai ? "BONSAI_WEB_RETRY" : "GEMMA_WEB_RETRY")
-            evidence = try send(
-                retryMarker + "\nYou MUST call the web_search tool exactly once for the query OpenAI "
-                    + "official website. Then answer with the first result's title.",
-                model: model, in: app, timeout: 720)
-        }
         XCTAssertEqual(evidence.toolActivities.count, 1, "unexpected tool chain: \(evidence.toolActivities)")
         guard let activity = evidence.toolActivities.first else { return }
         // The functional contract is that the tool really returned organic results: the row must show
@@ -1202,36 +1174,19 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         // Defer all content assertions: a wrong acknowledgement must not prevent us from observing whether
         // the Memory tool ran, whether it wrote durable state, or whether another model consumed that state.
         do {
-            var evidence = try send(
+            let evidence = try send(
                 marker + "\nMy temporary device-test name is \(code). Call the remember tool exactly once "
                     + "with text \"The user's temporary device-test name is \(code).\" to save this "
                     + "lasting fact. Do not use web search. After it is saved, reply exactly "
                     + "MEMORY_SAVED_OK.",
                 model: writer, in: app, assertEvidence: false)
-            if !evidence.toolActivities.contains("Saved to memory") {
-                // A 1-bit local model occasionally answers without calling the tool. A wiring regression
-                // fails earlier with run=failed diagnostics, so a single retry keeps the durable-memory
-                // contract from depending on sampling luck.
-                let retryMarker = uniqueMarker(
-                    writer == .bonsai ? "BONSAI_MEMORY_RETRY" : "GEMMA_MEMORY_RETRY"
-                )
-                evidence = try send(
-                    retryMarker + "\nMy temporary device-test name is \(code). You MUST call the remember "
-                        + "tool (the tool named remember) exactly once with text \"The user's temporary "
-                        + "device-test name is \(code).\" to save this lasting fact, then reply exactly "
-                        + "MEMORY_SAVED_OK. Do not use web search.",
-                    model: writer, in: app, assertEvidence: false)
-            }
             writerEvidence = evidence
             failures += generationEvidenceFailures(evidence, model: writer)
                 .map { "Writer generation: \($0)" }
-            // A 1-bit model may acknowledge by echoing the saved fact instead of the literal
-            // MEMORY_SAVED_OK. The durable Memory row and the reader's exact recall below are the real
-            // contract; only a reply that carries neither the marker nor the code is a genuine miss.
-            if evidence.answer != "MEMORY_SAVED_OK", !evidence.answer.contains(code) {
+            if evidence.answer != "MEMORY_SAVED_OK" {
                 failures.append(
                     "Writer answer was \(String(reflecting: evidence.answer)), "
-                        + "expected MEMORY_SAVED_OK or the saved code"
+                        + "expected MEMORY_SAVED_OK"
                 )
             }
             if !evidence.toolActivities.contains("Saved to memory") {
@@ -1367,7 +1322,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         // `typeText` immediately after reactivation can surface a cross-device paste permission alert;
         // the safety firewall must not click that alert. Keeping the draft across background and tapping
         // Send after foreground still exercises the real suspend -> lazy-load -> generation boundary.
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         if field.waitForExistence(timeout: 20), field.isHittable {
             afterCopyCount = app.buttons.matching(identifier: "Copy answer").count
             afterStatsCount = app.descendants(matching: .any)
@@ -1537,21 +1492,13 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         var allActivities: [String] = []
         for scenario in scenarios {
             var sawTool = false
-            for attempt in 0..<2 {
-                if sawTool { break }
-                let prompt = attempt == 0
-                    ? scenario.prompt
-                    : "\(uniqueMarker("TOOLV2_RETRY"))\nYou MUST call the \(scenario.tool) tool "
-                        + "exactly once and then reply briefly."
-                do {
-                    let evidence = try send(prompt, model: .bonsai, in: app,
-                                            timeout: 300, assertEvidence: false)
-                    allActivities += evidence.toolActivities
-                    sawTool = matchesTool(evidence.toolActivities, scenario.tool)
-                } catch {
-                    // A run-level rejection (e.g. the model repeated a call) is retried once with a
-                    // tighter instruction; the durable runtime keeps the protection itself.
-                }
+            do {
+                let evidence = try send(scenario.prompt, model: .bonsai, in: app,
+                                        timeout: 300, assertEvidence: false)
+                allActivities += evidence.toolActivities
+                sawTool = matchesTool(evidence.toolActivities, scenario.tool)
+            } catch {
+                allActivities.append("\(scenario.tool) failed: \(error.localizedDescription)")
             }
             if !sawTool { missing.append(scenario.tool) }
         }
@@ -1589,7 +1536,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         guard field.waitForExistence(timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Composer missing before continued-processing send")
         }
@@ -1682,7 +1629,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         guard field.waitForExistence(timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Composer missing before workflow send")
         }
@@ -1818,6 +1765,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
 /// the physical-device matrix uses. Non-approval cases run on the product default (Safe preset) so
 /// safe in-app/read/online operations proceed without prompts; approval has dedicated cases.
 final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
+    override var usesIsolatedStorage: Bool { true }
 
     @MainActor
     private func selectApprovalMode(_ title: String, in app: XCUIApplication) throws {
@@ -1840,7 +1788,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         let runtime = diagnosticValue("device-e2e.runtime", in: app)
         XCTAssertTrue(runtime.contains("resident=false"),
                       "online selection must not allocate local weights: \(runtime)")
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
         field.typeText("hello")
@@ -1854,7 +1802,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         let copyCount = app.buttons.matching(identifier: "Copy answer").count
         let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
@@ -1929,7 +1877,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         let copyCount = app.buttons.matching(identifier: "Copy answer").count
         let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
@@ -2006,7 +1954,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         XCTAssertTrue(ask.waitForExistence(timeout: 5))
         ask.tap()
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         let copyCount = app.buttons.matching(identifier: "Copy answer").count
         let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
@@ -2124,22 +2072,12 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try selectOnlineModel(in: app)
 
         let marker = uniqueMarker("ONLINE_CALC")
-        var evidence = try send(
+        let evidence = try send(
             marker + "\nWhat is 1234567 * 7654321? You do not know this product from memory. "
                 + "You MUST call the calculator tool exactly once to compute it, "
-                + "then reply exactly RESULT=9449772114007.",
+                + "then reply with RESULT= followed by the computed integer.",
             model: .bonsai, in: app, timeout: 300, assertEvidence: false
         )
-        if evidence.toolActivities.isEmpty {
-            // Online models sometimes answer from arithmetic knowledge instead of calling the tool.
-            // Retry once with the tool-call made mandatory (same wiring the device clock test uses).
-            evidence = try send(
-                marker + "\nYou cannot multiply these numbers from memory. You MUST call the "
-                    + "calculator tool exactly once before answering. Use the calculator to multiply "
-                    + "1234567 by 7654321, then reply exactly RESULT=9449772114007.",
-                model: .bonsai, in: app, timeout: 300, assertEvidence: false
-            )
-        }
         XCTAssertEqual(
             evidence.toolActivities.count,
             1,
@@ -2160,19 +2098,12 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try selectOnlineModel(in: app)
 
         let marker = uniqueMarker("ONLINE_SEARCH")
-        var evidence = try send(
+        let evidence = try send(
             marker + "\nWhat is today's date? You do not know today's date reliably from memory. "
                 + "You MUST call the web search tool EXACTLY ONCE to look it up, then reply with the date "
                 + "and one sentence of context.",
             model: .bonsai, in: app, timeout: 300, assertEvidence: false
         )
-        if evidence.toolActivities.isEmpty {
-            evidence = try send(
-                marker + "\nYou MUST call the web search tool exactly once before answering. Use web search to "
-                    + "look up today's date, then reply with the date and one sentence of context.",
-                model: .bonsai, in: app, timeout: 300, assertEvidence: false
-            )
-        }
         XCTAssertTrue(
             evidence.toolActivities.contains(where: {
                 $0.localizedCaseInsensitiveContains("web_search")
@@ -2192,20 +2123,22 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let fact = "E2E_SKY_\(Int.random(in: 10_000...99_999))"
+        let fact = "E2E_MINT_\(Int.random(in: 10_000...99_999))"
         let first = try send(
-            "Remember this fact: the sky color is \(fact). Reply with only CONFIRMED.",
+            "请记住：我的临时代号是 \(fact)。保存后只回答 CONFIRMED。",
             model: .bonsai, in: app, timeout: 300, assertEvidence: false
         )
-        XCTAssertFalse(first.answer.isEmpty)
+        XCTAssertTrue(first.toolActivities.contains("Saved to memory"), "The fact must be durably saved")
+        // A new conversation excludes the original sentence. Do not visit Memory settings here:
+        // a settings refresh would conceal a stale production snapshot.
+        try openNewChat(in: app)
+        try selectOnlineModel(in: app)
         let second = try send(
-            "According to my memory, what is the sky color? Reply with only the fact.",
+            "我的临时代号是什么？只回答代号。",
             model: .bonsai, in: app, timeout: 300, assertEvidence: false
         )
-        XCTAssertTrue(
-            second.answer.contains(fact),
-            "recalled fact is missing from the answer: \(second.answer)"
-        )
+        XCTAssertEqual(second.answer, fact, "Cross-conversation recall must come from saved memory")
+        XCTAssertTrue(second.toolActivities.isEmpty, "The saved fact should already be present in context")
     }
 
     /// Approval-specific network read: with Ask pinned, a first-use web search must pause for an
@@ -2218,7 +2151,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try selectOnlineModel(in: app)
         try selectApprovalMode("Ask", in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         let copyCount = app.buttons.matching(identifier: "Copy answer").count
         let statsCount = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
@@ -2259,7 +2192,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         let marker = uniqueMarker("ONLINE_STOP")
         let copies = app.buttons.matching(identifier: "Copy answer").count
         let statsBefore = app.descendants(matching: .any).matching(identifier: "assistant.stats").count
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
         field.typeText(
@@ -2477,7 +2410,7 @@ final class SimulatorOnlineE2EUITests: DeviceE2ETestCase {
         try openNewChat(in: app)
         try selectOnlineModel(in: app)
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
         field.typeText("Write a detailed 800-word essay about sleep and memory, with at least ten "

@@ -24,7 +24,7 @@
 - [ ] Live online tests, unavailable-environment skips, and any first-attempt failures are reported explicitly
 - [ ] `agent-harness-verify static` passes when spec, contracts, verification data, or package boundaries change
 - [ ] `xcodebuild` macOS + iOS app builds and engine gates pass (required for engine/package/project wiring)
-- [ ] Tested on device (if it touches inference) — platform / engine / model / quant:
+- [ ] Relevant real behavior checked — simulator + online model for app flows; Apple hardware for local GPU, thermal, or OS scheduling claims. Record platform / engine / model:
 
 ## Checklist
 

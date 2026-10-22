@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import XCTest
+import LLMCore
 @_spi(AgentRuntime) import AgentContracts
 @testable import AgentRuntime
 
@@ -52,6 +53,64 @@ final class MockResponsesURLProtocol: URLProtocol {
 }
 
 final class ResponsesAPIModelProviderTests: XCTestCase {
+
+    func testWireAliasesCannotCollideWithARealToolNameAndExcludeDots() throws {
+        func descriptor(_ name: String) throws -> AgentToolDescriptor {
+            try MCPToolV2Adapter.descriptor(spec: MCPToolSpec(name: name, description: "Lookup", inputSchemaJSON: "{\"type\":\"object\"}"),
+                                           serverStableID: UUID(), trustRevision: "test")
+        }
+        let dotted = try descriptor("lookup.v2")
+        let reserved = try XCTUnwrap(ModelToolNames.bindings(for: [dotted]).first?.wireName)
+        let spoof = try descriptor(reserved)
+        let names = ModelToolNames.bindings(for: [dotted, spoof]).map(\.wireName)
+        XCTAssertEqual(Set(names).count, 2)
+        XCTAssertFalse(names.contains { $0.contains(".") })
+        XCTAssertEqual(names[1], reserved)
+    }
+
+
+    func testNativeToolResultsReplayCallIdentityAndReasoningAfterSerialization() throws {
+        let fixture = try ModelFixture(location: .remote, providerID: ResponsesAPIModelProvider.providerID)
+        let reasoning: JSONValue = .object(["type": .string("reasoning"), "id": .string("rs_1"),
+                                            "summary": .array([]), "encrypted_content": .string("opaque")])
+        let native = try NativeToolCallContext(
+            selectionDigest: NativeToolCallContext.digest(for: fixture.request.selection),
+            callID: "call_123", name: "lookup", arguments: CanonicalJSON(.object([:])),
+            reasoningItems: [reasoning], reasoningText: "provider reasoning"
+        )
+        let message = try AgentModelMessage(role: .tool, content: "verified result", isUntrustedData: true,
+                                            nativeToolCall: native)
+        let restored = try JSONDecoder().decode(AgentModelMessage.self, from: JSONEncoder().encode(message))
+        let wire = try ResponsesAPIModelProvider.messagesPayload([restored], selection: fixture.request.selection).input
+        XCTAssertEqual(wire, [reasoning, native.functionCallItem, .object([
+            "type": .string("function_call_output"), "call_id": .string("call_123"),
+            "output": .string("verified result"),
+        ])])
+        XCTAssertThrowsError(try AgentModelMessage(role: .user, content: "x", isUntrustedData: false, nativeToolCall: native))
+        XCTAssertThrowsError(try NativeToolCallContext(selectionDigest: native.selectionDigest, callID: "c", name: "lookup",
+                                                       arguments: native.arguments, reasoningItems: [.object(["type": .string("message")])]))
+    }
+
+    func testNativeIdentitySeparatesRepeatedCallsWithEqualArguments() {
+        let calls = [
+            ResponsesAPIModelProvider.ParsedCall(name: "lookup", argumentsJSON: "{}", callID: "a"),
+            ResponsesAPIModelProvider.ParsedCall(name: "lookup", argumentsJSON: "{}", callID: "b"),
+            ResponsesAPIModelProvider.ParsedCall(name: "lookup", argumentsJSON: "{}", callID: "a"),
+        ]
+        XCTAssertEqual(ResponsesAPIModelProvider.deduplicatedCalls(calls).map(\.callID), ["a", "b"])
+    }
+
+    func testOnlineWirePreservesUniqueNamesForTwoMCPServers() throws {
+        let spec = MCPToolSpec(name: "lookup", description: "Look up current information", inputSchemaJSON: "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}")
+        let descriptors = try [UUID(), UUID()].map { try MCPToolV2Adapter.descriptor(spec: spec, serverStableID: $0, trustRevision: "audit.v1") }
+        XCTAssertNotEqual(descriptors[0].id.logicalID, descriptors[1].id.logicalID)
+        let payload = try ResponsesAPIModelProvider.toolsPayload(descriptors)
+        let names = payload.compactMap { value -> String? in
+            guard case .object(let object) = value, case .string(let name)? = object["name"] else { return nil }; return name
+        }
+        XCTAssertEqual(Set(names).count, descriptors.count, "Distinct registered MCP tools collapse to wire names: \(names)")
+    }
+
     func testMessagesPayloadMapsRolesAndToolFallback() throws {
         let messages = try [
             AgentModelMessage(role: .system, content: "sys", isUntrustedData: false),
@@ -299,7 +358,21 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
               case .object(let responseFormat)? = object["response_format"],
               case .object(let streamOptions)? = object["stream_options"]
         else { return XCTFail("expected documented Chat Completions request: \(value)") }
-        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.count, fixture.request.messages.count + 1)
+        guard case .object(let outputInstruction) = messages.first,
+              case .string(let instruction)? = outputInstruction["content"]
+        else { return XCTFail("structured calls must send their output contract") }
+        XCTAssertEqual(outputInstruction["role"], .string("system"))
+        XCTAssertTrue(instruction.contains("JSON"), "DeepSeek JSON mode requires a JSON instruction")
+        XCTAssertTrue(instruction.contains(try CanonicalJSON(descriptor.inputSchema.root).string))
+        let responsesData = try ResponsesAPIModelProvider.requestBody(
+            request: structuredRequest, baseURL: "https://gateway.example/v1"
+        )
+        let responsesValue = try AgentWireDecoder.decode(JSONValue.self, from: responsesData, limits: .inlineValue)
+        guard case .object(let responsesObject) = responsesValue,
+              case .string(let responsesInstructions)? = responsesObject["instructions"]
+        else { return XCTFail("Responses requests also need the complete output contract") }
+        XCTAssertTrue(responsesInstructions.contains(instruction))
         XCTAssertNil(object["input"])
         XCTAssertNil(object["instructions"])
         XCTAssertEqual(object["max_tokens"], .integer(1_024))
@@ -605,6 +678,7 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         XCTAssertEqual(parsed.text, "Hello world")
         XCTAssertEqual(parsed.calls.count, 1)
         XCTAssertEqual(parsed.calls[0].name, "calculator")
+        XCTAssertEqual(parsed.calls[0].callID, "c1")
         XCTAssertEqual(parsed.usage.inputTokens, 12)
         XCTAssertEqual(parsed.usage.outputTokens, 7)
         XCTAssertFalse(parsed.hasReasoning)

@@ -9,6 +9,14 @@ import LLMCore
 /// fail cleanly when even that minimum overflows. Measured with a synthetic per-turn cost so the selection
 /// is exercised as a pure function, with no model loaded.
 final class ContextFitTests: XCTestCase {
+    func testPrefixReuseRetainsOnlyMatchingTokensAndAlwaysRecomputesLastLogit() {
+        XCTAssertEqual(LlamaEngine.reusablePrefixLength(cached: [1, 2, 3, 4], prompt: [1, 2, 3, 4, 5]), 4)
+        XCTAssertEqual(LlamaEngine.reusablePrefixLength(cached: [1, 2, 3, 4], prompt: [1, 2, 8]), 2)
+        XCTAssertEqual(LlamaEngine.reusablePrefixLength(cached: [1, 2, 3], prompt: [1, 2, 3]), 2)
+        XCTAssertEqual(LlamaEngine.reusablePrefixLength(cached: [1, 2, 3], prompt: [9, 2]), 0)
+        XCTAssertEqual(LlamaEngine.reusablePrefixLength(cached: [1], prompt: []), 0)
+    }
+
 
     /// Synthetic token count: one "token" per content character, summed over the kept turns.
     private let cost: ([ChatTurn]) -> Int = { $0.reduce(0) { $0 + $1.content.count } }

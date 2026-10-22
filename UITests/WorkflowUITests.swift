@@ -21,7 +21,7 @@ final class WorkflowUITests: XCTestCase {
         let newChat = app.buttons.matching(identifier: "New chat").firstMatch
         if newChat.waitForExistence(timeout: 8) { newChat.tap() }
 
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 20), "composer never appeared")
         let answerCount = app.descendants(matching: .any)
             .matching(identifier: "assistant.answer").count

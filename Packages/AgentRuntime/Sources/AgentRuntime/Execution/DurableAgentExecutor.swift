@@ -203,11 +203,13 @@ public actor AgentRunController {
             ? (request.provenance.sourceMessageID
                 ?? ExecutionStableID.message(runID: request.runID, role: .user))
             : ExecutionStableID.message(runID: request.runID, role: .user)
-        let userBody = Data(frozen.currentUser.frozen.content.utf8)
+        let userBody = try AcceptedUserMessagePayload(
+            text: frozen.currentUser.frozen.content, attachments: frozen.currentUser.attachments
+        ).encoded()
         let userArtifact = try await payloadStore.commit(
             data: userBody,
-            mimeType: "text/plain",
-            semanticType: "agent-user-message.v1",
+            mimeType: "application/octet-stream",
+            semanticType: "agent-user-message.v2",
             runID: request.runID,
             stepID: nil,
             invocationID: nil,

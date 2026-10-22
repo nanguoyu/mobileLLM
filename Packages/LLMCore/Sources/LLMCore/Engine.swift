@@ -50,6 +50,8 @@ public enum StopReason: String, Sendable, Equatable, Codable {
 /// End-of-generation statistics (DESIGN §2.2).
 public struct Stats: Sendable, Equatable, Codable {
     public var promptTokens: Int
+    /// Tokens reused from an exact input prefix; nil when the backend does not report cache usage.
+    public var cachedPromptTokens: Int?
     public var genTokens: Int
     public var promptTPS: Double
     public var tokensPerSecond: Double
@@ -57,8 +59,9 @@ public struct Stats: Sendable, Equatable, Codable {
     public var stopReason: StopReason
 
     public init(promptTokens: Int, genTokens: Int, promptTPS: Double, tokensPerSecond: Double,
-                peakMemoryBytes: Int64, stopReason: StopReason) {
+                peakMemoryBytes: Int64, stopReason: StopReason, cachedPromptTokens: Int? = nil) {
         self.promptTokens = promptTokens
+        self.cachedPromptTokens = cachedPromptTokens
         self.genTokens = genTokens
         self.promptTPS = promptTPS
         self.tokensPerSecond = tokensPerSecond

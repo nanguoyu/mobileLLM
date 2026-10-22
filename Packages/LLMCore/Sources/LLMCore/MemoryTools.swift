@@ -121,6 +121,12 @@ public struct RememberTool: Tool {
     public var schema: ToolSchema { Self.schema }
 
     public func execute(argumentsJSON: String) async -> String {
+        let original = ToolCall(name: "remember", argumentsJSON: argumentsJSON).arg("original")
+        return await execute(argumentsJSON: argumentsJSON, userSourceText: original)
+    }
+
+    /// Production callers supply the frozen user utterance outside the model-visible schema.
+    public func execute(argumentsJSON: String, userSourceText: String?) async -> String {
         let call = ToolCall(name: "remember", argumentsJSON: argumentsJSON)
         guard let text = call.arg("text"),
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -133,7 +139,7 @@ public struct RememberTool: Tool {
         // runtime-owned latest user turn after the model call is parsed. It stays separate from the
         // model-produced canonical `text`; the future Agent adapter will bind the same trusted source
         // directly rather than carrying this legacy-loop transport field.
-        let original = call.arg("original")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let original = userSourceText?.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             switch try await store.saveIfAbsent(canonicalText, source: .model,
                                                 sourceText: (original?.isEmpty ?? true) ? nil : original) {

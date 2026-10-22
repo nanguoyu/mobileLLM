@@ -5,7 +5,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "codex/**"]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -18,7 +18,31 @@ permissions:
   contents: read
 
 jobs:
+  change-scope:
+    runs-on: ubuntu-latest
+    outputs:
+      portable: ${{ steps.scope.outputs.portable }}
+      apple: ${{ steps.scope.outputs.apple }}
+      documents: ${{ steps.scope.outputs.documents }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            python3 scripts/verification/changed-checks.py --all --github-output >> "$GITHUB_OUTPUT"
+          else
+            if [[ -z "$BASE_REF" || "$BASE_REF" =~ ^0+$ ]]; then BASE_REF=origin/main; fi
+            python3 scripts/verification/changed-checks.py --base-ref "$BASE_REF" --github-output >> "$GITHUB_OUTPUT"
+          fi
+
   verification-documents:
+    needs: change-scope
+    if: needs.change-scope.outputs.documents == 'true'
     name: verification documents (Linux)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -77,6 +101,8 @@ jobs:
           exit "$status"
 
   portable-swift:
+    needs: change-scope
+    if: needs.change-scope.outputs.portable == 'true'
     name: portable Swift behavior tests
     runs-on: ubuntu-latest
     container: swift:6.2.4-jammy
@@ -92,11 +118,22 @@ jobs:
         run: swift run --package-path Tools/AgentHarnessVerification --scratch-path /tmp/mobilellm-portable agent-harness-verify static --repo-root "$GITHUB_WORKSPACE"
 
   macos-behavior:
+    needs: change-scope
     name: Apple package behavior tests (self-hosted)
-    if: vars.MOBILELLM_SELF_HOSTED_MAC == 'true' && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    if: needs.change-scope.outputs.apple == 'true' && vars.MOBILELLM_SELF_HOSTED_MAC == 'true' && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
     runs-on: [self-hosted, macOS]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Run every non-Metal package suite
-        run: bash scripts/verification/run-behavior-tests.sh
+        with:
+          fetch-depth: 0
+      - name: Run affected non-Metal package suites
+        env:
+          BASE_REF: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            bash scripts/verification/run-behavior-tests.sh --all
+          else
+            bash scripts/verification/run-behavior-tests.sh --base-ref "$BASE_REF"
+          fi

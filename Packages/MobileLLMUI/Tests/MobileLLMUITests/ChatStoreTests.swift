@@ -154,6 +154,15 @@ final class ChatStoreTests: XCTestCase {
                       "a visible tool switch grants access but must not force every prompt to advertise it")
         XCTAssertFalse(updated.materializedFromGlobalTemplate,
                        "a menu edit is an explicit per-conversation policy, not the global template")
+        let web = try AgentToolLogicalID(providerID: "builtin", name: "web_search")
+        chat.setToolPinned(web, pinned: true)
+        chat.applyCurrentToolSelectionToActiveConversation()
+        XCTAssertEqual(chat.activeConversation?.toolPolicy?.pinnedToolIDs, [web])
+        settings.disabledBuiltInTools.insert("web_search")
+        chat.applyCurrentToolSelectionToActiveConversation()
+        chat.setToolPinned(web, pinned: true)
+        XCTAssertTrue(chat.activeConversation?.toolPolicy?.pinnedToolIDs.isEmpty == true,
+                      "Pinning must never restore a revoked tool")
     }
 
     func testStopCommitsPartialAnswer() async throws {

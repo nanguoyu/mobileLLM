@@ -87,7 +87,7 @@ enum DeviceTestModel: CaseIterable, Equatable {
     var generationTimeout: TimeInterval { self == .bonsai ? 480 : 600 }
 }
 
-struct GenerationEvidence {
+struct GenerationEvidence: Codable {
     let answer: String
     let stats: String
     let toolActivities: [String]
@@ -111,6 +111,8 @@ enum DeviceE2EHarnessError: LocalizedError {
 /// a hard boundary: screenshot, Home, terminate, fail — never open Settings, Mail, or an account flow.
 class DeviceE2ETestCase: XCTestCase {
     var activeApp: XCUIApplication?
+    var usesIsolatedStorage: Bool { false }
+    private let storageNamespace = UUID().uuidString
     private var systemAlertMonitor: NSObjectProtocol?
 
     override func setUpWithError() throws {
@@ -158,6 +160,10 @@ class DeviceE2ETestCase: XCTestCase {
     /// a graceful "already gone". Button existence queries return false for a vanished alert.
     @MainActor
     private static func grantToolPermissionIfRequested(_ alert: XCUIElement) -> Bool {
+        guard alert.exists else { return false }
+        let text = alert.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " ").lowercased()
+        guard text.contains("mobilellm"),
+              ["calendar", "reminder", "location"].contains(where: text.contains) else { return false }
         for buttonLabel in ["Allow While Using App", "Allow Once", "Allow"] {
             let button = alert.buttons[buttonLabel]
             if button.exists, button.isHittable {
@@ -183,6 +189,7 @@ class DeviceE2ETestCase: XCTestCase {
         // state, camera — skip themselves at their own precondition instead of blocking the shell.
         let app = XCUIApplication()
         app.launchEnvironment["MOBILELLM_DEVICE_E2E"] = "1"
+        if usesIsolatedStorage { app.launchEnvironment["MOBILELLM_E2E_STORAGE_NAMESPACE"] = storageNamespace }
         app.launchEnvironment["MOBILELLM_DEVICE_E2E_FIXTURE"] = visionFixture ? "1" : "0"
         // The OpenAI-compatible service config is stored ONCE on the Mac at ~/.mobilellm/openai.json
         // (never in Git). Environment variables win when present; otherwise the file is read here and
@@ -205,7 +212,9 @@ class DeviceE2ETestCase: XCTestCase {
         }
         // Long-form device tests measure engine behavior, not the cooling duty cycle: the harness
         // opts out of cooperative thermal pacing (production is unaffected).
-        app.launchEnvironment["MOBILELLM_DISABLE_THERMAL"] = "1"
+        if ProcessInfo.processInfo.environment["MOBILELLM_E2E_DISABLE_THERMAL"] == "1" {
+            app.launchEnvironment["MOBILELLM_DISABLE_THERMAL"] = "1"
+        }
         activeApp = app
         app.launch()
 
@@ -216,6 +225,16 @@ class DeviceE2ETestCase: XCTestCase {
         guard diagnostic("device-e2e.runtime", in: app).waitForExistence(timeout: 10) else {
             app.terminate()
             throw DeviceE2EHarnessError.precondition("DEBUG DeviceE2E diagnostics handshake is missing")
+        }
+        let runtimeDeadline = Date().addingTimeInterval(15)
+        var agent = diagnosticValue("device-e2e.agent", in: app)
+        while !agent.contains("enabled=true"), agent.contains("error=none"), Date() < runtimeDeadline {
+            Thread.sleep(forTimeInterval: 0.1)
+            agent = diagnosticValue("device-e2e.agent", in: app)
+        }
+        guard agent.contains("enabled=true") else {
+            attachDiagnostics(app, name: "runtime-bootstrap-failed")
+            throw DeviceE2EHarnessError.precondition("Production runtime did not initialize: \(agent)")
         }
         assertNoMemoryInterlock(in: app)
         return app
@@ -322,7 +341,7 @@ class DeviceE2ETestCase: XCTestCase {
 
     @MainActor
     func goToChatList(in app: XCUIApplication) throws {
-        if app.textFields["composer.field"].exists || app.buttons["Active model"].exists {
+        if app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch.exists || app.buttons["Active model"].exists {
             let back = app.navigationBars.buttons["Chat"].firstMatch
             if back.exists, back.isHittable { back.tap() }
         }
@@ -342,6 +361,9 @@ class DeviceE2ETestCase: XCTestCase {
     /// fact on the device, otherwise a small reader model can pick the wrong one of two similar notes.
     @MainActor
     func clearAllMemories(in app: XCUIApplication) throws {
+        guard ProcessInfo.processInfo.environment["MOBILELLM_E2E_ALLOW_DATA_RESET"] == "1" else {
+            throw DeviceE2EHarnessError.precondition("Memory reset requires an isolated test installation and MOBILELLM_E2E_ALLOW_DATA_RESET=1")
+        }
         try goToSettings(in: app)
         let memory = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Memory")
@@ -612,7 +634,7 @@ class DeviceE2ETestCase: XCTestCase {
         guard waitForValue(of: active, equalTo: model.headerValue, timeout: 20) else {
             throw DeviceE2EHarnessError.precondition("Active-model header did not identify \(model.headerValue)")
         }
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         // The engine can report resident=true just before the model-switch sheet finishes its UI
         // transition. A field behind that sheet technically exists but is not usable; wait for the
         // user-observable ready state rather than sampling isHittable once.
@@ -645,9 +667,10 @@ class DeviceE2ETestCase: XCTestCase {
               timeout: TimeInterval? = nil,
               acceptedStops: [String] = ["eos", "stopSequence", "maxTokens"],
               assertEvidence: Bool = true) throws -> GenerationEvidence {
-        let field = app.textFields["composer.field"]
+        let field = app.descendants(matching: .any).matching(identifier: "composer.field").firstMatch
         guard field.waitForExistence(timeout: 20), field.isHittable else {
-            throw DeviceE2EHarnessError.precondition("Composer is not ready for \(model.displayName)")
+            attachDiagnostics(app, name: "composer-unavailable")
+            throw DeviceE2EHarnessError.precondition("Composer is unavailable; runtime=\(diagnosticValue("device-e2e.runtime", in: app))")
         }
         // The whole device matrix must exercise the durable agent runtime; a silent fallback to the
         // legacy loop would make tool/vision scenarios pass without ever testing the agent path.
@@ -1267,5 +1290,9 @@ class DeviceE2ETestCase: XCTestCase {
         hierarchy.name = name + "-hierarchy"
         hierarchy.lifetime = .keepAlways
         add(hierarchy)
+        let runtime = XCTAttachment(string: diagnosticValue("device-e2e.agent", in: app))
+        runtime.name = name + "-runtime"
+        runtime.lifetime = .keepAlways
+        add(runtime)
     }
 }

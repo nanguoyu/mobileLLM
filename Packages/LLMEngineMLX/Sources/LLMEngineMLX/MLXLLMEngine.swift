@@ -20,6 +20,7 @@ public actor MLXLLMEngine: LLMEngine {
         case notLoaded
         case noUserMessage
         case loadFailed(reason: String)
+        case missingCompletion
 
         // User-facing text: this surfaces via `error.localizedDescription` in the chat UI, so it must
         // read as guidance, never a raw enum dump. The load hint keeps the real reason (a network vs.
@@ -30,6 +31,8 @@ public actor MLXLLMEngine: LLMEngine {
                 return "No model is loaded yet. Pick a model and wait for it to finish loading, then try again."
             case .noUserMessage:
                 return "There's nothing to answer yet — send a message first."
+            case .missingCompletion:
+                return "The model stream ended without completion information. Please retry the request."
             case .loadFailed(let reason):
                 return "Couldn't load the model (\(reason)). If memory is tight, try a smaller quantization "
                     + "(for example a 4-bit build); otherwise re-download the model and try again."
@@ -173,22 +176,34 @@ public actor MLXLLMEngine: LLMEngine {
             session.additionalContext = ["enable_thinking": params.thinking]
 
             var splitter = ThinkSplitter()
-            var tokens = 0
-            let start = Date()
+            var completion: GenerateCompletionInfo?
             Memory.peakMemory = 0
-            for try await chunk in session.streamResponse(to: chat.prompt) {
-                // ChatSession owns the inner token loop, so each streamed chunk is the narrowest safe
-                // boundary where pause/cancel, thermal pacing, and cache relief can run.
+            for try await event in session.streamDetails(to: chat.prompt) {
                 try await governance.checkpoint()
-                tokens += 1
-                for d in splitter.feed(chunk) { cont.yield(Self.map(d)) }
+                switch event {
+                case .chunk(let chunk):
+                    for delta in splitter.feed(chunk) { cont.yield(Self.map(delta)) }
+                case .info(let info): completion = info
+                case .toolCall(let call):
+                    let arguments = try JSONEncoder().encode(call.function.arguments)
+                    cont.yield(.answer(try Self.toolCallText(name: call.function.name, argumentsJSON: arguments)))
+                }
             }
             try await governance.cooperativeCheckpoint()
             for d in splitter.finish() { cont.yield(Self.map(d)) }
 
-            let secs = max(Date().timeIntervalSince(start), 0.0001)
-            let stop: StopReason = (params.maxTokens > 0 && tokens >= params.maxTokens) ? .maxTokens : .eos
-            cont.yield(.done(stats(tokens: tokens, tps: Double(tokens) / secs, stop: stop)))
+            guard let completion else { throw EngineError.missingCompletion }
+            let stop: StopReason = switch completion.stopReason {
+            case .stop: .eos
+            case .length: .maxTokens
+            case .cancelled: .cancelled
+            }
+            cont.yield(.done(Stats(
+                promptTokens: completion.promptTokenCount, genTokens: completion.generationTokenCount,
+                promptTPS: Double(completion.promptTokenCount) / max(completion.promptTime, 0.0001),
+                tokensPerSecond: Double(completion.generationTokenCount) / max(completion.generateTime, 0.0001),
+                peakMemoryBytes: Int64(Memory.peakMemory), stopReason: stop
+            )))
             cont.finish()
         } catch is CancellationError {
             cont.yield(.done(stats(tokens: 0, tps: 0, stop: .cancelled)))   // partial answer already emitted
@@ -203,6 +218,14 @@ public actor MLXLLMEngine: LLMEngine {
     public nonisolated func pauseGeneration() { generationLifecycle.pauseActive() }
     public nonisolated func resumeGeneration() { generationLifecycle.resumeActive() }
     public nonisolated func cancelGeneration() { generationLifecycle.cancelActive() }
+
+    /// Both runtime and legacy tool parsers accept this shared text wire format.
+    nonisolated static func toolCallText(name: String, argumentsJSON: Data) throws -> String {
+        let arguments = try JSONSerialization.jsonObject(with: argumentsJSON)
+        let bytes = try JSONSerialization.data(withJSONObject: ["name": name, "arguments": arguments], options: [.sortedKeys])
+        let body = String(decoding: bytes, as: UTF8.self).replacingOccurrences(of: "<", with: "\\u003c")
+        return "<tool_call>" + body + "</tool_call>"
+    }
 
     private func stats(tokens: Int, tps: Double, stop: StopReason) -> Stats {
         Stats(promptTokens: 0, genTokens: tokens, promptTPS: 0, tokensPerSecond: tps,

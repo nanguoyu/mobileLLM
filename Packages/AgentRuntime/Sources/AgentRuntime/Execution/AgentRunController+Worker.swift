@@ -505,6 +505,11 @@ extension AgentRunController {
             if $0.orderSequence != $1.orderSequence { return $0.orderSequence < $1.orderSequence }
             return $0.invocationID.description < $1.invocationID.description
         }
+        var nativeCalls: [ToolInvocationID: NativeToolCallContext] = [:]
+        for (_, outcome) in history.modelOutcomes {
+            guard case .completed(let completion) = outcome, case .callTools(let calls) = completion.action else { continue }
+            for call in calls { if let native = call.nativeContext { nativeCalls[call.invocationID] = native } }
+        }
         let toolResults = try contextualResults.map { entry in
             guard let descriptor = frozen.toolCatalog.descriptors.first(where: {
                 $0.id.description == entry.descriptorID
@@ -514,7 +519,8 @@ extension AgentRunController {
                 descriptorID: descriptor.id,
                 resultRevision: entry.revisionRecord.recordDigest.rawValue,
                 resultContent: String(decoding: entry.content, as: UTF8.self),
-                resultDigest: StableDigest.sha256(entry.content)
+                resultDigest: StableDigest.sha256(entry.content),
+                nativeToolCall: nativeCalls[entry.invocationID]
             )
         }
         let snapshot = try FrozenContextSnapshot(

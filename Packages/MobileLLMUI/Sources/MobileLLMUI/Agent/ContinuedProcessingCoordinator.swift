@@ -113,6 +113,13 @@ public final class ContinuedProcessingCoordinator {
         self.identifierPrefix = identifierPrefix
     }
 
+    /// Only a delivered, unexpired OS grant exempts a run from foreground-loss quiescence.
+    public var grantedConversationID: UUID? {
+        guard phase == .running, let id = activeConversationID,
+              let task, !task.isExpired, isEnabled(), isRunEligible(id) else { return nil }
+        return id
+    }
+
     public func identifier(for conversationID: UUID) -> String {
         "\(identifierPrefix).\(conversationID.uuidString.lowercased())"
     }
@@ -184,6 +191,11 @@ public final class ContinuedProcessingCoordinator {
     /// The system granted the task. From here the run keeps executing while the app is backgrounded;
     /// progress is reported to the system Live Activity through `refreshProgress`.
     public func handleTask(_ task: any ContinuedProcessingTaskHandle, conversationID: UUID) {
+        guard isEnabled(), isRunEligible(conversationID), !task.isExpired,
+              task.identifier == identifier(for: conversationID) else {
+            task.setTaskCompleted(success: false)
+            return
+        }
         self.task = task
         activeConversationID = conversationID
         activeIdentifier = task.identifier
@@ -205,13 +217,12 @@ public final class ContinuedProcessingCoordinator {
 
     // MARK: - Terminal outcomes
 
-    /// The run reached a durable terminal state (completed/failed/cancelled). Completes the task
-    /// successfully and clears the scheduling slot.
-    public func runFinished(conversationID: UUID) {
+    /// The run reached a durable terminal state. Reports its actual outcome and clears the slot.
+    public func runFinished(conversationID: UUID, success: Bool = true) {
         guard activeConversationID == conversationID else { return }
         phase = .finished
         lastDiagnostic = nil
-        task?.setTaskCompleted(success: true)
+        task?.setTaskCompleted(success: success)
         task = nil
         if let scheduler, let identifier = activeIdentifier {
             scheduler.cancelPending(identifier: identifier)

@@ -370,7 +370,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
 
         let started = ContinuousClock.now
         let firstBody = try body()
-        var (parsed, streamed, data) = try await attempt(
+        var (parsed, streamed, _) = try await attempt(
             firstBody,
             allowEffortFallback: true,
             allowAutoFallback: parameters.outputBudgetMode == .auto,
@@ -391,7 +391,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 retryCeiling
             )
             let retryBody = try body(maxOutputTokensOverride: bumped)
-            let (retried, retriedStreamed, retriedData) = try await attempt(
+            let (retried, retriedStreamed, _) = try await attempt(
                 retryBody,
                 allowEffortFallback: false,
                 allowAutoFallback: false,
@@ -419,12 +419,10 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                         )
                     }
                     parsed = retried
-                    data = retriedData
                 }
             } else if !retried.isTruncated || retried.text.utf8.count > parsed.text.utf8.count {
                 parsed = retried
                 streamed = retriedStreamed
-                data = retriedData
             }
         }
 
@@ -433,7 +431,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             // handled below; both stay inside the same authorization boundary).
             if parsed.text.isEmpty, parsed.calls.isEmpty, parsed.hasReasoning {
                 let retryBody = try body(reasoningDisabled: true)
-                let (retried, retriedStreamed, retriedData) = try await attempt(
+                let (retried, retriedStreamed, _) = try await attempt(
                     retryBody,
                     allowEffortFallback: false,
                     allowAutoFallback: false,
@@ -441,13 +439,12 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 )
                 parsed = retried
                 streamed = retriedStreamed
-                data = retriedData
             }
         } else if parsed.text.isEmpty, parsed.calls.isEmpty, parsed.hasReasoning {
             // Streamed reasoning-only: reasoning was already shown live; retry once without reasoning
             // so the ANSWER streams too (no duplication of answer text).
             let retryBody = try body(reasoningDisabled: true)
-            let (retried, retriedStreamed, retriedData) = try await attempt(
+            let (retried, retriedStreamed, _) = try await attempt(
                 retryBody,
                 allowEffortFallback: false,
                 allowAutoFallback: false,
@@ -455,7 +452,6 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             )
             parsed = retried
             streamed = retriedStreamed
-            data = retriedData
         }
         try Task.checkCancellation()
         let elapsedMilliseconds = UInt64(
@@ -508,12 +504,22 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 action = .finalAnswer(try AgentAnswer(text: finalText))
             }
         } else {
+            // Continuation state is persisted per call. Bound the derived representation before
+            // duplicating opaque provider data into an action or a later context snapshot.
+            let reasoningBytes = try JSONValue.array(parsed.reasoningItems).canonicalData().count
+                + (parsed.reasoningItems.isEmpty ? parsed.reasoning.utf8.count : 0)
+            guard reasoningBytes <= 1_048_576 / max(1, calls.count) else {
+                throw AgentModelProviderFailure(try Self.toolFailure("Native tool continuation exceeds its size limit."))
+            }
             let normalized = try calls.enumerated().map { index, call in
                 try Self.normalize(
                     name: call.name,
                     argumentsJSON: call.argumentsJSON,
                     index: index,
-                    request: request
+                    request: request,
+                    callID: call.callID,
+                    reasoningItems: parsed.reasoningItems,
+                    reasoningText: parsed.reasoningItems.isEmpty && !parsed.reasoning.isEmpty ? parsed.reasoning : nil
                 )
             }
             action = .callTools(normalized)
@@ -539,8 +545,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         var reasoning = ""
         var text = ""
         var calls: [ParsedCall] = []
-        var callName: String?
-        var callArguments = ""
+        var partialCalls: [Int: (name: String, arguments: String, callID: String?)] = [:]
+        var reasoningItems: [JSONValue] = []
         var hasReasoningOutput = false
         var isTruncated = false
         var usage = ParsedUsage(inputTokens: 0, outputTokens: 0)
@@ -561,14 +567,14 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                   case .string(let type)? = event["type"]
             else { continue }
 
+            let index = Int(min(Self.unsignedNumber(event["output_index"]) ?? 0, UInt64(Int.max)))
             switch type {
             case "response.output_item.added":
                 if case .object(let item)? = event["item"] {
                     if item["type"] == .string("function_call"),
                        case .string(let name)? = item["name"]
                     {
-                        callName = name
-                        callArguments = ""
+                        partialCalls[index] = (name, "", stringValue(item["call_id"]))
                     } else if item["type"] == .string("reasoning") {
                         hasReasoningOutput = true
                     }
@@ -589,25 +595,32 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 }
             case "response.function_call_arguments.delta":
                 if case .string(let delta)? = event["delta"] {
-                    callArguments += delta
+                    var call = partialCalls[index] ?? ("", "", nil)
+                    call.arguments += delta
+                    partialCalls[index] = call
                 }
             case "response.output_item.done":
-                if case .object(let item)? = event["item"],
-                   item["type"] == .string("function_call")
-                {
-                    let name: String
-                    if case .string(let eventName)? = item["name"] {
-                        name = eventName
-                    } else {
-                        name = callName ?? ""
+                if case .object(let item)? = event["item"] {
+                    if item["type"] == .string("reasoning") { reasoningItems.append(.object(item)) }
+                    if item["type"] == .string("function_call") {
+                        let pending = partialCalls.removeValue(forKey: index)
+                        let name = stringValue(item["name"]) ?? pending?.name ?? ""
+                        let arguments = stringValue(item["arguments"]) ?? pending?.arguments ?? ""
+                        if !name.isEmpty {
+                            calls.append(ParsedCall(name: name, argumentsJSON: arguments,
+                                                    callID: stringValue(item["call_id"]) ?? pending?.callID))
+                        }
                     }
-                    if !name.isEmpty {
-                        calls.append(ParsedCall(name: name, argumentsJSON: callArguments))
-                    }
-                    callName = nil
-                    callArguments = ""
                 }
-            case "response.completed":
+            case "response.completed", "response.incomplete":
+                if case .object(let response)? = event["response"] {
+                    let finished = try parseResponse(JSONValue.object(response).canonicalData())
+                    if !finished.calls.isEmpty { calls = finished.calls }
+                    if !finished.reasoningItems.isEmpty { reasoningItems = finished.reasoningItems }
+                    usage = finished.usage
+                    isTruncated = finished.isTruncated
+                }
+                if type == "response.incomplete" { isTruncated = true }
                 let usageObject: [String: JSONValue]?
                 if case .object(let eventUsage)? = event["usage"] {
                     usageObject = eventUsage
@@ -660,7 +673,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             calls: calls,
             usage: usage,
             hasReasoning: hasReasoningOutput,
-            isTruncated: isTruncated
+            isTruncated: isTruncated,
+            reasoningItems: reasoningItems
         )
     }
 
@@ -672,7 +686,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
     ) async throws -> ParsedResponse {
         var reasoning = ""
         var text = ""
-        var partialCalls: [Int: (name: String, arguments: String)] = [:]
+        var partialCalls: [Int: (name: String, arguments: String, callID: String?)] = [:]
         var hasReasoningOutput = false
         var isTruncated = false
         var usage = ParsedUsage(inputTokens: 0, outputTokens: 0)
@@ -737,7 +751,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                               rawIndex <= UInt64(Int.max)
                         else { continue }
                         let index = Int(rawIndex)
-                        var call = partialCalls[index] ?? (name: "", arguments: "")
+                        var call = partialCalls[index] ?? (name: "", arguments: "", callID: nil)
+                        if let id = stringValue(callObject["id"]) { call.callID = id }
                         if case .object(let function)? = callObject["function"] {
                             if case .string(let name)? = function["name"], !name.isEmpty {
                                 call.name = name
@@ -753,7 +768,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         }
         let calls = partialCalls.keys.sorted().compactMap { index -> ParsedCall? in
             guard let call = partialCalls[index], !call.name.isEmpty else { return nil }
-            return ParsedCall(name: call.name, argumentsJSON: call.arguments)
+            return ParsedCall(name: call.name, argumentsJSON: call.arguments, callID: call.callID)
         }
         return ParsedResponse(
             text: text,
@@ -807,7 +822,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
     static func deduplicatedCalls(_ calls: [ParsedCall]) -> [ParsedCall] {
         var seen = Set<String>()
         return calls.filter { call in
-            seen.insert("\(call.name)\u{0}\(call.argumentsJSON)").inserted
+            seen.insert(call.callID.map { "id:" + $0 } ?? "\(call.name)\u{0}\(call.argumentsJSON)").inserted
         }
     }
 
@@ -830,10 +845,9 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
 
     static func wireDialect(baseURL: String, modelID: String) -> WireDialect {
         let host = URL(string: baseURL)?.host?.lowercased() ?? ""
-        // DeepSeek's public OpenAI-format contract is Chat Completions. Its undocumented
-        // `/responses` compatibility route currently ignores the thinking toggle, which can spend
-        // the whole output budget without an answer. Only select this transport for the official
-        // service host; third-party gateways keep their explicitly configured Responses contract.
+        // Keep the official service on the Chat Completions path covered by our live thinking-mode
+        // checks. Only select it for the service host; third-party gateways keep their explicitly
+        // configured Responses contract.
         if host == "api.deepseek.com" || host.hasSuffix(".deepseek.com") {
             return .deepSeekChatCompletions
         }
@@ -859,9 +873,16 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         stream: Bool = false
     ) throws -> Data {
         let parameters = request.generationParameters
+        var messages = chatMessagesPayload(request.messages, selection: request.selection)
+        if case .structured(let schema) = request.outputRequirement {
+            messages.insert(.object([
+                "role": .string("system"),
+                "content": .string(try ModelOutputInstructions.structured(schema))
+            ]), at: 0)
+        }
         var fields: [String: JSONValue] = [
             "model": .string(request.selection.modelID.rawValue),
-            "messages": .array(chatMessagesPayload(request.messages)),
+            "messages": .array(messages),
             "temperature": .number(parameters.temperature),
             "top_p": .number(parameters.topP),
         ]
@@ -895,35 +916,40 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
     }
 
     private static func chatMessagesPayload(
-        _ messages: [AgentModelMessage]
+        _ messages: [AgentModelMessage], selection: AgentModelSelection
     ) -> [JSONValue] {
-        messages.map { message in
-            let role: String = switch message.role {
-            case .system: "system"
-            case .user: "user"
-            case .assistant: "assistant"
-            // The compiled model message intentionally carries no provider call ID. Preserve the
-            // observation as user text, matching the existing Responses adapter semantics.
-            case .tool: "user"
+        var result: [JSONValue] = []
+        for message in messages {
+            if let native = message.nativeToolCall, native.matches(selection) {
+                var assistant: [String: JSONValue] = [
+                    "role": .string("assistant"), "content": .null,
+                    "tool_calls": .array([.object([
+                        "id": .string(native.callID), "type": .string("function"),
+                        "function": .object(["name": .string(native.name), "arguments": .string(native.arguments.string)]),
+                    ])]),
+                ]
+                if let reasoning = native.reasoningText { assistant["reasoning_content"] = .string(reasoning) }
+                result.append(.object(assistant))
+                result.append(.object(["role": .string("tool"), "tool_call_id": .string(native.callID), "content": .string(message.content)]))
+            } else {
+                result.append(.object([
+                    "role": .string(message.role == .tool ? "user" : message.role.rawValue),
+                    "content": .string(message.role == .tool ? "Tool result: " + message.content : message.content),
+                ]))
             }
-            let content = message.role == .tool
-                ? "Tool result: \(message.content)"
-                : message.content
-            return .object([
-                "role": .string(role),
-                "content": .string(content),
-            ])
         }
+        return result
     }
 
     private static func chatCompletionsToolsPayload(
         _ descriptors: [AgentToolDescriptor]
     ) -> [JSONValue] {
-        descriptors.map { descriptor in
-            .object([
+        ModelToolNames.bindings(for: descriptors).map { binding in
+            let descriptor = binding.descriptor
+            return .object([
                 "type": .string("function"),
                 "function": .object([
-                    "name": .string(descriptor.id.logicalID.name),
+                    "name": .string(binding.wireName),
                     "description": .string(descriptor.summary),
                     "parameters": descriptor.inputSchema.root,
                 ]),
@@ -941,13 +967,20 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         stream: Bool = false
     ) throws -> Data {
         let parameters = request.generationParameters
-        let (instructions, input) = try messagesPayload(request.messages)
+        var (instructions, input) = try messagesPayload(request.messages, selection: request.selection)
+        if case .structured(let schema) = request.outputRequirement {
+            instructions += "\n" + (try ModelOutputInstructions.structured(schema))
+        }
         var fields: [String: JSONValue] = [
             "model": .string(request.selection.modelID.rawValue),
             "input": .array(input),
             "temperature": .number(parameters.temperature),
             "top_p": .number(parameters.topP),
         ]
+        if URL(string: baseURL)?.host?.lowercased() == "api.openai.com" {
+            fields["store"] = .bool(false)
+            fields["include"] = .array([.string("reasoning.encrypted_content")])
+        }
         if let maxOutputTokensOverride {
             // Explicit retry/fallback budgets always go on the wire.
             fields["max_output_tokens"] = .unsignedInteger(maxOutputTokensOverride)
@@ -1002,50 +1035,52 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         return try body.canonicalData()
     }
 
-    /// Splits the compiled conversation into the Responses API wire shape: a top-level `instructions`
-    /// string for system content and `input` items for everything else. Tool results are relayed as
-    /// user-role text because the compiled message does not carry the native `call_id`.
-    static func messagesPayload(_ messages: [AgentModelMessage]) throws -> (instructions: String, input: [JSONValue]) {
-        let instructions = messages
-            .filter { $0.role == .system }
-            .map(\.content)
-            .joined(separator: "\n")
-        let input = messages
-            .filter { $0.role != .system }
-            .map { message -> JSONValue in
-                let role: String = switch message.role {
-                case .system: "system"   // unreachable: filtered above, kept exhaustive
-                case .user: "user"
-                case .assistant: "assistant"
-                case .tool: "user"       // native tool_call_id is not carried by the compiled message;
-                                         // relay as a user-role result so the loop still sees it.
+    /// Replays native tool identities and provider reasoning state from the durable context.
+    /// Pre-migration records have no call id and retain their explicit untrusted-text fallback.
+    static func messagesPayload(
+        _ messages: [AgentModelMessage], selection: AgentModelSelection? = nil
+    ) throws -> (instructions: String, input: [JSONValue]) {
+        let instructions = messages.filter { $0.role == .system }.map(\.content).joined(separator: "\n")
+        var input: [JSONValue] = []
+        var seenReasoning = Set<StableDigest>()
+        for message in messages where message.role != .system {
+            if let native = message.nativeToolCall, selection.map(native.matches) ?? true {
+                for item in native.reasoningItems {
+                    let digest = try CanonicalJSON(item).fingerprint
+                    if seenReasoning.insert(digest).inserted { input.append(item) }
                 }
-                let content = message.role == .tool
-                    ? "Tool result: \(message.content)"
-                    : message.content
-                let partType = role == "assistant" ? "output_text" : "input_text"
-                return .object([
+                input.append(native.functionCallItem)
+                input.append(.object(["type": .string("function_call_output"),
+                                      "call_id": .string(native.callID), "output": .string(message.content)]))
+            } else {
+                let role = message.role == .tool ? "user" : message.role.rawValue
+                let content = message.role == .tool ? "Tool result: " + message.content : message.content
+                input.append(.object([
                     "role": .string(role),
-                    "content": .array([
-                        .object([
-                            "type": .string(partType),
-                            "text": .string(content),
-                        ]),
-                    ]),
-                ])
+                    "content": .array([.object([
+                        "type": .string(role == "assistant" ? "output_text" : "input_text"), "text": .string(content),
+                    ])]),
+                ]))
             }
+        }
         return (instructions, input)
     }
 
+    private static func stringValue(_ value: JSONValue?) -> String? {
+        guard case .string(let text) = value else { return nil }
+        return text
+    }
+
     static func toolsPayload(_ descriptors: [AgentToolDescriptor]) throws -> [JSONValue] {
-        descriptors.map { descriptor in
+        ModelToolNames.bindings(for: descriptors).map { binding in
+            let descriptor = binding.descriptor
             let schema = descriptor.inputSchema.root
             return .object([
                 "type": .string("function"),
                 // Responses API tool items are FLAT: name/description/parameters sit next to type.
                 // The Chat Completions nesting ({type, function:{...}}) is rejected by strict
                 // Responses-compatible gateways with "tools[0]: missing field name".
-                "name": .string(descriptor.id.logicalID.name),
+                "name": .string(binding.wireName),
                 "description": .string(descriptor.summary),
                 "parameters": schema,
             ])
@@ -1060,6 +1095,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
     struct ParsedCall: Sendable, Equatable {
         let name: String
         let argumentsJSON: String
+        var callID: String? = nil
     }
 
     struct ParsedResponse: Sendable, Equatable {
@@ -1071,6 +1107,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         let hasReasoning: Bool
         /// True when the service reported an incomplete/truncated completion (max_output_tokens hit).
         let isTruncated: Bool
+        var reasoningItems: [JSONValue] = []
     }
 
     static func parseResponse(_ data: Data) throws -> ParsedResponse {
@@ -1091,6 +1128,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         var text = ""
         var reasoning = ""
         var calls: [ParsedCall] = []
+        var reasoningItems: [JSONValue] = []
         var hasReasoning = false
         var isTruncated = false
         if case .object(let root) = value,
@@ -1101,6 +1139,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                       case .string(let type)? = object["type"]
                 else { continue }
                 if type == "reasoning" {
+                    reasoningItems.append(item)
                     hasReasoning = true
                     if case .array(let content)? = object["content"] {
                         for part in content {
@@ -1126,7 +1165,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                     guard case .string(let name)? = object["name"],
                           case .string(let arguments)? = object["arguments"]
                     else { continue }
-                    calls.append(ParsedCall(name: name, argumentsJSON: arguments))
+                    calls.append(ParsedCall(name: name, argumentsJSON: arguments, callID: stringValue(object["call_id"])))
                 }
             }
         }
@@ -1165,7 +1204,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             calls: calls,
             usage: usage,
             hasReasoning: hasReasoning,
-            isTruncated: isTruncated
+            isTruncated: isTruncated,
+            reasoningItems: reasoningItems
         )
     }
 
@@ -1205,7 +1245,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                               case .string(let name)? = function["name"],
                               case .string(let arguments)? = function["arguments"]
                         else { continue }
-                        calls.append(ParsedCall(name: name, argumentsJSON: arguments))
+                        calls.append(ParsedCall(name: name, argumentsJSON: arguments, callID: stringValue(callObject["id"])))
                     }
                 }
             }
@@ -1239,11 +1279,14 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         name: String,
         argumentsJSON: String,
         index: Int,
-        request: AgentModelRequest
+        request: AgentModelRequest,
+        callID: String?,
+        reasoningItems: [JSONValue],
+        reasoningText: String?
     ) throws -> ProposedToolCall {
-        guard let descriptor = request.advertisedTools.first(where: {
-            $0.id.logicalID.name == name
-        }), let data = argumentsJSON.data(using: .utf8) else {
+        guard let descriptor = ModelToolNames.bindings(for: request.advertisedTools).first(where: {
+            $0.wireName == name
+        })?.descriptor, let data = argumentsJSON.data(using: .utf8) else {
             throw AgentModelProviderFailure(try Self.toolFailure("The online model called unknown tool \(name)."))
         }
         let value = try AgentWireDecoder.decode(JSONValue.self, from: data, limits: .inlineValue)
@@ -1272,7 +1315,12 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         return ProposedToolCall(
             invocationID: ToolInvocationID(rawValue: uuid),
             toolID: descriptor.id.logicalID,
-            arguments: arguments
+            arguments: arguments,
+            nativeContext: try NativeToolCallContext(
+                selectionDigest: NativeToolCallContext.digest(for: request.selection),
+                callID: callID ?? "call_" + uuid.uuidString.lowercased(), name: name,
+                arguments: arguments, reasoningItems: reasoningItems, reasoningText: reasoningText
+            )
         )
     }
 

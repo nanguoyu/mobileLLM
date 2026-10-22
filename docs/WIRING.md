@@ -39,11 +39,11 @@ APIs behind availability guards, so the SDK must contain those declarations. Dep
 and SDK/compiler versions are separate constraints.
 
 The reference engine setup recorded with this dependency stack is Xcode 26.3 / Swift 6.2.4. The
-SwiftSyntax range above is intentionally tied to the 602 family. As of the 2026-10-22 review, the
-maintainer host is Xcode 27.1 / Swift 6.4: the eight MLX-free product packages and verification tool
-compiled there, but the complete app/Metal/macro build was not rerun. That package result does not
-establish compatibility of the pinned macros with Swift 6.4. Select a compatible Xcode toolchain
-or validate a dependency/toolchain migration before using a newer compiler for the full app.
+SwiftSyntax range above is intentionally tied to the 602 family. On 2026-10-22, Xcode 27.1 / Swift 6.4
+built the app, its pinned macros, and Metal resources for iOS Simulator. The host first needed Apple's
+Metal Toolchain component (`xcodebuild -downloadComponent MetalToolchain`). Signed simulator tests
+then exercised the production runtime with an online model. This establishes that build combination;
+local-weight inference and matched GPU performance remain separate checks.
 
 Use Xcode to build MLX executables so their Metal resource bundle is present:
 
@@ -77,8 +77,13 @@ for vision. Metal is embedded. The llama.cpp package targets have explicit sourc
 
 `LlamaEngine` uses mmap, disables Metal residency sets on iOS, and unloads/drains the prior model
 before replacing it. Simulator text decoding uses CPU (`n_gpu_layers = 0`). Context and KV width
-are allocated per generation; quantized KV enables Flash Attention. Vision projector paths are
+are reused only when model, context cap, and KV width match; quantized KV enables Flash Attention. Vision projector paths are
 resolved during model load and the encoder is allocated only for an image-bearing generation.
+
+Text-only generations reuse the exact matching prompt-token prefix, trim the divergent KV suffix,
+and recompute the last retained token to obtain logits. Vision, cancellation, failed decoding, and
+unsupported trimming invalidate reuse. `cachedPromptTokens` reports the retained portion; prefill
+throughput counts only newly processed tokens. A local-weight benchmark is needed to quantify speedup.
 
 Curated prompt builders cover ChatML, DeepSeek, Hunyuan, and Gemma. Explore GGUFs use embedded chat
 templates with a ChatML fallback. BOS insertion belongs to tokenization. Decode output passes
