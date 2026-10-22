@@ -224,8 +224,10 @@ final class LocalModelRegistrationAndPromptTests: XCTestCase {
         }
         let bindings = LocalModelPromptRenderer.bindings(for: tools)
 
-        XCTAssertEqual(Array(bindings.prefix(5).map(\.wireName)), Array(names.prefix(5)))
-        XCTAssertTrue(bindings.dropFirst(5).allSatisfy { $0.wireName.hasPrefix("tool_") })
+        XCTAssertEqual(Array(bindings.prefix(4).map(\.wireName)), Array(names.prefix(4)))
+        XCTAssertTrue(bindings.dropFirst(4).allSatisfy { $0.wireName.hasPrefix("tool_") })
+        XCTAssertFalse(bindings[4].wireName.contains("."), "Shared wire names must also satisfy online APIs")
+        XCTAssertEqual(bindings[4].descriptor.id.logicalID.name, "a.")
         XCTAssertTrue(bindings[7].wireName.contains("_call_"))
         XCTAssertTrue(bindings[8].wireName.contains(String(repeating: "x", count: 24)))
 
