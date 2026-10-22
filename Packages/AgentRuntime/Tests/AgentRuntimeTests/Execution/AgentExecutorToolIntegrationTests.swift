@@ -331,6 +331,51 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
         XCTAssertEqual(counts.boundaries, 1)
     }
 
+    func testOnlyLocallyTrustedPageMissContinuesTheBatchAndKeepsToolsAvailable() async throws {
+        for (index, providerID) in ["builtin", "mcp.untrusted"].enumerated() {
+            let offset = 660 + index
+            let model = try ExecutorTestModelDefinition(offset: offset, additionalCapabilities: [.multipleToolCalls])
+            let page = try ExecutorTestToolDefinition(name: "fetch_webpage", effect: .networkRead, providerID: providerID)
+            let next = try ExecutorTestToolDefinition(name: "following-read")
+            let pageCall = try page.call(offset: offset)
+            let nextCall = try next.call(offset: offset + 20)
+            let failure = try AgentFailure(code: "tool.web.safe-read-miss", classification: .availabilityRelated,
+                safeMessage: "Page not found", retryAdvice: .never, externalEffect: .confirmedNone,
+                requiredUserAction: .none, redaction: RedactionMetadata(classification: .internalMetadata, policyVersion: 1))
+            let provider = SequencedModelOutcomeProvider(model: model, outcomes: [
+                .completed(try AgentModelCompletion(action: .callTools([pageCall, nextCall]), usage: modelUsage(input: 8, output: 3, milliseconds: 4, memory: 48))),
+                .completed(try AgentModelCompletion(action: .finalAnswer(AgentAnswer(text: "Reported the missing page")), usage: modelUsage(input: 9, output: 4, milliseconds: 4, memory: 48)))
+            ])
+            let missing = ExecutorTestTool(definition: page, behavior: .failWithoutBoundary(failure))
+            let following = ExecutorTestTool(definition: next, behavior: .complete("other observation"))
+            let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model,
+                toolDescriptors: [page.descriptor, next.descriptor],
+                tools: ExecutorTestToolCatalog(tools: [missing, following]), capabilityCeiling: page.ceiling(),
+                availableToolCapabilities: page.descriptor.requiredCapabilities,
+                explicitlyRequestedToolIDs: [page.descriptor.id.logicalID, next.descriptor.id.logicalID])
+            let id = try await harness.executor.submit(harness.request, commandID: ExecutorTestID.command(offset))
+            let handle = try await harness.executor.attach(to: id)
+            let waiting = try await waitForStatus(.waitingForApproval, handle: handle)
+            guard case .approval(let approvalID) = waiting.blockingReason else { return XCTFail("Missing exact approval") }
+            _ = try await handle.send(AgentCommandEnvelope(payload: AgentCommand(
+                commandID: ExecutorTestID.command(offset + 20), runID: harness.request.runID,
+                expectedRunStateVersion: waiting.stateVersion,
+                action: .decideApproval(approvalID: approvalID, decision: .approved, approvedScope: .exactInvocation),
+                issuedAt: AgentTimestamp(rawValue: 50_000))))
+            let events = try await collectTerminalEvents(from: handle)
+            let result = try await handle.result()
+            XCTAssertEqual(result?.status.terminalReason, .completedWithFailures, "The failed fetch stays a failure")
+            XCTAssertEqual(result?.usage.quantities[.toolInvocations], providerID == "builtin" ? 2 : 1)
+            let requests = await provider.script.capturedRequests()
+            XCTAssertEqual(requests.count, 2)
+            XCTAssertEqual(requests.last?.advertisedTools.isEmpty, providerID != "builtin")
+            XCTAssertTrue(events.contains {
+                if case .toolOutcomeRecorded(let id, .failed) = $0.payload.event { return id == pageCall.invocationID }
+                return false
+            })
+        }
+    }
+
     func testDeniedApprovalIsSynthesizedWithoutExecutingTool() async throws {
         try await assertRejectedApprovalSynthesis(
             decision: .denied,

@@ -1050,7 +1050,8 @@ struct ExecutorTestToolDefinition: Sendable {
         retryPolicy: ExternalRetryPolicy = .never,
         idempotency: ExternalIdempotency = .pureRead,
         supportsProgress: Bool = false,
-        destinationKind: ExternalDestination.Kind? = nil
+        destinationKind: ExternalDestination.Kind? = nil,
+        providerID: String = "executor-test"
     ) throws {
         let input = try JSONSchemaDocument(
             root: .object([
@@ -1060,7 +1061,7 @@ struct ExecutorTestToolDefinition: Sendable {
                 "additionalProperties": .bool(false),
             ])
         )
-        let logicalID = try AgentToolLogicalID(providerID: "executor-test", name: name)
+        let logicalID = try AgentToolLogicalID(providerID: providerID, name: name)
         let required = AgentCapabilitySet(effect.minimumCapability.map { [$0] } ?? [])
         descriptor = try AgentToolDescriptor(
             id: AgentToolDescriptorID(

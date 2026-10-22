@@ -421,6 +421,17 @@ final class ToolV2AdapterTests: XCTestCase {
         XCTAssertTrue(ids.isEmpty, "An invalid page must make no authenticated API request")
     }
 
+    func testOnlyMissingFetchedPagesReceiveTheLocalNonessentialMissClassification() throws {
+        for (operation, error) in [(DeepSeekWebOperation.fetch, DeepSeekWebError.httpStatus(404)),
+                                   (.search, .httpStatus(404)), (.fetch, .httpStatus(401)),
+                                   (.fetch, .httpStatus(429)), (.fetch, .invalidArgument)] {
+            let failure = try AppDeepSeekWebToolAdapter.failure(for: error, operation: operation, message: "Unavailable")
+            XCTAssertEqual(failure.code == "tool.web.safe-read-miss", operation == .fetch && error == .httpStatus(404))
+            XCTAssertEqual(failure.retryAdvice, .never)
+            XCTAssertEqual(failure.externalEffect, .confirmedNone)
+        }
+    }
+
     func testWebSearchAdapterPreparesPlanAndExecutesInsideBoundary() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CannedHTTPProtocol.self]

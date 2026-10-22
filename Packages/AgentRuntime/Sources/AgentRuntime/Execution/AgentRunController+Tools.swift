@@ -140,6 +140,18 @@ private actor ExecutionToolBoundaryUsageAccumulator: ToolBoundaryUsageObserving 
 }
 
 extension AgentRunController {
+    /// Only a locally classified miss from the built-in public-page reader may continue. Remote
+    /// tools cannot opt into this by returning a similarly named error. Denials, quota failures,
+    /// writes and uncertain effects retain the normal stop/reconciliation behavior.
+    static func canContinueAfterPageMiss(_ failure: AgentFailure, plan: ExternalOperationPlan?) -> Bool {
+        guard let plan, let pageID = try? AgentToolLogicalID(providerID: "builtin", name: "fetch_webpage") else { return false }
+        return plan.kind == .tool && plan.subjectID == pageID.description
+            && plan.effects == [.networkRead] && plan.idempotency == .pureRead
+            && failure.code == "tool.web.safe-read-miss" && failure.classification == .availabilityRelated
+            && failure.externalEffect == .confirmedNone && failure.requiredUserAction == .none
+            && failure.retryAdvice == .never
+    }
+
     func admitToolBatch(
         facts: RuntimeRunFacts,
         history: ExecutionHistory,
@@ -262,7 +274,8 @@ extension AgentRunController {
             var needsSynthesis = false
             for call in calls {
                 guard let outcome = history.toolOutcomes[call.invocationID]?.1 else { continue }
-                if case .failed = outcome {
+                if case .failed(let failure) = outcome,
+                   !Self.canContinueAfterPageMiss(failure, plan: history.toolIntents[call.invocationID]?.1.plan) {
                     needsSynthesis = true
                     break
                 }
@@ -1545,10 +1558,11 @@ extension AgentRunController {
                 next = hasMore ? .executingTools : .waitingForModel
                 failure = nil
                 blocking = hasMore ? nil : .modelResource
-            case .failed:
-                next = .synthesizing
+            case .failed(let value):
+                let mayContinue = Self.canContinueAfterPageMiss(value, plan: prepared.plan)
+                next = mayContinue ? (hasMore ? .executingTools : .waitingForModel) : .synthesizing
                 failure = nil
-                blocking = nil
+                blocking = mayContinue && !hasMore ? .modelResource : nil
             case .uncertain(let value):
                 next = .waitingForReconciliation
                 failure = value

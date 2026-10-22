@@ -486,7 +486,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             let structured = Self.isStructured(request)
             let finalText = structured ? Self.structuredJSONText(parsed.text) : parsed.text
             let trimmed = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if ["<｜｜DSML｜｜tool_calls>", "<｜DSML｜tool_calls>", "<tool_call>"].contains(where: trimmed.hasPrefix) {
+            if ["<｜｜DSML｜｜", "<｜DSML｜", "<tool_call>"].contains(where: trimmed.hasPrefix) {
                 // Tool protocol text is neither an answer nor an authorized native invocation.
                 // The controller owns a single recorded repair, including for text-only children.
                 throw AgentModelProviderFailure(try AgentFailure(
@@ -915,7 +915,10 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             fields["reasoning_effort"] = .string("high")
         }
         let tools = chatCompletionsToolsPayload(request.advertisedTools)
-        if !tools.isEmpty { fields["tools"] = .array(tools) }
+        // Omitting tools while replaying native tool history can make DeepSeek leak its internal
+        // DSML envelope into content. An explicit empty catalog and choice preserve our boundary.
+        fields["tools"] = .array(tools)
+        fields["tool_choice"] = .string(tools.isEmpty ? "none" : "auto")
         if isStructured(request) {
             // DeepSeek's documented Chat Completions contract supports JSON mode, but not the
             // Responses API's `text.format` schema shape. The runtime still validates the exact

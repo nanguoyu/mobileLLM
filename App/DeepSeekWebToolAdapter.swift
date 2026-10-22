@@ -131,11 +131,20 @@ final class AppDeepSeekWebToolAdapter: ToolV2, Sendable {
                     continuation.finish(throwing: error)
                 } catch {
                     let message = (error as? DeepSeekWebError)?.localizedDescription ?? "DeepSeek web service could not complete the request."
-                    continuation.yield(.failed(try! AppToolV2Support.toolFailure(code: "tool.deepseek.failed", message: message)))
+                    continuation.yield(.failed(try! Self.failure(for: error, operation: operation, message: message)))
                     continuation.finish()
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    static func failure(for error: Error, operation: DeepSeekWebOperation, message: String) throws -> AgentFailure {
+        if operation == .fetch, (error as? DeepSeekWebError) == .httpStatus(404) {
+            return try AgentFailure(code: "tool.web.safe-read-miss", classification: .availabilityRelated,
+                safeMessage: message, retryAdvice: .never, externalEffect: .confirmedNone,
+                requiredUserAction: .none, redaction: RedactionMetadata(classification: .internalMetadata, policyVersion: 1))
+        }
+        return try AppToolV2Support.toolFailure(code: "tool.deepseek.failed", message: message)
     }
 }

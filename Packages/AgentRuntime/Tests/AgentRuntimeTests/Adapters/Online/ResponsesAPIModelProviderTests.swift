@@ -89,6 +89,17 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         XCTAssertThrowsError(try AgentModelMessage(role: .user, content: "x", isUntrustedData: false, nativeToolCall: native))
         XCTAssertThrowsError(try NativeToolCallContext(selectionDigest: native.selectionDigest, callID: "c", name: "lookup",
                                                        arguments: native.arguments, reasoningItems: [.object(["type": .string("message")])]))
+        let synthesis = try AgentModelRequest(requestID: fixture.request.requestID, runID: fixture.request.runID,
+            stepID: fixture.request.stepID, selection: fixture.request.selection,
+            compiledManifestDigest: fixture.request.compiledManifestDigest, messages: [restored],
+            advertisedTools: [], toolSelectionSnapshot: fixture.request.toolSelectionSnapshot,
+            generationParameters: fixture.request.generationParameters, outputRequirement: .text)
+        let chat = try AgentWireDecoder.decode(JSONValue.self,
+            from: ResponsesAPIModelProvider.chatCompletionsRequestBody(request: synthesis), limits: .inlineValue)
+        guard case .object(let fields) = chat else { return XCTFail("Missing Chat Completions payload") }
+        XCTAssertEqual(fields["tools"], .array([]))
+        XCTAssertEqual(fields["tool_choice"], .string("none"))
+        XCTAssertTrue(try CanonicalJSON(fields["messages"]!).string.contains("call_123"), "Keep the real tool history while explicitly ending tool use")
     }
 
     func testNativeIdentitySeparatesRepeatedCallsWithEqualArguments() {
@@ -383,6 +394,7 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         XCTAssertEqual(firstTool["type"], .string("function"))
         XCTAssertEqual(function["name"], .string("web_search"))
         XCTAssertNotNil(function["parameters"])
+        XCTAssertEqual(object["tool_choice"], .string("auto"))
 
         let response = #"{"choices":[{"finish_reason":"length","message":{"content":"Answer","reasoning_content":"Plan","tool_calls":[{"function":{"name":"web_search","arguments":"{\"q\":\"Kimi K3\"}"}}]}}],"usage":{"prompt_tokens":21,"completion_tokens":8}}"#
         let parsed = try ResponsesAPIModelProvider.parseChatCompletion(Data(response.utf8))
@@ -419,6 +431,8 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
                 XCTAssertTrue(body.contains("\"messages\""), body)
                 XCTAssertTrue(body.contains("\"thinking\":{\"type\":\"disabled\"}"), body)
                 XCTAssertFalse(body.contains("\"input\""), body)
+                XCTAssertTrue(body.contains("\"tools\":[]"), body)
+                XCTAssertTrue(body.contains("\"tool_choice\":\"none\""), body)
                 return (
                     HTTPURLResponse(
                         url: request.url!,
