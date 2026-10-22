@@ -999,7 +999,9 @@ public final class AgentRuntimeAssembly {
     A report with required item counts or geographic coverage needs structured final rows so the
     script can compute its counts and render the table. Do not ask the writer to guess totals in prose.
     Use bounded loops and string concatenation to render the rows, deduplicate country codes and count
-    them. A row must identify one team and cite a direct source for its claimed research; related teams
+    them. Render the citation URLs alongside their claims, including both the entity's official source
+    and the dated paper/project source; do not drop citation fields when converting rows to a table.
+    A row must identify one team and cite a direct source for its claimed research; related teams
     are not interchangeable. A dated-work requirement must be supported by an in-range publication or
     current project, not a much older example. If coverage is short, use at most one focused correction
     child within the remaining allowance, carrying forward the actual evidence instead of redoing it.

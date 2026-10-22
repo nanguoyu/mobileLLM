@@ -170,9 +170,27 @@ distinguishes actual handoff evidence from task-quality failures.
 
 The app's workflow envelope admits 32 model attempts and 24 tool calls by default. Cumulative input
 and output capacities cover the admitted model passes while per-attempt ceilings stay unchanged.
-Children still receive strict shares of the root envelope, and admission reserves their full ceilings.
-Settled usage can therefore leave too little capacity for another full share even when a smaller
-synthesis task would fit. A tool-free instruction in a child's prompt does not attenuate its reservation.
+The app child builder shrinks its usual strict share to the coordinator's current available capacity.
+Capacity calculation, exact request construction and reservation occur without an intervening suspension
+point, so simultaneous admissions cannot spend the same remainder. Settled and reserved cumulative
+usage is subtracted; per-operation ceilings remain reusable. Recovery fences admission until submitted
+children settle. A final child can be admitted with zero remaining tool calls without increasing the
+workflow envelope. Prompted per-role tool allowances remain instructions within these hard host limits.
+
+Generated candidates with phase metadata must contain a real `phase()` call; metadata declaring
+parallel work must contain a real `parallel()` call. Comments and quoted strings do not satisfy these
+checks. This candidate lint uses the existing single repair and does not change archived V1 replay.
+Actual phase ordering and coverage still require execution evidence. Counted reports are generated
+with structured final rows and script-computed totals. Children receive explicit task-scope guidance
+and their own real tool counters, so upstream claims about exhausted allowances are task data.
+
+A malformed model response gets one immediate repair. A successful repaired tool action ends that
+repair phase; a later independent error can consume another repair only if the fixed cumulative
+budget permits it. Failure of the immediate repair still terminates. Failed model responses preserve
+reported token usage; missing metering after a contract violation conservatively consumes its reserved
+token capacity. Cancellation acknowledgements are checked against committed child results before
+escalating to reconciliation, and cancelled-child usage is preserved in optional `terminalUsage`.
+Workflow summary counters also remain visible on failure.
 
 Online children share one admitted root family but use independent attempt lanes, allowing up to
 sixteen siblings to overlap requests. Local children retain the shared residency/decode arbiter.
@@ -357,7 +375,18 @@ links and summaries; Fetch returns bounded Markdown. Invalid URL arguments settl
 failures during execution before credentials or network access; preparation does not abort the
 workflow for such inputs. Neither operation calls a model. The UI leaves
 public engines/direct page reads as the default; choosing DeepSeek replaces both, with no fallback.
-These standalone APIs are separate from provider-hosted model tools in spec §15.5.
+These standalone APIs are separate from provider-hosted model tools in spec §15.5. Tool observations
+label Search summaries separately from fetched page excerpts. Only a Fetch HTTP 404 is classified by
+the local adapter as `tool.web.safe-read-miss`. The runtime accepts this nonessential miss only for the
+built-in public-page reader with pure read effects, no external uncertainty and no requested user action.
+It keeps the failed observation, charges its invocation, and allows remaining batch calls and planning.
+Remote tools cannot select this behavior by returning the same failure code; denial, quota and uncertain
+write paths retain their stop/reconciliation rules. Distinct page misses provide negative evidence;
+the normal fingerprint and total-call guards still prevent repeated or unbounded attempts.
+
+DeepSeek Chat Completions explicitly sends `tools: []` and `tool_choice: none` for tool-free synthesis,
+while preserving prior native call/result history. Raw DSML envelopes are never accepted as final
+answers or executed as unadvertised calls; they follow the bounded malformed-response path.
 
 ## Memory
 

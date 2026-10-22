@@ -904,6 +904,22 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.AgentExecutorRecoveryIntegrationTests/testMalformedActionGetsExactlyOneConstrainedRepairAndReleasesFailedDecode"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorRecoveryIntegrationTests/testOnlineToolProtocolTextGetsOneRecordedRepairInsteadOfACompletedAnswer"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorRecoveryIntegrationTests/testSuccessfulRepairedToolCallDoesNotChargeLaterAnswerAsAnotherRepair"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorRecoveryIntegrationTests/testDistinctMalformedActionsRepairOnlyWithinTheTotalBudget"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorToolIntegrationTests/testOnlyLocallyTrustedPageMissContinuesTheBatchAndKeepsToolsAvailable"
         }
       ],
       "platforms": [
@@ -940,6 +956,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.RuntimeRepositorySQLiteTests/testBudgetReserveSettleReleaseLimitsDuplicatesAndConservativeReopen"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentContractsTests.BudgetLedgerTests/testAvailableCapacitySubtractsSettledAndInflightWorkButRetainsOperationCeilings"
         }
       ],
       "platforms": [
@@ -1886,6 +1906,18 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.ToolV2AdapterTests/testResearchChildCanFinishItsAdmittedModelPassesButCannotExceedTheirBudget"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testWorkflowChildUsesRemainingToolCapacityWithoutIncreasingItsShare"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testGeneratedStagePromisesRequireExecutableCallsNotStringsOrComments"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowAdversarialTests/testCancellationUsesCommittedResultWhenAcknowledgementIsLostAndKeepsUsage"
         }
       ],
       "platforms": [
@@ -2600,6 +2632,10 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.ToolV2AdapterTests/testDeepSeekInvalidPageBecomesAToolFailureWithoutReadingCredentials"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testOnlyMissingFetchedPagesReceiveTheLocalNonessentialMissClassification"
         }
       ],
       "platforms": [
