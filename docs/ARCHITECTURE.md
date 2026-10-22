@@ -162,6 +162,18 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   design — is retained for `WorkflowLauncher.resume` of legacy summaries that carry a `WorkflowPlan`, and
   for `MultiAgentWorkflowIntegrationTests`. New launches never use it.
 
+Generated research/review workflows prefer Markdown briefs and pass complete upstream results and
+source URLs explicitly. A schema is recommended when the script needs fields for computation or
+branching. These prompt instructions do not guarantee useful answers or compliance with the user's
+requested parallel plan. The [2026-10-22 research evaluation](evaluations/2026-10-22-dynamic-research.md)
+distinguishes actual handoff evidence from task-quality failures.
+
+The app's workflow envelope admits 32 model attempts and 24 tool calls by default. Cumulative input
+and output capacities cover the admitted model passes while per-attempt ceilings stay unchanged.
+Children still receive strict shares of the root envelope, and admission reserves their full ceilings.
+Settled usage can therefore leave too little capacity for another full share even when a smaller
+synthesis task would fit. A tool-free instruction in a child's prompt does not attenuate its reservation.
+
 Online children share one admitted root family but use independent attempt lanes, allowing up to
 sixteen siblings to overlap requests. Local children retain the shared residency/decode arbiter.
 `stallMs` bounds child inactivity with a monotonic deadline reset by durable or streamed progress;
@@ -341,7 +353,9 @@ Each call crosses the normal Tool V2 prepare/authorize/execute boundary with `we
 data categories and the fixed `https://api.deepseek.com` destination. The selected account must still
 be configured for that origin before its Keychain credential is read. `DeepSeekWebClient` calls
 `/v1/tools/search` or `/v1/tools/fetch` through the bounded nonredirecting transport. Search returns
-links and summaries; Fetch returns bounded Markdown. Neither operation calls a model. The UI leaves
+links and summaries; Fetch returns bounded Markdown. Invalid URL arguments settle as normal tool
+failures during execution before credentials or network access; preparation does not abort the
+workflow for such inputs. Neither operation calls a model. The UI leaves
 public engines/direct page reads as the default; choosing DeepSeek replaces both, with no fallback.
 These standalone APIs are separate from provider-hosted model tools in spec §15.5.
 

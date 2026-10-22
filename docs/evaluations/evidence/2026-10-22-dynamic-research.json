@@ -1,0 +1,708 @@
+{
+  "date": "2026-10-22",
+  "purpose": "Real mobileLLM dynamic workflow evaluation; no fixture model answers",
+  "environment": {
+    "device": "iPhone 17 Simulator",
+    "os": "iOS 27.0",
+    "toolchain": "Xcode 27.1 / Swift 6.4",
+    "modelHost": "api.deepseek.com",
+    "webService": "DeepSeek standalone Search and Fetch"
+  },
+  "acceptance": {
+    "regionalResearchers": 4,
+    "verifiers": 2,
+    "synthesizers": 1,
+    "parallelDiscoveryAndVerification": true,
+    "targetGroups": [
+      12,
+      16
+    ],
+    "minimumCountries": 6,
+    "minimumHTTPSCitationHosts": 8
+  },
+  "overallTaskAccepted": false,
+  "runs": [
+    {
+      "id": "attempt4",
+      "codeCommitPrefix": "425ba1e",
+      "requestedModelID": "deepseek-v4-flash",
+      "resultBundleLocalName": "EuropeEfficientAI-ConsistentBudget.xcresult",
+      "state": "completed",
+      "sourceSHA256": "5885e836b9e5f37005a572ddaf5ee15fc56b0cfc0af8172087147e81933364e8",
+      "children": [
+        {
+          "label": "discovery-英国与爱尔兰（UK, I",
+          "phase": "Discovery",
+          "status": "completed",
+          "startSeconds": 0.0,
+          "endSeconds": 11.296,
+          "toolSuccesses": 3,
+          "toolFailures": 0,
+          "answerSHA256": "d2ad695446c3ea92f658dcada8b933e513170eb35dd80059e2f03c29aed39f6b",
+          "promptSHA256": "029ffe30cef08a200c09c8d5b91276f5c7218a3bb0a674c9acdfaa094e6fee78",
+          "tools": [
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Efficient AI research group quantization compression University of Edinburgh Cambridge Oxford"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Imperial College London efficient machine learning systems group sparse inference"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Trinity College Dublin efficient deep learning group edge AI compression"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            }
+          ]
+        },
+        {
+          "label": "discovery-德国、奥地利与瑞士（Ge",
+          "phase": "Discovery",
+          "status": "completed",
+          "startSeconds": 0.015,
+          "endSeconds": 11.669,
+          "toolSuccesses": 3,
+          "toolFailures": 0,
+          "answerSHA256": "f1e8d909206c1703b1efa8b126e5125cf0131b35aab9d6ee7104a78c214ff963",
+          "promptSHA256": "8d21f5c30756097dd869272882e2e333dd466fd0aef1f549c99e8a6e4121368e",
+          "tools": [
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "ETH Zurich Efficient AI group quantization sparsity systems lab"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "TU Darmstadt Efficient Deep Learning lab inference efficiency"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "TUM efficient machine learning systems lab quantization"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            }
+          ]
+        },
+        {
+          "label": "discovery-法国与比荷卢（Franc",
+          "phase": "Discovery",
+          "status": "completed",
+          "startSeconds": 0.019,
+          "endSeconds": 13.535,
+          "toolSuccesses": 3,
+          "toolFailures": 0,
+          "answerSHA256": "61ceafe5c11c053d79e1b5fb8d49ed099d955c5fe7edf66195b4550980091242",
+          "promptSHA256": "a0b3d824a4bb0558d9296bb1f5ac8397cf55890e076fadaaf8f66ec1bc8c7a2b",
+          "tools": [
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Efficient AI research group quantisation pruning Netherlands Belgium university"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "EPFL Efficient Architectures and Systems Lab"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Inria MLO efficient machine learning team homepage"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            }
+          ]
+        },
+        {
+          "label": "discovery-北欧、南欧与中东欧（No",
+          "phase": "Discovery",
+          "status": "completed",
+          "startSeconds": 0.023,
+          "endSeconds": 11.91,
+          "toolSuccesses": 3,
+          "toolFailures": 0,
+          "answerSHA256": "2e028dc843834603987f9489b35a2356b16ac81665bbcc26300bb76886762a58",
+          "promptSHA256": "6b59c854d27cdad514855deb80367c303d9ba5c86fd47c8374d4d98a9503df53",
+          "tools": [
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "ETHz Deep Learning Systems Lab efficient inference quantization"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "IST Austria efficient machine learning group"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "KTH efficient deep learning systems embedded inference research group"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            }
+          ]
+        },
+        {
+          "label": "verify-activity",
+          "phase": "Verification",
+          "status": "completed",
+          "startSeconds": 13.588,
+          "endSeconds": 32.653,
+          "toolSuccesses": 3,
+          "toolFailures": 0,
+          "answerSHA256": "74628227c7014b063d113710fa87e05404f96c34344e6078f3d34eb025ebcb0d",
+          "promptSHA256": "95b0ee354aa07abf34524043607016678ebeea6e2c3dc889b53ff9480e57eaf2",
+          "tools": [
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Luo Mai University of Edinburgh Large-Scale Machine Learning Systems group homepage"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Ana Klimovic ETH EASL group; Torsten Hoefler SPCL ETH Zurich official group page"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Dan Alistarh ISTA group; Haotong Qin ETH Zurich Efficient Intelligence and Systems PI"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            }
+          ]
+        },
+        {
+          "label": "verify-evidence",
+          "phase": "Verification",
+          "status": "completed",
+          "startSeconds": 13.596,
+          "endSeconds": 36.15,
+          "toolSuccesses": 3,
+          "toolFailures": 0,
+          "answerSHA256": "a5ae1f0169adad5f72ea2af297b5391124ae50d91363fb64b6611a5d05b46e7f",
+          "promptSHA256": "8aae017ace811533e053bf0073202de385e654cd05380cfacc8d394c84a875b3",
+          "tools": [
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Torsten Hoefler SPCL ETH Zurich efficient AI sparse quantization lab page"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Luo Mai University of Edinburgh large-scale machine learning systems group serverless LLM"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "EPFL Embedded Systems Laboratory David Atienza edge AI energy efficient DNN 2025"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            }
+          ]
+        },
+        {
+          "label": "synthesis-report",
+          "phase": "Synthesis",
+          "status": "completed",
+          "startSeconds": 36.218,
+          "endSeconds": 51.857,
+          "toolSuccesses": 0,
+          "toolFailures": 0,
+          "answerSHA256": "3655d27da4b5a28c66aa56c73654dd0ee8aae043623dcef70e38e64521a2be31",
+          "promptSHA256": "4b4944d843c1fb3d57b5190c0dc140e4bd7f26a45797826904c44e22e3bade74",
+          "tools": []
+        }
+      ],
+      "handoffs": [
+        {
+          "source": "discovery-英国与爱尔兰（UK, I",
+          "target": "verify-activity",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 5,
+          "upstreamURLsInPrompt": 5
+        },
+        {
+          "source": "discovery-德国、奥地利与瑞士（Ge",
+          "target": "verify-activity",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 9,
+          "upstreamURLsInPrompt": 9
+        },
+        {
+          "source": "discovery-法国与比荷卢（Franc",
+          "target": "verify-activity",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 6,
+          "upstreamURLsInPrompt": 6
+        },
+        {
+          "source": "discovery-北欧、南欧与中东欧（No",
+          "target": "verify-activity",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 3,
+          "upstreamURLsInPrompt": 3
+        },
+        {
+          "source": "discovery-英国与爱尔兰（UK, I",
+          "target": "verify-evidence",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 5,
+          "upstreamURLsInPrompt": 5
+        },
+        {
+          "source": "discovery-德国、奥地利与瑞士（Ge",
+          "target": "verify-evidence",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 9,
+          "upstreamURLsInPrompt": 9
+        },
+        {
+          "source": "discovery-法国与比荷卢（Franc",
+          "target": "verify-evidence",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 6,
+          "upstreamURLsInPrompt": 6
+        },
+        {
+          "source": "discovery-北欧、南欧与中东欧（No",
+          "target": "verify-evidence",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 3,
+          "upstreamURLsInPrompt": 3
+        },
+        {
+          "source": "discovery-英国与爱尔兰（UK, I",
+          "target": "synthesis-report",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 5,
+          "upstreamURLsInPrompt": 5
+        },
+        {
+          "source": "discovery-德国、奥地利与瑞士（Ge",
+          "target": "synthesis-report",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 9,
+          "upstreamURLsInPrompt": 9
+        },
+        {
+          "source": "discovery-法国与比荷卢（Franc",
+          "target": "synthesis-report",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 6,
+          "upstreamURLsInPrompt": 6
+        },
+        {
+          "source": "discovery-北欧、南欧与中东欧（No",
+          "target": "synthesis-report",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 3,
+          "upstreamURLsInPrompt": 3
+        },
+        {
+          "source": "verify-activity",
+          "target": "synthesis-report",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 0,
+          "upstreamURLsInPrompt": 0
+        },
+        {
+          "source": "verify-evidence",
+          "target": "synthesis-report",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 14,
+          "upstreamURLsInPrompt": 14
+        }
+      ],
+      "finalAnswerHTTPSHosts": [
+        "github.com",
+        "htor.inf.ethz.ch",
+        "inf.ethz.ch",
+        "ist.ac.at",
+        "luomai.github.io",
+        "www.usenix.org"
+      ],
+      "toolCounts": {
+        "search": 18
+      },
+      "networkDestinations": [
+        "https://api.deepseek.com"
+      ],
+      "uiTestPassed": true,
+      "uiTestSeconds": 157.683,
+      "actualGroups": 4,
+      "actualCountries": 3,
+      "actualHTTPSCitationHosts": 6,
+      "reportedCountries": 4,
+      "reportedHTTPSHosts": 9,
+      "researchTargetMet": false
+    },
+    {
+      "id": "briefs",
+      "codeCommitPrefix": "1016caf",
+      "requestedModelID": "deepseek-v4-pro",
+      "resultBundleLocalName": "EuropeEfficientAI-ResearchBriefs.xcresult",
+      "state": "failed",
+      "sourceSHA256": "3782b2ea164bb328ba76bb15aac0763b8dd7014587c082f32b22ff0077a7167d",
+      "children": [
+        {
+          "label": "discovery-de",
+          "phase": "Focused Discovery",
+          "status": "completed",
+          "startSeconds": 0.0,
+          "endSeconds": 32.531,
+          "toolSuccesses": 3,
+          "toolFailures": 1,
+          "answerSHA256": "67bfca3f7402bbcc1e84b853fd796799a15f5d67e040f257c345cfcbca7e78f8",
+          "promptSHA256": "4c59febcc7e17eca32386f25f38a585fa71b7cf09a4b79d1e0edf97dc0c04485",
+          "tools": [
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Hussam Amrouch AI Processor Design TUM chair efficient hardware"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "TU Darmstadt Hardware-Aware AI efficient neural network quantization group"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "fetch",
+              "arguments": {
+                "url": "https://www.ei.tum.de/en/eic/research-groups/ai-processor-design/"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "fetch",
+              "arguments": {
+                "url": "https://www.etit.tu-darmstadt.de/forschung/arbeitsgebiete/hardware_for_artificial_intelligence/index.en.jsp"
+              },
+              "outcome": "failure",
+              "allowedFallbacks": 0,
+              "failureCode": "tool.deepseek.failed"
+            }
+          ]
+        },
+        {
+          "label": "discovery-fr",
+          "phase": "Focused Discovery",
+          "status": "completed",
+          "startSeconds": 32.56,
+          "endSeconds": 71.639,
+          "toolSuccesses": 4,
+          "toolFailures": 0,
+          "answerSHA256": "304263597be8f843b059de4fc42fc676c494e370bcb8793312110aea8ad59405",
+          "promptSHA256": "41922d4c20f21a5723dd24a6a4d4417ca982abc46b2246e65d49c812b6d2aab6",
+          "tools": [
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Inria TARAN CORSE HOLIGRAIL quantization sparsity efficient AI"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Inria Thoth machine learning efficiency compression research team"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "fetch",
+              "arguments": {
+                "url": "https://project.inria.fr/holigrail/"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "fetch",
+              "arguments": {
+                "url": "https://team.inria.fr/thoth/"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            }
+          ]
+        },
+        {
+          "label": "discovery-nlbe",
+          "phase": "Focused Discovery",
+          "status": "completed",
+          "startSeconds": 71.66,
+          "endSeconds": 95.635,
+          "toolSuccesses": 4,
+          "toolFailures": 0,
+          "answerSHA256": "770a09e370530036bdb74f31d96e3efcac98545060dcbb3ffcfd707187e64daf",
+          "promptSHA256": "f2cb0fb7165830c1a2e800cc89e916bf5f1a4888096be13a20f5ecc3d25aae59",
+          "tools": [
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "KU Leuven MICAS research group efficient AI hardware deep learning"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "TU Delft Chang Gao efficient machine intelligence EMI group"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "fetch",
+              "arguments": {
+                "url": "https://www.tudemi.com/"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "fetch",
+              "arguments": {
+                "url": "https://www.kuleuven.be/wieiswie/en/person/00182315"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            }
+          ]
+        },
+        {
+          "label": "discovery-itcz",
+          "phase": "Focused Discovery",
+          "status": "completed",
+          "startSeconds": 95.656,
+          "endSeconds": 115.023,
+          "toolSuccesses": 4,
+          "toolFailures": 0,
+          "answerSHA256": "d5b160b32c1693157399bcbb8d4d5bfb1215488e8d2da38d8ba4b91874bcf60a",
+          "promptSHA256": "26502025d2a250c5059497103e32b01975d4594316970e0c6a853e065b3140f7",
+          "tools": [
+            {
+              "tool": "fetch",
+              "arguments": {
+                "url": "https://www.polito.it/ateneo/comunicazione-e-ufficio-stampa/poliflash/dal-laboratorio-vandal-la-ricerca-che-rende-l-ai-piu-leggera"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "fetch",
+              "arguments": {
+                "url": "https://www.fit.vut.cz/research/group/knot/"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "CTU Prague Visual Recognition Group quantization efficient neural network site:cmp.felk.cvut.cz"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "VANDAL Politecnico Torino Tatiana Tommasi efficient deep learning lab page"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            }
+          ]
+        },
+        {
+          "label": "identity-verification",
+          "phase": "Verification",
+          "status": "completed",
+          "startSeconds": 115.057,
+          "endSeconds": 128.082,
+          "toolSuccesses": 0,
+          "toolFailures": 0,
+          "answerSHA256": "eb0ccb75a255d81bca448a2492ec055e64e9aa395a99c95af4f0d8e59ecd55e9",
+          "promptSHA256": "9db7e25c2841b68f2a4e15aac6e0c31f3d453af25b35315d89b260ae74c62796",
+          "tools": []
+        },
+        {
+          "label": "research-verification",
+          "phase": "Verification",
+          "status": "completed",
+          "startSeconds": 128.112,
+          "endSeconds": 150.325,
+          "toolSuccesses": 3,
+          "toolFailures": 0,
+          "answerSHA256": "182cd1bd3f03c8f740e13f94c48c8570e79f945a2dbab890f4a3cc9c6a96f227",
+          "promptSHA256": "e7f42c40d703ad02898372b104372f3336401a429a27115a19797b099a7f9539",
+          "tools": [
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Hussam Amrouch TUM AI Processor Design 2024 2025 efficient inference"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "TU Darmstadt Hardware-Aware AI group efficient neural networks 2024 2025"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            },
+            {
+              "tool": "search",
+              "arguments": {
+                "query": "Inria HOLIGRAIL CORSE TARAN quantization sparsity 2024 2025 results"
+              },
+              "outcome": "success",
+              "allowedFallbacks": 0
+            }
+          ]
+        }
+      ],
+      "handoffs": [
+        {
+          "source": "discovery-de",
+          "target": "identity-verification",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 1,
+          "upstreamURLsInPrompt": 1
+        },
+        {
+          "source": "discovery-fr",
+          "target": "identity-verification",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 6,
+          "upstreamURLsInPrompt": 6
+        },
+        {
+          "source": "discovery-nlbe",
+          "target": "identity-verification",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 8,
+          "upstreamURLsInPrompt": 8
+        },
+        {
+          "source": "discovery-itcz",
+          "target": "identity-verification",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 5,
+          "upstreamURLsInPrompt": 5
+        },
+        {
+          "source": "discovery-de",
+          "target": "research-verification",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 1,
+          "upstreamURLsInPrompt": 1
+        },
+        {
+          "source": "discovery-fr",
+          "target": "research-verification",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 6,
+          "upstreamURLsInPrompt": 6
+        },
+        {
+          "source": "discovery-nlbe",
+          "target": "research-verification",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 8,
+          "upstreamURLsInPrompt": 8
+        },
+        {
+          "source": "discovery-itcz",
+          "target": "research-verification",
+          "fullCanonicalResultInPrompt": true,
+          "upstreamURLCount": 5,
+          "upstreamURLsInPrompt": 5
+        }
+      ],
+      "finalAnswerHTTPSHosts": [],
+      "toolCounts": {
+        "search": 11,
+        "fetch": 8
+      },
+      "networkDestinations": [
+        "https://api.deepseek.com"
+      ],
+      "uiTestPassed": false,
+      "uiTestSeconds": 320.514,
+      "parallelIntervals": false,
+      "finalSynthesisSubmitted": false,
+      "finalSynthesisState": "prepared",
+      "failure": "budgetExceeded(toolInvocations, limit:24, requested:25)",
+      "consumedToolsAtFailure": 19,
+      "newChildToolReservation": 6,
+      "germanAnswerContainsRawToolMarkup": true,
+      "identityVerifierToolCalls": 0
+    }
+  ]
+}

@@ -1882,6 +1882,10 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.ToolV2AdapterTests/testWorkflowGeneratorSuppressesItsOwnToolsWithoutErasingDelegatedPolicy"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testResearchChildCanFinishItsAdmittedModelPassesButCannotExceedTheirBudget"
         }
       ],
       "platforms": [
@@ -2592,6 +2596,10 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.ToolV2AdapterTests/testDeepSeekReadsCredentialsOnlyAfterAuthorizationAndFailsWithoutFallback"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testDeepSeekInvalidPageBecomesAToolFailureWithoutReadingCredentials"
         }
       ],
       "platforms": [

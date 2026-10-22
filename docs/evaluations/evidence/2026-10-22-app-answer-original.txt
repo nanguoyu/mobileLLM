@@ -1,0 +1,89 @@
+# 欧洲 Efficient AI 研究地图（截至 2026-10-22）
+
+**重要说明：本报告未能达到 12–16 个研究组的目标。** 输入的四份地区调查记录和两份核验结果中，经过核验后**只有 4 个研究组有可用的持续活跃证据**。其余候选要么证据不足，要么负责人归属存疑，要么与本地 LLM/agent 系统仅沾边。按照“宁缺毋滥”的原则，我只保留这 4 个，并在末尾详细列出剔除项与盲区。为避免把推断写成事实，我没有用模型记忆补齐任何团队或链接。
+
+---
+
+## 一、有证据支持的研究组（4 个，覆盖 4 个国家）
+
+| 国家/城市 | 机构及研究组 | 现任负责人 | 具体 Efficient AI 方向 | 官网链接 | 近期论文/项目链接 | 证据等级 |
+|---|---|---|---|---|---|---|
+| 英国 / 爱丁堡 | University of Edinburgh, School of Informatics — **Large-Scale Machine Learning Systems Group** | Luo Mai（Reader / Associate Professor） | 高效大规模训练与推理运行时、serverless LLM 推理、稀疏感知 MoE 推理、wafer-scale 模型执行 | [luomai.github.io](https://luomai.github.io)（核验员 A 已读个人主页；学校研究门户 research.ed.ac.uk 确认在职） | [ServerlessLLM, OSDI'24 (USENIX)](https://www.usenix.org/conference/osdi24/presentation/fu) | 已读官方页面（个人主页 + 会议论文页） |
+| 瑞士 / 苏黎世 | ETH Zürich, D-INFK — **Efficient Architecture and Systems Lab (EASL)** | Ana Klimovic | 高效训练/服务系统、GPU 利用率与数据流水线优化、模型变体低精度增量压缩 | [ETH D-INFK 官方访谈页 (2025-09)](https://inf.ethz.ch/news-and-events/spotlights/infk-news-channel/2025/09/towards-a-more-sustainable-ai-revolution-the-research-for-efficient-ai-is-essential.html) | [DeltaZip 代码仓库 (eth-easl)](https://github.com/eth-easl/deltazip)（仓库归属已确认；论文署名待核验） | 已读官方页面 |
+| 瑞士 / 苏黎世 | ETH Zürich, D-INFK — **Scalable Parallel Computing Laboratory (SPCL)** | Torsten Hoefler | 高效训练（数据摄取、并行化、加速器优化）、高效推理、细粒度稀疏与量化、模型压缩 | [SPCL 出版物页](http://spcl.inf.ethz.ch/Publications/index.php?pub=485)（组主页正文未直接读取） | [Hoefler AdaComp'24 keynote PDF（SpQR 3–4 bit 量化）](https://htor.inf.ethz.ch/publications/img/hoefler-keynote-adac24.pdf) | 仅官方搜索摘要 |
+| 奥地利 / Klosterneuburg | Institute of Science and Technology Austria (ISTA) — **Alistarh Group / Deep Algorithms and Systems Lab (DASLab)** | Dan Alistarh（Professor） | 压缩表示上的高效训练与推理、低精度 LLM 训练、推测解码、本地个性化文本生成 | [ISTA 官方组页](https://ist.ac.at/en/research/alistarh-group/) | 同页所列 LLMQ（消费级 GPU 低精度 LLM 训练）、Panza（全本地个性化文本生成）等项目 | 已读官方页面 |
+
+**关于 EPFL ESL（David Atienza）**：核验员 B 给出了 MEDEA 论文（arXiv 2506.19067）与两份讲座通告作为方向证据，但 EPFL 官方组页始终未取得，证据等级只能算“仅官方搜索摘要”。若按“官网链接必须来自实际检索结果”的硬约束，它缺少可引用的官方组页，因此我把它放在表外，列为**准候选**，见第三节。
+
+---
+
+## 二、按研究方向归纳欧洲分布
+
+> 以下归纳基于上表 4 个组，样本很小，只能描述“本次检索到的分布”，不能代表欧洲整体格局。
+
+- **系统 / 服务与训练栈**：爱丁堡 Luo Mai 组（ServerlessLLM、BatchGen、MoE-Infinity 方向）与 ETH EASL（Ana Klimovic，训练/服务框架 Sailor、Modyn、Mixtera）是本次证据最扎实的两条系统线，都直接对应“本地/私有 LLM 服务”的工程问题。
+- **量化与压缩**：ETH SPCL（SpQR 3–4 bit 量化，目标 24GB 消费级 GPU 跑 33B 模型）与 ISTA DASLab（LLMQ 低精度训练、推测解码）构成“压缩 + 低精度训练”两端。
+- **端侧 AI**：本次没有一条证据足以支撑“持续活跃的端侧团队”结论。EPFL ESL 是最接近的候选，但缺官方组页。
+- **地理分布**：有效证据集中在英国（1）、瑞士（2）、奥地利（1）。德国、法国、比荷卢、爱尔兰、北欧、南欧、中东欧**在本次证据下均为空白**，这是覆盖不足，不是“这些地区没有团队”。
+
+---
+
+## 三、值得优先深入了解的研究组（5 个，含 1 个准候选）
+
+1. **University of Edinburgh — Large-Scale Machine Learning Systems Group（Luo Mai）**
+   理由：这是本次唯一同时具备“官方人员页确认在职”和“顶会论文页（OSDI'24 ServerlessLLM）”双重证据的组；核验员 A 还读到其主页列出 2026 年多篇系统会议论文（SOSP、OSDI、MLSys、EuroSys）。与本地 LLM 服务、多租户推理、MoE 推理直接相关。注意：WaferLLM、MoE-Infinity 的论文归属**未逐篇核验**。
+
+2. **ETH Zürich — EASL（Ana Klimovic）**
+   理由：ETH 官方访谈页明确其方向为高效 AI 的训练与服务系统，属官方一手证据；DeltaZip 仓库归属 eth-easl 已确认。适合进一步查其 2024–2026 年论文清单（本次未逐篇列出）。
+
+3. **ISTA — Alistarh Group / DASLab（Dan Alistarh）**
+   理由：官方组页直接写明 “Efficient Training and Inference for Massive AI Models”，并列出 LLMQ、推测解码、Panza（全本地个性化文本生成）——Panza 与“本地 LLM”主题高度贴合。需注意：论文条目来自组页列表，**未逐篇打开核对作者单位与年份**；其与 Neural Magic 的关联本次未核验，不作表述。
+
+4. **ETH Zürich — SPCL（Torsten Hoefler）**
+   理由：量化方向证据具体（SpQR 的 3–4 bit 量化与离群值处理，目标消费级 GPU 跑 33B 模型），且 Hoefler 的 “From Supercomputers to Smartphones” 主题覆盖端到端效率谱系。但组主页正文未读，成员与在研项目**不主张**；SpQR 为多机构合作成果，不能全算作 SPCL 独立成果。
+
+5. **（准候选）EPFL — Embedded Systems Laboratory（David Atienza）**
+   理由：MEDEA（异构超低功耗平台上的 DNN 推理能耗管理）与 X-HEEP 开源 SoC、CGRA/脉动阵列方向，是本次唯一有具体端侧硬件系统论文证据的组。**但缺 EPFL 官方组页**，负责人身份来自第三方讲座通告，MEDEA 作者是否署名 ESL 待核验。建议下一步优先补其官方主页后再决定是否纳入。
+
+---
+
+## 四、覆盖盲区、证据不足项与下一步补查
+
+**已剔除的候选及理由（来自两位核验员）**
+
+| 条目 | 剔除理由 |
+|---|---|
+| Edinburgh BNS（Henry Gouk / Elliot J. Crowley） | 唯一来源是 LinkedIn 学生简介帖，无组页或论文，活跃性无法确认 |
+| Edinburgh Jianyi Cheng 个人研究组 | 只有第三方索引摘要，正式组名与教职待核验；且与 Luo Mai 组的 BitDecoding 署名交叉，易混淆 |
+| Trinity College Dublin RCSL（Shreejith Shanker） | 只有论文全文页，官网链接实为 Solr 检索页，无法确认持续活跃 |
+| ETH EIS（Haotong Qin） | 据 PolyU 官方教职员页，其已转任香港理工大学助理教授；组页为个人域名，不能算 ETH 官方持续研究组 |
+| TU Darmstadt HWAI | 只有论文摘要页与 GitHub 仓库，组名与 PI 待核验 |
+| Maastricht Edge AI、Radboud ACS、Hasselt Computational Sensing Systems | 只有招聘页/档案页，无组主页或 2024–2026 年论文；Hasselt 成果止于 2023 年 |
+| Inria Grenoble Thoth（Julien Mairal） | 稀疏估计与优化理论，与本地 LLM/agent 系统仅理论层面间接相关 |
+| KTH（Ahmed Hemani / Artur Podobas；Mehdi Baradaran） | 答辩公告页非组主页；另一条为 2022 年单篇论文，已合并后仍证据不足 |
+
+**覆盖盲区（本次完全未检索或无有效命中）**
+- 英国：Cambridge、Oxford、Imperial、UCL 无有效命中（Imperial 检索只返回泛 ML 内容）；北爱尔兰 Queen's Belfast 未检索。
+- 爱尔兰：仅 TCD 一条且被剔除，UCD、DCU、Insight Centre 未检索。
+- 德国：TUM、KIT 的 LLM 压缩/系统组无可用官方组页。
+- 法国：仅覆盖 Inria Grenoble；Inria Paris/Saclay、ENS/PSL、École Polytechnique、MIAI 未检索。
+- 比荷卢：TU Delft、TU Eindhoven、KU Leuven、Ghent、CWI、UvA、卢森堡 SnT 未检索。
+- 北欧：DTU、Aalto/赫尔辛基、NTNU 未检索。
+- 南欧与中东欧：意大利（Politecnico di Milano/Torino、博洛尼亚 Rusci/Nadalini）、西班牙（UPC/BSC）、葡萄牙、捷克 CTU、波兰、匈牙利、斯洛文尼亚**完全空白**。
+- 瑞士：EPFL 的 Martin Jaggi（MLO）仅作为线索出现，未核验。
+
+**下一步值得补查的具体问题**
+1. Luo Mai 组的 WaferLLM、MoE-Infinity、BatchGen 论文的作者与年份归属，以及主页所列 2026 年论文是否为已录用。
+2. EASL 2024–2026 年论文清单，以及 DeltaZip 第一作者与发表会议。
+3. SPCL 官方主页正文与当前在研项目；SpQR 中 SPCL 的实际贡献比例。
+4. Alistarh 组 LLMQ、Panza 的论文页与作者单位；其产业兼职现状（本次未核验，不作判断）。
+5. EPFL ESL 官方组页，以及 MEDEA 作者是否署名 ESL。
+6. 补查上述空白地区，尤其是博洛尼亚（低比特量化 + MCU 推理）、TU Delft / KU Leuven（端侧与压缩）、BSC / UPC（硬件协同）、CTU——这些目前只是线索，**不能凭记忆写入报告**。
+
+---
+
+**证据等级口径**：本次 4 条中 3 条为“已读官方页面”，1 条（SPCL）为“仅官方搜索摘要”；EPFL ESL 为准候选，证据为“仅官方搜索摘要”。所有链接均来自本次实际检索结果，未使用记忆补写。
+
+**引用主机（独立来源）**：luomai.github.io、usenix.org、inf.ethz.ch、github.com、spcl.inf.ethz.ch、htor.inf.ethz.ch、ist.ac.at、arxiv.org、research.ed.ac.uk（共 9 个独立 HTTPS 主机）。
+
+EVAL_EUROPE_EFFICIENT_AI_20261022
