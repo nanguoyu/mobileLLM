@@ -1015,8 +1015,8 @@ private actor DynamicWorkflowSession {
             let nextUsage = try await commitSettlement(
                 call: call,
                 admission: admission,
-                outcome: .failed(failure: failure, usage: .zero),
-                usage: .zero
+                outcome: .failed(failure: failure, usage: result.usage),
+                usage: result.usage
             )
             budgetCounter.update(spent: nextUsage.quantities[.outputTokens])
             throw WorkflowChildExecutionFailed(failure: failure)
@@ -1052,6 +1052,15 @@ private actor DynamicWorkflowSession {
                 // Cancellation acknowledgement/event-stream races do not invalidate a committed
                 // terminal result. Unknown live outcomes still require reconciliation below.
                 if let terminal = try await spawner.terminalResult(handleID) { return terminal }
+                // The accepted command may finish draining just after its observer closes. Give
+                // that durable terminal commit a bounded grace period, without resubmitting work.
+                if error as? SubagentSpawnError == .resultUnavailable
+                    || error as? AgentExecutionError == .invalidRecoveryBoundary {
+                    for delay in [50, 100, 200] {
+                        try await Task.sleep(for: .milliseconds(delay))
+                        if let terminal = try await spawner.terminalResult(handleID) { return terminal }
+                    }
+                }
                 throw error
             }
         }

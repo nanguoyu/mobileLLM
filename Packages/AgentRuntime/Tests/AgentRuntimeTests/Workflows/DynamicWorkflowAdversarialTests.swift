@@ -262,6 +262,30 @@ final class DynamicWorkflowAdversarialTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(SubagentResult.self, from: JSONSerialization.data(withJSONObject: legacy)).usage, .zero)
     }
 
+    func testFailedParallelWorkflowWaitsForDelayedCancellationCommitWithoutRespawning() async throws {
+        let fixture = try ADWorkflowFixture(
+            body: "return await parallel([0,1,2,3,4].map(i => () => agent(`held-${i}`)));",
+            maximumConcurrentAgents: 8)
+        let spawner = ADControlledSpawner(mode: .held, losesCancellationAcknowledgement: true, delayedTerminalReads: 2)
+        let engine = ADWorkflowFixture.engine(journal: InMemoryDynamicWorkflowJournal(), spawner: spawner)
+        let launch = fixture.launch()
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: launch)
+        try await engine.approveLaunch(runID: launch.runID, approvalID: ApprovalID())
+        do {
+            _ = try await engine.runAndWait(runID: launch.runID)
+            XCTFail("The fifth child exceeds available reserved capacity")
+        } catch { }
+        let projection = try await engine.projection(runID: launch.runID)
+        let spawned = await spawner.spawnCount
+        let cancelled = await spawner.cancelCount
+        XCTAssertEqual(spawned, 4)
+        XCTAssertEqual(cancelled, 4)
+        XCTAssertEqual(projection?.state, .failed)
+        XCTAssertNil(projection?.reconciliationCallID)
+        XCTAssertEqual(projection?.outcomes.count, 4)
+        XCTAssertEqual(projection?.usage.quantities[.inputTokens], 56)
+    }
+
     func testUncertainChildStopsForReconciliationWithoutSettlingOrRetrying() async throws {
         let fixture = try ADWorkflowFixture(body: "return await agent('external-effect');")
         let journal = InMemoryDynamicWorkflowJournal()
@@ -1377,6 +1401,8 @@ private actor ADControlledSpawner: SubagentSpawning {
 
     let mode: Mode
     let losesCancellationAcknowledgement: Bool
+    let delayedTerminalReads: Int
+    private var terminalReads: [AgentExecutionHandleID: Int] = [:]
     private var bindings: [AgentExecutionHandleID: (runID: AgentRunID, prompt: String)] = [:]
     private var cancelled: Set<AgentExecutionHandleID> = []
     private var released = false
@@ -1384,14 +1410,17 @@ private actor ADControlledSpawner: SubagentSpawning {
     private(set) var collectCount = 0
     private(set) var cancelCount = 0
 
-    init(mode: Mode, losesCancellationAcknowledgement: Bool = false) {
+    init(mode: Mode, losesCancellationAcknowledgement: Bool = false, delayedTerminalReads: Int = 0) {
         self.mode = mode
         self.losesCancellationAcknowledgement = losesCancellationAcknowledgement
+        self.delayedTerminalReads = delayedTerminalReads
     }
 
     func terminalResult(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult? {
         if case .uncertain = mode { return nil }
         guard cancelled.contains(handleID), let binding = bindings[handleID] else { return nil }
+        terminalReads[handleID, default: 0] += 1
+        if terminalReads[handleID, default: 0] <= delayedTerminalReads { return nil }
         return SubagentResult(runID: binding.runID, handleID: handleID, outcome: .cancelled,
             terminalUsage: losesCancellationAcknowledgement ? AgentUsage(quantities: BudgetQuantities([.inputTokens: 14])) : nil)
     }
@@ -1430,7 +1459,8 @@ private actor ADControlledSpawner: SubagentSpawning {
             while !cancelled.contains(handleID) {
                 try await Task.sleep(nanoseconds: 2_000_000)
             }
-            return try await terminalResult(handleID)!
+            guard let result = try await terminalResult(handleID) else { throw SubagentSpawnError.resultUnavailable }
+            return result
         case .releasable:
             while !released, !cancelled.contains(handleID) {
                 try await Task.sleep(nanoseconds: 2_000_000)
