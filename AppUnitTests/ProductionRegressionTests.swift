@@ -13,6 +13,34 @@ import AppRuntime
 final class ProductionRegressionTests: XCTestCase, @unchecked Sendable {
     private let attestor = try! LocalSanitizationAttestor(key: Data(repeating: 0x3d, count: 32), policyRevision: 1)
 
+    func testRecoveredAttachmentResolvesWithoutAnInMemoryRegistrationAndRejectsForgedMetadata() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try ContentAddressedArtifactStore(configuration: ArtifactStoreConfiguration(rootURL: root))
+        let bytes = Data([0xff, 0xd8, 0xff, 0xd9])
+        let reference = try await store.commit(ArtifactCommitRequest(
+            data: bytes, mimeType: "image/jpeg", semanticType: "user-image",
+            provenance: ArtifactProvenance(providerID: "mobilellm.app-attachments"),
+            retentionPolicy: .conversation, sensitivity: .personalData,
+            initialOwner: .conversation(ConversationID())
+        ))
+        let persisted = try JSONEncoder().encode(reference)
+        let recovered = try JSONDecoder().decode(ArtifactReference.self, from: persisted)
+        let resolver = AppAttachmentResolver(store: store)
+        let resolved = try await resolver.preauthorizedBytes(for: recovered)
+        XCTAssertEqual(resolved, bytes)
+
+        var metadata = try XCTUnwrap(JSONSerialization.jsonObject(with: persisted) as? [String: Any])
+        metadata["mimeType"] = "image/png"
+        let forged = try JSONDecoder().decode(ArtifactReference.self, from: JSONSerialization.data(withJSONObject: metadata))
+        do {
+            _ = try await resolver.preauthorizedBytes(for: forged)
+            XCTFail("A recovered reference must still match the durable metadata")
+        } catch let error as ArtifactStoreError {
+            XCTAssertEqual(error, .staleReference(reference.id))
+        }
+    }
+
     @MainActor
     func testProductionRuntimeInitializesWithAFileHintOnItsStorageDirectory() throws {
         let path = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)

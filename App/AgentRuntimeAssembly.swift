@@ -13,34 +13,24 @@ import MobileLLMUI
 /// provider verifies byte count and SHA-256 before handing bytes to the engine.
 actor AppAttachmentResolver: LocalModelArtifactBytesResolving {
     private let store: ContentAddressedArtifactStore
-    private var references: [ArtifactID: ArtifactReference] = [:]
 
     init(store: ContentAddressedArtifactStore) {
         self.store = store
     }
 
-    func store(_ reference: ArtifactReference) {
-        references[reference.id] = reference
-    }
-
     func preauthorizedBytes(for reference: ArtifactReference) async throws -> Data {
-        // Keep only the reference in memory; read the bytes from the content-addressed store on
-        // demand. Retaining every image's Data across multi-turn runs doubled each image in RAM and
-        // contributed to device memory pressure on the vision path.
-        guard references[reference.id] == reference else {
-            throw LocalModelAdapterError.artifactUnavailable(reference.id)
-        }
-        return try await store.data(for: reference.id, maximumBytes: reference.byteCount)
+        // The authorized model request already binds this complete reference. Validate it against
+        // durable metadata and bytes so resumed runs do not depend on a process-local allowlist.
+        try await store.data(for: reference, maximumBytes: reference.byteCount)
     }
 }
 
-/// Commits app-owned attachment bytes into the content-addressed artifact store and preloads them for
+/// Commits app-owned attachment bytes into the content-addressed artifact store for
 /// the local model provider. Used for BOTH the current turn's images and the history replay: a
 /// follow-up turn must see the earlier user message's pixels again, so each run resolves every user
 /// attachment still referenced by the conversation.
 struct AppAgentArtifactResolver: Sendable {
     let artifactStore: ContentAddressedArtifactStore
-    let attachmentResolver: AppAttachmentResolver
     let attachmentDirectory: URL
 
     func resolveCurrent(
@@ -98,7 +88,6 @@ struct AppAgentArtifactResolver: Sendable {
                 initialOwner: .conversation(ConversationID(rawValue: conversationID))
             )
         )
-        await attachmentResolver.store(committed)
         return committed
     }
 }
@@ -786,7 +775,6 @@ public final class AgentRuntimeAssembly {
             .appending(component: "attachments")
         let artifactResolver = AppAgentArtifactResolver(
             artifactStore: artifactStore,
-            attachmentResolver: attachmentResolver,
             attachmentDirectory: attachmentDirectory
         )
         pendingSubmissions = PendingSubmissionCache()
