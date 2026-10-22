@@ -435,6 +435,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
         screenshot.name = "dynamic-workflow-\(scenario.id)-screen"
         screenshot.lifetime = .keepAlways
         add(screenshot)
+        if !failures.isEmpty { attachDiagnostics(app, name: "dynamic-workflow-\(scenario.id)-failure") }
     }
 
     @MainActor

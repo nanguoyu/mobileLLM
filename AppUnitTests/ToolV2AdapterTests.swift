@@ -343,6 +343,24 @@ final class ToolV2AdapterTests: XCTestCase {
         XCTAssertEqual(after, ["account-A"])
     }
 
+    func testDeepSeekInvalidPageBecomesAToolFailureWithoutReadingCredentials() async throws {
+        let reads = DeepSeekCredentialReadProbe()
+        let adapter = try AppDeepSeekWebToolAdapter(operation: .fetch, serviceID: "account-A") { serviceID in
+            await reads.record(serviceID)
+            return nil
+        }
+        let request = try makeRequest(descriptor: adapter.descriptor,
+            arguments: ["url": .string("http://mlsys.cst.cam.ac.uk/")])
+        let context = try makePreparationContext(destinations: [AppDeepSeekWebToolAdapter.destination()],
+            dataCategories: [AgentDataCategory(rawValue: "web.page")], capabilities: AgentCapabilitySet([.networkRead]))
+        let prepared = try await adapter.prepare(request: request, context: context)
+        let outcome = try await execute(adapter, prepared: prepared)
+        guard case .failed(let failure) = outcome else { return XCTFail("HTTP input must remain rejected") }
+        XCTAssertTrue(failure.safeMessage.contains("HTTPS"))
+        let ids = await reads.ids
+        XCTAssertTrue(ids.isEmpty, "An invalid page must make no authenticated API request")
+    }
+
     func testWebSearchAdapterPreparesPlanAndExecutesInsideBoundary() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CannedHTTPProtocol.self]

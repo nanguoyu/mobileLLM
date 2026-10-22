@@ -82,13 +82,15 @@ final class AppDeepSeekWebToolAdapter: ToolV2, Sendable {
             throw ToolV2ContractError.descriptorMismatch
         }
         let value = try argument(request)
-        let body = try DeepSeekWebClient.requestBody(operation: operation, argument: value)
         let plan = try ExternalOperationPlan(
             kind: .tool, subjectID: descriptor.id.logicalID.description,
             canonicalArguments: request.sanitizedArguments, destination: Self.destination(),
             dataCategories: [category], payloadDigest: request.sanitizedArguments.fingerprint,
             effects: descriptor.effects, requiredCapabilities: descriptor.requiredCapabilities,
-            maximumRequestBytes: UInt64(body.count), maximumResponseBytes: UInt64(DeepSeekWebClient.maximumResponseBytes),
+            // Reserve the bounded JSON envelope without making argument validation a fatal
+            // preparation error. Execute reports invalid URLs/queries as ordinary tool failures.
+            maximumRequestBytes: request.maximumArgumentBytes + 64,
+            maximumResponseBytes: UInt64(DeepSeekWebClient.maximumResponseBytes),
             timeoutMilliseconds: 30_000, retryPolicy: .never, idempotency: .pureRead,
             userPreview: operation == .search ? "Search with DeepSeek: \(value)" : "Read with DeepSeek: \(value)",
             descriptorID: descriptor.id.description, schemaDigest: descriptor.id.schemaDigest,
