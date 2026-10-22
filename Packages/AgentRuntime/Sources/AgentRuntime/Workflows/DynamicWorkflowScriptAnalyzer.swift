@@ -39,6 +39,7 @@ public struct AnalyzedWorkflowScriptV1: Hashable, Sendable {
     public let staticAgentCallSites: UInt32
     public let staticPhaseCallSites: UInt32
     public let staticParallelCallSites: UInt32
+    public let explicitlyBudgetedAgentCallSites: UInt32
     public let checkpointSites: UInt32
     public let savedWorkflowNames: [String]
 
@@ -50,6 +51,7 @@ public struct AnalyzedWorkflowScriptV1: Hashable, Sendable {
         staticAgentCallSites: UInt32,
         staticPhaseCallSites: UInt32,
         staticParallelCallSites: UInt32,
+        explicitlyBudgetedAgentCallSites: UInt32,
         checkpointSites: UInt32,
         savedWorkflowNames: [String]
     ) {
@@ -60,6 +62,7 @@ public struct AnalyzedWorkflowScriptV1: Hashable, Sendable {
         self.staticAgentCallSites = staticAgentCallSites
         self.staticPhaseCallSites = staticPhaseCallSites
         self.staticParallelCallSites = staticParallelCallSites
+        self.explicitlyBudgetedAgentCallSites = explicitlyBudgetedAgentCallSites
         self.checkpointSites = checkpointSites
         self.savedWorkflowNames = savedWorkflowNames
         analysisDigest = StableDigest.fingerprint(
@@ -88,7 +91,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
         var lexer = JavaScriptLexer(source: body)
         let tokens = try lexer.tokens()
         try Self.rejectForbiddenCapabilities(tokens)
-        try Self.validateAgentOptions(tokens)
+        let explicitlyBudgetedCalls = try Self.validateAgentOptions(tokens)
         let savedWorkflowNames = try Self.savedWorkflowNames(in: tokens)
         let instrumentation = try Self.instrument(source: body, tokens: tokens)
         let callSites = tokens.reduce(into: UInt32(0)) { count, token in
@@ -107,6 +110,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
             staticAgentCallSites: callSites,
             staticPhaseCallSites: calls("phase"),
             staticParallelCallSites: calls("parallel"),
+            explicitlyBudgetedAgentCallSites: explicitlyBudgetedCalls,
             checkpointSites: UInt32(instrumentation.insertions.count),
             savedWorkflowNames: savedWorkflowNames
         )
@@ -134,7 +138,8 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
     /// expressions, but the options container and every key must be literal. This catches model-
     /// invented fields before the candidate is saved and lets the app's single repair pass correct
     /// them without ever dispatching a child.
-    private static func validateAgentOptions(_ tokens: [JSToken]) throws {
+    private static func validateAgentOptions(_ tokens: [JSToken]) throws -> UInt32 {
+        var explicitlyBudgetedCalls: UInt32 = 0
         for callIndex in tokens.indices where tokens[callIndex].identifier == "agent" {
             guard callIndex + 1 < tokens.count, tokens[callIndex + 1].symbol == "(" else {
                 continue
@@ -172,8 +177,10 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
                     "agent accepts only prompt and options"
                 )
             }
-            try validateAgentOptionObject(tokens, openingAt: optionStart, closingAt: optionEnd)
+            let keys = try validateAgentOptionObject(tokens, openingAt: optionStart, closingAt: optionEnd)
+            if keys.contains("maxToolCalls") { explicitlyBudgetedCalls += 1 }
         }
+        return explicitlyBudgetedCalls
     }
 
     private static func topLevelArgumentSeparator(
@@ -203,7 +210,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
         _ tokens: [JSToken],
         openingAt opening: Int,
         closingAt closing: Int
-    ) throws {
+    ) throws -> Set<String> {
         var index = opening + 1
         var seen: Set<String> = []
         while index < closing {
@@ -267,6 +274,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
             }
             if index < closing { index += 1 }
         }
+        return seen
     }
 
     private static let forbiddenIdentifiers: Set<String> = [

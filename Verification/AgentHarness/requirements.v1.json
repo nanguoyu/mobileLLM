@@ -4,7 +4,7 @@
   "documentID": "AH-REQUIREMENTS-V1",
   "sourceSpecification": {
     "path": "spec.md",
-    "sha256": "f7ca5656f578a13f0d093756da4485ab8dde43504b466f1ee65d8184fe9c5719",
+    "sha256": "cd476a9cadde5898ad2015aba2ffea9938d96dfc47fe6cd5ce013c1338b74d59",
     "capturedAtUTC": "2026-10-22T17:41:37Z"
   },
   "requirements": [
@@ -1752,8 +1752,8 @@
         {
           "section": "34.5",
           "heading": "Parallel subagent, authority, and lifecycle contract",
-          "lineStart": 1842,
-          "lineEnd": 1857
+          "lineStart": 1847,
+          "lineEnd": 1862
         }
       ],
       "platforms": [
@@ -1844,7 +1844,7 @@
           "section": "34",
           "heading": "P0 full Dynamic Workflows program",
           "lineStart": 1705,
-          "lineEnd": 1905
+          "lineEnd": 1910
         }
       ],
       "platforms": [

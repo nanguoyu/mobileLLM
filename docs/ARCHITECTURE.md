@@ -139,7 +139,7 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   suppression. Recovery uses the same persisted catalog rather than rereading current settings.
   `DynamicWorkflowScriptAnalyzer` rejects anything outside the closed vocabulary (no `eval`, classes, `this`,
   regex literals, `Date`, `Symbol`, `Proxy`, template-literal tricks, or agent options other than
-  `label/phase/schema/model/agentType/isolation/stallMs`); one analyzer-guided repair pass is allowed. The
+  `label/phase/schema/model/agentType/isolation/stallMs/maxToolCalls`); one analyzer-guided repair pass is allowed. The
   accepted script is content-addressed, journaled, and digest-bound to a launch approval (`/workflow` itself
   is the launch intent, so no extra Once/Always/Deny prompt), then `DynamicWorkflowEngine` runs it in
   `JavaScriptCoreWorkflowRuntime`: the script sees only `agent(prompt, options)`, `parallel(thunks)`,
@@ -175,7 +175,11 @@ Capacity calculation, exact request construction and reservation occur without a
 point, so simultaneous admissions cannot spend the same remainder. Settled and reserved cumulative
 usage is subtracted; per-operation ceilings remain reusable. Recovery fences admission until submitted
 children settle. A final child can be admitted with zero remaining tool calls without increasing the
-workflow envelope. Prompted per-role tool allowances remain instructions within these hard host limits.
+workflow envelope. The optional `maxToolCalls` cap narrows each child before reservation. Generated candidates must
+declare it, so a four-researcher/two-verifier workflow can reserve four calls per researcher and
+three per verifier instead of the first verifier hoarding a full six-call share. Zero remaining
+tool capacity suppresses advertisement and results in an explicit `tool_choice: none`. Missing
+caps retain legacy policy, and changing a cap invalidates the affected replay prefix.
 
 Generated candidates with phase metadata must contain a real `phase()` call; metadata declaring
 parallel work must contain a real `parallel()` call. Comments and quoted strings do not satisfy these

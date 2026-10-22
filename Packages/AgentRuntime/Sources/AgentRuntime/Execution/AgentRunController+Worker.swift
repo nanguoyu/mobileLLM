@@ -353,7 +353,8 @@ extension AgentRunController {
         let selected = try frozen.selectedTools(
             latestUserRequest: frozen.currentUser.frozen.content
         )
-        let descriptors = toolFree ? [] : selected.descriptors
+        let toolCapacity = facts.budgetLedger?.availableCapacity[.toolInvocations] ?? 0
+        let descriptors = toolFree || toolCapacity == 0 ? [] : selected.descriptors
         await logger.record(
             code: "execution.tool-selection",
             metadata: [

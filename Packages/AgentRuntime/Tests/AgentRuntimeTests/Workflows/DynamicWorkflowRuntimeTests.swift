@@ -217,7 +217,7 @@ final class DynamicWorkflowRuntimeTests: XCTestCase {
         let valid = try analyze(wrapped("""
         return await agent('structured', {
           schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } }, additionalProperties: false },
-          model: 'local-small', agentType: 'reviewer', isolation: 'sandbox', stallMs: 50,
+          model: 'local-small', agentType: 'reviewer', isolation: 'sandbox', stallMs: 50, maxToolCalls: 0,
         });
         """))
         let host = WorkflowScriptHost(agent: { invocation in
@@ -235,7 +235,27 @@ final class DynamicWorkflowRuntimeTests: XCTestCase {
         XCTAssertEqual(options.requestedAgentType, "reviewer")
         XCTAssertTrue(options.requiresIsolatedWorkspace)
         XCTAssertEqual(options.stallMilliseconds, 50)
+        XCTAssertEqual(options.maximumToolCalls, 0)
         XCTAssertNotNil(options.schema)
+
+        for value in ["-1", "0.5", "1001", "true", "'3'"] {
+            let invalid = try analyze(wrapped("return await agent('bad cap', {maxToolCalls: \(value)});"))
+            do {
+                _ = try await JavaScriptCoreWorkflowRuntime().execute(invalid, args: nil, limits: try limits(), requirement: .init(), host: host)
+                XCTFail("Invalid cap reached the host: \(value)")
+            } catch { }
+        }
+        let afterInvalidCaps = await recorder.snapshot()
+        XCTAssertEqual(afterInvalidCaps.options.count, 1, "Bad numeric caps must fail before dispatch")
+        let legacy = try WorkflowAgentOptionsV1()
+        let capped = try WorkflowAgentOptionsV1(maximumToolCalls: 0)
+        XCTAssertNotEqual(try legacy.outputIdentity(), try capped.outputIdentity())
+        let encoded = try JSONEncoder().encode(capped)
+        XCTAssertEqual(try JSONDecoder().decode(WorkflowAgentOptionsV1.self, from: encoded), capped)
+        var old = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        old.removeValue(forKey: "maximumToolCalls")
+        let decodedLegacy = try JSONDecoder().decode(WorkflowAgentOptionsV1.self, from: JSONSerialization.data(withJSONObject: old))
+        XCTAssertEqual(try decodedLegacy.outputIdentity(), try legacy.outputIdentity())
 
         for invalid in [
             "return await agent('bad', { scema: {} });",

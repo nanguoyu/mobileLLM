@@ -960,6 +960,10 @@
         {
           "kind": "xctest",
           "value": "AgentContractsTests.BudgetLedgerTests/testAvailableCapacitySubtractsSettledAndInflightWorkButRetainsOperationCeilings"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorToolIntegrationTests/testZeroToolCapacitySuppressesAdvertisementsWithoutErasingTheFrozenCatalog"
         }
       ],
       "platforms": [
@@ -1918,6 +1922,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowAdversarialTests/testCancellationUsesCommittedResultWhenAcknowledgementIsLostAndKeepsUsage"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testRoleCapsReserveBothVerifiersBeforeSynthesisWithoutIncreasingTotalBudget"
         }
       ],
       "platforms": [

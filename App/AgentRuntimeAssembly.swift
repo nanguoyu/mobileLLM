@@ -363,7 +363,7 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
             maximumConcurrentAgents: launch.limits.maximumConcurrentAgents,
             schemaRepairAttempts: launch.limits.schemaRepairAttempts
         )
-        let childBudget = try Self.budget(share, limitedBy: budgetLimit)
+        let childBudget = try Self.budget(share, limitedBy: budgetLimit, maximumToolCalls: call.options.maximumToolCalls)
         let modelPolicy = try resolvedModelPolicy(
             requested: call.options.requestedModel,
             parent: launch.defaultModelPolicy
@@ -455,10 +455,12 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         return spawn
     }
 
-    static func budget(_ share: AgentBudget, limitedBy remaining: AgentBudget) throws -> AgentBudget {
-        let limits = BudgetQuantities(Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map {
+    static func budget(_ share: AgentBudget, limitedBy remaining: AgentBudget, maximumToolCalls: UInt64? = nil) throws -> AgentBudget {
+        var values = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map {
             ($0, min(share.limits[$0], remaining.limits[$0]))
-        }))
+        })
+        if let maximumToolCalls { values[.toolInvocations] = min(values[.toolInvocations, default: 0], maximumToolCalls) }
+        let limits = BudgetQuantities(values)
         for dimension in [BudgetDimension.modelAttempts, .inputTokens, .outputTokens, .activeMilliseconds]
             where limits[dimension] == 0 {
             throw AgentContractError.budgetExceeded(dimension: dimension, limit: 0, requested: 1)
@@ -903,7 +905,7 @@ public final class AgentRuntimeAssembly {
         child context. Prefer quoted-string `+` concatenation for dependent prompts; do not use
         backtick template literals or `${...}` interpolation.
         The optional second argument to agent must be a direct object literal and may contain only
-        these exact keys: label, phase, schema, model, agentType, isolation, stallMs. Never add
+        these exact keys: label, phase, schema, model, agentType, isolation, stallMs, maxToolCalls. Never add
         tools, timeout, temperature, token limits, or other fields. Agents automatically inherit the
         user's frozen tool policy; scripts cannot select or widen tools. For generated candidates,
         omit model, agentType, isolation, and stallMs unless the user explicitly requires one and the
@@ -964,7 +966,7 @@ public final class AgentRuntimeAssembly {
         merely keeping them in variables does not share them with that child.
         \(Self.workflowFinalDeliveryInstruction)
         The optional agent options value must be a direct object literal containing only label,
-        phase, schema, model, agentType, isolation, or stallMs. Remove tools, timeout, temperature,
+        phase, schema, model, agentType, isolation, stallMs, or maxToolCalls. Remove tools, timeout, temperature,
         token limits, and every other option; child agents inherit the frozen host tool policy. Omit
         model, agentType, isolation, and stallMs unless the user explicitly requires one and its exact
         host-supported value is known. Omission is the normal child runtime; never write isolation as
@@ -996,6 +998,9 @@ public final class AgentRuntimeAssembly {
     an internal JSON object. For research and review handoffs that another agent will read, prefer
     concise Markdown briefs and omit schema. Use a schema only when the script must inspect fields
     for a calculation or branch. Pass the complete brief, including source URLs, to downstream agents.
+    Every generated agent call must set maxToolCalls (an integer from 0 to 1000). Honor the user's
+    per-role allowance; use 0 for a synthesis that only writes from supplied evidence. This is a
+    ceiling within the host's remaining capacity, never permission to exceed it or add tools.
     A report with required item counts or geographic coverage needs structured final rows so the
     script can compute its counts and render the table. Do not ask the writer to guess totals in prose.
     Use bounded loops and string concatenation to render the rows, deduplicate country codes and count

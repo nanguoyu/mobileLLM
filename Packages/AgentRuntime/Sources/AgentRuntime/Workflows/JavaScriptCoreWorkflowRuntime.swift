@@ -745,6 +745,13 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         case .unsignedInteger(let value): stall = value
         default: throw WorkflowScriptRuntimeError.invalidAgentOptions("stallMs must be a nonnegative integer")
         }
+        let maximumToolCalls: UInt64?
+        switch object["maxToolCalls"] {
+        case nil: maximumToolCalls = nil
+        case .integer(let value) where value >= 0: maximumToolCalls = UInt64(value)
+        case .unsignedInteger(let value): maximumToolCalls = value
+        default: throw WorkflowScriptRuntimeError.invalidAgentOptions("maxToolCalls must be a nonnegative integer")
+        }
         do {
             return try WorkflowAgentOptionsV1(
                 label: try optionalString(object["label"], field: "label"),
@@ -753,7 +760,8 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
                 requestedModel: try optionalString(object["model"], field: "model"),
                 requestedAgentType: try optionalString(object["agentType"], field: "agentType"),
                 requiresIsolatedWorkspace: isolation != nil,
-                stallMilliseconds: stall
+                stallMilliseconds: stall,
+                maximumToolCalls: maximumToolCalls
             )
         } catch {
             throw WorkflowScriptRuntimeError.invalidAgentOptions(Self.sanitize(String(describing: error)))

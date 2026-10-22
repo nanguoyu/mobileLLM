@@ -1764,11 +1764,16 @@ The injected V1 surface is deliberately small:
   shares the root run's hard agent/concurrency/token ceilings and cannot widen permissions.
 
 `agent` options are a direct object literal whose only V1 keys are `label`, `phase`, `schema`, `model`, `agentType`,
-`isolation`, and `stallMs`. Unknown, computed, shorthand, duplicate, or indirect options fail static analysis before
+`isolation`, `stallMs`, and `maxToolCalls`. Unknown, computed, shorthand, duplicate, or indirect options fail static analysis before
 launch or dispatch. Model substitution is policy-owned and observable. Schema
 validation is host-side with at most two bounded corrective turns under the child budget. Invalid output after
 repair exhaustion remains a typed child failure. Only a classified model/provider availability failure may
 settle to `null`; budget, cancellation, schema, and policy failures remain fatal.
+
+`maxToolCalls` is an optional integer from 0 to 1000 that can only reduce the child's host-owned tool budget.
+It cannot enable tools or expand authority. Zero disables tool advertisement; missing values retain host policy.
+Generated candidates must declare each child's allowance, including zero for a synthesis that only writes from
+provided evidence. This output-affecting cap participates in prefix identity; legacy omitted caps retain their identity.
 
 Scripts have no direct filesystem, shell, network, model, tool, secret, process, module-loader, clock, random-number,
 timer, native-object, or sandbox-provider access. Agents perform all effects through `AgentExecutor`, and every external

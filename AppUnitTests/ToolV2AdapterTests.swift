@@ -328,6 +328,27 @@ final class ToolV2AdapterTests: XCTestCase {
         XCTAssertThrowsError(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); /* parallel([]) */ return await agent('investigate');")))
         XCTAssertNoThrow(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); return await parallel([() => agent('A'), () => agent('B')]);")))
         XCTAssertNoThrow(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); return await agent('A');", detail: "sequential research")))
+        XCTAssertThrowsError(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); return await agent('A');", detail: "sequential research"), requireExplicitToolBudgets: true))
+        XCTAssertNoThrow(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); return await agent('A', {maxToolCalls: 0});", detail: "sequential research"), requireExplicitToolBudgets: true))
+    }
+
+    // TEST-ID: AHT-DYNAMIC-001
+    func testRoleCapsReserveBothVerifiersBeforeSynthesisWithoutIncreasingTotalBudget() throws {
+        let baseline = try AgentBudget.firstReleaseDefaults(contextTokensPerAttempt: 1024, outputTokens: 256, peakMemoryBytes: 1024)
+        var values = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map { ($0, baseline.limits[$0]) })
+        values[.toolInvocations] = 24
+        let root = try AgentBudget(limits: BudgetQuantities(values), maximumThermalState: .fair, memoryPressureResponse: .pause)
+        let share = try AgentBudget(limits: root.limits.sharingCumulativeCapacity(among: 4), maximumThermalState: .fair, memoryPressureResponse: .pause)
+        var ledger = try BudgetLedgerSnapshot(budget: root, consumed: AgentUsage(quantities: BudgetQuantities([.toolInvocations: 16])))
+        for cap in [UInt64(3), 3, 0] {
+            let remaining = try AgentBudget(limits: ledger.availableCapacity, maximumThermalState: .fair, memoryPressureResponse: .pause)
+            let child = try AppDynamicWorkflowChildRequestBuilder.budget(share, limitedBy: remaining, maximumToolCalls: cap)
+            XCTAssertEqual(child.limits[.toolInvocations], cap)
+            ledger = try ledger.reserving(BudgetReservation(id: BudgetReservationID(), maximumUsage: AgentUsage(quantities: child.limits), reason: "role-cap"))
+        }
+        XCTAssertEqual(ledger.availableCapacity[.toolInvocations], 2)
+        let largeRequest = try AppDynamicWorkflowChildRequestBuilder.budget(share, limitedBy: root, maximumToolCalls: 1000)
+        XCTAssertEqual(largeRequest.limits[.toolInvocations], 6, "A script cannot raise the host's share")
     }
 
     // TEST-ID: AHT-DYNAMIC-001

@@ -373,6 +373,32 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
         }
     }
 
+    // TEST-ID: AHT-BUDGET-001
+    func testZeroToolCapacitySuppressesAdvertisementsWithoutErasingTheFrozenCatalog() async throws {
+        let offset = 670
+        let model = try ExecutorTestModelDefinition(offset: offset)
+        let definition = try ExecutorTestToolDefinition(name: "unneeded-tool")
+        let defaults = try AgentBudget.firstReleaseDefaults(contextTokensPerAttempt: 4096, outputTokens: 1024, peakMemoryBytes: 1_073_741_824)
+        var values = Dictionary(uniqueKeysWithValues: defaults.limits.entries.map { ($0.dimension, $0.value) })
+        values[.toolInvocations] = 0
+        let budget = try AgentBudget(limits: BudgetQuantities(values), maximumThermalState: defaults.maximumThermalState, memoryPressureResponse: defaults.memoryPressureResponse)
+        let provider = SequencedModelOutcomeProvider(model: model, outcomes: [
+            .completed(try AgentModelCompletion(action: .finalAnswer(AgentAnswer(text: "Synthesis only")), usage: modelUsage(input: 8, output: 3, milliseconds: 4, memory: 48)))
+        ])
+        let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model,
+            toolDescriptors: [definition.descriptor], explicitlyRequestedToolIDs: [definition.descriptor.id.logicalID], budget: budget)
+        let id = try await harness.executor.submit(harness.request, commandID: ExecutorTestID.command(offset))
+        let handle = try await harness.executor.attach(to: id)
+        _ = try await collectTerminalEvents(from: handle)
+        let requests = await provider.script.capturedRequests()
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertTrue(requests[0].advertisedTools.isEmpty)
+        XCTAssertEqual(harness.frozenInputs.toolCatalog.descriptors.count, 1)
+        let result = try await handle.result()
+        XCTAssertEqual(result?.status.state, .completed)
+        XCTAssertEqual(result?.usage.quantities[.toolInvocations], 0)
+    }
+
     func testDeniedApprovalIsSynthesizedWithoutExecutingTool() async throws {
         try await assertRejectedApprovalSynthesis(
             decision: .denied,

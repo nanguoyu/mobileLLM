@@ -71,6 +71,9 @@ public struct WorkflowChildRequestValidator: Sendable {
         } catch {
             throw WorkflowChildRequestValidationError.budgetNotAttenuated
         }
+        if let maximum = call.options.maximumToolCalls, request.budget.limits[.toolInvocations] > maximum {
+            throw WorkflowChildRequestValidationError.budgetNotAttenuated
+        }
 
         guard Self.isModelPolicy(request.modelPolicy, attenuatedFrom: launch.defaultModelPolicy) else {
             throw WorkflowChildRequestValidationError.modelPolicyWidened

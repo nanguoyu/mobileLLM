@@ -571,6 +571,8 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
     public let requestedAgentType: String?
     public let requiresIsolatedWorkspace: Bool
     public let stallMilliseconds: UInt64?
+    /// Optional per-child tool-call ceiling. It can only narrow the host's available budget.
+    public let maximumToolCalls: UInt64?
 
     public init(
         label: String? = nil,
@@ -579,7 +581,8 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
         requestedModel: String? = nil,
         requestedAgentType: String? = nil,
         requiresIsolatedWorkspace: Bool = false,
-        stallMilliseconds: UInt64? = nil
+        stallMilliseconds: UInt64? = nil,
+        maximumToolCalls: UInt64? = nil
     ) throws {
         guard label.map({
                   AgentWireValidation.isNonblankControlFree($0, maximumLength: 256)
@@ -594,7 +597,8 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
                   AgentWireValidation.isNonblankControlFree($0, maximumLength: 128)
               }) ?? true,
               schema.map({ $0.enforcement == .fullyEnforced }) ?? true,
-              stallMilliseconds.map({ $0 <= 30 * 60 * 1_000 }) ?? true
+              stallMilliseconds.map({ $0 <= 30 * 60 * 1_000 }) ?? true,
+              maximumToolCalls.map({ $0 <= 1_000 }) ?? true
         else { throw AgentContractError.invalidName("workflow agent options") }
         self.label = label
         self.phase = phase
@@ -603,6 +607,7 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
         self.requestedAgentType = requestedAgentType
         self.requiresIsolatedWorkspace = requiresIsolatedWorkspace
         self.stallMilliseconds = stallMilliseconds
+        self.maximumToolCalls = maximumToolCalls
     }
 
     public init(from decoder: Decoder) throws {
@@ -615,7 +620,8 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
                 requestedModel: values.decodeIfPresent(String.self, forKey: .requestedModel),
                 requestedAgentType: values.decodeIfPresent(String.self, forKey: .requestedAgentType),
                 requiresIsolatedWorkspace: values.decode(Bool.self, forKey: .requiresIsolatedWorkspace),
-                stallMilliseconds: values.decodeIfPresent(UInt64.self, forKey: .stallMilliseconds)
+                stallMilliseconds: values.decodeIfPresent(UInt64.self, forKey: .stallMilliseconds),
+                maximumToolCalls: values.decodeIfPresent(UInt64.self, forKey: .maximumToolCalls)
             )
         } catch {
             throw DecodingError.dataCorrupted(.init(
@@ -633,6 +639,7 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
         if let schema { object["schemaDigest"] = .string(schema.digest.rawValue) }
         if let requestedModel { object["requestedModel"] = .string(requestedModel) }
         if let requestedAgentType { object["requestedAgentType"] = .string(requestedAgentType) }
+        if let maximumToolCalls { object["maximumToolCalls"] = .unsignedInteger(maximumToolCalls) }
         return try CanonicalJSON(.object(object)).fingerprint
     }
 }

@@ -679,7 +679,7 @@ public actor AppDynamicWorkflowService {
         let analyzed = try analyzer.analyze(script)
         let parent = try await loadParent(runID: initiatingRunID)
         if parent.request.role == "workflow-generator" {
-            try Self.validateDeclaredStages(analyzed)
+            try Self.validateDeclaredStages(analyzed, requireExplicitToolBudgets: true)
         }
         let owner = workflowScriptOwner(scope: scope, conversationID: parent.request.conversationID)
         let saved = SavedWorkflowScriptV1(
@@ -724,7 +724,12 @@ public actor AppDynamicWorkflowService {
 
     /// Candidate-only lint. Archived scripts retain the V1 analyzer/replay contract. A metadata
     /// promise is not execution: comments and string literals cannot satisfy these call checks.
-    static func validateDeclaredStages(_ analyzed: AnalyzedWorkflowScriptV1) throws {
+    static func validateDeclaredStages(_ analyzed: AnalyzedWorkflowScriptV1, requireExplicitToolBudgets: Bool = false) throws {
+        if requireExplicitToolBudgets, analyzed.explicitlyBudgetedAgentCallSites != analyzed.staticAgentCallSites {
+            throw WorkflowScriptAnalysisError.unsupportedConstruct(
+                "each generated agent must declare maxToolCalls; use the role allowance or zero for tool-free synthesis"
+            )
+        }
         let phases = analyzed.metadata.phases
         if !phases.isEmpty, analyzed.staticPhaseCallSites == 0 {
             throw WorkflowScriptAnalysisError.unsupportedConstruct(
