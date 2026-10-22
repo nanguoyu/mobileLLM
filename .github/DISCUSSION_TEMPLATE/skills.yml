@@ -7,7 +7,8 @@ body:
 
         Skills use the same `SKILL.md` format as
         [Google AI Edge Gallery](https://github.com/google-ai-edge/gallery/discussions/categories/skills),
-        so anything shared here imports into either app.
+        so instruction text can be exchanged. Tools, secrets, and runtime-specific steps still need
+        to be supported by the receiving app.
 
         **Post it here and it appears in the app**: mobileLLM reads this board directly — your skill shows
         up under **Settings → Skills → + → Browse Community Skills**, installable with one tap, as long as
@@ -46,7 +47,8 @@ body:
       label: Does it need a JS runtime?
       description: >
         Skills whose instructions call the Gallery's `run_js` tool (bundled `index.html`) need a JavaScript
-        runtime mobileLLM does not ship yet — the text still imports, but those steps won't execute here.
+        tool mobileLLM does not provide. Its restricted workflow JavaScript runtime does not expose
+        run_js; the instruction text still imports, but those steps cannot execute here.
         Import flags this automatically; please declare it so people know what to expect.
       options:
         - "No — pure instructions, works everywhere"
@@ -66,6 +68,8 @@ body:
         - Hunyuan 4B
         - DeepSeek-R1
         - A community / Explore model
+        - Apple Intelligence
+        - An online service (specify provider/model in Notes)
   - type: textarea
     id: notes
     attributes:

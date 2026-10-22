@@ -7,9 +7,11 @@
     "osVersion": "27.0 (24A5390f)"
   },
   "capturedAtUTC": "2026-08-04T14:40:00Z",
+  "statusReviewedAtUTC": "2026-10-22T09:28:56Z",
+  "statusSourceCommit": "82933a03203cc3447817da49d4d8893a93482d05",
   "combinedRun": {
     "status": "pending-device-rerun",
-    "note": "Evidence is the real agent path (enabled=true asserted on every send). Provisioning 00-03 passed; first full matrix 07-25 was 16/19 (test16/test17 memory-tool descriptor gap, test24 web race) and all those root causes are fixed in code; focused run 12/13/17/26/28 passed, test16 passed except the writer acknowledgement wording (save+recall verified), test24 exposed a per-conversation Chat-options policy bug now fixed. test16/test24 need one device rerun. Tool V2 adapters (wikipedia/webpage/calendar/reminders/location/memory) now carry per-tool unit prepare/execute tests (2026-08-05) but device scenarios are pending; iOS 26 continued processing is implemented and needs a provisioned iPhone (Background Processing + Background GPU Access capabilities)."
+    "note": "Historical device outcomes captured on 2026-08-04 are retained below. The 23 pass and six pending records do not establish release acceptance for the current source. Test16/test24 require fresh reruns; test29 requires the complete Tool V2 device scenarios; test30 requires confirmed provisioning capabilities and continued-processing outcomes; test31 requires Dynamic Workflow execution and final-answer projection; test32 requires a converged real-model complex-goal matrix. The 2026-10-22 review ran package/static checks only and did not inspect the current device connection or provisioning profile."
   },
   "scenarios": [
     { "id": "test00", "name": "Clean install cold launch", "status": "pass", "evidence": "provisioning 2026-08-04" },

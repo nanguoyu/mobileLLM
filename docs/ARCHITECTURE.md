@@ -1,6 +1,7 @@
 # mobileLLM — Architecture
 
-What the code *is* today (2026-09-06). For the original design intent and how the build diverged from it,
+Implementation reference reviewed on 2026-10-22 against code commit `82933a0`.
+Dated validation and open work are tracked in [STATUS.md](STATUS.md). For the original design intent,
 see the frozen [DESIGN.md](DESIGN.md); for the dependency wiring of the local-weight engines, see
 [WIRING.md](WIRING.md); the normative requirements live in [spec.md](../spec.md).
 
@@ -48,8 +49,10 @@ AppRuntime  (Foundation + CryptoKit)   downloader, generation/thermal governance
 AppUI       (SwiftUI, no deps)         ink-wash design tokens + shared controls                (MLX-free)
 ```
 
-The app is built with `xcodebuild` (MLX Metal kernels require it); the eight MLX-free packages test with
-plain SwiftPM. Inference is validated on real devices — the simulator has no Metal path for the 1-bit MLX
+The app is built with `xcodebuild` (MLX Metal kernels require it); the eight MLX-free product packages
+test with SwiftPM on a Mac. AgentContracts and the verification tool use pinned Swift Crypto on Linux;
+AgentRuntime still requires Apple frameworks. See [WIRING.md](WIRING.md#toolchain-compatibility) for
+compiler/SDK compatibility. Inference is validated on real devices; the simulator has no Metal path for the 1-bit MLX
 kernels or GGUF Metal (agent/online/workflow behavior is validated on the simulator instead).
 
 ## Agent runtime: durable runs, approvals, online models
@@ -132,16 +135,22 @@ directive, a reasoning-only reply is re-asked without reasoning, and byte-identi
   (spec §34.3). Execution is event-sourced in `SQLiteDynamicWorkflowJournal` (hash-chained, CAS appends);
   a rolling per-call prefix key lets a relaunched run reuse the committed prefix (Claude Code's
   started-order rule) and re-collect submitted-but-unsettled children without respawning them; a fair FIFO
-  `WorkflowDispatchScheduler` (≤16 permits, default `min(4, cores − 2)`) and `WorkflowBudgetCoordinator`
+  `WorkflowDispatchScheduler` (≤16 permits, default `max(1, min(4, cores − 2))`) and `WorkflowBudgetCoordinator`
   (recovered children form a dispatch fence) bound fan-out; controls are pause / resume / stop /
-  restart-agent / reconcile. Hard ceilings: 1 000 agent calls, 4 096 items per collection, 30 min wall
-  clock, one active workflow root per engine. The UI is message-anchored: a live record row under the
+  restart-agent / reconcile. Hard ceilings include 1 000 agent calls and 4 096 items per collection.
+  The wall-clock default is 30 minutes; the contract permits a configured limit up to 24 hours. One
+  workflow root can be active per engine. The UI is message-anchored: a live record row under the
   `/workflow` message shows progress, tokens, and tool calls, and the summary page shows the exact accepted
   source, every child call, and the terminal result. App bootstrap only re-projects persisted workflows —
   it never starts one or loads a model.
 - **Staged orchestrator (archived)**: `WorkflowOrchestrator` — the earlier fixed-phase planner/handoff
   design — is retained for `WorkflowLauncher.resume` of legacy summaries that carry a `WorkflowPlan`, and
   for `MultiAgentWorkflowIntegrationTests`. New launches never use it.
+
+Online children share one admitted root family but use independent attempt lanes, allowing up to
+sixteen siblings to overlap requests. Local children retain the shared residency/decode arbiter.
+`stallMs` is accepted and stored as an option but has no execution consumer; it is not an effective
+stall timeout. Isolation options requiring worktrees or a sandbox cannot be fulfilled by this build.
 
 Workflows inherit the initiating conversation's exact tool policy without force-enabling tools or imposing a web
 requirement, and child ceilings remain strictly attenuated (spec §33 gap 1, closed 2026-08-08). Interrupted
@@ -153,10 +162,11 @@ workflows stay visible after relaunch but remain inert until the user acts on th
 included), and on iOS 17 a `UIKitBackgroundDrainProvider` begins a `UIBackgroundTask` when the app
 quiesces a run: the controller journals a safe quiescence boundary and leaves resumable work in
 `waitingForForeground` — a normal launch never auto-loads a model or silently resumes an unrelated run.
-On iOS 26 `ContinuedProcessingBridge` schedules `BGContinuedProcessingTask`s with
+The iOS 26 `ContinuedProcessingBridge` adapts `BGContinuedProcessingTask`s with
 `fail-if-not-immediately-runnable` strategy (no delayed queueing), requests `.gpu` only when the engine
-needs it and the device supports it, and cancels cleanly on foreground-resume. Runs interrupted by
-expiration or system cancellation remain recoverable through the journal.
+needs it and the device supports it. Expiration and system cancellation use the quiescence path.
+The physical-device submit/reject/expire/cancel matrix is pending; implementation seams and unit tests
+are not acceptance evidence for sustained background execution.
 
 ## The engine protocol and routing
 
@@ -228,7 +238,7 @@ if the model lacks it.
 
 `LLMMemoryGovernor.plan(model:variant:device:context:) -> LLMFit` is resident-only — decode is
 bandwidth-bound at batch-1, so weights must fit in RAM; the only lever is the KV cache. It returns
-`.comfortable` (green, peak ≤ 0.70·ceiling), `.tight(maxContext:)` (amber, runs but budget-deep), or
+`.comfortable` (green, peak ≤ 0.70 × ceiling), `.tight(maxContext:)` (amber, runs but budget-deep), or
 `.unsupported` (gray, the planner estimates that weights exceed its budget — activation remains allowed).
 
 - `peak = totalOnDiskBytes + runtimeOverhead + KV(context)`; `totalOnDiskBytes` includes an `mmproj`
@@ -238,7 +248,7 @@ bandwidth-bound at batch-1, so weights must fit in RAM; the only lever is the KV
   ceiling) so a big GGUF honestly fits a memory-tight phone — but it reads green only when the *raw* weights
   clear the green line, never on the clean-page gamble alone.
 - The **device ceiling** is per tier: the 8 GB iPhone gets a hard 5.3 GB (jetsam ~5.5 GB); a 12 GB phone
-  0.72·RAM; a Mac `min(RAM − 4 GB, 0.80·RAM)`.
+  0.72 × RAM; a Mac `min(RAM − 4 GB, 0.80 × RAM)`.
 
 `ContextPolicy` turns that into the context-length UI. The ladder is powers of two up to 262 144; a model's
 `options` are capped at its native context (Qwen3.5 = 256K, a 4K model = 4K); `effective(requested:model:)`
@@ -268,7 +278,8 @@ calls from plain text and hides any hallucinated call markup in the final pass.
   parsers over scraped result pages, tracker unwrapping, and a priority fall-through (first engine with
   results wins, ≤6 results per call; failures degrade to a readable string and the fixtures need
   occasional refresh); `fetch_webpage` — readable-text extraction (boilerplate stripped, 6000-char cap,
-  content-type guards, and a shared bounded HTTP client). That client accepts only HTTP(S), resolves every
+  content-type guards, and a shared bounded HTTP client). The production adapter requires an HTTPS
+  input URL; the underlying legacy client accepts HTTP(S), resolves every
   hostname and rejects the request if any answer is non-public, disables automatic redirects and
   re-validates every hop, and cancels the URLSession data task at a 2 MiB streaming ceiling. `web_search`
   uses the same bounded transport. URLSession cannot pin the validated IP to CFNetwork's later TLS
@@ -284,41 +295,50 @@ calls from plain text and hides any hallucinated call markup in the final pass.
   only when its toggle is on AND its dependency seam is injected, so tests and previews never touch the
   network, EventKit or GPS. Tool results are framed as untrusted external data before being fed back to
   the model.
-- **MCP** (`MCPClient`): a self-contained JSON-RPC 2.0 client over **Streamable HTTP** (protocol
-  `2025-11-25`), handling both plain-JSON and single-event SSE replies, session ids, and pagination — enough
-  to `initialize`, `tools/list`, and `tools/call` a user-configured remote server (sandboxed iOS can't reach
-  stdio). `MCPTool` bridges each remote tool into the local `Tool` protocol; `ToolRegistry.build(mcpServers:)`
-  assembles the standard tools plus every **enabled** server's tools minus the ones the user muted, skipping
-  servers that fail to connect. Master tool access is **off by default** (calls add another full model pass,
-  network tools also wait for their endpoint, and small models call tools unevenly).
+- **MCP** (`MCPClient`): a Streamable HTTP JSON-RPC client using protocol `2025-11-25`, with
+  bounded JSON/SSE responses, session IDs, pagination, overall deadlines, and redirect refusal.
+  Production discovery runs only from explicit setup/refresh UI and populates `MCPDiscoveryCache`.
+  `AppToolCatalog` advertises cached allowed descriptors; it does not discover servers during a send.
+  `MCPToolV2Adapter` treats unmapped remote tools as `unknownExternal`, with no automatic retry and
+  normal prepared-operation authorization. The older `MCPTool`/`ToolRegistry.build` discovery path
+  remains for the legacy loop and tests. Tokens are resolved from Keychain at invocation time and
+  are absent from persisted discovery metadata.
 
 ## Memory
 
-Facts live in a durable, atomic `MemoryStore` beside the conversation records, each tagged with its source
-(model-saved or user-added) so the screen can say who wrote it. Records written before that tag existed
-decode as model-saved rather than being rejected — `DurableStore` drops what it can't decode, so a stock
-synthesized `Codable` would have silently forgotten every fact already saved.
+`MemoryStore` persists facts atomically with provenance, content revision, canonicalization status,
+and an optional original-language retrieval alias. Model-eligible facts use canonical English
+`The user …` text. Legacy unverified records remain manageable in the UI; `MemoryRanking` excludes
+them from ranked results. That ranker uses ICU word segmentation and scores both the English
+fact and the user's original-language alias. Memory remains user data, not a workflow scratchpad.
 
-Memory does **not** depend on the model calling `recall`. Before every send, `ChatStore` searches the store
-with the outgoing turn (plus one turn of carry-over) and folds a capped block (≤5 facts, ≤400 chars) into
-the system turn after the skill block; the context meter charges for it. That's the reliability win — a 2B
-model rarely thinks to call a tool, which is what made memory effectively write-only. The mirror
-(`MemoryBook`) is refreshed *inside* the generation task, so a fact the model saved last turn is in this
-turn's prompt. Model-saved facts use one canonical English `The user …` representation across models and
-conversation languages; the visible reply still follows the user's language. `MemoryRanking` is the one
-lexical ranker the store, the `recall` tool, and the injector share. When automatic injection gets no
-lexical hit (for example, a Chinese question against an English note), it falls back to the newest few
-facts; explicit `recall` remains a strict search and asks the model to translate its query to English.
+There are two input paths:
 
-Injection is gated on the memory switch (it *is* an automatic recall) but deliberately **not** on the master
-tools switch — the block calls nothing, so typed facts still reach a model running with no tools. That is
-why the switch also lives on the Memory screen (Settings → Behavior → Memory), beside the facts it controls.
-Everything the store holds is listed there, with provenance and date:
-editable, deletable, addable by hand. Chat tool activity shows only save status; the canonical English
-payload remains visible here as the single editable source of truth.
+- The legacy `ChatStore.startGeneration` path refreshes `MemoryBook`, applies the Memory setting,
+  ranks facts against recent user text, and builds a small block through `ChatContextPreparation`.
+  `ChatStoreMemoryInjectionTests` exercises this unwired legacy path.
+- The production path synchronously snapshots `MemoryBook.facts` in `makeAgentSnapshot` and converts
+  canonical facts in `AppFrozenInputBuilder`. `ContextCompiler` allocates those frozen sources before
+  conversation history. This path currently lacks the legacy switch/ranking/refresh checks. Closing
+  that gap requires tests through app assembly; see spec §33 and [STATUS.md](STATUS.md#open-implementation-items).
 
-There is no background extraction pass: a second generation to mine each turn for facts would double
-on-device cost, so v1 is the `remember` tool plus a schema description sharp enough to trigger it.
+`remember` and `recall` are Tool V2 adapters in production. The management screen supports adding,
+editing, deleting, and viewing provenance. There is no additional model call to extract memories in
+the background. The memory setting's intended contract remains independent of the master tools switch.
+
+## Context compilation
+
+`ContextCompiler` is a pure transformation of frozen inputs. Base policy and the current user turn
+must fit. Tool schemas are included whole or omitted, then optional sources are allocated in order:
+Skills, canonical Memory, newest conversation turns, run state, artifact excerpts, and untrusted tool
+results. Oversized optional text can be truncated to a valid UTF-8 prefix. The compiled manifest records
+source revisions, selected ranges, schema digests, policy versions, and the rendered prompt digest.
+The deterministic estimate uses three UTF-8 bytes per token plus a 12.5% margin and framing costs.
+
+Production context compilation does not perform a summary model pass or add the legacy extractive
+breadcrumb. The app currently advertises at most eight local or sixteen online tools, selected by
+`DeterministicToolSelector` within the conversation's allowed set, with 4,096/16,384 schema-token budgets.
+Tool pinning is represented in the contract but has no product control; app-created policies use no pins.
 
 ## Skills
 
@@ -329,16 +349,19 @@ the composer's [+] menu switches it, and the system prompt is composed as base +
 context meter charges it honestly. There is deliberately no model self-routing of skills in v1: 2–8B
 on-device models pick badly from catalogs, so the human picks. Interop: `SkillIO` parses and emits the
 AI Edge Gallery community `SKILL.md` format (frontmatter `name`/`description`/`metadata`, markdown body),
-with URL normalization for webhost/repo links and honest capability flags on import — a skill whose
-instructions invoke the Gallery's `run_js` tool needs a JS runtime this app doesn't ship (a
-WKWebView/JavaScriptCore bridge is the v2 path), and `require-secret` declarations aren't wired.
+with URL normalization for webhost/repo links and capability flags on import. Skills that invoke the
+Gallery's `run_js` tool are flagged because that tool is unavailable. The
+JavaScriptCore workflow provider only orchestrates subagents and does not implement `run_js`; imported
+`require-secret` declarations are also not wired to a secret provider.
 
 ## Image input (vision GGUF) + dictation
 
 Vision runs entirely on the **llama.cpp** side through the `mtmd` API already inside the vendored
 xcframework. A vision-capable catalog variant declares its official `mmproj` projector
 (`LLMVariant.visionProjector`); the downloader fetches it alongside the weight file (both required for
-"installed"), the memory governor counts its bytes, and `LlamaEngine` opens an `mtmd` context at load.
+"installed"), and the memory governor includes its bytes. `LlamaEngine` resolves the projector path
+at load and creates the `mtmd` context only on the first image-bearing generation, so text-only use
+does not allocate the vision encoder.
 When a turn carries images (`ChatTurn.images`, encoded JPEG/PNG bytes), the templated prompt gets one
 media marker per image and prefill runs through `mtmd_tokenize` + chunked `mtmd_helper_eval` before the
 normal decode loop continues; with no image the text path is byte-identical. In the UI the composer's
@@ -366,9 +389,9 @@ The model library has two tiers.
 - **Explore** (`RemoteCatalog`, live): browses `mlx-community` (MLX) and the GGUF orgs (bartowski, unsloth,
   ggml-org, lmstudio-community) via the public Hugging Face Hub API, grouping repos into models-with-variants
   by peeling the quant descriptor off each repo name (pure + unit-tested). A discovered `RemoteModel` becomes
-  an `LLMModel` with a **generic** architecture — it loads from the checkpoint's own chat template, no hand
-  adapter — which is exactly why Explore models are flagged **Unverified** and their fit uses an estimated
-  size. Family and license come only from recognized Hub tags or parsed config metadata; an absent,
+  an `LLMModel` after attempting to resolve context/architecture metadata from its pinned MLX config or
+  Hugging Face GGUF metadata. Missing metadata uses an explicitly unverified generic fallback. These
+  models use their own chat template and remain **Unverified** even when metadata resolution succeeds. Family and license come only from recognized Hub tags or parsed config metadata; an absent,
   unfamiliar, or conflicting value remains explicit `Unknown / unverified`, never a fabricated Qwen /
   Apache-2.0 label. Hub listing commit SHAs propagate into each variant's `ModelSource.revision`. Once
   picked, a community model flows through the same download / fit / activate pipeline as a curated one.
@@ -376,7 +399,8 @@ The model library has two tiers.
 `ThinkSplitter` is the shared reasoning splitter: it routes text outside `<think>…</think>` to `.answer` and
 inside to `.reasoning`, withholds a possible partial-tag tail across chunk boundaries, and **must be
 `finish()`-ed** at stream end to flush that tail (or the last few characters are lost). `startInThink: true`
-handles the implicit-open convention (DeepSeek-R1 distills stream reasoning first, emitting only the closing tag).
+handles the implicit-open convention used by the curated Qwen3.5 entries. The curated DeepSeek-R1
+entry uses explicit think tags.
 
 ## Model downloads and integrity
 
@@ -415,8 +439,10 @@ refuses it with a typed error rather than hanging Metal init). Multi-GB weights 
 refuse a load. Selecting or sending with a model always makes a real attempt, leaving the device as the
 authority. Cold launch restores only a model identity and never calls an engine load, so opening the app
 cannot allocate several gigabytes. The generation lifecycle above applies cancellation/thermal policy
-inside both local engines. When the app backgrounds
-(`scenePhase → .background`) it frees the resident model, so a multi-GB model isn't holding RAM while unused.
+inside both local engines. On iOS, connected-scene aggregation drives durable quiescence before
+model suspension; dynamic
+workflows are included through the app coordinator. The macOS scene bridge requests run quiescence
+and model suspension. Recovery remains an explicit user action.
 
 ## Keyboard (the hard-won part)
 

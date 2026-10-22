@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem in mobileLLM (crash, wrong behavior, memory/thermal, download, UI)
+description: Report a problem in chat, agents, workflows, models, downloads, or UI
 labels: ["bug"]
 body:
   - type: markdown
@@ -63,6 +63,8 @@ body:
       options:
         - MLX
         - llama.cpp
+        - Apple Intelligence
+        - Online service
         - Auto
         - not sure / not applicable
     validations:
@@ -72,7 +74,7 @@ body:
     id: model
     attributes:
       label: Model
-      description: e.g. Bonsai 8B, Qwen3.5 9B, or an Explore (Hugging Face) model — include the repo id.
+      description: Include the local model/repo or online provider and model ID. Never include API keys.
     validations:
       required: false
 
@@ -88,7 +90,7 @@ body:
     id: context
     attributes:
       label: Context length setting
-      description: e.g. 8192 (the value in Settings when it happened)
+      description: e.g. 8192, including any per-conversation override
     validations:
       required: false
 
@@ -99,7 +101,17 @@ body:
       options:
         - Featured catalog
         - Explore (live Hugging Face browse)
+        - Apple system model
+        - Configured online service
         - not applicable
+    validations:
+      required: false
+
+  - type: textarea
+    id: agent-context
+    attributes:
+      label: Agent / workflow context
+      description: If relevant, include approval mode, selected tools, the workflow command, and the final or waiting state. Redact private prompts, tool results, and credentials.
     validations:
       required: false
 

@@ -1,139 +1,112 @@
-# mobileLLM — Dependency wiring (the 1-bit fork)
+# mobileLLM dependency wiring
 
-> **Status (current):** all three engines are wired and shipping. This file covers the two that carry
-> weights and therefore have non-trivial pins: the MLX stack below lives in the **`LLMEngineMLX`** package
-> (not `LLMCore`, which stays MLX-free), and the llama.cpp engine is in **`LLMEngineLlama`** (bottom of this
-> file). The third, **`LLMEngineApple`**, needs no wiring at all — `FoundationModels` is an OS framework,
-> weak-linked and autolinked, with no package dependency beyond `LLMCore`. Both local-weight engines also
-> depend on the MLX-free `AppRuntime` generation-governance layer. `Packages/*/Package.swift` are
-> the source of truth for the exact pins; the ones quoted here are kept in sync with them. See
-> [ARCHITECTURE.md](ARCHITECTURE.md) for how the three engines route.
+Reviewed 2026-10-22 against code commit `82933a0`. Package manifests and
+`scripts/build-llama-xcframework.sh` are the source of truth for dependency pins.
+[ARCHITECTURE.md](ARCHITECTURE.md) describes runtime composition; [STATUS.md](STATUS.md) records
+validation and remaining work.
 
-The only non-trivial dependency is the **1-bit-capable MLX stack**. `bits=1` affine quantized_matmul
-is not in upstream MLX (PR [ml-explore/mlx#3161](https://github.com/ml-explore/mlx/pull/3161), unmerged);
-it ships in Prism ML's forks.
+## Dependency isolation
 
-## The chain
+`LLMEngineMLX` is the only package importing MLX and its PrismML fork. `LLMEngineLlama` alone imports
+the vendored `llama` binary target. `LLMEngineApple` weak-links FoundationModels and owns no weight
+files. The other eight product packages use their protocols without importing either local-weight
+engine. The optional online provider lives in `AgentRuntime` and does not enter `RoutingEngine`.
 
+## Pinned MLX stack
+
+| Dependency | Declared pin | Purpose |
+| --- | --- | --- |
+| `PrismML-Eng/mlx-swift` | `e40e0a57a6f7ad08dc3fd87ad598a7aa6407d230` | Affine 1-bit kernel used by the shipped MLX variants |
+| `nanguoyu/mlx-swift-lm` | `ab016139837f58646f1b984ebfbadd8bacf866d5` | Model loaders and generation using the selected MLX fork |
+| `huggingface/swift-transformers` | from `1.3.3` | Tokenizer dependency used by the load macros |
+| `huggingface/swift-huggingface` | from `0.9.0` | Hugging Face loader support |
+| `swiftlang/swift-syntax` | `602.0.0 ..< 603.0.0` | Macro implementation for the Swift 6.2 toolchain family |
+
+The two revision-pinned forks preserve the repository's known 1-bit execution path. The July 2026 kernel investigation
+referenced [mlx#3161](https://github.com/ml-explore/mlx/pull/3161); the exact revisions above define
+the current dependency stack.
+`Package.resolved` is ignored, so range-based dependencies can resolve differently on a fresh build.
+Record their resolved revisions with any new build evidence.
+
+The consumer target directly depends on and imports `Tokenizers` and `HuggingFace` because the
+`MLXHuggingFace` loader macros expand into references to them. Build with `-skipMacroValidation`.
+`LLMCore` must not acquire those engine dependencies.
+
+## Toolchain compatibility
+
+The deployment floors remain iOS 17 and macOS 14. The app's platform bridges name iOS 26 / macOS 26
+APIs behind availability guards, so the SDK must contain those declarations. Deployment targets
+and SDK/compiler versions are separate constraints.
+
+The reference engine setup recorded with this dependency stack is Xcode 26.3 / Swift 6.2.4. The
+SwiftSyntax range above is intentionally tied to the 602 family. As of the 2026-10-22 review, the
+maintainer host is Xcode 27.1 / Swift 6.4: the eight MLX-free product packages and verification tool
+compiled there, but the complete app/Metal/macro build was not rerun. That package result does not
+establish compatibility of the pinned macros with Swift 6.4. Select a compatible Xcode toolchain
+or validate a dependency/toolchain migration before using a newer compiler for the full app.
+
+Use Xcode to build MLX executables so their Metal resource bundle is present:
+
+```sh
+xcodebuild -scheme llm-smoke -destination 'platform=macOS,arch=arm64' \
+  -derivedDataPath /tmp/mobilellm-mlx-build -skipMacroValidation \
+  MTL_COMPILER_FLAGS='$(inherited) -Wno-c++17-extensions -Wno-c++20-extensions' build
+DYLD_FALLBACK_LIBRARY_PATH=/usr/lib /tmp/mobilellm-mlx-build/Build/Products/Debug/llm-smoke
 ```
-LLMEngineMLX ─depends on→  nanguoyu/mlx-swift-lm @ ab01613
-                          │  (fork of ml-explore/mlx-swift-lm; ONE repointed dep line)
-                          └─depends on→  PrismML-Eng/mlx-swift @ e40e0a5  (prism HEAD; see Toolchain notes)
-                                            └─ adds the bits=1 affine Metal kernel (mlx#3161)
+
+A plain SwiftPM compile does not establish that `default.metallib` is packaged for execution. The
+smoke targets also carry a libc++ runpath to `/usr/lib`. MLX activation is rejected in the simulator;
+use real Apple hardware for its inference tests. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the
+app, app-unit, engine-unit, simulator, and device schemes.
+
+## llama.cpp framework
+
+`scripts/build-llama-xcframework.sh` builds mainline `ggml-org/llama.cpp` at
+`956973c76466b6c791d7bdbe6eed3aa3235b2dc1`. It uses the upstream XCFramework build, retains iOS device,
+iOS simulator, and macOS slices, and installs the result at
+`Packages/LLMEngineLlama/Vendor/llama.xcframework`. The framework is gitignored and must be generated
+on a fresh checkout. The historical build occupied about 355 MB and took 15–25 minutes.
+
+```sh
+./scripts/build-llama-xcframework.sh
+xcodegen generate
 ```
 
-- **Upstream `mlx-swift-lm`** requires `mlx-swift` `.upToNextMinor(from: "0.31.4")` → `>=0.31.4, <0.32`.
-- **PrismML `v0.31.6_prism`** is the fork rebased on mlx-swift **0.31.6** — inside that range, **same
-  minor → no API drift, no kernel rebase.** (That tag is SHA `563961d…`; the actual pin is prism **HEAD
-  `e40e0a5`** — same 1-bit kernels, a toolchain-compatible tools version — see **Toolchain notes** below.)
-- Provides products **MLXLLM** (+ `LLMModelFactory`, `Qwen35TextModel` for `qwen3_5_text` = 27B,
-  `Qwen3Model` for `qwen3` = 8B/4B/1.7B) and **MLXLMCommon** (generation loop, tokenizer, chat template).
+The binary module is `llama`; it includes `llama.h`, GGML Metal headers, and `mtmd`/`mtmd-helper`
+for vision. Metal is embedded. The llama.cpp package targets have explicit source paths in Package.swift.
 
-## LLMEngineMLX/Package.swift (the MLX engine — already wired)
+`LlamaEngine` uses mmap, disables Metal residency sets on iOS, and unloads/drains the prior model
+before replacing it. Simulator text decoding uses CPU (`n_gpu_layers = 0`). Context and KV width
+are allocated per generation; quantized KV enables Flash Attention. Vision projector paths are
+resolved during model load and the encoder is allocated only for an image-bearing generation.
 
-The MLX deps live in `LLMEngineMLX` (never `LLMCore`), so `LLMCore` and the rest stay MLX-free. The engine
-also consumes `AppRuntime.GenerationGovernance`; it pulls the fork plus the two Hugging Face packages its
-load macros expand against:
+Curated prompt builders cover ChatML, DeepSeek, Hunyuan, and Gemma. Explore GGUFs use embedded chat
+templates with a ChatML fallback. BOS insertion belongs to tokenization. Decode output passes
+through UTF-8 piece decoding, reasoning splitting, and answer-wrapper stripping.
 
-```swift
-.package(url: "https://github.com/PrismML-Eng/mlx-swift",  revision: "e40e0a5…"),  // bits=1 kernel
-.package(url: "https://github.com/nanguoyu/mlx-swift-lm",  revision: "ab01613…"),  // repointed to the fork
-.package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.3"),  // Tokenizers
-.package(url: "https://github.com/huggingface/swift-huggingface", from: "0.9.0"),   // HuggingFace
-.package(url: "https://github.com/swiftlang/swift-syntax.git", "602.0.0" ..< "603.0.0"),  // match 6.2 toolchain
-// target deps: AppRuntime; MLX, MLXRandom (mlx-swift); MLXLLM, MLXLMCommon, MLXHuggingFace (mlx-swift-lm);
-//              Tokenizers (swift-transformers); HuggingFace (swift-huggingface).
-```
+## Apple and portable packages
 
-## Rules
-- **Run MLX code via `xcodebuild` only.** `swift build` *compiles* the fork fine, but `swift run` fails
-  at runtime two ways: (1) `@rpath/libc++.1.dylib` not found → add `-rpath /usr/lib` (done on LLMSmoke);
-  (2) "Failed to load the default metallib" → only xcodebuild bundles `mlx-swift_Cmlx.bundle/…/default.metallib`.
-  So: `xcodebuild -scheme llm-smoke -destination 'platform=macOS,arch=arm64' -derivedDataPath <DD> -skipMacroValidation build`, then run `<DD>/Build/Products/Debug/llm-smoke`.
-- The MLX-free packages (AppUI / AppRuntime / LLMCore / AgentContracts / AgentRuntime /
-  AgentSandboxAPI / MobileLLMUI / LLMEngineApple) keep their fast `swift test` loop. `AgentRuntime`
-  additionally links system `sqlite3` and depends only on `AgentContracts` + `LLMCore`; `AgentSandboxAPI`
-  is protocol-only (depends on `AgentContracts`) and ships no sandbox provider.
-- **Simulator has no 1-bit Metal path** → validate on real devices only.
-- **HF model loader (in `LLMEngineMLX`):** `MLXHuggingFace`'s `#huggingFaceLoadModelContainer`
-  macro expands to code referencing `HuggingFace.HubClient` + `Tokenizers.AutoTokenizer`, so the consumer
-  must add **swift-transformers** (product `Tokenizers`) and **swift-huggingface** (product `HuggingFace`)
-  as direct deps and `import HuggingFace, Tokenizers`, and build with `-skipMacroValidation`.
+`LLMEngineApple` uses `#if canImport(FoundationModels)` and availability checks while retaining the
+same deployment floor. It creates a fresh session for each full-history request and differences
+cumulative response snapshots. Availability determines whether the system model is usable; no
+model directory or download is involved. Its deterministic mapping tests run without real inference.
 
-## Toolchain notes (resolved 2026-07-15)
-- The `v0.31.x_prism` *tags* declare swift-tools **6.3** (`experimentalCGen`) → need a Swift 6.3 toolchain.
-  The installed toolchain is 6.2.4, so we pin `prism` **HEAD `e40e0a5`** (tools 5.12, same 1-bit kernels).
-- Pin **swift-syntax to the 602 line** (Swift 6.2) — the default 603 (6.3 ABI) breaks mlx-swift-lm's macros.
+`AgentContracts` and `Tools/AgentHarnessVerification` conditionally use Apple's Swift Crypto,
+exactly `4.5.2`, on Linux and CryptoKit on Apple platforms. Hosted Linux also tests `AgentSandboxAPI`.
+`AgentRuntime` links sqlite3 and JavaScriptCore and remains an Apple-platform package.
 
-## ✅ Kernel gate PASSED (2026-07-15, macOS)
-`quantizedMM(bits:1, group 128, affine)` runs on real Metal and **matches** dequantize·matmul
-(`maxDiff = 3.05e-05`, finite, non-degenerate). Upstream MLX asserts on bits=1, so this *is* the proof
-the fork is correctly wired. Next gate: full Bonsai-8B decode (needs the HF loader deps above).
+## Historical inference evidence
 
-## Exit path (when mlx#3161 merges upstream)
-Repoint `nanguoyu/mlx-swift-lm`'s dep line back to `ml-explore/mlx-swift` (a tagged release that includes
-#3161) and retire the fork. Gate the switch on a byte-identical logits check on one checkpoint; the
-on-disk affine-quant format is unchanged, so **no re-download**.
+These observations were recorded on 2026-07-15, before the durable agent migration:
 
----
+- The 1-bit Metal kernel matched dequantize-plus-matmul with maximum difference `3.05e-05`.
+- Bonsai 8B decoded through MLX; this completed the follow-up gate that older wiring notes still
+  described as pending.
+- Mainline llama.cpp decoded Bonsai 27B Q1_0 using Metal hybrid-attention kernels. The recorded Mac
+  rate was 11.2 tokens/s; the 8B engine smoke recorded 23.6 tokens/s in Release.
 
-## llama.cpp engine (the second, user-selectable backend)
-
-**Package `LLMEngineLlama`** (sibling to `LLMEngineMLX`) depends on `LLMCore` + `AppRuntime`, vendors a
-prebuilt **`llama.xcframework`** as an SPM `.binaryTarget`, and exposes a `LlamaEngine` actor conforming to
-`LLMCore.LLMEngine`. No fork, no build macros → it needs **neither `-skipMacroValidation` nor a special
-toolchain** (unlike the MLX package).
-
-### Building the XCFramework
-`scripts/build-llama-xcframework.sh` clones mainline **ggml-org/llama.cpp @ `956973c`**, runs the official
-`./build-xcframework.sh` (Metal **embedded** — no `.metallib` to ship), trims to the **iOS + macOS** slices,
-and installs it to `Packages/LLMEngineLlama/Vendor/llama.xcframework` (~355 MB, **gitignored** — a fresh
-checkout regenerates it). The framework module is `llama` (`import llama`); headers include `llama.h`,
-`ggml-metal.h`, `gguf.h`, and the multimodal API `mtmd.h` / `mtmd-helper.h` (the image-input path — the
-official build ships them in every slice, no extra flags needed).
-
-### Why a second engine
-MLX keeps weights in **anonymous/dirty** buffers that count fully against the iOS jetsam ceiling; llama.cpp
-**mmaps** the GGUF so weight pages are **clean/file-backed and reclaimable**. That's the difference that
-lets a 3.8 GB model breathe on an 8 GB phone. To keep the discount we set **`GGML_METAL_NO_RESIDENCY=1` on
-iOS** (residency sets would *wire* the GPU buffers and erase it). `use_mmap = true`, `n_gpu_layers = 999`
-(0 on the simulator — no Metal there).
-
-### Engine internals (`LlamaEngine.swift`)
-- **Model at `load`, context lazily in `run`** sized to `Sampling.contextTokenCap` (n_ctx is fixed at
-  context creation on llama.cpp); KV is cleared each generation (we re-prefill the full history).
-- **Template-correct full history:** curated ChatML, DeepSeek, Hunyuan, and Gemma checkpoints use their
-  verified builders; community GGUFs use the template embedded in GGUF metadata, with ChatML only as a
-  missing-template fallback. Raw-system builders coalesce every system turn in order instead of silently
-  dropping later instructions. Thinking-off emits each family's verified suppression suffix.
-- **Prefill is chunked to `n_batch = 512`** to keep the Metal compute buffer small on phones.
-- **Generation governance is live, not decorative:** pause/cancel is checked every token and prefill
-  chunk; thermal/memory-pressure work is rate-limited to 4 Hz. Reload/unload cancels and awaits all old
-  decode leases before any native context or model pointer is freed.
-- **`PieceDecoder`** reassembles UTF-8 across token pieces (a CJK/emoji char can split mid-sequence) →
-  feeds `ThinkSplitter` → `.reasoning`/`.answer`. **Flush both at stream end** (mirrors the MLX path).
-- Sampler chain: penalties → top-k → top-p → temp → dist (greedy at temp ≤ 0).
-- `peakMemoryBytes` = sampled `phys_footprint` (the number iOS jetsams on).
-
-### Routing
-`@main` builds `RoutingEngine(engines: [.mlx: MLXLLMEngine(), .llamaCpp: LlamaEngine()])`. The router loads
-each variant on the engine its `backend` names and **unloads the other engine on a cross-engine switch**, so
-two weight stacks never co-reside — the on-device memory-safety guarantee. The two GPU stacks (ggml C syms
-vs mlx C++) link together without symbol collision.
-
-### ✅ Gates PASSED (2026-07-15, macOS)
-- **Day-0**: `llama-simple -m Bonsai-8B-Q1_0.gguf` on mainline + Metal → "The capital of France is Paris."
-- **27B mainline-confirmed**: `Bonsai-27B-Q1_0.gguf` (3.8 GB, hybrid GDN) decodes at **11.2 tok/s** — the
-  log shows `kernel_gated_delta_net`, `kernel_ssm_conv`, and `kernel_mul_mv_q1_0` all on Metal → **no
-  llama.cpp fork needed**; one mainline framework serves every Bonsai size. 27B stays *experimental* for
-  MEMORY, not arch.
-- **Engine end-to-end**: `swift run llama-smoke Bonsai-8B-Q1_0.gguf` → correct answer via
-  `LlamaEngine → PieceDecoder → ThinkSplitter → EngineDelta`, 23.6 tok/s Release, peak 1218 MB.
-- **Integration**: the app **builds for macOS and iOS-device** (codesigned, `llama.framework` embedded)
-  with both engines linked. Package tests green (`PieceDecoder`, `ChatML`).
-
-### Rules
-- Running `llama-smoke` / `llama-simple` locally needs **`DYLD_FALLBACK_LIBRARY_PATH=/usr/lib`** (libc++ rpath).
-- Give every `LLMEngineLlama` target an **explicit `path:`** in Package.swift — without it, xcodebuild's
-  package resolution reported "overlapping sources" for the test target (SwiftPM path inference).
-- **Simulator has no Metal** → `n_gpu_layers = 0` there; validate GGUF generation on real devices.
+These are dated integration observations, not current iPhone performance baselines. A new model
+family, quantization format, or fork replacement needs its own loader/kernel, prompt, tool, memory,
+and device verification. A catalog entry alone cannot add support for a format absent from the
+pinned engines. Before retiring the MLX fork, verify compatible upstream kernels and checkpoint
+loading and rerun matched model outputs and the app/engine gates.

@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the idea. mobileLLM is an on-device app — proposals that keep inference local and honest
-        about memory/thermal limits fit best.
+        mobileLLM is a local-first agent app with optional online providers. Describe how your proposal
+        fits conversation permissions, device resource limits, and the unified chat experience.
 
   - type: textarea
     id: problem
@@ -31,7 +31,9 @@ body:
       options:
         - Chat / conversation
         - Models & downloads (catalog / Explore)
-        - Inference engine (MLX / llama.cpp)
+        - Inference engine (MLX / llama.cpp / Apple Intelligence)
+        - Online providers
+        - Agents / subagents / Dynamic Workflows
         - Tools & MCP
         - Settings / memory / thermal
         - Design / accessibility

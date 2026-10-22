@@ -1,26 +1,17 @@
-> ## 🏛️ Historical design record — frozen 2026-07-15
+> ## Historical design record, frozen 2026-07-15
 >
-> **This is the original pre-build design doc, kept for history. It is NOT the current architecture.**
-> Read **[ARCHITECTURE.md](ARCHITECTURE.md)** for what the code actually is today. The build diverged
-> from this plan in several deliberate ways:
+> The body below preserves the original pre-build design. Current implementation details are in
+> [ARCHITECTURE.md](ARCHITECTURE.md), dependency/toolchain instructions in [WIRING.md](WIRING.md),
+> and dated verification/open work in [STATUS.md](STATUS.md). Requirements live in [spec.md](../spec.md).
 >
-> - **The design is built, not "pending sign-off."** The status line below is frozen at the design pass.
-> - **The llama.cpp engine shipped.** It's described here as *planned* (§1, §6, §2.5); it is now a
->   second, user-selectable engine behind the same `LLMEngine` protocol, with a `RoutingEngine` that keeps
->   one resident. See [WIRING.md](WIRING.md) and ARCHITECTURE.md.
-> - **The catalog grew far past Bonsai.** This doc seeds only Bonsai (§1.1, §3). The shipped Featured
->   catalog is **12 models across 5 families** (Bonsai, Qwen, Hunyuan, DeepSeek, Gemma), plus an **Explore**
->   tier that browses Hugging Face live (MLX + GGUF) and flags community models *Unverified*.
-> - **The accent is no longer teal.** The teal "on-device intelligence" hue (§1.2, §8) was replaced by an
->   **ink-wash (水墨)** palette — warm rice-paper surfaces and a cinnabar-seal accent, sampled from the app icon.
-> - **Features this doc doesn't cover, now shipped:** tool calling + an **MCP** client (remote Streamable-HTTP
->   servers), a **model-aware context ladder** (rungs capped by the model, re-scored per rung), the
->   **thinking-disclosure** interaction, and a stock, editable **system prompt**.
-> - **“Nothing leaves the device” below describes the inference path, not every optional feature.** Model
->   discovery/downloads contact Hugging Face, and web/Wikipedia/MCP tools contact their documented remote
->   endpoints only when enabled or invoked. The app has no account, analytics, or telemetry.
+> Since this design, the app has added three local engines, optional online models, durable agent runs,
+> Tool V2 approvals, subagents, and Dynamic Workflows. MLX is isolated in `LLMEngineMLX`, not `LLMCore`.
+> The product uses an ink-wash palette. Launch restores identity without loading weights, and memory-fit
+> estimates do not block an installed model from being attempted. The original blanket offline/privacy
+> claims and pending-feature statements below are historical, not current behavior. Online inference,
+> network tools, discovery/downloads, skill imports, and some speech recognition can use the network.
 >
-> Everything below is preserved verbatim as the record of the initial design intent.
+> Preface reviewed 2026-10-22. Everything below the separator is preserved as the initial design record.
 
 ---
 

@@ -1,13 +1,14 @@
 # Contributing to mobileLLM
 
-Thanks for your interest. mobileLLM is a private, on-device LLM chat app for macOS + iOS, written in Swift.
+mobileLLM is a local-first agent chat app for macOS + iOS, written in Swift, with optional online models.
 This guide covers the development setup, the package layout, how to run the tests, and what a PR needs.
 
 ## Development setup
 
-Universal SwiftUI app (macOS 14 / iOS 17), Swift 6, **Xcode 16 or newer**. The Xcode project is generated
-from `project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen). The llama.cpp engine needs a
-vendored XCFramework that isn't committed, so a fresh clone builds it first.
+The app deploys to macOS 14 / iOS 17 and uses Swift 6. Its availability-guarded platform bridges
+require SDKs containing iOS 26 / macOS 26 APIs. The pinned MLX macro stack targets Swift 6.2; consult
+[WIRING.md](docs/WIRING.md#toolchain-compatibility) before selecting a toolchain. The project is
+generated from `project.yml` with XcodeGen, and a fresh clone must build the gitignored llama.cpp XCFramework.
 
 ```sh
 # 1. Tooling (Homebrew)
@@ -32,7 +33,8 @@ simulator has no Metal path for it.
 
 ## Package map
 
-Ten Swift packages plus the app target. MLX and llama.cpp are quarantined to one package each — the other
+Ten product packages plus the app target, and a separate `Tools/AgentHarnessVerification` package.
+MLX and llama.cpp are quarantined to one package each; the other
 eight are MLX-free and test under plain SwiftPM without any Metal toolchain or the vendored XCFramework.
 
 | Package | What it holds | Toolchain |
@@ -41,7 +43,7 @@ eight are MLX-free and test under plain SwiftPM without any Metal toolchain or t
 | `AppRuntime` | Resumable downloader, memory/thermal governors, `DurableStore` (Foundation + CryptoKit) | MLX-free — `swift test` |
 | `LLMCore` | Catalog + schema, `RoutingEngine`, memory governor, context policy, tools/MCP, Explore, `ThinkSplitter`, the `LLMEngine` protocol + a mock | MLX-free — `swift test` |
 | `AgentContracts` | Versioned run/step/request/approval/budget/workflow contracts shared by runtime, sandbox API, and UI | MLX-free — `swift test` |
-| `AgentRuntime` | Durable agent executor, SQLite journal, approval policy, budgets, recovery, subagents, parallel tool batches, staged workflow orchestrator, online Responses API provider | MLX-free — `swift test` (links sqlite3) |
+| `AgentRuntime` | Durable agent executor, SQLite journal, approval policy, budgets, recovery, subagents, parallel tools, dynamic workflows, legacy staged recovery, online provider | MLX-free — `swift test` (links sqlite3 and JavaScriptCore) |
 | `AgentSandboxAPI` | Protocol-only sandbox seam; no provider ships in the open-source build | MLX-free — `swift test` |
 | `MobileLLMUI` | SwiftUI chat / models / settings + `@Observable` stores, agent run/approval/workflow UI (codes against `LLMEngine` + `AgentRuntime` contracts) | MLX-free — `swift test` |
 | `LLMEngineApple` | The Apple Intelligence engine — weak-linked `FoundationModels`, no weights of ours | MLX-free — `swift test` |
@@ -61,19 +63,35 @@ swift test --package-path Packages/AppUI          --scratch-path /tmp/mllm-appui
 swift test --package-path Packages/AppRuntime     --scratch-path /tmp/mllm-appruntime
 swift test --package-path Packages/LLMCore        --scratch-path /tmp/mllm-llmcore
 swift test --package-path Packages/AgentContracts --scratch-path /tmp/mllm-agent-contracts
-swift test --package-path Packages/AgentRuntime   --scratch-path /tmp/mllm-agent-runtime
+swift test --package-path Packages/AgentRuntime   --scratch-path /tmp/mllm-agent-runtime \
+  --skip LiveOnlineProviderSmokeTests
 swift test --package-path Packages/AgentSandboxAPI --scratch-path /tmp/mllm-agent-sandbox
 swift test --package-path Packages/MobileLLMUI    --scratch-path /tmp/mllm-ui
 swift test --package-path Packages/LLMEngineApple --scratch-path /tmp/mllm-apple
 ```
 
-`LLMEngineApple`'s suite runs on any macOS — it needs no Apple Intelligence. Two tests skip below macOS 26
-(where the framework's types can't even be named); `APPLE_LLM_LIVE=1` adds one real round-trip on an
-eligible machine.
+Most tests use deterministic providers and transports. Live checks have different activation rules:
 
-The two local-weight engine packages (`LLMEngineMLX`, `LLMEngineLlama`) build and run via `xcodebuild` only
-— the MLX package additionally needs `-skipMacroValidation` (see docs/WIRING.md). Their smoke executables
-(`llm-smoke`, `llama-smoke`) run against real weights on a device.
+- `LiveOnlineProviderSmokeTests` automatically reads `~/.mobilellm/openai.json` and makes real API
+  requests when usable credentials and a model exist. The command above skips it explicitly. Run it
+  intentionally with `--filter LiveOnlineProviderSmokeTests` when validating the configured service.
+- `MCP_LIVE=1` enables the live MCP test. `APPLE_LLM_LIVE=1` enables real Apple-model inference.
+  Other Apple-model tests may skip when the OS/framework or an eligible system model is unavailable.
+- Keychain tests can skip when the execution environment denies access. Record these skips; they
+  are not proof that credential storage was tested.
+
+`run-behavior-tests.sh` runs all eight packages plus the verification tool and static gate. It does not
+exclude the online smoke class, so a developer configuration can cause real requests during that run.
+Use the explicit commands above for an offline pass. Keep outputs outside the checkout; in a restricted
+runner, point `CLANG_MODULE_CACHE_PATH`, `SWIFTPM_MODULECACHE_OVERRIDE`, and SwiftPM's `--cache-path`,
+`--config-path`, and `--security-path` at writable temporary directories. An outer process sandbox may
+also require SwiftPM's `--disable-sandbox` for manifest evaluation. These build flags do not grant
+Keychain, network, or file-protection access to the test process.
+
+The checked-in `EngineTests` Xcode scheme covers both local-weight engines. MLX needs the Xcode
+Metal resource build and `-skipMacroValidation`; llama.cpp uses the prebuilt XCFramework. The
+`llm-smoke` executable checks the MLX 1-bit kernel, while `llm-decode` and `llama-smoke` exercise
+model decoding with weights. See [WIRING.md](docs/WIRING.md) for dependency and execution details.
 
 ```sh
 # Unsigned app builds for both shipped platforms:
@@ -85,6 +103,11 @@ xcodebuild -project mobileLLM.xcodeproj -scheme mobileLLM \
   -destination 'generic/platform=iOS' -skipMacroValidation \
   MTL_COMPILER_FLAGS='$(inherited) -Wno-c++17-extensions -Wno-c++20-extensions' \
   CODE_SIGNING_ALLOWED=NO build
+
+# App-module Tool V2 and snapshot integration tests:
+xcodebuild -project mobileLLM.xcodeproj -scheme mobileLLMUnitTests \
+  -destination 'platform=macOS,arch=arm64' -skipMacroValidation \
+  MTL_COMPILER_FLAGS='$(inherited) -Wno-c++17-extensions -Wno-c++20-extensions' test
 
 # Engine unit tests (macOS destination; SwiftPM can't build the MLX package's macros):
 xcodebuild -skipMacroValidation -scheme EngineTests \
@@ -103,10 +126,10 @@ xcodebuild -skipMacroValidation -scheme UITests \
 
 ### What runs where
 
-**Hosted CI runs portable Swift behavior tests on Linux.** `.github/workflows/ci.yml` runs one `ubuntu-latest` job:
+**Hosted CI runs two Linux jobs.** In `.github/workflows/ci.yml`, `verification-documents` checks that
 every `Verification/**` JSON and `.xctestplan` must parse, every `scripts/verification/*.sh` must pass
 `bash -n`, and the `spec.md` SHA-256 recorded in `Verification/AgentHarness/requirements.v1.json` and the
-four semantic registries must match the checked-in `spec.md`. The portable Swift job also compiles and tests `AgentContracts`, `AgentSandboxAPI`, and
+four semantic registries must match the checked-in `spec.md`. The separate `portable-swift` job uses the pinned Swift 6.2.4 container to compile and test `AgentContracts`, `AgentSandboxAPI`, and
 `AgentHarnessVerification`, then runs the semantic/architecture verifier. Apple platforms keep CryptoKit;
 Linux uses Apple's pinned Swift Crypto 4.5.2 implementation. Pushes to `codex/**` run the same gates.
 
@@ -115,8 +138,8 @@ trusted self-hosted macOS runner and setting `MOBILELLM_SELF_HOSTED_MAC=true` in
 It runs only on main or manual dispatch, never on pull-request code. The same local gate is
 `bash scripts/verification/run-behavior-tests.sh`; set `MOBILELLM_TEST_OUTPUT` to retain logs at a chosen path.
 
-**Everything else is a maintainer-run gate on a Mac**, using the checked-in scripts, and its evidence is
-attached to the release record rather than to a CI run:
+**Apple-platform and release-evidence gates run on a maintainer Mac.** The local commands below
+also include the portable verifier for use before pushing:
 
 ```sh
 # Static traceability + spec/registry/schema/architecture gates (agent-harness-verify):
@@ -157,11 +180,30 @@ bash scripts/verification/verify-xcode-coverage.sh --base-ref "$(git rev-parse H
 ```
 
 The full `SimulatorUI.xctestplan` (keyboard geometry, agent-run UI, workflow E2E) and the `DeviceE2E` plan
-remain manual gates as well; a green hosted CI badge only says the verification documents are well-formed
-and bound to the current specification.
+remain manual gates. Hosted CI covers the two Linux jobs above; it does not run the Apple-framework
+packages, app/engine builds, simulator, coverage, mutations, or physical-device scenarios. See
+[Current status](docs/STATUS.md) for the latest recorded results and outstanding release evidence.
 
 Note the simulator runs **llama.cpp on CPU only and cannot run MLX at all** — activation refuses MLX
 variants there by design; anything MLX is validated on real hardware.
+
+## Updating documentation and verification metadata
+
+`spec.md` defines requirements. `docs/ARCHITECTURE.md` describes the implementation, and
+`docs/STATUS.md` records dated evidence and open work. Keep normative requirements when an
+implementation falls short and record the gap in spec §33 instead of redefining success.
+
+After changing `spec.md`, update affected `specAnchors` headings and line ranges in
+`Verification/AgentHarness/requirements.v1.json`. Recompute `sourceSpecification.sha256` in that manifest and all four
+`Verification/AgentHarness/Registries/*.json` files. Update their source line ranges and the requirement
+manifest's capture timestamp.
+Run the verification-tool tests and `agent-harness-verify static` after those updates. Historical
+coverage, device, and audit records keep their original capture dates and outcomes; new documentation
+cannot make old evidence fresh. The `release` verifier also requires planned requirements/tests to
+become active, so it is expected to reject the currently incomplete release matrix.
+
+`docs/DESIGN.md` is an archived design. Update its navigation/status preface when needed, while
+preserving the dated body. Regenerate the ignored Xcode project after any `project.yml` change.
 
 ## Pull requests
 
@@ -178,7 +220,8 @@ variants there by design; anything MLX is validated on real hardware.
 - **Agent runtime changes need journal/approval/recovery tests.** The `AgentRuntime` suite is large on
   purpose (persistence, approval, tool-boundary, subagent, parallel-batch, and workflow contract tests);
   keep it that way. Never commit an API key, a `~/.mobilellm/openai.json`, or any online-service secret —
-  UI tests read those from launch-environment variables seeded by the DEBUG build.
+  DEBUG app/test bundles may contain seeded credentials; keep those bundles private as described in
+  [SECURITY.md](SECURITY.md).
 - **Adding a model?** Prefer a catalog entry in `LLMCatalog` with the right `modelType` / `swiftModelClass`
   and verified figures from a Hugging Face primary source — the schema is built to grow that way.
 - **Changing downloads or web access?** Pin every Hub request to the variant revision, preserve LFS

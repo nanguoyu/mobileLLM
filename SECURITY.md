@@ -19,11 +19,12 @@ bounty program.
 
 ## Scope
 
-mobileLLM is an **on-device inference** application: generation and chat persistence run on the user's
-hardware. It is not an offline-only application. Hugging Face discovery/downloads and network tools
+mobileLLM is a **local-first agent** application. Local inference and chat persistence run on the
+user's hardware. Hugging Face discovery/downloads and network tools
 (web search, webpage reading, Wikipedia, and user-configured MCP servers) make outbound requests when the
 user invokes or enables them; **online models** (OpenAI-compatible Responses API services the user adds)
-send conversation text to the configured endpoint after per-conversation approval. The app has no
+send compiled text context, including selected system/Skill content, conversation turns, Memory and
+tool results, to the configured endpoint under the conversation's approval mode. The app has no
 account, analytics, or telemetry service.
 
 **In scope** — issues in this repository's code, for example:
@@ -64,9 +65,9 @@ account, analytics, or telemetry service.
   per-conversation approval modes control presentation: Ask follows explicit approval policy, Safe preset
   auto-authorizes app-local work, bounded network/private reads and selected online-provider egress, and Full access
   auto-authorizes any prepared operation within the frozen ceiling. Receipts remain durable and operation-bound.
-- Online-model API keys are stored in the platform Keychain with this-device-only accessibility and are
-  never written to Settings or `UserDefaults`; the macOS/simulator DEBUG build reads the developer's
-  `~/.mobilellm/openai.json` outside the repository to seed tests, and that file is never committed.
+- Production online-model API keys are stored in the platform Keychain with this-device-only
+  accessibility and are not written to Settings or `UserDefaults`. The developer configuration and
+  DEBUG bundle exception are described below.
   Sending a conversation to an online service is data egress. Ask requests bounded conversation consent;
   Safe preset and Full access bind authorization without presenting a prompt, still inside the frozen ceiling.
 - Subagents and workflow children receive a strict subset of the parent run's capability ceiling and
@@ -79,18 +80,48 @@ account, analytics, or telemetry service.
   server-side native tools (e.g. DeepSeek `web_search`) are provider-executed: the app advertises either
   the native tool or the local adapter for a capability, never both, and the provider's output item is
   treated as untrusted external data (spec §15.5).
-- MCP bearer tokens are stored in the platform Keychain with this-device-only accessibility. They are not
-  retained in the `UserDefaults` settings snapshot.
+- MCP bearer tokens are stored in the platform Keychain with this-device-only accessibility. Neither
+  the settings snapshot nor the discovery cache persists them. Opening an older discovery cache
+  scrubs legacy inline tokens; invocation resolves the current credential. Endpoint edits invalidate
+  prior discovery, and clearing the cache invalidates callbacks from older discovery generations.
 - Model files are confined to the app's model directory, downloaded from the variant's declared Hugging
   Face revision, checked against the Hub-reported size and LFS SHA-256 before being promoted from `.part`,
   and recorded in a revision-bearing manifest. Community model behavior and licensing are still
   **Unverified**; missing Hub family/license metadata is shown as unknown rather than inferred.
-- The webpage reader accepts only HTTP(S), rejects non-public destinations before requests and redirects,
+- The production webpage adapter accepts HTTPS input URLs. Its shared HTTP(S) transport rejects
+  non-public destinations before requests and redirects,
   and enforces its response-body limit while streaming rather than after buffering an arbitrary body.
   URLSession does not expose the peer IP or let the app pin a pre-resolved address while retaining normal
   TLS hostname validation, so a DNS rebinding race between validation and CFNetwork's connection remains a
   platform-level residual risk. Eliminating it would require a separately audited, IP-pinned HTTP/TLS
   transport rather than URLSession; the project does not claim that stronger guarantee.
+
+## Developer configuration and DEBUG artifacts
+
+`scripts/setup-openai-config.sh` writes `~/.mobilellm/openai.json` outside the repository with mode
+`600`. The DEBUG app build phase copies this configuration into the built app, and the device-test
+build phase copies it into the test bundle. macOS DEBUG launches prefer the home file; DEBUG launches
+can fall back to the embedded configuration, with launch-environment overrides taking precedence.
+A complete configuration seeds Keychain and automatically enables the developer's online service.
+Release app builds do not embed the file. Do not publish a DEBUG app, test bundle, or build artifact
+that contains it. The ordinary AgentRuntime test suite also makes real online requests when this
+file is present unless `LiveOnlineProviderSmokeTests` is explicitly skipped.
+
+## Data deletion and current integration limits
+
+The app-level erase coordinator writes `<conversation-directory>.erase-pending` before deletion. It
+blocks new actions, drains producers, suspends the outbox, and removes runtime journals, workflows,
+artifacts, chats, and attachments. Full app erase also removes downloaded models, Memory, custom
+Skills, online credentials, MCP credentials/discovery, and settings. The marker remains after failure,
+and bootstrap completes pending erasure before opening stores. This coordinates logical deletion;
+physical flash erasure is not a product guarantee.
+
+Static review on 2026-10-22 identified an open Memory integration gap: the production snapshot forwards
+cached canonical facts without applying the Memory switch, query ranking, or the legacy path's refresh
+before each send. A saved fact can therefore enter model context even when the Memory UI is off,
+including context sent to a selected online provider. See [Current status](docs/STATUS.md#open-implementation-items)
+and spec §33 for the source trace and required regression scenarios. The existing legacy-path Memory
+tests do not establish the production-path guarantee.
 
 ## Supported versions
 

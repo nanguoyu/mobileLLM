@@ -2597,6 +2597,33 @@
         "fixedSeedRequired": false,
         "rotatingSeedRequired": false
       }
+    },
+    {
+      "id": "AHT-CONTEXT-APP-001",
+      "title": "Preserve Memory controls and freshness through production app submission",
+      "status": "planned",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-CONTEXT-002"
+      ],
+      "selectors": [],
+      "platforms": [
+        "macos",
+        "ios-simulator"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Tests through makeAgentSnapshot and AppFrozenInputBuilder: Memory off excludes saved facts, irrelevant facts are omitted, and a tool-saved fact is available on the next send",
+        "Existing legacy ChatStoreMemoryInjectionTests and pure ContextCompiler tests do not replace app assembly coverage"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     }
   ]
 }
