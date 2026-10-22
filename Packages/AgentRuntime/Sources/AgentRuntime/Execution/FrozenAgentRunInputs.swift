@@ -29,6 +29,9 @@ public struct FrozenAgentRunInputs: Hashable, Codable, Sendable {
     public let maximumAdvertisedTools: UInt16
     public let contextPolicyVersion: UInt32
     public let approvalPolicyVersion: UInt32
+    /// Suppresses tools for this model run while retaining the user's frozen catalog/policy for
+    /// delegated work. Omitted on ordinary runs for backward-compatible persisted snapshots.
+    public let suppressModelTools: Bool?
 
     public init(
         modelSelection: AgentModelSelection,
@@ -48,7 +51,8 @@ public struct FrozenAgentRunInputs: Hashable, Codable, Sendable {
         recentSuccessfulToolChain: [AgentToolLogicalID] = [],
         maximumAdvertisedTools: UInt16 = 8,
         contextPolicyVersion: UInt32,
-        approvalPolicyVersion: UInt32
+        approvalPolicyVersion: UInt32,
+        suppressModelTools: Bool = false
     ) throws {
         let hints = Array(Set(activeSkillToolHints)).sorted()
         let explicit = Array(Set(explicitlyRequestedToolIDs)).sorted()
@@ -78,6 +82,7 @@ public struct FrozenAgentRunInputs: Hashable, Codable, Sendable {
         self.maximumAdvertisedTools = maximumAdvertisedTools
         self.contextPolicyVersion = contextPolicyVersion
         self.approvalPolicyVersion = approvalPolicyVersion
+        self.suppressModelTools = suppressModelTools ? true : nil
     }
 
     public init(from decoder: Decoder) throws {
@@ -142,7 +147,8 @@ public struct FrozenAgentRunInputs: Hashable, Codable, Sendable {
                 approvalPolicyVersion: container.decode(
                     UInt32.self,
                     forKey: .approvalPolicyVersion
-                )
+                ),
+                suppressModelTools: container.decodeIfPresent(Bool.self, forKey: .suppressModelTools) ?? false
             )
         } catch {
             throw DecodingError.dataCorrupted(
@@ -156,13 +162,20 @@ public struct FrozenAgentRunInputs: Hashable, Codable, Sendable {
         case memories, conversation, currentUser, artifactExcerpts, toolCatalog, toolPolicy
         case availableToolCapabilities, activeSkillToolHints, explicitlyRequestedToolIDs
         case recentSuccessfulToolChain, maximumAdvertisedTools, contextPolicyVersion
-        case approvalPolicyVersion
+        case approvalPolicyVersion, suppressModelTools
     }
 
     func selectedTools(latestUserRequest: String) throws -> ToolSelectionResult {
-        try DeterministicToolSelector().select(
+        let policy: ConversationToolPolicy
+        if suppressModelTools == true {
+            policy = try ConversationToolPolicy(masterEnabled: false,
+                allowedToolIDs: toolPolicy.allowedToolIDs, pinnedToolIDs: toolPolicy.pinnedToolIDs,
+                selectionPolicyVersion: toolPolicy.selectionPolicyVersion,
+                materializedFromGlobalTemplate: toolPolicy.materializedFromGlobalTemplate)
+        } else { policy = toolPolicy }
+        return try DeterministicToolSelector().select(
             ToolSelectionInput(
-                policy: toolPolicy,
+                policy: policy,
                 catalog: toolCatalog,
                 availableCapabilities: availableToolCapabilities,
                 latestUserRequest: latestUserRequest,

@@ -270,6 +270,33 @@ final class ToolV2AdapterTests: XCTestCase {
     // MARK: - Web search
 
     @MainActor
+    func testWorkflowGeneratorSuppressesItsOwnToolsWithoutErasingDelegatedPolicy() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let assembly = try AgentRuntimeAssembly(engine: MockLLMEngine(script: .init()), downloadBase: root,
+            conversationDirectory: root, models: [LLMCatalog.bonsai8b], snapshot: { _, _, _, _ in nil })
+        let snapshot = makeSnapshot(userMessageID: UUID(), deepSeekWebServiceID: "account-A")
+        let expected = try assembly.frozenBuilder.frozenInputs(snapshot: snapshot, artifactReferences: [])
+        let generator = try assembly.makeDynamicWorkflowGenerator(snapshot: snapshot)
+        let frozen = try await assembly.inputFreezer.freeze(generator)
+        XCTAssertTrue(try frozen.selectedTools(latestUserRequest: "Search and read official webpages").descriptors.isEmpty)
+        XCTAssertEqual(frozen.toolCatalog, expected.toolCatalog)
+        XCTAssertEqual(frozen.toolPolicy, expected.toolPolicy)
+        XCTAssertTrue(frozen.toolPolicy.masterEnabled)
+        let recovered = try JSONDecoder().decode(FrozenAgentRunInputs.self, from: JSONEncoder().encode(frozen))
+        XCTAssertEqual(recovered.toolCatalog, expected.toolCatalog, "Recovery must preserve the delegated tools")
+        XCTAssertTrue(try recovered.selectedTools(latestUserRequest: "Search the web").descriptors.isEmpty)
+        let ordinaryJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(expected)) as? [String: Any])
+        XCTAssertNil(ordinaryJSON["suppressModelTools"], "Ordinary/legacy input encoding stays unchanged")
+        let ordinary = try JSONDecoder().decode(FrozenAgentRunInputs.self, from: JSONEncoder().encode(expected))
+        XCTAssertFalse(try ordinary.selectedTools(latestUserRequest: "Search the web").descriptors.isEmpty)
+        let disabledGenerator = try assembly.makeDynamicWorkflowGenerator(snapshot: snapshot.withText("Research", toolsEnabled: false))
+        let disabled = try await assembly.inputFreezer.freeze(disabledGenerator)
+        XCTAssertFalse(disabled.toolPolicy.masterEnabled)
+        XCTAssertTrue(disabled.toolCatalog.descriptors.isEmpty, "Suppression cannot re-enable user-disabled tools")
+    }
+
+    @MainActor
     func testDeepSeekSelectionIsFrozenAndReconstructsWithoutDuplicatePublicTools() async throws {
         let snapshot = makeSnapshot(userMessageID: UUID(), deepSeekWebServiceID: "account-A")
         let builder = AppFrozenInputBuilder(capabilityVersion: SemanticVersion("1.0.0")!)

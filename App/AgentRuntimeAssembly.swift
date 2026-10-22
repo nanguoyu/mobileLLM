@@ -1017,10 +1017,12 @@ public final class AgentRuntimeAssembly {
                 // output number also breaks local models with smaller native contexts. The 24K cap
                 // still gives reasoning-first compatible services room to emit source.
                 maximumOutputTokens: dynamicWorkflowGeneratorOutputTokens(for: snapshot),
-                reasoningEnabled: false,
-                toolsEnabled: false
+                reasoningEnabled: false
             ),
-            artifactReferences: []
+            artifactReferences: [],
+            // The generator cannot invoke tools, but its durable parent snapshot must retain the
+            // conversation's exact catalog/policy for research children and recovery.
+            suppressModelTools: true
         )
         pendingSubmissions.store(AgentRunSubmission(request: request, frozenInputs: frozen))
         return request

@@ -329,7 +329,8 @@ struct AppFrozenInputBuilder: Sendable {
     func frozenInputs(
         snapshot: AgentRunRequestSnapshot,
         artifactReferences: [ArtifactReference],
-        historyArtifacts: [UUID: [ArtifactReference]] = [:]
+        historyArtifacts: [UUID: [ArtifactReference]] = [:],
+        suppressModelTools: Bool = false
     ) throws -> FrozenAgentRunInputs {
         let online = Self.isOnline(snapshot: snapshot)
         // Online providers report their own ceilings (200k context); clamping to a local checkpoint's
@@ -445,7 +446,8 @@ struct AppFrozenInputBuilder: Sendable {
             explicitlyRequestedToolIDs: [],
             maximumAdvertisedTools: online ? 16 : 8,
             contextPolicyVersion: 2,
-            approvalPolicyVersion: 1
+            approvalPolicyVersion: 1,
+            suppressModelTools: suppressModelTools
         )
     }
 
