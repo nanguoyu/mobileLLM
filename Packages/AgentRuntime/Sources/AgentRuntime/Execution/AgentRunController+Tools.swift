@@ -349,6 +349,9 @@ extension AgentRunController {
             throw AgentExecutionError.invalidRecoveryBoundary
         }
         let durablePreparation = history.toolIntents[proposed.invocationID]?.1
+            ?? history.approvals.values.lazy
+                .map(\.request.prepared)
+                .first(where: { $0.invocationID == proposed.invocationID })
         // A pre-upgrade prepared call must retain its exact approved payload. New calls bind the
         // source alias; old preparations without that binding execute without adding new data.
         let canBindSource = durablePreparation == nil || durablePreparation?.plan.executionConstraintDigest != nil
@@ -378,9 +381,6 @@ extension AgentRunController {
             capabilityGrant: grant
         )
         let prepared: PreparedToolInvocation
-            ?? history.approvals.values.lazy
-                .map(\.request.prepared)
-                .first(where: { $0.invocationID == proposed.invocationID })
         if let durable = durablePreparation {
             // Preparation is deliberately not rerun after approval, pause, or process recovery.
             // Reconstruct the closure-free value from the exact durable plan and current frozen
