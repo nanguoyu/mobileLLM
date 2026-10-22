@@ -99,7 +99,13 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         guard case .object(let fields) = chat else { return XCTFail("Missing Chat Completions payload") }
         XCTAssertEqual(fields["tools"], .array([]))
         XCTAssertEqual(fields["tool_choice"], .string("none"))
-        XCTAssertTrue(try CanonicalJSON(fields["messages"]!).string.contains("call_123"), "Keep the real tool history while explicitly ending tool use")
+        let synthesisMessages = try CanonicalJSON(fields["messages"]!).string
+        XCTAssertTrue(synthesisMessages.contains("call_123"), "Keep the observed call identity")
+        XCTAssertTrue(synthesisMessages.contains("verified result"), "Keep actual observations")
+        XCTAssertTrue(synthesisMessages.contains("untrusted"))
+        XCTAssertFalse(synthesisMessages.contains("\"tool_calls\""), "No native call tokens in DeepSeek's tool-free continuation")
+        XCTAssertFalse(synthesisMessages.contains("\"role\":\"tool\""))
+        XCTAssertFalse(synthesisMessages.contains("provider reasoning"), "Opaque tool reasoning is unnecessary in the read-only answer pass")
     }
 
     func testNativeIdentitySeparatesRepeatedCallsWithEqualArguments() {
