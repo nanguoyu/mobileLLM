@@ -73,6 +73,10 @@ to the conversation JSON idempotently, and acknowledges them. It drains at boots
 foreground resume, so crash-safe journal-to-conversation projection is now an implemented guarantee; `ChatStore`'s
 live callbacks are an optimistic UI projection the outbox path reconciles (spec §33 gap 2 closed 2026-08-07).
 
+Accepted-message payload v2 retains attachment references as well as text. Projection validates content
+digests, restores referenced image files, and drains successive pages. Legacy text payloads still decode.
+Recovered model requests resolve images against durable artifact metadata rather than an in-memory list.
+
 Every external operation — online-model inference and every network/privacy tool call — passes a single
 `prepare → authorize → execute` boundary:
 
@@ -106,7 +110,14 @@ shape (`thinking` + `reasoning_effort`) because DeepSeek's `/responses` route ig
 every other service uses the Responses shape. Gateway quirks get exactly one bounded retry each: a 400 that
 names `max_output_tokens` falls back from Auto to the runtime ceiling, a 400 that names reasoning omits the
 directive, a reasoning-only reply is re-asked without reasoning, and byte-identical repeated
-`function_call` items are collapsed so a chatty gateway cannot drain the tool budget.
+`function_call` items with the same identity are collapsed so a chatty gateway cannot drain the tool budget.
+
+Calls retain their provider call IDs, original wire names/arguments, and bounded reasoning state through
+the journal and context compiler. Follow-up requests emit matching native call/result pairs only to
+the same frozen model selection. Distinct IDs remain distinct even when arguments match. Responses
+requests use `store=false`; official OpenAI requests include encrypted reasoning for stateless replay.
+Older records lacking native IDs retain the explicit text-result fallback. This is client-executed
+function calling; provider-hosted tools in spec §15.5 remain deferred.
 
 ## Subagents, parallel tool batches, and dynamic workflows
 
@@ -149,8 +160,9 @@ directive, a reasoning-only reply is re-asked without reasoning, and byte-identi
 
 Online children share one admitted root family but use independent attempt lanes, allowing up to
 sixteen siblings to overlap requests. Local children retain the shared residency/decode arbiter.
-`stallMs` is accepted and stored as an option but has no execution consumer; it is not an effective
-stall timeout. Isolation options requiring worktrees or a sandbox cannot be fulfilled by this build.
+`stallMs` bounds child inactivity with a monotonic deadline reset by durable or streamed progress;
+nil or zero disables it. A timeout cancels and settles the durable child. Isolation options requiring
+worktrees or a sandbox cannot be fulfilled by this build.
 
 Workflows inherit the initiating conversation's exact tool policy without force-enabling tools or imposing a web
 requirement, and child ceilings remain strictly attenuated (spec §33 gap 1, closed 2026-08-08). Interrupted
@@ -165,6 +177,9 @@ quiesces a run: the controller journals a safe quiescence boundary and leaves re
 The iOS 26 `ContinuedProcessingBridge` adapts `BGContinuedProcessingTask`s with
 `fail-if-not-immediately-runnable` strategy (no delayed queueing), requests `.gpu` only when the engine
 needs it and the device supports it. Expiration and system cancellation use the quiescence path.
+Only a granted, unexpired task exempts its owning conversation/workflow from background quiescence;
+submission alone does not. MLX and llama.cpp both request GPU eligibility. Completion reports the
+actual terminal success or failure, and resident weights stay available only while eligible work continues.
 The physical-device submit/reject/expire/cancel matrix is pending; implementation seams and unit tests
 are not acceptance evidence for sustained background execution.
 
@@ -225,6 +240,11 @@ native llama context. This is a resource-safety invariant, not just UI state: an
 continue through C/Metal after its model has been released. llama.cpp checks cooperative pause/cancel state
 at every token and at each prefill chunk; MLX checks at each streamed response boundary. The heavier
 thermal/memory-pressure probe is monotonic-clock limited to at most four times per second on both engines.
+
+llama.cpp reuses exact text-prompt KV prefixes while model/context/KV settings remain compatible,
+recomputing the final retained token and invalidating on vision, cancellation, or failure. MLX reports
+completion-token counts and timing from `streamDetails`, rather than counting emitted text chunks,
+and translates native MLX tool calls through the shared tool parser.
 
 **Auto engine policy** (`AppSettings.preferredVariant`, pure + unit-tested): given a model, a device, and
 an `EnginePreference` (globally `.auto` — there is no user-facing engine setting; the model card's engine
@@ -314,31 +334,34 @@ fact and the user's original-language alias. Memory remains user data, not a wor
 
 There are two input paths:
 
-- The legacy `ChatStore.startGeneration` path refreshes `MemoryBook`, applies the Memory setting,
-  ranks facts against recent user text, and builds a small block through `ChatContextPreparation`.
-  `ChatStoreMemoryInjectionTests` exercises this unwired legacy path.
-- The production path synchronously snapshots `MemoryBook.facts` in `makeAgentSnapshot` and converts
-  canonical facts in `AppFrozenInputBuilder`. `ContextCompiler` allocates those frozen sources before
-  conversation history. This path currently lacks the legacy switch/ranking/refresh checks. Closing
-  that gap requires tests through app assembly; see spec §33 and [STATUS.md](STATUS.md#open-implementation-items).
+- The legacy `ChatStore.startGeneration` path refreshes its UI mirror and uses the shared bounded
+  `selectedMemoryFacts` ranking helper. Its tests remain compatibility checks.
+- Production `makeAgentSnapshot` applies the Memory switch and the same ranking helper to
+  `MemoryStore`'s committed snapshot. A tool save is visible on the next send without opening Settings
+  or waiting for a UI refresh. `AppFrozenInputBuilder` freezes the selected canonical facts.
+  `ProductionRegressionTests` covers switch exclusion, relevance, and freshness through that assembly.
 
 `remember` and `recall` are Tool V2 adapters in production. The management screen supports adding,
 editing, deleting, and viewing provenance. There is no additional model call to extract memories in
-the background. The memory setting's intended contract remains independent of the master tools switch.
+the background. Automatic recall remains independent of the master tools switch. Disabling Memory
+also removes its tools from new runs. The remember adapter receives bounded original user text from
+the runtime for retrieval aliases; this source is authorization-bound and is not a model argument.
 
 ## Context compilation
 
 `ContextCompiler` is a pure transformation of frozen inputs. Base policy and the current user turn
 must fit. Tool schemas are included whole or omitted, then optional sources are allocated in order:
-Skills, canonical Memory, newest conversation turns, run state, artifact excerpts, and untrusted tool
-results. Oversized optional text can be truncated to a valid UTF-8 prefix. The compiled manifest records
+run state and recent tool results, then Skills, Memory, history, and artifact excerpts under policy 2.
+Policy 1 preserves the previous allocation order for already frozen runs. Oversized optional text can
+be truncated to a valid UTF-8 prefix. The compiled manifest records
 source revisions, selected ranges, schema digests, policy versions, and the rendered prompt digest.
 The deterministic estimate uses three UTF-8 bytes per token plus a 12.5% margin and framing costs.
 
 Production context compilation does not perform a summary model pass or add the legacy extractive
 breadcrumb. The app currently advertises at most eight local or sixteen online tools, selected by
 `DeterministicToolSelector` within the conversation's allowed set, with 4,096/16,384 schema-token budgets.
-Tool pinning is represented in the contract but has no product control; app-created policies use no pins.
+The composer's Tools menu supports up to eight pins per conversation. A pin only retains an already
+allowed tool; revocation removes its pin. Chinese intent aliases participate in deterministic selection.
 
 ## Skills
 

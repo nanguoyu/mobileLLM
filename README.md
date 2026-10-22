@@ -56,7 +56,8 @@ and release-validation work. See [Current status](docs/STATUS.md) for known gaps
   RSS, Brave, Yahoo, Marginalia — no API key), a **webpage reader** (readable-text extraction with SSRF
   guards), Wikipedia, calculator, clock — plus permission-gated **calendar, reminders and location**
   tools. The chat's Tools submenu shows a master authorization plus a checkmark for every built-in
-  capability; the full Tool Settings screen adds descriptions, search-engine priority, and remote **MCP**
+  capability and a Pin tools menu keeps up to eight allowed tools in the selected set;
+  the full Tool Settings screen adds descriptions, search-engine priority, and remote **MCP**
   controls (Streamable HTTP, per-server enable + per-tool mute). Tool access is off by default, only
   selected tools are advertised to the model, and tool results are framed as **untrusted data**
   (prompt-injection fenced) before another model pass. Runtime assembly failures are visible and
@@ -89,9 +90,9 @@ and release-validation work. See [Current status](docs/STATUS.md) for known gaps
   dead menu item.
 - 🧠 **Memory you can read and correct.** Settings → Behavior → Memory lists saved facts with their
   source and date. Edit, delete, add a fact, or forget everything. Model-facing facts use canonical
-  English text. The production agent path has an open gap in automatic Memory filtering and refresh;
-  see [Memory integration](docs/STATUS.md#open-implementation-items) before relying on its switch to
-  exclude saved facts from model context.
+  English text with an original-language retrieval alias. Each new send selects relevant facts from
+  the latest committed store snapshot. Turning Memory off excludes saved facts and Memory tools from
+  new runs, including runs using an online model.
 - 🖼️ **Image input (vision GGUF models).** Attach photos (picker or paste, up to 3, downscaled to 1568 px
   JPEG on-device) and ask about them — Qwen3.5 and Gemma 4 run their official `mmproj` projector through
   llama.cpp's mtmd. The photo button appears only when the active model can actually see.
@@ -238,11 +239,13 @@ xcodegen generate
 open mobileLLM.xcodeproj
 ```
 
-Build the app with **Xcode / `xcodebuild`** (MLX's Metal kernels require it). Inference (the 1-bit MLX
-kernels and GGUF Metal) is validated on **real devices** — the simulator has no Metal path for it.
+Build the app with **Xcode / `xcodebuild`** (MLX's Metal kernels require it). The simulator and an online
+model cover real app behavior and task outcomes. Local GPU/MLX performance, thermal behavior, and
+OS background scheduling require Apple hardware. Simulator llama.cpp decoding uses CPU.
 
 On a Mac, the eight MLX-free packages run under SwiftPM without the vendored engine framework.
-These commands exclude the online smoke suite, which otherwise reads local credentials and makes real requests:
+Choose the affected package or use `scripts/verification/run-behavior-tests.sh` for change-based selection.
+These commands show the available offline suites; live online requests require an explicit opt-in:
 
 ```sh
 swift test --package-path Packages/AppUI
@@ -257,12 +260,12 @@ swift test --package-path Packages/LLMEngineApple
 
 Xcode schemes cover app-module adapters (`mobileLLMUnitTests`), engine units (`EngineTests`),
 model-free simulator checks (`SimulatorCI`), the broader simulator UI suite (`UITests`), and the
-physical-device matrix (`DeviceE2E`). The checked-in test plans live in
+simulator online scenarios and physical-device matrix (`DeviceE2E`). The checked-in test plans live in
 `Verification/AgentHarness/TestPlans`.
 
-Hosted CI has two Linux jobs: document/script/spec-digest checks, and Swift behavior tests for
+Hosted CI selects checks from changed paths: document/script/spec-digest checks, and Swift behavior tests for
 `AgentContracts`, `AgentSandboxAPI`, and `AgentHarnessVerification` plus the static verifier. Paid
-hosted macOS runners are disabled. Apple package tests can run on an explicitly enabled self-hosted
+hosted macOS runners are disabled. Prose-only changes skip Swift suites. Apple package tests can run on an explicitly enabled self-hosted
 Mac; app/engine builds, simulator tests, six source mutants, formal coverage/freshness, and physical-device
 evidence remain maintainer-run gates. A green hosted badge does not certify those Apple gates.
 
