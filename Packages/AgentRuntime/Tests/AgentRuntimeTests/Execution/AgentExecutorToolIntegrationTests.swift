@@ -18,7 +18,7 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
             let rejected = try [definition.call(offset: offset, query: "first"),
                                 definition.call(offset: offset + 10, query: "second")]
             let accepted = try definition.call(offset: offset + 20, query: "chosen")
-            func completion(_ action: AgentAction) throws -> AgentModelOutcome {
+            func completion(_ action: AgentAction) throws -> AgentModelAttemptOutcome {
                 .completed(try AgentModelCompletion(action: action, usage: modelUsage(input: 8, output: 3, milliseconds: 4, memory: 48)))
             }
             let provider = SequencedModelOutcomeProvider(model: model, outcomes: try [
