@@ -35,6 +35,17 @@ private struct MLXNominalThermal: ThermalGoverning {
 /// never load weights or touch Metal; they guard the CRITICAL regression where multi-turn history
 /// (and ToolLoop tool results) were dropped down to a single user line.
 final class ChatMappingTests: XCTestCase {
+    func testNativeToolCallIsForwardedWithoutExposingOrTruncatingItsMarkup() throws {
+        let wire = try MLXLLMEngine.toolCallText(name: "lookup",
+            argumentsJSON: Data("{\"value\":\"</tool_call>\"}".utf8))
+        var parser = ToolCallProcessor()
+        let events = parser.feed(wire) + parser.finish()
+        guard case .call(let call)? = events.first else { return XCTFail("Expected one parsed tool call") }
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(call.name, "lookup")
+        XCTAssertEqual(call.arg("value"), "</tool_call>")
+    }
+
 
     private func assertMessage(_ m: Chat.Message, _ role: Chat.Message.Role, _ content: String,
                                file: StaticString = #filePath, line: UInt = #line) {
