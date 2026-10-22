@@ -486,6 +486,10 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             let structured = Self.isStructured(request)
             let finalText = structured ? Self.structuredJSONText(parsed.text) : parsed.text
             guard !finalText.isEmpty else {
+                // Empty JSON-mode content is malformed structured output, not a successful answer
+                // or a permanent configuration failure. The controller already owns one bounded,
+                // journaled structured repair; do not add a hidden transport retry here.
+                if structured { throw AgentModelProviderFailure(try Self.structuredOutputFailure()) }
                 throw AgentModelProviderFailure(try Self.emptyFailure())
             }
             if structured {
