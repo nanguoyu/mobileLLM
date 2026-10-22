@@ -43,7 +43,7 @@ final class DeepSeekWebClientTests: XCTestCase {
         do {
             _ = try await makeClient(spy).perform(operation: .search, argument: "test", apiKey: "test-key")
             XCTFail("Even a same-origin redirect must be rejected")
-        } catch let error as WebNetworkError { XCTAssertEqual(error, .tooManyRedirects) }
+        } catch let error as DeepSeekWebError { XCTAssertEqual(error, .httpStatus(302)) }
         let count = await spy.requests.count
         XCTAssertEqual(count, 1)
     }

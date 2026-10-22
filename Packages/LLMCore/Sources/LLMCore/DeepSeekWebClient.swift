@@ -38,16 +38,16 @@ public struct DeepSeekWebResponse: Sendable {
 /// Authentication is supplied only by the authorized caller. No model inference occurs here.
 public struct DeepSeekWebClient: Sendable {
     public static let maximumResponseBytes = 1_048_576
-    private let client: WebHTTPClient
+    private let transport: WebHTTPTransport
     private let pagePolicy: WebURLPolicy
 
     public init(session: URLSession = .shared) {
-        client = WebHTTPClient(session: session, maxRedirects: 0)
+        transport = .urlSession(session)
         pagePolicy = WebURLPolicy()
     }
 
     init(policy: WebURLPolicy, transport: WebHTTPTransport) {
-        client = WebHTTPClient(policy: policy, transport: transport, maxRedirects: 0)
+        self.transport = transport
         pagePolicy = policy
     }
 
@@ -80,7 +80,9 @@ public struct DeepSeekWebClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = body
-        let response = try await client.get(request, maxBytes: Self.maximumResponseBytes)
+        try await pagePolicy.validate(request.url!)
+        // This transport never follows redirects. Every non-200 response is accounted and rejected.
+        let response = try await transport.load(request, Self.maximumResponseBytes)
         // Failed HTTP responses still consume the authorized network budget.
         try await consumeResponseBytes(UInt64(response.body.count))
         guard !response.wasTruncated else { throw DeepSeekWebError.responseTooLarge }
