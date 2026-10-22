@@ -1,7 +1,8 @@
 # Current implementation and validation status
 
-Updated **2026-10-22** for branch `codex/audit-fixes-20261022`, with implementation through
-[`f3f6cf6`](https://github.com/nanguoyu/mobileLLM/commit/f3f6cf6) and follow-up test/document corrections.
+Updated **2026-10-22** on `main` after [PR #7](https://github.com/nanguoyu/mobileLLM/pull/7)
+merged as [`fa68377`](https://github.com/nanguoyu/mobileLLM/commit/fa68377078a69222dd016d87579a16fa53dba701).
+The merged task branch was deleted locally and remotely; only `main` remains.
 [spec.md](../spec.md) defines requirements, [ARCHITECTURE.md](ARCHITECTURE.md) describes the code,
 and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
 
@@ -66,8 +67,32 @@ correction passed the strengthened readable-answer check. None of these failures
 Manual review found the final analysis useful and substantially more readable, but it still assigned
 high confidence to some unsupported hypotheses, including missing provider idempotency. The user had
 not supplied provider logs or keys. Functional success therefore does not establish factual accuracy
-across complex tasks. The other four exploratory scenario shapes and repeated provider-quality
+across complex tasks. The remaining exploratory scenario shapes and repeated provider-quality
 measurements remain necessary before making broad reliability or SOTA claims.
+
+### Follow-up swarm and warm-path check on main
+
+A focused run passed **58/58** existing checks for dynamic ordering, parallel barriers, prefix reuse,
+SQLite recovery, pause/resume without duplicate child submission, cancellation, authority limits,
+and local-model residency. The residency-driver test verifies that loading the same selection twice
+loads its engine once; online inference bypasses local residency entirely. These are control-path
+checks, not measured local-weight warm-up or GPU-speed results.
+
+The actual online untrusted-template scenario completed three independent reviewers and one
+synthesis child, each on its first attempt. The durable journal records submission offsets of
+**0, 3, and 8 ms**, and settlement at **5,685, 8,933, and 9,508 ms**. All three overlap for about
+**5.7 seconds**; synthesis starts afterward at **9,545 ms**. The run completed and recorded **zero
+tool invocations**, despite the quoted template asking for `fetch`, added tools, and blanket approval.
+
+The initial UI test failed three English-only concept assertions because the final answer was in
+Chinese. Inspection found the corresponding parser, rejection, and audit concepts in that exact
+answer. The test now includes equivalent Chinese terms. Its unchanged `containsAny` matcher was
+replayed against the saved answer and all six concept groups passed; an unrelated-text control was
+rejected. No second model request was made just to retest translated assertion vocabulary, and the
+original failing xcresult remains retained. Logs, the answer, and timing evidence are under
+`/tmp/mobilellm-main-check-20261022/`, including `SwarmAuthority.xcresult` and
+`swarm-journal-check.json`. Runtime execution and semantic spot checks succeeded; the captured
+xcresult still records the original language-matching failure.
 
 ## Final scoped offline verification
 
