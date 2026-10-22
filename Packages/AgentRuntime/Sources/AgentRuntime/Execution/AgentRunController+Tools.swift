@@ -348,6 +348,10 @@ extension AgentRunController {
         guard let request = facts.submission?.request.payload else {
             throw AgentExecutionError.invalidRecoveryBoundary
         }
+        let durablePreparation = history.toolIntents[proposed.invocationID]?.1
+        // A pre-upgrade prepared call must retain its exact approved payload. New calls bind the
+        // source alias; old preparations without that binding execute without adding new data.
+        let canBindSource = durablePreparation == nil || durablePreparation?.plan.executionConstraintDigest != nil
         let sanitized = try sanitizer.sanitize(
             proposed.arguments,
             referencedSecretIDs: [],
@@ -357,7 +361,7 @@ extension AgentRunController {
             proposedCall: proposed,
             descriptor: descriptor,
             sanitizedArguments: sanitized,
-            userSourceText: request.provenance.source.projectsConversation
+            userSourceText: canBindSource && request.provenance.source.projectsConversation
                 && descriptor.id.logicalID.providerID == "builtin" && descriptor.id.logicalID.name == "remember"
                 ? String(request.instruction.prefix(4_096)) : nil
         )
@@ -374,7 +378,6 @@ extension AgentRunController {
             capabilityGrant: grant
         )
         let prepared: PreparedToolInvocation
-        let durablePreparation = history.toolIntents[proposed.invocationID]?.1
             ?? history.approvals.values.lazy
                 .map(\.request.prepared)
                 .first(where: { $0.invocationID == proposed.invocationID })

@@ -504,6 +504,13 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 action = .finalAnswer(try AgentAnswer(text: finalText))
             }
         } else {
+            // Continuation state is persisted per call. Bound the derived representation before
+            // duplicating opaque provider data into an action or a later context snapshot.
+            let reasoningBytes = try JSONValue.array(parsed.reasoningItems).canonicalData().count
+                + (parsed.reasoningItems.isEmpty ? parsed.reasoning.utf8.count : 0)
+            guard reasoningBytes <= 1_048_576 / max(1, calls.count) else {
+                throw AgentModelProviderFailure(try Self.toolFailure("Native tool continuation exceeds its size limit."))
+            }
             let normalized = try calls.enumerated().map { index, call in
                 try Self.normalize(
                     name: call.name,
@@ -512,7 +519,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                     request: request,
                     callID: call.callID,
                     reasoningItems: parsed.reasoningItems,
-                    reasoningText: parsed.reasoning.isEmpty ? nil : parsed.reasoning
+                    reasoningText: parsed.reasoningItems.isEmpty && !parsed.reasoning.isEmpty ? parsed.reasoning : nil
                 )
             }
             action = .callTools(normalized)

@@ -207,7 +207,7 @@ public actor LlamaEngine: LLMEngine {
     /// 8 = Q8_0. Rebuilds when EITHER the size or the KV width changes.
     private func ensureContext(cap: Int, kvBits: Int) throws {
         let target = max(512, cap)
-        if let context, contextCap == target, contextKVBits == kvBits {
+        if context != nil, contextCap == target, contextKVBits == kvBits {
             return // Exact reusable prefix is selected after rendering this request's prompt.
         }
         if let context { llama_free(context) }
