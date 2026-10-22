@@ -353,8 +353,11 @@ final class WorkflowLauncher {
         try await assembly.executor.controller.suspendForDataErase()
     }
 
-    func quiesceForBackground() async throws {
-        try await assembly.dynamicWorkflows.quiesceForBackground()
+    func quiesceForBackground(excluding conversationID: UUID? = nil) async throws {
+        let protected = Set((container?.workflowStore.workflows.values.map { $0 } ?? [])
+            .filter { conversationID != nil && $0.conversationID == conversationID }
+            .map { WorkflowRunID(rawValue: $0.id) })
+        try await assembly.dynamicWorkflows.quiesceForBackground(excluding: protected)
         for id in container?.workflowStore.workflows.keys.map({ $0 }) ?? [] {
             try? await refreshDynamicSummary(workflowID: id)
         }
@@ -648,7 +651,7 @@ public actor AppDynamicWorkflowService {
     }
 
     public func resumeAfterDataErase() async { await engine.resumeAfterDataErase() }
-    public func quiesceForBackground() async throws { try await engine.quiesceForBackground() }
+    public func quiesceForBackground(excluding runs: Set<WorkflowRunID> = []) async throws { try await engine.quiesceForBackground(excluding: runs) }
 
     public func prepareCandidate(
         source: String,

@@ -395,8 +395,8 @@ public actor DynamicWorkflowEngine {
 
     public func resumeAfterDataErase() { dataEraseSuspended = false }
 
-    public func quiesceForBackground() async throws {
-        for id in Array(active.keys) { try await deferToForeground(runID: id) }
+    public func quiesceForBackground(excluding runs: Set<WorkflowRunID> = []) async throws {
+        for id in Array(active.keys) where !runs.contains(id) { try await deferToForeground(runID: id) }
     }
 
     public func projection(runID: WorkflowRunID) async throws -> WorkflowRunProjectionV1? {

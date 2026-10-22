@@ -235,9 +235,9 @@ public final class AgentRunStore {
     /// idempotent foreground-lost pause at its next safe boundary. Recovery never assumes the OS
     /// granted enough time; the run durably lands in a waiting state and resumes only through an
     /// explicit user Resume.
-    public func quiesceForBackground() async {
+    public func quiesceForBackground(excluding conversationToContinue: UUID? = nil) async {
         let activeConversations = runs.compactMap { conversationID, run -> UUID? in
-            run.isActive ? conversationID : nil
+            run.isActive && conversationID != conversationToContinue ? conversationID : nil
         }
         for conversationID in activeConversations {
             await send(conversationID: conversationID) { status, runID in

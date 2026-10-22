@@ -533,7 +533,7 @@ struct MobileLLMApp: App {
                     await assembly.executor.controller.resumeAfterDataErase()
                     await assembly.dynamicWorkflows.resumeAfterDataErase()
                 }
-                container.quiesceWorkflows = { try await launcher.quiesceForBackground() }
+                container.quiesceWorkflows = { excluded in try await launcher.quiesceForBackground(excluding: excluded) }
                 container.chat.workflowLaunch = { [launcher] goal, conversationID,
                     userMessageID, workflowID in
                     try await launcher.launch(

@@ -87,45 +87,48 @@ public actor ConversationOutboxProjector {
             drainWaiters.removeAll()
             for waiter in waiters { waiter.resume() }
         }
-        let now: AgentTimestamp
-        do {
-            now = try clock()
-        } catch {
-            return
-        }
-        let claim: OutboxClaim
-        do {
-            claim = try await outbox.claimOutbox(
-                owner: owner,
-                now: now,
-                leaseUntil: AgentTimestamp(rawValue: now.rawValue + leaseMilliseconds),
-                limit: limit
-            )
-        } catch {
-            return
-        }
-        for item in claim.items {
+        while !suspended && !Task.isCancelled {
+            let now: AgentTimestamp
             do {
-                guard try await shouldProject(item) else {
-                    // Consumed by another projection path (e.g. workflow summaries own their root and
-                    // child final answers); acknowledge so the row is not retried forever.
+                now = try clock()
+            } catch {
+                return
+            }
+            let claim: OutboxClaim
+            do {
+                claim = try await outbox.claimOutbox(
+                    owner: owner,
+                    now: now,
+                    leaseUntil: AgentTimestamp(rawValue: now.rawValue + leaseMilliseconds),
+                    limit: limit
+                )
+            } catch {
+                return
+            }
+            guard !claim.items.isEmpty else { return }
+            for item in claim.items {
+                do {
+                    guard try await shouldProject(item) else {
+                        // Consumed by another projection path (e.g. workflow summaries own their root and
+                        // child final answers); acknowledge so the row is not retried forever.
+                        try await outbox.markOutboxDelivered(
+                            idempotencyKey: item.idempotencyKey,
+                            owner: owner,
+                            deliveredAt: try clock()
+                        )
+                        continue
+                    }
+                    try await apply(item)
                     try await outbox.markOutboxDelivered(
                         idempotencyKey: item.idempotencyKey,
                         owner: owner,
                         deliveredAt: try clock()
                     )
+                } catch {
+                    // The lease expires and a later drain retries. A genuinely bad row (e.g. corrupted
+                    // payload) must not block the rest of the batch.
                     continue
                 }
-                try await apply(item)
-                try await outbox.markOutboxDelivered(
-                    idempotencyKey: item.idempotencyKey,
-                    owner: owner,
-                    deliveredAt: try clock()
-                )
-            } catch {
-                // The lease expires and a later drain retries. A genuinely bad row (e.g. corrupted
-                // payload) must not block the rest of the batch.
-                continue
             }
         }
     }
@@ -157,15 +160,24 @@ public actor ConversationOutboxProjector {
         guard !conversation.messages.contains(where: { $0.id == messageID.rawValue }) else {
             return  // already projected (live compatibility path) — acknowledge idempotently
         }
-        let data = try await payloads.loadOutboxPayload(
-            artifactID: artifactID,
-            maximumBytes: 1 * 1_024 * 1_024
-        )
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw ConversationOutboxProjectorError.invalidPayload("user message is not UTF-8 text")
+        let data = try await payloads.loadOutboxPayload(artifactID: artifactID, maximumBytes: 8 * 1_024 * 1_024)
+        guard StableDigest.sha256(data) == item.payloadDigest else {
+            throw ConversationOutboxProjectorError.invalidPayload("user message digest mismatch")
+        }
+        let payload = try AcceptedUserMessagePayload.decode(data)
+        var images: [ImageRef] = []
+        for artifact in payload.attachments where artifact.mimeType.hasPrefix("image/") {
+            let bytes = try await payloads.loadOutboxPayload(artifactID: artifact.id, maximumBytes: artifact.byteCount)
+            guard UInt64(bytes.count) == artifact.byteCount, StableDigest.sha256(bytes) == artifact.contentDigest else {
+                throw ConversationOutboxProjectorError.invalidPayload("attachment digest mismatch")
+            }
+            let image = ImageRef(id: artifact.id.rawValue)
+            try await store.writeAttachment(bytes, id: image.id)
+            images.append(image)
         }
         conversation.messages.append(
-            Message(id: messageID.rawValue, role: .user, answer: text)
+            Message(id: messageID.rawValue, role: .user, answer: payload.text,
+                    attachments: images.isEmpty ? nil : images)
         )
         conversation.updatedAt = Date()
         try await store.save(conversation)
@@ -182,6 +194,9 @@ public actor ConversationOutboxProjector {
             artifactID: artifactID,
             maximumBytes: 8 * 1_024 * 1_024
         )
+        guard StableDigest.sha256(data) == item.payloadDigest else {
+            throw ConversationOutboxProjectorError.invalidPayload("answer digest mismatch")
+        }
         let answer: AgentAnswer
         do {
             answer = try JSONDecoder().decode(AgentAnswer.self, from: data)

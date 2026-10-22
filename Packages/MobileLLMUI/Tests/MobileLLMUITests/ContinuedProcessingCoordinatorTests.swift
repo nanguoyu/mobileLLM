@@ -33,6 +33,7 @@ final class ContinuedProcessingCoordinatorTests: XCTestCase {
         XCTAssertEqual(request.identifier, coordinator.identifier(for: conversationID))
         XCTAssertTrue(request.requiresGPU)
         XCTAssertEqual(coordinator.phase, .submitted)
+        XCTAssertNil(coordinator.grantedConversationID)
         XCTAssertEqual(coordinator.activeConversationID, conversationID)
     }
 
@@ -83,6 +84,7 @@ final class ContinuedProcessingCoordinatorTests: XCTestCase {
         coordinator.handleTask(task, conversationID: conversationID)
 
         XCTAssertEqual(coordinator.phase, .running)
+        XCTAssertEqual(coordinator.grantedConversationID, conversationID)
         XCTAssertEqual(task.lastProgress?.completed, 42)
         XCTAssertEqual(task.lastProgress?.total, 100)
     }
@@ -98,6 +100,7 @@ final class ContinuedProcessingCoordinatorTests: XCTestCase {
         coordinator.handleExpiration()
 
         XCTAssertEqual(coordinator.phase, .expired)
+        XCTAssertNil(coordinator.grantedConversationID)
         XCTAssertEqual(task.completedSuccess, false)
         try await waitUntil { quiesceCount == 1 }
         XCTAssertNotNil(coordinator.lastDiagnostic)
@@ -166,6 +169,7 @@ final class ContinuedProcessingCoordinatorTests: XCTestCase {
         let other = UUID()
         coordinator.submitIfEligible(conversationID: other)
         XCTAssertEqual(coordinator.phase, .submitted)
+        XCTAssertNil(coordinator.grantedConversationID)
         XCTAssertEqual(coordinator.activeConversationID, other)
     }
 
