@@ -359,7 +359,16 @@ struct MobileLLMApp: App {
                     locationProvider: container.toolLocationProvider,
                     mcpDiscovery: container.mcpDiscovery,
                     session: agentRuntimeURLSession(),
-                    onlineConfiguration: { onlineConfigBox.configuration(for: $0) }
+                    onlineConfiguration: { onlineConfigBox.configuration(for: $0) },
+                    deepSeekAPIKey: { [weak container] serviceID in
+                        try await MainActor.run {
+                            guard let container,
+                                  container.settings.onlineServices.contains(where: {
+                                      $0.id == serviceID && $0.supportsDeepSeekWebAPI
+                                  }) else { return nil }
+                            return try container.openAICredentials.loadAPIKey(serviceID: serviceID)
+                        }
+                    }
                 )
                 container.attachAgentRuns(assembly.runStore)
                 // Production outbox projector (spec §9.1/§33 gap 2): claims journal outbox rows and
@@ -649,6 +658,17 @@ func makeAgentSnapshot(
     } else {
         localToolNames = container.settings.builtInToolConfig.enabled.map(\.rawValue).sorted()
     }
+    let deepSeekWebServiceID = container.settings.deepSeekWebServiceID
+    let webSearchDestinations: [ExternalDestination]
+    if !toolsEnabled {
+        webSearchDestinations = []
+    } else if deepSeekWebServiceID != nil {
+        webSearchDestinations = (try? [AppDeepSeekWebToolAdapter.destination()]) ?? []
+    } else {
+        webSearchDestinations = (try? container.settings.builtInToolConfig.searchEngines.map {
+            try AppWebSearchToolAdapter.destination(engine: $0)
+        }) ?? []
+    }
     return AgentRunRequestSnapshot(
         conversationID: conversationID,
         userTurnID: userTurnID,
@@ -680,11 +700,7 @@ func makeAgentSnapshot(
         mcpToolDescriptors: toolsEnabled
             ? container.mcpDiscovery.descriptors(for: container.settings.mcpServers)
             : [],
-        webSearchDestinations: toolsEnabled
-            ? (try? container.settings.builtInToolConfig.searchEngines.map {
-                try AppWebSearchToolAdapter.destination(engine: $0)
-            }) ?? []
-            : [],
+        webSearchDestinations: webSearchDestinations,
         toolPolicy: conversation.toolPolicy,
         onlineModelEnabled: onlineParts != nil,
         onlineModelID: onlineModelID,
@@ -696,7 +712,8 @@ func makeAgentSnapshot(
         onlineOutputBudgetAuto: onlineOutputBudgetAuto,
         onlineMaximumOutputTokens: onlineService?.maximumOutputTokens,
         approvalMode: conversation.approvalMode ?? .safePreset,
-        onlineReasoningEffort: conversation.reasoningEffort ?? .medium
+        onlineReasoningEffort: conversation.reasoningEffort ?? .medium,
+        deepSeekWebServiceID: deepSeekWebServiceID
     )
 }
 

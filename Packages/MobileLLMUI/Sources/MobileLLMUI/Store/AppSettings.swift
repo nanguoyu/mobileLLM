@@ -42,6 +42,9 @@ public final class AppSettings {
     /// Web-search engine priority — the first that returns results wins, the rest are fall-through. At least
     /// one is kept while `web_search` is on (the UI enforces it); an empty list falls back to both.
     public var searchEngines: [SearchEngine] { didSet { persist() } }
+    /// nil retains public search engines/direct page reads. A selected account stays selected if
+    /// removed or made unavailable, so an in-flight or future request cannot silently change service.
+    public var deepSeekWebServiceID: String? { didSet { persist() } }
 
     // MARK: Online models
     /// Configured OpenAI-compatible services. Each keeps its own base URL / model id / Keychain key,
@@ -227,6 +230,7 @@ public final class AppSettings {
             loadedEngines = [.duckduckgo, .bing, .brave]
         }
         searchEngines = loadedEngines
+        deepSeekWebServiceID = snap?.deepSeekWebServiceID
         if let services = snap?.onlineServices, !services.isEmpty {
             onlineServices = services
         } else if snap?.openAIBaseURL != nil || snap?.openAIModelID != nil
@@ -396,6 +400,7 @@ public final class AppSettings {
         /// defaults (privacy tools off; both search engines on).
         var disabledBuiltInTools: Set<String>? = nil
         var searchEngines: [SearchEngine]? = nil
+        var deepSeekWebServiceID: String? = nil
         var openAIBaseURL: String? = nil
         var openAIModelID: String? = nil
         var openAIOnlineEnabled: Bool? = nil
@@ -428,6 +433,7 @@ public final class AppSettings {
                             toolsEnabled: toolsEnabled, dictationLocale: dictationLocale,
                             mcpServers: scrubbed, mcpTokenMarkers: markers,
                             disabledBuiltInTools: disabledBuiltInTools, searchEngines: searchEngines,
+                            deepSeekWebServiceID: deepSeekWebServiceID,
                             openAIBaseURL: defaultService?.baseURL,
                             openAIModelID: defaultService?.modelID,
                             openAIOnlineEnabled: defaultService?.isEnabled ?? false,
@@ -471,6 +477,7 @@ public final class AppSettings {
         onlineServices = []
         disabledBuiltInTools = Self.defaultDisabledBuiltInTools
         searchEngines = [.duckduckgo, .bing, .brave, .yahoo, .marginalia]
+        deepSeekWebServiceID = nil
         temperature = 0.7
         topP = 0.95
         topK = 20

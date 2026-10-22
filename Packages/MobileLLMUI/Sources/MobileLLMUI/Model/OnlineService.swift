@@ -52,4 +52,12 @@ public struct OnlineService: Sendable, Hashable, Codable, Identifiable {
         let key = modelID ?? "service default"
         return "\(key) · \(baseURL)"
     }
+
+    /// Search/Fetch credentials may only be sent to the official API origin.
+    public var supportsDeepSeekWebAPI: Bool {
+        guard let url = URL(string: baseURL), url.scheme?.lowercased() == "https",
+              url.host?.lowercased() == "api.deepseek.com", url.user == nil, url.password == nil,
+              url.port == nil || url.port == 443 else { return false }
+        return ["", "v1"].contains(url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+    }
 }

@@ -687,7 +687,8 @@ public final class AgentRuntimeAssembly {
         locationProvider: (any LocationProviding)? = nil,
         mcpDiscovery: MCPDiscoveryCache = MCPDiscoveryCache(),
         session: URLSession = .shared,
-        onlineConfiguration: @escaping @Sendable (AgentModelSelection) -> ResponsesAPIConfiguration? = { _ in nil }
+        onlineConfiguration: @escaping @Sendable (AgentModelSelection) -> ResponsesAPIConfiguration? = { _ in nil },
+        deepSeekAPIKey: @escaping DeepSeekAPIKeyResolver = { _ in nil }
     ) throws {
         let fileManager = FileManager.default
         let support = conversationDirectory.appending(component: "agent")
@@ -766,7 +767,8 @@ public final class AgentRuntimeAssembly {
             eventStore: eventStore,
             locationProvider: locationProvider,
             mcpCache: mcpDiscovery,
-            session: session
+            session: session,
+            deepSeekAPIKey: deepSeekAPIKey
         )
         frozenBuilder = AppFrozenInputBuilder(
             capabilityVersion: capabilityVersion

@@ -68,6 +68,7 @@ public struct AgentRunRequestSnapshot: Sendable {
     public let approvalMode: AgentApprovalMode
     /// Per-conversation reasoning effort (nil = service default; medium is the product default).
     public let onlineReasoningEffort: ReasoningEffort?
+    public let deepSeekWebServiceID: String?
 
     public init(
         conversationID: UUID,
@@ -105,7 +106,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         onlineOutputBudgetAuto: Bool,
         onlineMaximumOutputTokens: Int?,
         approvalMode: AgentApprovalMode,
-        onlineReasoningEffort: ReasoningEffort?
+        onlineReasoningEffort: ReasoningEffort?,
+        deepSeekWebServiceID: String? = nil
     ) {
         self.conversationID = conversationID
         self.userTurnID = userTurnID
@@ -143,6 +145,7 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.onlineMaximumOutputTokens = onlineMaximumOutputTokens
         self.approvalMode = approvalMode
         self.onlineReasoningEffort = onlineReasoningEffort
+        self.deepSeekWebServiceID = deepSeekWebServiceID
     }
 }
 
@@ -195,7 +198,8 @@ extension AgentRunRequestSnapshot {
             onlineOutputBudgetAuto: maximumOutputTokens == nil && onlineOutputBudgetAuto,
             onlineMaximumOutputTokens: onlineMaximumOutputTokens,
             approvalMode: approvalMode,
-            onlineReasoningEffort: onlineReasoningEffort
+            onlineReasoningEffort: onlineReasoningEffort,
+            deepSeekWebServiceID: deepSeekWebServiceID
         )
     }
 }
@@ -408,7 +412,8 @@ struct AppFrozenInputBuilder: Sendable {
             memoryAvailable: snapshot.memorySeamAvailable,
             eventSeamAvailable: snapshot.eventSeamAvailable,
             locationSeamAvailable: snapshot.locationSeamAvailable,
-            mcpDescriptors: snapshot.toolsEnabled ? snapshot.mcpToolDescriptors : []
+            mcpDescriptors: snapshot.toolsEnabled ? snapshot.mcpToolDescriptors : [],
+            deepSeekWebServiceID: snapshot.deepSeekWebServiceID
         )
         let policy = try snapshot.toolPolicy ?? ConversationToolPolicy(
             masterEnabled: snapshot.toolsEnabled,
@@ -505,10 +510,15 @@ struct AppFrozenInputBuilder: Sendable {
         if enabledTools.contains("fetch_webpage") {
             // The webpage reader reads user-supplied links: any public https host, enforced by the
             // tool's SSRF guards inside the boundary. http is never covered by this wildcard.
-            ceilingDestinations.append(try ExternalDestination(
-                kind: .networkEndpoint,
-                normalizedIdentity: ExternalDestination.anyHTTPSNetworkEndpoint
-            ))
+            if snapshot.deepSeekWebServiceID != nil {
+                let destination = try AppDeepSeekWebToolAdapter.destination()
+                if !ceilingDestinations.contains(destination) { ceilingDestinations.append(destination) }
+            } else {
+                ceilingDestinations.append(try ExternalDestination(
+                    kind: .networkEndpoint,
+                    normalizedIdentity: ExternalDestination.anyHTTPSNetworkEndpoint
+                ))
+            }
             ceilingDataCategories.append(try AgentDataCategory(rawValue: "web.page"))
         }
         if snapshot.eventSeamAvailable {

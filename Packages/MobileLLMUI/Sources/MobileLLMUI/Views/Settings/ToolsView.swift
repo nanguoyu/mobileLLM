@@ -29,6 +29,7 @@ struct ToolsView: View {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
                 accessSection
                 builtInSection
+                webProviderSection
                 searchEnginesSection
                 connectionsSection
             }
@@ -82,6 +83,29 @@ struct ToolsView: View {
 
     // MARK: Search engines
 
+    private var webProviderSection: some View {
+        section("Web service", icon: "network") {
+            Picker("Search and page reading", selection: Binding(
+                get: { settings.deepSeekWebServiceID ?? "" },
+                set: { settings.deepSeekWebServiceID = $0.isEmpty ? nil : $0 }
+            )) {
+                Text("Public search engines").tag("")
+                ForEach(settings.onlineServices.filter(\.supportsDeepSeekWebAPI)) { service in
+                    Text("DeepSeek · \(service.name)").tag(service.id)
+                }
+                if let selected = settings.deepSeekWebServiceID,
+                   !settings.onlineServices.contains(where: { $0.id == selected && $0.supportsDeepSeekWebAPI }) {
+                    Text("Unavailable DeepSeek service").tag(selected)
+                }
+            }
+            .accessibilityIdentifier("tools.web-provider")
+            Text("DeepSeek uses the API key from the selected service in Online models and bills successful search/page requests. "
+                 + "It works with local and online models. Web search and Webpage reader still require their own tool switches.")
+                .font(.caption).foregroundStyle(Theme.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var searchEnginesSection: some View {
         section("Search engines", icon: "magnifyingglass") {
             engineToggle("DuckDuckGo", .duckduckgo)
@@ -99,15 +123,18 @@ struct ToolsView: View {
             Text(name).font(.subheadline).foregroundStyle(Theme.textPrimary)
         }
         .tint(Theme.accent)
-        .disabled(!webSearchOn)
-        .opacity(webSearchOn ? 1 : 0.5)
+        .disabled(!webSearchOn || settings.deepSeekWebServiceID != nil)
+        .opacity(webSearchOn && settings.deepSeekWebServiceID == nil ? 1 : 0.5)
     }
 
     /// Web search is enabled iff the `web_search` tool isn't in the disabled set.
     private var webSearchOn: Bool { !settings.disabledBuiltInTools.contains(ToolID.webSearch.rawValue) }
 
     private var searchFootnote: String {
-        webSearchOn
+        if settings.deepSeekWebServiceID != nil {
+            return "DeepSeek is selected above. These public-engine settings apply when you select Public search engines."
+        }
+        return webSearchOn
             ? "Web search reads these engines' public results pages directly (no API key), tries them in "
               + "order, and hands the model the top links. Keep at least one on."
             : "Turn on the Web search tool below to use these engines."
