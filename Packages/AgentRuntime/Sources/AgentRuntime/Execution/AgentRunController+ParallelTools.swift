@@ -154,8 +154,10 @@ extension AgentRunController {
             switch outcome {
             case .completed:
                 continue
-            case .failed:
-                anyFailed = true
+            case .failed(let failure):
+                if !Self.canContinueAfterPageMiss(failure, plan: history.toolIntents[call.invocationID]?.1.plan) {
+                    anyFailed = true
+                }
             case .uncertain(let failure):
                 if let resolution = resolutionSequence[call.invocationID],
                    resolution > (history.toolOutcomes[call.invocationID]?.0.sequence ?? 0)
@@ -194,11 +196,7 @@ extension AgentRunController {
                 ))
                 return events
             }
-            let consecutiveNoProgress = history.toolOutcomes.values
-                .sorted { $0.0.sequence < $1.0.sequence }
-                .reversed()
-                .prefix { self.isSemanticNoProgress($0.1) }
-                .count
+            let consecutiveNoProgress = self.consecutiveNoProgress(in: history)
             if consecutiveNoProgress >= 2 {
                 let failure = try ExecutionFailureFactory.make(
                     reason: .noProgress,

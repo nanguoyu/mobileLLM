@@ -914,12 +914,8 @@ extension AgentRunController {
             }
 
             let finalHistory = try await loadRun(prepared.runID).1
-            let precedingNoProgress = finalHistory.toolOutcomes.values
-                .sorted { $0.0.sequence < $1.0.sequence }
-                .reversed()
-                .prefix { isSemanticNoProgress($0.1) }
-                .count
-            let consecutiveNoProgress = isSemanticNoProgress(outcome)
+            let precedingNoProgress = consecutiveNoProgress(in: finalHistory)
+            let consecutiveNoProgress = isSemanticNoProgress(outcome, plan: prepared.plan)
                 ? UInt64(clamping: precedingNoProgress + 1) : 0
             var finalUsage = try attemptUsage.adding(AgentUsage(quantities: BudgetQuantities([
                 .consecutiveNoProgressActions: consecutiveNoProgress,
@@ -1512,12 +1508,8 @@ extension AgentRunController {
                 }
                 return events
             }
-            let noProgress = self.isSemanticNoProgress(outcome)
-            let precedingNoProgress = history.toolOutcomes.values
-                .sorted { $0.0.sequence < $1.0.sequence }
-                .reversed()
-                .prefix { self.isSemanticNoProgress($0.1) }
-                .count
+            let noProgress = self.isSemanticNoProgress(outcome, plan: prepared.plan)
+            let precedingNoProgress = self.consecutiveNoProgress(in: history)
             if noProgress, precedingNoProgress >= 1,
                case .uncertain = outcome
             {
@@ -1586,7 +1578,17 @@ extension AgentRunController {
         }
     }
 
-    func isSemanticNoProgress(_ outcome: AgentToolInvocationOutcome) -> Bool {
+    func consecutiveNoProgress(in history: ExecutionHistory) -> Int {
+        history.toolOutcomes.sorted { $0.value.0.sequence < $1.value.0.sequence }.reversed()
+            .prefix { isSemanticNoProgress($0.value.1, plan: history.toolIntents[$0.key]?.1.plan) }.count
+    }
+
+    func isSemanticNoProgress(_ outcome: AgentToolInvocationOutcome, plan: ExternalOperationPlan? = nil) -> Bool {
+        if case .failed(let failure) = outcome, Self.canContinueAfterPageMiss(failure, plan: plan) {
+            // A distinct unavailable URL is useful negative evidence. Repeated identical calls
+            // remain subject to the fingerprint guard and every miss consumes its tool budget.
+            return false
+        }
         switch outcome {
         case .failed, .uncertain:
             return true
