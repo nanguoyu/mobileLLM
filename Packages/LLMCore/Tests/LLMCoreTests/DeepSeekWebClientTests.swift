@@ -94,7 +94,7 @@ private actor DeepSeekRequestProbe {
         requests.append(request)
         let body = status != 200 ? "server-secret" : request.url!.path.hasSuffix("search")
             ? #"{"results":[{"title":"Article","url":"https://example.com/article","snippet":"Short","summary":"Long summary"}]}"#
-            : #"{"title":"Article","content":"# Article body"}"#
+            : ##"{"title":"Article","content":"# Article body"}"##
         return WebHTTPResponse(response: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
             headerFields: status == 302 ? ["Location": "https://api.deepseek.com/redirect"] : [:])!,
             body: Data(body.utf8), wasTruncated: truncated)
