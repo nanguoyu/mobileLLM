@@ -4,6 +4,7 @@ import XCTest
 @testable import AgentContracts
 
 final class BudgetLedgerTests: XCTestCase {
+    // TEST-ID: AHT-BUDGET-001
     func testAvailableCapacitySubtractsSettledAndInflightWorkButRetainsOperationCeilings() throws {
         let budget = try makeBudget(limit: 24)
         let spent = AgentUsage(quantities: BudgetQuantities([.toolInvocations: 19, .contextTokensPerAttempt: 24]))

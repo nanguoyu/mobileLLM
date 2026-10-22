@@ -331,6 +331,7 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
         XCTAssertEqual(counts.boundaries, 1)
     }
 
+    // TEST-ID: AHT-LOOP-001
     func testOnlyLocallyTrustedPageMissContinuesTheBatchAndKeepsToolsAvailable() async throws {
         for (index, scenario) in [("builtin", UInt16(1)), ("builtin", UInt16(3)), ("mcp.untrusted", UInt16(1))].enumerated() {
             let (providerID, parallelism) = scenario
