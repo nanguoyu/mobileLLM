@@ -9,7 +9,7 @@
     }
   ],
   "defaultOptions" : {
-    "codeCoverage" : true,
+    "codeCoverage" : false,
     "targetForVariableExpansion" : {
       "containerPath" : "container:mobileLLM.xcodeproj",
       "identifier" : "5EA2BB4C50B6CB125163180C",

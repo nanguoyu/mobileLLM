@@ -452,7 +452,6 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             )
             parsed = retried
             streamed = retriedStreamed
-            data = retriedData
         }
         try Task.checkCancellation()
         let elapsedMilliseconds = UInt64(
