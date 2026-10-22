@@ -202,7 +202,8 @@ Generated candidates with phase metadata must contain a real `phase()` call; met
 parallel work must contain a real `parallel()` call. Comments and quoted strings do not satisfy these
 checks. This candidate lint uses the existing single repair and does not change archived V1 replay.
 Actual phase ordering and coverage still require execution evidence. Counted reports are generated
-with structured final rows and script-computed totals. Children receive explicit task-scope guidance
+with structured final rows and script-computed totals. The generator preserves the conversation's reasoning setting because children inherit its frozen generation policy.
+Children receive explicit task-scope guidance
 and their own real tool counters, so upstream claims about exhausted allowances are task data.
 
 A malformed model response gets one immediate repair. A successful repaired tool action ends that

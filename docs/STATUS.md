@@ -1,6 +1,6 @@
 # Current implementation and validation status
 
-Updated **2026-10-22** for the DeepSeek web integration and dynamic research evaluation on
+Updated **2026-10-23** for the DeepSeek web integration and dynamic research evaluation on
 `codex/deepseek-search`, based on `main`
 after [PR #7](https://github.com/nanguoyu/mobileLLM/pull/7)
 merged as [`fa68377`](https://github.com/nanguoyu/mobileLLM/commit/fa68377078a69222dd016d87579a16fa53dba701).
@@ -33,30 +33,21 @@ Evidence is local under `/tmp/mobilellm-deepseek-search-20261022/`, including `D
 
 ## European Efficient AI research evaluation
 
-The real seven-child research workflow demonstrated four parallel regional investigators, two parallel
-verifiers, and a final writer, with all 14 required complete-output handoffs verified from durable
-child requests. That run completed 18 successful **Search** calls and no Fetch calls; its child interval
-was 51.857 seconds and its UI test took 157.683 seconds. Its research result still failed the goal:
-only four groups in three countries and six actual HTTPS citation hosts, below the requested
-12–16 groups, six countries and eight hosts. The generic UI gate did not cover those task-specific
-thresholds. Claims of full-page reading and some reported counts were incorrect.
+The original seven-child run proved parallel execution and complete handoff but failed research quality.
+Subsequent live runs exposed and repaired remaining-budget admission, explicit per-role caps, malformed
+provider continuation, repair accounting, page-miss handling, cancellation races, whole-country counting,
+evidence handoff, inherited reasoning settings and Chinese web-tool selection. Runtime fixes have focused
+regression coverage; this does not make earlier reports factually correct.
 
-The task exposed and repaired lost delegated tools, fatal handling of invalid web arguments, inconsistent
-cumulative model-token capacity, and empty structured responses bypassing bounded repair. Research
-handoffs now prefer Markdown when the script does not need typed fields. Focused regressions passed;
-no full repository suite was repeated for these edits.
+The latest completed run still failed: six children received no web tools for Chinese role prompts,
+produced no usable evidence, and stopped before a report. The current run uses the corrected selector and
+preserves the conversation's reasoning setting. **Research acceptance is still in progress.**
 
-The latest Pro run produced six child outputs, but ignored requested parallelism, returned raw tool
-markup as the German brief, and failed before synthesis because a fixed six-call reservation would
-exceed the 24-call workflow budget after 19 actual calls. Evidence attribution, task-level acceptance,
-available-budget allocation and partial-result presentation remain open. **The research scenario is
-not accepted end to end.** Changing to a larger model did not establish reliability.
-
-The [research overview](evaluations/2026-10-22-europe-efficient-ai.md) provides 12 groups or specific
-research teams in nine countries after maintainer source checks. Those additions are not app-generated
-success evidence. The [evaluation](evaluations/2026-10-22-dynamic-research.md) retains every attempt's
-outcome, timings, committed public evidence and the remaining failures. Full artifacts remain local
-under `/tmp/mobilellm-europe-efficient-ai-20261022/`.
+The [follow-up evaluation](evaluations/2026-10-23-dynamic-research-followup.md) records the later attempts
+and repairs. The [original evaluation](evaluations/2026-10-22-dynamic-research.md) retains the first seven
+outcomes. The [maintainer-edited overview](evaluations/2026-10-22-europe-efficient-ai.md) is separate from
+application output and is not evidence of autonomous success. Full artifacts remain local under
+`/tmp/mobilellm-europe-efficient-ai-20261022/`.
 
 ## Corrections delivered
 

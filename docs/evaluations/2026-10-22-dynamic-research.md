@@ -1,5 +1,8 @@
 # Dynamic subagent research evaluation, 2026-10-22
 
+This is the historical record of attempts 1–7. See the [October 23 follow-up](2026-10-23-dynamic-research-followup.md)
+for subsequent repairs and current acceptance. The outcomes below retain their original scope.
+
 **The runtime demonstrated real parallel delegation and complete result handoff, but the European
 research task did not pass end-to-end acceptance.** One run completed all seven children and produced
 a readable answer, yet retained only four groups in three countries. The later coverage run collected
