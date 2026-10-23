@@ -370,10 +370,8 @@ final class WorkflowLauncher {
         }
     }
 
-    /// Explicit Claude-style candidate path. It intentionally coexists with the archived staged
-    /// `WorkflowPlan` launcher until the unified chat UI adopts candidate preview/approval. The
-    /// generator answer is never executed directly: source is normalized, statically analyzed,
-    /// durably saved by exact digest, and returned with the launch preview.
+    /// Freeze a model-created plan, then save the exact reviewed coordination program. All work,
+    /// replanning, delivery and review use the same durable child calls and replay path.
     func prepareDynamicCandidate(
         goal: String,
         conversationID: UUID,
@@ -400,63 +398,25 @@ final class WorkflowLauncher {
                 assembly.frozenBuilder.registration(snapshot: snapshot)
             )
         }
-        let generator = try assembly.makeDynamicWorkflowGenerator(snapshot: snapshot)
-        let source = try await generatedSource(from: generator)
-        do {
-            return try await prepareDynamicCandidate(
-                source: source,
-                goal: goal,
-                scope: scope,
-                initiatingRunID: generator.runID,
-                workflowID: workflowID
-            )
-        } catch let analysisFailure as WorkflowScriptAnalysisError {
-            let repair = try assembly.makeDynamicWorkflowRepairGenerator(
-                snapshot: snapshot,
-                rejectedSource: source,
-                analysisFailure: analysisFailure.description
-            )
-            let repairedSource = try await generatedSource(from: repair)
-            return try await prepareDynamicCandidate(
-                source: repairedSource,
-                goal: goal,
-                scope: scope,
-                initiatingRunID: repair.runID,
-                workflowID: workflowID
-            )
-        }
-    }
-
-    private func generatedSource(from request: AgentRequest) async throws -> String {
-        let handleID = try await assembly.executor.submit(request, commandID: AgentCommandID())
+        let coordinator = try assembly.makeWorkflowCoordinator(snapshot: snapshot)
+        let handleID = try await assembly.executor.submit(coordinator, commandID: AgentCommandID())
         let handle = try await assembly.executor.attach(to: handleID)
-        guard let result = try await waitForTerminalResult(handle: handle) else {
-            throw WorkflowLaunchError.planGenerationFailed(
-                "dynamic workflow generator did not return source"
-            )
+        guard let result = try await waitForTerminalResult(handle: handle),
+              result.status.state == .completed,
+              let plan = result.answer?.structuredOutput
+        else {
+            throw WorkflowLaunchError.planGenerationFailed("The coordinator did not return an executable plan.")
         }
-        guard result.status.state == .completed, let rawSource = result.answer?.text else {
-            throw WorkflowLaunchError.planGenerationFailed(
-                result.status.failure?.safeMessage ?? "dynamic workflow generator did not return source"
-            )
-        }
-        return try Self.exactJavaScriptSource(from: rawSource)
-    }
-
-    private func prepareDynamicCandidate(
-        source: String,
-        goal: String,
-        scope: WorkflowScriptScopeV1,
-        initiatingRunID: AgentRunID,
-        workflowID: UUID
-    ) async throws -> AppDynamicWorkflowCandidatePreview {
-        try await assembly.dynamicWorkflows.prepareCandidate(
-            source: source,
+        return try await assembly.dynamicWorkflows.prepareCandidate(
+            source: CoordinatedWorkflow.source,
             scriptID: WorkflowScriptID(),
             version: 1,
             scope: scope,
-            args: try CanonicalJSON(.object(["goal": .string(goal)])),
-            initiatingRunID: initiatingRunID,
+            args: try CanonicalJSON(.object([
+                "goal": .string(goal), "plan": plan,
+                "availableTools": .array(try assembly.availableWorkflowTools(snapshot: snapshot).map(JSONValue.string)),
+            ])),
+            initiatingRunID: coordinator.runID,
             runID: WorkflowRunID(rawValue: workflowID)
         )
     }
@@ -512,20 +472,7 @@ final class WorkflowLauncher {
         return try await handle.result()
     }
 
-    private static func exactJavaScriptSource(from generated: String) throws -> String {
-        var value = generated.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.hasPrefix("```") {
-            guard let firstLineEnd = value.firstIndex(of: "\n"), value.hasSuffix("```") else {
-                throw WorkflowLaunchError.planGenerationFailed("incomplete JavaScript code fence")
-            }
-            value = String(value[value.index(after: firstLineEnd) ..< value.index(value.endIndex, offsetBy: -3)])
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        guard !value.isEmpty else {
-            throw WorkflowLaunchError.planGenerationFailed("empty JavaScript candidate")
-        }
-        return value
-    }
+
 }
 
 public struct AppDynamicWorkflowCandidatePreview: Hashable, Sendable {
@@ -678,7 +625,7 @@ public actor AppDynamicWorkflowService {
         )
         let analyzed = try analyzer.analyze(script)
         let parent = try await loadParent(runID: initiatingRunID)
-        if parent.request.role == "workflow-generator" {
+        if parent.request.role == "workflow-generator" || parent.request.role == "workflow-coordinator" {
             try Self.validateDeclaredStages(analyzed, requireExplicitToolBudgets: true)
         }
         let owner = workflowScriptOwner(scope: scope, conversationID: parent.request.conversationID)

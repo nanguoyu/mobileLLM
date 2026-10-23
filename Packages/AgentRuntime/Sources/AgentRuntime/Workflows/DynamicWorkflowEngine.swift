@@ -561,6 +561,9 @@ private actor DynamicWorkflowSession {
     private var projection: WorkflowRunProjectionV1
     private var stopped = false
     private var evidenceCache: (sequence: UInt64, value: JSONValue)?
+    /// Only observations reached by this execution prefix may enter prompts. A recovered journal
+    /// can contain later settled calls, which must not leak backward and change replay identities.
+    private var evidenceVisibleCalls: Set<WorkflowAgentCallID> = []
 
     init(
         projection: WorkflowRunProjectionV1,
@@ -610,6 +613,9 @@ private actor DynamicWorkflowSession {
                 host: host
             )
             try await flushSignals()
+            guard projection.state != .waitingForReconciliation else {
+                throw WorkflowScriptRuntimeError.hostFailure("child reconciliation required")
+            }
             if stopped {
                 try await terminateAsCancelled()
                 throw WorkflowScriptRuntimeError.cancelled
@@ -717,7 +723,8 @@ private actor DynamicWorkflowSession {
         for call in projection.calls { latest[call.ordinal] = call }
         let calls = latest.values.sorted { $0.ordinal < $1.ordinal }
         var records: [(label: String, observation: WorkflowWebObservation)] = []
-        for call in calls where projection.outcomes[call.callID] != nil {
+        for call in calls where evidenceVisibleCalls.contains(call.callID)
+            && projection.outcomes[call.callID] != nil {
             try Task.checkCancellation()
             guard let handle = projection.submittedHandles[call.callID] else { continue }
             for observation in try await spawner.webObservations(handle) {
@@ -838,21 +845,34 @@ private actor DynamicWorkflowSession {
 
     private func invokeAgent(_ invocation: WorkflowAgentInvocation) async throws -> WorkflowAgentBridgeResult {
         guard !stopped else { return .stopped }
+        guard projection.state != .waitingForReconciliation else {
+            throw WorkflowScriptRuntimeError.hostFailure("child reconciliation required")
+        }
         guard invocation.sequence <= projection.launch.limits.maximumAgentCalls else {
             throw DynamicWorkflowEngineError.agentCallLimitExceeded
         }
         try await order.wait(for: invocation.sequence)
+        var visibleCallID: WorkflowAgentCallID?
+        defer {
+            if let callID = visibleCallID, projection.outcomes[callID] != nil {
+                evidenceVisibleCalls.insert(callID)
+                evidenceCache = nil
+            }
+        }
         do {
             try await flushSignals()
             let decision = try await replay.next(prompt: invocation.prompt, options: invocation.options)
             switch decision {
-            case .reuse(_, let outcome):
+            case .reuse(let call, let outcome):
+                visibleCallID = call.callID
                 await order.complete(invocation.sequence)
                 return try await bridge(outcome)
             case .continue(let call):
+                visibleCallID = call.callID
                 await order.complete(invocation.sequence)
                 return try await execute(call: call, prompt: invocation.prompt, prepared: true)
             case .execute(let call):
+                visibleCallID = call.callID
                 try await invalidateUnsettledSuffix(startingAt: call.ordinal)
                 projection = try await append([.agentCallPrepared(call)])
                 await order.complete(invocation.sequence)
@@ -918,6 +938,9 @@ private actor DynamicWorkflowSession {
         call: WorkflowAgentCallV1,
         prompt: String
     ) async throws -> WorkflowAgentBridgeResult {
+        guard projection.state != .waitingForReconciliation else {
+            throw WorkflowScriptRuntimeError.hostFailure("child reconciliation required")
+        }
         let handleID: AgentExecutionHandleID
         let admission: WorkflowBudgetAdmission
         if let existing = projection.submittedHandles[call.callID] {

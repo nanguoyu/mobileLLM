@@ -278,7 +278,7 @@ final class ToolV2AdapterTests: XCTestCase {
             conversationDirectory: root, models: [LLMCatalog.bonsai8b], snapshot: { _, _, _, _ in nil })
         let snapshot = makeSnapshot(userMessageID: UUID(), deepSeekWebServiceID: "account-A")
         let expected = try assembly.frozenBuilder.frozenInputs(snapshot: snapshot, artifactReferences: [])
-        let generator = try assembly.makeDynamicWorkflowGenerator(snapshot: snapshot)
+        let generator = try assembly.makeWorkflowCoordinator(snapshot: snapshot)
         let frozen = try await assembly.inputFreezer.freeze(generator)
         XCTAssertTrue(try frozen.selectedTools(latestUserRequest: "Search and read official webpages").descriptors.isEmpty)
         XCTAssertEqual(frozen.toolCatalog, expected.toolCatalog)
@@ -292,13 +292,13 @@ final class ToolV2AdapterTests: XCTestCase {
         XCTAssertNil(ordinaryJSON["suppressModelTools"], "Ordinary/legacy input encoding stays unchanged")
         let ordinary = try JSONDecoder().decode(FrozenAgentRunInputs.self, from: JSONEncoder().encode(expected))
         XCTAssertFalse(try ordinary.selectedTools(latestUserRequest: "Search the web").descriptors.isEmpty)
-        let disabledGenerator = try assembly.makeDynamicWorkflowGenerator(snapshot: snapshot.withText("Research", toolsEnabled: false))
+        let disabledGenerator = try assembly.makeWorkflowCoordinator(snapshot: snapshot.withText("Research", toolsEnabled: false))
         let disabled = try await assembly.inputFreezer.freeze(disabledGenerator)
         XCTAssertFalse(disabled.toolPolicy.masterEnabled)
         XCTAssertTrue(disabled.toolCatalog.descriptors.isEmpty, "Suppression cannot re-enable user-disabled tools")
         for enabled in [true, false] {
             let choice = snapshot.withText("Research", reasoningEnabled: enabled)
-            let reasoningGenerator = try assembly.makeDynamicWorkflowGenerator(snapshot: choice)
+            let reasoningGenerator = try assembly.makeWorkflowCoordinator(snapshot: choice)
             let reasoningFrozen = try await assembly.inputFreezer.freeze(reasoningGenerator)
             XCTAssertEqual(reasoningFrozen.generationParameters.thinkingMode, enabled ? .enabled : .disabled,
                 "The generator's durable parent is inherited by research children")
@@ -370,7 +370,7 @@ final class ToolV2AdapterTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let assembly = try AgentRuntimeAssembly(engine: MockLLMEngine(script: .init()), downloadBase: root,
             conversationDirectory: root, models: [LLMCatalog.bonsai8b], snapshot: { _, _, _, _ in nil })
-        let generator = try assembly.makeDynamicWorkflowGenerator(snapshot: makeSnapshot(userMessageID: UUID()))
+        let generator = try assembly.makeWorkflowCoordinator(snapshot: makeSnapshot(userMessageID: UUID()))
         let frozen = try await assembly.inputFreezer.freeze(generator)
         let child = try generator.budget.attenuating(to: AgentBudget(
             limits: generator.budget.limits.sharingCumulativeCapacity(among: 4),
