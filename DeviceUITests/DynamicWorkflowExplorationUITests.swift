@@ -22,6 +22,8 @@ private struct DynamicWorkflowExplorationScenario {
     let requiredConceptGroups: [[String]]
     var markerPlacement: MarkerPlacement = .suffix
     var exactCheck: ExactCheck? = nil
+    /// Held-out positive checks are never appended to the model's goal.
+    var knownPositive: [[String]] = []
 
     enum ExactCheck { case coverage, procurement, schedule }
 
@@ -101,10 +103,26 @@ private extension DynamicWorkflowExplorationScenario {
         requiredConceptGroups: [["DeepSeek"], ["Brave"], ["https://"], ["authentication", "Authorization", "认证", "鉴权"]]
     )
 
+    static let europeanEfficientAI = Self(
+        id: "europe-efficient-ai-coverage",
+        goal: """
+        系统梳理欧洲范围内从事 efficient AI 的研究组，兼顾高效训练、推理、模型压缩、稀疏性、
+        低秩方法、端侧机器学习和软硬件系统。不要只找名称含 efficient AI 的实验室。
+        给出至少12个不同研究组，覆盖至少6个国家，说明机构、负责人、主要方向和代表工作，
+        用官方或一手来源链接支持事实。清楚区分已核实、未知、研究组与跨机构项目。
+        结果应为易读的比较表和简短结论，说明仍有哪些覆盖空白，不要把达到数量门槛称作完整。
+        最终答案包含 EVAL_EUROPE_COVERAGE。
+        """,
+        marker: "EVAL_EUROPE_COVERAGE", enabledTools: ["Web search", "Webpage reader"],
+        minimumAgentCalls: 4, minimumAnswerCharacters: 700, requireParallelSource: true,
+        requiredConceptGroups: [["https://"]],
+        knownPositive: [["ELSS", "Embedded Learning and Sensing Systems"], ["TU Graz", "Graz University of Technology", "格拉茨"], ["Saukh"]]
+    )
+
     static let kimiLocal = Self(
         id: "kimi-local-feasibility",
         goal: """
-        Assess whether the COMPLETE Kimi K3 open-weight model can be installed as local weights and run fully offline on an iPhone 16 Pro. Do not substitute the official app or a cloud API for local inference. Use independent research tracks for model scale, iPhone memory/storage limits, and deployment alternatives, then synthesize a direct verdict with an order-of-magnitude calculation, important uncertainty, and realistic alternatives. Use current sources where available and cite at least two independent HTTPS source hosts. The final answer must include the exact token EVAL_KIMI_LOCAL.
+        Assess whether the COMPLETE Kimi K3 open-weight model can run fully offline on an iPhone 16 Pro. Distinguish fully resident weights, local external-storage streaming, and remote/server inference. Do not substitute an official app or cloud API for local execution, and do not infer impossibility solely because weights exceed RAM. Investigate current implementations, storage/memory requirements, I/O and latency tradeoffs, then give a conditional verdict with defensible calculations, uncertainties and primary sources. Cite at least two independent HTTPS source hosts. The final answer must include the exact token EVAL_KIMI_LOCAL.
         """,
         marker: "EVAL_KIMI_LOCAL",
         enabledTools: ["Web search", "Webpage reader", "Wikipedia", "Calculator"],
@@ -115,7 +133,8 @@ private extension DynamicWorkflowExplorationScenario {
             ["iPhone 16 Pro"],
             ["RAM", "memory"],
             ["weights", "storage", "quantization"],
-            ["not feasible", "cannot", "impractical", "unrealistic"],
+            ["stream", "out-of-core", "external storage", "SSD"],
+            ["latency", "bandwidth", "tokens/s", "I/O"],
             ["cloud", "remote", "API", "smaller model"],
         ]
     )
@@ -239,6 +258,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
     @MainActor func test07ConstrainedProcurementOptimality() throws { try run(.constrainedProcurement) }
     @MainActor func test08DependencyScheduleFeasibilityAndLowerBound() throws { try run(.dependencySchedule) }
     @MainActor func test09SearchServiceComparisonFromPrimarySources() throws { try run(.searchServiceComparison) }
+    @MainActor func test10EuropeanResearchIncludesHeldOutKnownGroup() throws { try run(.europeanEfficientAI) }
 
     /// Ad-hoc probe for future reports without editing the suite. Expected concepts use
     /// `groupAAlternative1|groupAAlternative2;groupB` and tools use comma-separated display names.
@@ -479,6 +499,9 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
         for group in scenario.requiredConceptGroups where !containsAny(group, in: answer) {
             failures.append("answer missed concept group: \(group.joined(separator: " | "))")
         }
+        for group in scenario.knownPositive where !containsAny(group, in: answer) {
+            failures.append("Research missed an independently established eligible group: \(group.joined(separator: " | "))")
+        }
         if let check = scenario.exactCheck {
             failures += exactFailures(check, answer: answer)
         }
@@ -605,7 +628,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
             }
             return []
         case .procurement:
-            guard Set(value["selectedIDs"] as? [String] ?? []) == ["A", "D"],
+            guard let selected = value["selectedIDs"] as? [String], selected.count == 2, Set(selected) == ["A", "D"],
                   value["totalPrice"] as? Int == 940, value["totalThroughput"] as? Int == 200,
                   value["totalPower"] as? Int == 95,
                   let pairs = value["feasiblePairs"] as? [[String]], pairs.count == 3,

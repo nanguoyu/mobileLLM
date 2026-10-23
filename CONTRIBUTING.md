@@ -150,7 +150,7 @@ invalidate an autonomous result.
 
 | Test | Task shape | Outcome check |
 | --- | --- | --- |
-| 01 | Current model/device feasibility | Primary sources and direct feasibility reasoning |
+| 01 | Current model/device feasibility | Resident, local streaming and remote modes; evidence and resource/latency calculations, no preset negative verdict |
 | 02 | Accessible trip with constraints | Routing, budget, dependencies and verified access information |
 | 03 | Architecture decision | Constraint preservation, alternatives and rollout reasoning |
 | 04 | Recovery incident analysis | Causal hypotheses, containment, sound recovery guarantees and crash tests |
@@ -159,6 +159,7 @@ invalidate an autonomous result.
 | 07 | Device procurement | Every feasible pair, exact optimum, cost and power |
 | 08 | Dependency scheduling | Durations, dependencies, worker overlap, makespan and lower bound |
 | 09 | Search API comparison | Actual web operations, primary citations, endpoints/authentication/content semantics |
+| 10 | European Efficient AI discovery | An independently confirmed eligible group held out of the prompt, plus coverage and source review |
 | 99 | Ad-hoc original goal | Caller-supplied criteria plus independent outcome review |
 
 Tests 06–08 enforce exact data oracles. Keyword/source-count checks in open tasks are only preliminary

@@ -2157,6 +2157,10 @@
         {
           "kind": "ui-test",
           "value": "DynamicWorkflowExplorationUITests/test09SearchServiceComparisonFromPrimarySources"
+        },
+        {
+          "kind": "ui-test",
+          "value": "DynamicWorkflowExplorationUITests/test10EuropeanResearchIncludesHeldOutKnownGroup"
         }
       ],
       "platforms": [
