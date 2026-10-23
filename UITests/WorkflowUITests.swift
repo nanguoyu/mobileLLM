@@ -91,7 +91,7 @@ final class WorkflowUITests: XCTestCase {
 
         let sourceText = (source.value as? String) ?? source.label
         XCTAssertTrue(sourceText.contains("parallel("), "complex fixture must exercise parallel fan-out")
-        XCTAssertTrue(sourceText.contains("MOBILELLM_ACCEPTANCE_REVIEW_V1"), "the shipped program must include independent acceptance review")
+        XCTAssertTrue(sourceText.contains("MOBILELLM_COORDINATOR_V2"), "the shipped supervisor program must be inspectable")
         sourceDisclosure.tap()
 
         let state = app.descendants(matching: .any)["workflow.state"]
@@ -104,8 +104,8 @@ final class WorkflowUITests: XCTestCase {
         let callsDisclosure = app.buttons["Agent calls"]
         XCTAssertTrue(callsDisclosure.waitForExistence(timeout: 10), "agent-call evidence is missing")
         XCTAssertTrue(
-            ((callsDisclosure.value as? String) ?? "").hasPrefix("6 calls"),
-            "three workers, coordinator, draft and acceptance review must be durably projected"
+            ((callsDisclosure.value as? String) ?? "").hasPrefix("4 calls"),
+            "three workers and their supervisor must be durably projected without extra delivery roles"
         )
         callsDisclosure.tap()
 

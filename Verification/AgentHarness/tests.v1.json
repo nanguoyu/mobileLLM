@@ -1957,15 +1957,19 @@
         },
         {
           "kind": "xctest",
-          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testParallelWorkDependentHandoffAndRejectedDeliveryAreCorrectedInsideOneRun"
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testSupervisorReceivesActualParallelResultsAndContinuesExistingTask"
         },
         {
           "kind": "xctest",
-          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testMissingDependencyIsRejectedBeforeDispatchAndIncompleteReviewCannotApprove"
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testSupervisorReadsUntruncatedArtifactLocallyWithoutAnotherWorkerOrWebCall"
         },
         {
           "kind": "xctest",
-          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testFailedWorkerPreservesSiblingArtifactAndCannotBecomeSuccessfulEvidence"
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testInvalidReferencesAreRejectedAndFailedWorkersStayVisible"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testRepeatedLocalReadsStopWithoutSpawningWorkers"
         },
         {
           "kind": "xctest",
@@ -1985,19 +1989,11 @@
         },
         {
           "kind": "xctest",
-          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testDeliveryFailureReturnsToCoordinatorAndConsolidationReplacesUpstreamBodies"
-        },
-        {
-          "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testShrinkingAdmissionWaitsForReservedCapacityButNotTrueExhaustion"
         },
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testFailedAdmissionIsDurableInsteadOfLeavingAnUnsettledPreparedCall"
-        },
-        {
-          "kind": "xctest",
-          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testReviewRequiresSatisfiedChecksAndNoIssuesWithoutADuplicateProseFlag"
         },
         {
           "kind": "xctest",
@@ -2009,19 +2005,11 @@
         },
         {
           "kind": "xctest",
-          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testPartialArtifactsCanReachIndependentReviewWithoutPretendingTheyAreComplete"
-        },
-        {
-          "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testStructuredSearchKeepsContentProvenanceAndNeverPromotesEmbeddedLinks"
         },
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testEnrichedEvidencePrioritizesLaterCitedSourcesWithinAGlobalTextBound"
-        },
-        {
-          "kind": "xctest",
-          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testLaterAnalysisUsesRecordedSourceContentWithoutRepeatingResearch"
         }
       ],
       "platforms": [

@@ -1809,23 +1809,27 @@ explicit `/workflow` command is converted into a non-reusable, digest-bound appr
 app starts it immediately; it does not expose redundant Once / Always / Deny launch choices. A crash-recovered candidate
 that never reached launch remains inert until Run or Cancel. Script approval never pre-approves agents' external operations.
 
-Default `/workflow` launches use model decisions as data inside a reviewed, versioned coordination program.
-The initial coordinator extracts acceptance criteria and proposes one independent work wave. The host freezes that
-plan, the original goal and enabled tool IDs in immutable arguments. Each subsequent decision can propose work,
-request delivery or report a blocking condition. Task IDs are unique, dependencies refer only to settled artifacts,
-and every task names the original criteria it addresses. Model decisions cannot weaken those criteria or expand authority.
-Independent workers execute behind a full barrier. Their results and failures remain inspectable, and later tasks
-receive explicitly selected artifacts rather than an assumed shared context. Failed workers do not erase useful siblings.
+Default `/workflow` launches use model decisions as data inside a versioned supervisor program.
+The host freezes the original goal, first decision and enabled tool IDs. The supervisor may delegate independent
+work, read existing artifact ranges, query recorded web evidence, continue a logical task, deliver its answer or
+report a blocking condition. Dependencies refer only to settled artifacts. A task ID is unique within a wave;
+reusing it in a later wave supplies that logical task's prior instructions and outputs. Continuations remain separate
+durable child runs and do not imply provider-session or KV reuse. No decision expands frozen authority.
 
-Before returning a final draft, an independently executing reviewer checks the original goal and all frozen criteria.
-The program requires one evidence-bearing satisfied check per criterion and no material issues. A boolean approval alone
-cannot complete the workflow. Rejected delivery returns to coordination for correction. Limits on worker tasks, decisions,
-allocated tool calls and review cycles are fixed at launch; they never replace or enlarge the runtime budget. Exhausted
-or blocked work must not commit a successful result. A caught child reconciliation error cannot permit additional dispatch
-or completion. The exact program, decisions and child outcomes remain bound to the existing replay/journal contract.
+Actual worker results, rather than only summaries, return to the supervisor. Bounded previews expose offsets and
+truncation; the original outputs remain available for local reads without another model worker or network request.
+Independent workers settle behind a barrier. Evidence views for a wave are resolved before dispatch, so concurrent
+completion cannot change a sibling's inputs. Failed workers do not erase useful siblings. Supervisor working notes
+persist through its recorded decisions. Repeated identical actions without progress stop visibly.
 
-This process gate does not certify factual or semantic correctness. Independent task oracles remain necessary. Schema
-repair must retain the provider's actual usage when available and provide a bounded schema diagnostic without echoing
+The supervisor produces the final deliverable. Writer, reviewer and consolidation agents are optional task choices,
+not mandatory phases. Execution completion is not a model-issued certificate of correctness. External task oracles
+and primary-source audits assess whether the result meets the original goal. Limits on worker invocations,
+supervisor turns and allocated tool calls are fixed in the saved program and never enlarge the runtime budget.
+Blocked or exhausted execution fails visibly. A caught child reconciliation error cannot permit more dispatch or
+completion. Saved earlier programs retain their original source and replay contract.
+
+Schema repair retains actual provider usage when available and supplies a bounded diagnostic without echoing
 private output values or reasoning. Repeating a generic instruction without the observed constraint is insufficient.
 
 ### 34.3 Runtime isolation and replaceable sandbox provider

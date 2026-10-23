@@ -881,8 +881,8 @@ public final class AgentRuntimeAssembly {
         await diagnosticLogger.removeAll()
     }
 
-    /// The initial coordinator freezes the original acceptance criteria and proposes only the
-    /// first work wave. The app executes a reviewed program, not model-generated control flow.
+    /// The first supervisor decision starts a durable conversation with explicit task results.
+    /// The app executes a versioned program, not model-generated control flow.
     public func makeWorkflowCoordinator(snapshot: AgentRunRequestSnapshot, runDate: String? = nil) throws -> AgentRequest {
         let tools = try availableWorkflowTools(snapshot: snapshot)
         let date = runDate ?? String(ISO8601DateFormatter().string(from: Date()).prefix(10))

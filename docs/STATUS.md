@@ -8,6 +8,24 @@ The earlier merged audit branch was deleted locally and remotely.
 [spec.md](../spec.md) defines requirements, [ARCHITECTURE.md](ARCHITECTURE.md) describes the code,
 and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
 
+## Autonomous collaboration: current assessment
+
+General autonomous completion remains unproven. Three closed-data tasks passed exact answer checks on
+prior revisions: full directory selection with aliases, constrained procurement, and dependency scheduling.
+Open-ended API comparison and Europe research failed. An incident answer passed its UI check and internal
+model review but failed independent semantic inspection. These are not a combined success-rate estimate.
+
+The latest v1 Europe run at `7a89e1b` used 17 child invocations and 24 web tools over 1,321.789 application
+seconds, then exhausted its budget without delivering an answer. ELSS appeared in intermediate outputs;
+that does not count as successful final coverage. The older supervised report below also omitted the
+user's group and must not be presented as complete autonomous research.
+
+The replacement supervisor returns actual worker results, supports local artifact reads and logical task
+continuation, and writes the answer without mandatory writer/reviewer agents. Six focused control-flow
+checks pass. Live outcomes for this replacement are pending. See the [diagnosis, source comparison and
+validation](evaluations/2026-10-23-autonomous-coordination.md). Completion still needs external output
+checks; a model's own approval is not an accuracy measurement.
+
 ## DeepSeek Search and Fetch integration
 
 The optional web service uses DeepSeek's independent JSON APIs. Select the configured account in
@@ -31,9 +49,9 @@ fixture string delimiter was also corrected. No full repository suite was repeat
 Evidence is local under `/tmp/mobilellm-deepseek-search-20261022/`, including `DeepSeekWebLive.xcresult`,
 `journal-evidence.json`, and `live-answer.txt`.
 
-## European Efficient AI research evaluation
+## Earlier supervised European Efficient AI research evaluation
 
-The application delivered [12 supported research teams across ten countries](evaluations/2026-10-23-europe-efficient-ai-app.md),
+The supervised application run delivered [12 research teams across ten countries](evaluations/2026-10-23-europe-efficient-ai-app.md),
 with 14 HTTPS citation hosts, through supervised multi-stage continuation. Actual geographic investigation
 ran in parallel; later agents checked evidence, corrected identities and sources, and wrote recommendations.
 The final source verifier and writer both completed. The last stage used two searches and one page read,

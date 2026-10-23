@@ -131,10 +131,9 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   never races the durable ledger.
 - **Dynamic workflows** (`/workflow <goal>`, spec §34): the primary orchestration path since 2026-08-09.
   The `/workflow` marker may appear anywhere in the message; the remaining text is the goal. `WorkflowLauncher`
-  (App) first submits a durable, schema-constrained *coordinator* call. It extracts acceptance criteria
-  and proposes only the next work wave. The app then saves the exact `CoordinatedWorkflow` program with
-  the original goal, criteria, first decision and enabled tool IDs in immutable args. Models choose
-  tasks as data; they do not write the default scheduler or its completion gate.
+  (App) first submits a durable, schema-constrained supervisor decision. It saves the exact
+  `CoordinatedWorkflow` program with the original goal, decision and enabled tool IDs in immutable args.
+  The supervisor delegates work, reads stored results, continues logical tasks and returns the answer.
   The coordinator's `suppressModelTools` flag hides its own tools while retaining the conversation's
   catalog, policy and selected web-service account for children. Recovery uses that frozen catalog.
   `DynamicWorkflowScriptAnalyzer` still validates the program and accepts archived authored scripts
@@ -161,30 +160,27 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   design — is retained for `WorkflowLauncher.resume` of legacy summaries that carry a `WorkflowPlan`, and
   for `MultiAgentWorkflowIntegrationTests`. New launches never use it.
 
-`CoordinatedWorkflow` executes independent workers in parallel and provides selected prior artifacts
-by stable IDs to dependent workers. Initial criteria remain fixed. Subsequent coordinator decisions
-cannot remove criteria, reuse task IDs, refer to future artifacts or overspend the declared allocation.
-The program allows up to 12 workers, 24 allocated tool calls, six subsequent coordination decisions and
-two draft/review cycles, all within the existing runtime budgets. These bounds need not all fit in one
-run. Exhaustion is a failure, not permission to increase the budget.
+`CoordinatedWorkflow` v2 sends actual worker results to the supervisor. Long outputs have bounded
+UTF-8 previews with explicit offsets; `read` returns original ranges without another worker or network
+request. The supervisor carries its working notes between decisions. It can query recorded web evidence
+through the existing read-only host function. All evidence for a wave is selected before child dispatch.
 
-Workers return bounded structured results. Nonempty partial artifacts can enter draft/review while
-retaining their unknowns; only the independent acceptance gate determines whether the task is met.
-Failed or blocked workers cannot substitute for usable work. A failed worker is retained as a failed record while
-successful siblings remain available. The coordinator can commission follow-up work, request delivery,
-or explain a blocking condition. Only completed tasks explicitly marked `consolidatesInputs` can replace their upstream bodies in the
-writer input. Ordinary verification and analysis preserve upstream artifacts. The full artifact index
-remains available. Failed or partial consolidations do not hide upstream work. A delivery-stage execution
-failure returns to the coordinator for a bounded correction, including context consolidation, within
-the same two delivery attempts. The reviewer receives the
-original goal, fixed criteria, draft, artifact index and recorded web evidence, avoiding duplication of
-every intermediate body. Approval must cover every criterion exactly once, with evidence, no unmet or
-unknown checks and no material issues. Rejection returns to coordination. The runtime prevents a
-caught reconciliation error from dispatching more children or committing a successful workflow.
+A repeated task ID continues a logical task with its recorded assignments, outputs and selected web
+receipts. Each invocation remains an ordinary durable child run. This is explicit context continuation,
+not a persistent provider session or a claim of KV-cache reuse. Other tasks receive selected settled
+artifacts. Full outputs stay available even when a preview is truncated. Failures remain labeled and
+successful siblings survive. Three identical actions without progress stop the run.
 
-This gate enforces the review process; the reviewer remains a fallible model. External task oracles
-and source audits measure outcome quality. Earlier supervised research reports are historical debugging
-evidence, not proof of autonomous coverage. See [STATUS.md](STATUS.md) for actual run outcomes.
+The program permits at most 12 worker invocations, 24 allocated tool calls and 12 supervisor continuations,
+within the unchanged execution budgets. The supervisor writes the final answer itself. Separate writer,
+reviewer and consolidation roles are no longer mandatory. A model saying “approved” never established
+correctness in the previous design; external task oracles and primary-source audits measure quality.
+Blocked work and runtime exhaustion fail visibly. Reconciliation still prevents dispatch or completion
+until an uncertain effect is resolved. Saved v1 programs retain their exact source and replay semantics.
+
+See the [source comparison and evaluation](evaluations/2026-10-23-autonomous-coordination.md) for the
+reason for this change and the remaining limitations. Earlier supervised reports do not establish
+autonomous research coverage.
 
 The JavaScript bridge trims only outer prompt whitespace before host dispatch, prefix hashing and
 child construction. Interior newlines and indentation remain intact. Safe host errors are recorded even
@@ -202,7 +198,7 @@ An optional bounded text query selects up to three verbatim matching windows fro
 including middle sections absent from the old head/year/tail summary. This is a local read, not another
 web request. Matching keeps the previous per-observation byte ceiling, records truncation and retains
 the original content digest. Literal query terms and deterministic tie-breaking prevent model prose
-from becoming evidence. The app queries with the goal and draft; cache keys include the query.
+from becoming evidence. The supervisor and dependent workers request relevant recorded evidence; cache keys include the query.
 The program passes the packet with `serialize(packet)`. Its cache also invalidates when replay reaches
 another settled child. Later journaled evidence cannot leak backward into an earlier replayed prompt.
 
