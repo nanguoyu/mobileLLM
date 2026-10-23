@@ -202,7 +202,10 @@ The app's workflow envelope admits 32 model attempts and 24 tool calls by defaul
 and output capacities cover the admitted model passes while per-attempt ceilings stay unchanged.
 The app child builder shrinks its usual strict share to the coordinator's current available capacity.
 Capacity calculation, exact request construction and reservation occur without an intervening suspension
-point, so simultaneous admissions cannot spend the same remainder. Settled and reserved cumulative
+point. If a shrinking child builder temporarily has no capacity because other children hold reservations,
+it waits for settlement and recomputes. Consumed capacity still fails immediately; fixed requests that
+over-reserve are still rejected. Waiting is cancellable. Admission failures before any executor submission
+are recorded as settled failures so they cannot remain phantom prepared calls during recovery. Settled and reserved cumulative
 usage is subtracted; per-operation ceilings remain reusable. Recovery fences admission until submitted
 children settle. A final child can be admitted with zero remaining tool calls without increasing the
 workflow envelope. The optional `maxToolCalls` cap narrows each child before reservation. The coordination program declares it on every call, so a four-researcher/two-verifier wave can reserve four calls per researcher and

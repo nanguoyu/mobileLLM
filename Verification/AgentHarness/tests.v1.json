@@ -1986,6 +1986,14 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testDeliveryFailureReturnsToCoordinatorAndConsolidationReplacesUpstreamBodies"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testShrinkingAdmissionWaitsForReservedCapacityButNotTrueExhaustion"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testFailedAdmissionIsDurableInsteadOfLeavingAnUnsettledPreparedCall"
         }
       ],
       "platforms": [

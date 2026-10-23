@@ -8,6 +8,81 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowDurabilityTests: XCTestCase {
+    func testShrinkingAdmissionWaitsForReservedCapacityButNotTrueExhaustion() async throws {
+        let fixture = try makeFixture(body: "return null;")
+        let created = try event(runID: fixture.launch.runID, sequence: 1, previous: nil, kind: .created(fixture.launch))
+        let projection = try XCTUnwrap(WorkflowRunProjectionV1.replay([created]))
+        let cursor = try WorkflowReplayCursor(launch: fixture.launch)
+        var calls: [WorkflowAgentCallV1] = []
+        for label in ["first", "waiting", "exhausted"] {
+            guard case .execute(let call) = try await cursor.next(prompt: label, options: WorkflowAgentOptionsV1()) else { return XCTFail("new call") }
+            calls.append(call)
+        }
+        let firstCall = calls[0], waitingCall = calls[1], lastCall = calls[2]
+        let coordinator = try WorkflowBudgetCoordinator(projection: projection)
+        let first = try await coordinator.admitAvailable(call: firstCall) { remaining in
+            try fullCapacityRequest(fixture.launch, firstCall, remaining)
+        }
+        let blocked = expectation(description: "waiting on a reservation")
+        let pending = Task {
+            try await coordinator.admitAvailable(call: waitingCall) { remaining in
+                if remaining.limits[.modelAttempts] == 0 {
+                    blocked.fulfill()
+                    throw AgentContractError.budgetExceeded(dimension: .modelAttempts, limit: 0, requested: 1)
+                }
+                return try fullCapacityRequest(fixture.launch, waitingCall, remaining)
+            }
+        }
+        await fulfillment(of: [blocked], timeout: 2)
+        _ = try await coordinator.settle(call: firstCall, admission: first.admission,
+            actualUsage: AgentUsage(quantities: BudgetQuantities([.modelAttempts: 1])))
+        let admitted = try await pending.value
+        XCTAssertEqual(admitted.request.budget.limits[.modelAttempts], fixture.launch.budget.limits[.modelAttempts] - 1)
+        _ = try await coordinator.settle(call: waitingCall, admission: admitted.admission,
+            actualUsage: AgentUsage(quantities: BudgetQuantities([.modelAttempts: admitted.request.budget.limits[.modelAttempts]])))
+        do {
+            _ = try await coordinator.admitAvailable(call: lastCall) { _ in
+                throw AgentContractError.budgetExceeded(dimension: .modelAttempts, limit: 0, requested: 1)
+            }
+            XCTFail("Consumed capacity must not be treated as a temporary reservation")
+        } catch { XCTAssertEqual(error as? AgentContractError, .budgetExceeded(dimension: .modelAttempts, limit: 0, requested: 1)) }
+
+        let cancellable = try WorkflowBudgetCoordinator(projection: projection)
+        let held = try await cancellable.admitAvailable(call: firstCall) { try fullCapacityRequest(fixture.launch, firstCall, $0) }
+        let waiting = expectation(description: "cancellable capacity wait")
+        let cancelled = Task {
+            try await cancellable.admitAvailable(call: waitingCall) { _ in
+                waiting.fulfill()
+                throw AgentContractError.budgetExceeded(dimension: .modelAttempts, limit: 0, requested: 1)
+            }
+        }
+        await fulfillment(of: [waiting], timeout: 2)
+        cancelled.cancel()
+        do { _ = try await cancelled.value; XCTFail("Wait must cancel") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        try await cancellable.releaseUnsubmitted(held.admission)
+    }
+
+    func testFailedAdmissionIsDurableInsteadOfLeavingAnUnsettledPreparedCall() async throws {
+        let fixture = try makeFixture(body: "try { await agent('no-capacity'); } catch(e) {} return 'handled';")
+        let spawner = WorkflowFakeSpawner()
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: ClosureWorkflowChildRequestBuilder { _, _, _ in
+                throw AgentContractError.budgetExceeded(dimension: .modelAttempts, limit: 0, requested: 1)
+            })
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        _ = try await engine.runAndWait(runID: fixture.launch.runID)
+        let loaded = try await engine.projection(runID: fixture.launch.runID)
+        let projection = try XCTUnwrap(loaded)
+        let call = try XCTUnwrap(projection.calls.first)
+        guard case .failed(let failure, let usage) = projection.outcomes[call.callID] else { return XCTFail("Durable failure required") }
+        XCTAssertEqual(failure.classification, .budgetRelated)
+        XCTAssertEqual(usage, .zero)
+        let count = await spawner.spawnCount
+        XCTAssertEqual(count, 0)
+    }
+
     func testRecoveredEvidenceContainsOnlyCallsReachedByTheReplayedPrefix() async throws {
         let fixture = try makeFixture(body: """
         await agent('one');
@@ -280,6 +355,14 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
 private struct WorkflowFixture {
     let saved: SavedWorkflowScriptV1
     let launch: WorkflowLaunchSnapshotV1
+}
+
+private func fullCapacityRequest(_ launch: WorkflowLaunchSnapshotV1, _ call: WorkflowAgentCallV1, _ budget: AgentBudget) throws -> SubagentSpawnRequest {
+    try SubagentSpawnRequest(parentRunID: launch.initiatingRunID, parentRequestID: launch.initiatingRequestID,
+        requestingStepID: launch.requestingStepID, childRunID: call.childRunID, role: "budget-probe",
+        instruction: "Exercise admission only", outputRequirement: .text, modelPolicy: launch.defaultModelPolicy,
+        capabilityCeiling: RunCapabilityCeiling(capabilities: AgentCapabilitySet([])), budget: budget,
+        source: .workflow, approvalMode: launch.approvalMode)
 }
 
 private func makeFixture(body: String) throws -> WorkflowFixture {

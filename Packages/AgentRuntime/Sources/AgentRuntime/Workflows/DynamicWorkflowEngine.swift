@@ -954,12 +954,30 @@ private actor DynamicWorkflowSession {
             let launch = projection.launch
             let builder = requestBuilder
             let validator = childRequestValidator
-            let admitted = try await workflowBudget.admitAvailable(call: call) { remaining in
-                let request = try builder.makeRequest(
-                    launch: launch, call: call, prompt: prompt, budgetLimit: remaining
-                )
-                try validator.validate(request, launch: launch, call: call)
-                return request
+            let admitted: (request: SubagentSpawnRequest, admission: WorkflowBudgetAdmission)
+            do {
+                admitted = try await workflowBudget.admitAvailable(call: call) { remaining in
+                    let request = try builder.makeRequest(
+                        launch: launch, call: call, prompt: prompt, budgetLimit: remaining
+                    )
+                    try validator.validate(request, launch: launch, call: call)
+                    return request
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // No executor submission occurred. Persist the failed result so a caught
+                // admission failure is replayable, rather than leaving a phantom prepared call.
+                let classification: AgentFailureClassification
+                if case AgentContractError.budgetExceeded = error { classification = .budgetRelated }
+                else { classification = .permanent }
+                let failure = try AgentFailure(code: "workflow.child-admission",
+                    classification: classification, safeMessage: Self.sanitize(String(describing: error)),
+                    retryAdvice: .never, externalEffect: .confirmedNone, requiredUserAction: .none,
+                    redaction: RedactionMetadata(classification: .publicMetadata, policyVersion: 1))
+                projection = try await append([.agentCallSettled(callID: call.callID,
+                    outcome: .failed(failure: failure, usage: .zero))])
+                throw WorkflowChildExecutionFailed(failure: failure)
             }
             let request = admitted.request
             admission = admitted.admission

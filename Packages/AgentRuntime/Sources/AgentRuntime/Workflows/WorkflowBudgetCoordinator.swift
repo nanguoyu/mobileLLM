@@ -23,6 +23,7 @@ actor WorkflowBudgetCoordinator {
     private var ledger: BudgetLedgerSnapshot
     private var recoveredUnsettled: Set<WorkflowAgentCallID>
     private var recoveryWaiters: [UUID: Waiter] = [:]
+    private var capacityWaiters: [UUID: Waiter] = [:]
 
     init(projection: WorkflowRunProjectionV1) throws {
         ledger = try BudgetLedgerSnapshot(
@@ -70,22 +71,41 @@ actor WorkflowBudgetCoordinator {
         call: WorkflowAgentCallV1,
         buildRequest: @Sendable (AgentBudget) throws -> SubagentSpawnRequest
     ) async throws -> (request: SubagentSpawnRequest, admission: WorkflowBudgetAdmission) {
-        try await waitForRecoveredChildren()
-        try Task.checkCancellation()
-        let remaining = try AgentBudget(
-            limits: ledger.availableCapacity,
-            maximumThermalState: ledger.budget.maximumThermalState,
-            memoryPressureResponse: ledger.budget.memoryPressureResponse
-        )
-        let request = try buildRequest(remaining)
-        let reservationID = BudgetReservationID(rawValue: call.callID.rawValue)
-        let reservation = try BudgetReservation(
-            id: reservationID,
-            maximumUsage: AgentUsage(quantities: request.budget.limits),
-            reason: "dynamic-workflow-child"
-        )
-        ledger = try ledger.reserving(reservation)
-        return (request, .reserved(reservationID))
+        while true {
+            try await waitForRecoveredChildren()
+            try Task.checkCancellation()
+            let remaining = try AgentBudget(
+                limits: ledger.availableCapacity,
+                maximumThermalState: ledger.budget.maximumThermalState,
+                memoryPressureResponse: ledger.budget.memoryPressureResponse
+            )
+            let request: SubagentSpawnRequest
+            do {
+                request = try buildRequest(remaining)
+            } catch let error as AgentContractError {
+                // A shrinking builder can temporarily have zero model/input/time capacity while
+                // another admitted child holds a reservation. Wait for actual settlement instead of
+                // declaring that useful work failed. A fixed request that over-reserves still fails
+                // at ledger.reserving below; this never widens its budget or silently rebuilds it.
+                if case .budgetExceeded(let dimension, _, let requested) = error,
+                   !ledger.reservations.isEmpty {
+                    let afterRelease = try BudgetLedgerSnapshot(budget: ledger.budget, consumed: ledger.consumed).availableCapacity
+                    if afterRelease[dimension] > remaining.limits[dimension], requested <= afterRelease[dimension] {
+                        try await waitForCapacityChange()
+                        continue
+                    }
+                }
+                throw error
+            }
+            let reservationID = BudgetReservationID(rawValue: call.callID.rawValue)
+            let reservation = try BudgetReservation(
+                id: reservationID,
+                maximumUsage: AgentUsage(quantities: request.budget.limits),
+                reason: "dynamic-workflow-child"
+            )
+            ledger = try ledger.reserving(reservation)
+            return (request, .reserved(reservationID))
+        }
     }
 
     /// Commits actual child usage and releases its admission claim. The returned usage is the
@@ -113,6 +133,7 @@ actor WorkflowBudgetCoordinator {
             )
             if recoveredUnsettled.isEmpty { releaseRecoveryFence() }
         }
+        releaseCapacityWaiters()
         return ledger.consumed
     }
 
@@ -120,6 +141,7 @@ actor WorkflowBudgetCoordinator {
     func releaseUnsubmitted(_ admission: WorkflowBudgetAdmission) throws {
         guard case .reserved(let reservationID) = admission else { return }
         ledger = try ledger.releasing(reservationID: reservationID)
+        releaseCapacityWaiters()
     }
 
     /// Releases the conservative recovery claim after the engine has durably abandoned and
@@ -157,6 +179,29 @@ actor WorkflowBudgetCoordinator {
         recoveryWaiters.removeValue(forKey: id)?.continuation.resume(
             throwing: CancellationError()
         )
+    }
+
+    private func waitForCapacityChange() async throws {
+        try Task.checkCancellation()
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled { continuation.resume(throwing: CancellationError()) }
+                else { capacityWaiters[id] = Waiter(continuation: continuation) }
+            }
+        } onCancel: {
+            Task { await self.cancelCapacityWaiter(id) }
+        }
+    }
+
+    private func cancelCapacityWaiter(_ id: UUID) {
+        capacityWaiters.removeValue(forKey: id)?.continuation.resume(throwing: CancellationError())
+    }
+
+    private func releaseCapacityWaiters() {
+        let waiters = capacityWaiters.values
+        capacityWaiters.removeAll()
+        for waiter in waiters { waiter.continuation.resume() }
     }
 
     private func releaseRecoveryFence() {
