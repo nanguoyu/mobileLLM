@@ -11,13 +11,15 @@ private final class DynamicWorkflowUITestResponsesProtocol: URLProtocol, @unchec
 
     override class func canInit(with request: URLRequest) -> Bool {
         ProcessInfo.processInfo.environment[environmentKey] == "1"
-            && request.url?.path.hasSuffix("/responses") == true
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        guard let url = request.url else {
+        guard let url = request.url,
+              url.path.hasSuffix("/responses") || url.path.hasSuffix("/chat/completions") else {
+            // The opt-in fixture owns its entire session. Unknown paths fail here instead of
+            // falling through to a real provider when the developer's configured dialect changes.
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
@@ -37,12 +39,18 @@ private final class DynamicWorkflowUITestResponsesProtocol: URLProtocol, @unchec
             text = "unexpected simulator workflow request"
         }
         do {
+            let chat = url.path.hasSuffix("/chat/completions")
             let delta = try JSONSerialization.data(
-                withJSONObject: ["type": "response.output_text.delta", "delta": text],
+                withJSONObject: chat
+                    ? ["choices": [["delta": ["content": text]]]]
+                    : ["type": "response.output_text.delta", "delta": text],
                 options: [.sortedKeys]
             )
             let completed = try JSONSerialization.data(
-                withJSONObject: [
+                withJSONObject: chat ? [
+                    "choices": [["finish_reason": "stop", "delta": [:]]],
+                    "usage": ["prompt_tokens": 16, "completion_tokens": 32],
+                ] : [
                     "type": "response.completed",
                     "status": "completed",
                     "usage": ["input_tokens": 16, "output_tokens": 32],
