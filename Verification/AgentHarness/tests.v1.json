@@ -968,6 +968,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.AgentExecutorToolIntegrationTests/testOversizedToolBatchCanReplanOnceWithoutExecutingRejectedCallsOrIncreasingCapacity"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentExecutorToolIntegrationTests/testModelContinuationUsesRemainingActiveTimeWithoutIncreasingTheRunBudget"
         }
       ],
       "platforms": [

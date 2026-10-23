@@ -193,6 +193,10 @@ three per verifier instead of the first verifier hoarding a full six-call share.
 tool capacity suppresses advertisement and results in an explicit `tool_choice: none`. Missing
 caps retain legacy policy, and changing a cap invalidates the affected replay prefix.
 
+Each model attempt reserves its timeout and cancellation grace from the actual remaining active-time
+allowance. Both shrink together after long attempts, leaving time for a bounded repair without raising
+the child or workflow limit.
+
 A model-proposed batch larger than its positive remaining allowance is rejected as a whole. If its
 authorization, arguments and duplicate checks otherwise pass, one repair pass may propose fewer calls
 or a final answer. That pass consumes the existing model and repair budgets. A second oversized batch
@@ -201,6 +205,8 @@ fails; no prefix of a rejected batch executes and the tool ceiling never increas
 Generated candidates with phase metadata must contain a real `phase()` call; metadata declaring
 parallel work must contain a real `parallel()` call. Comments and quoted strings do not satisfy these
 checks. This candidate lint uses the existing single repair and does not change archived V1 replay.
+New candidates also reject the common `try { return agent(...) } catch` mistake: the return must await
+the promise for that catch to handle rejection. Archived V1 scripts retain their analysis contract.
 Actual phase ordering and coverage still require execution evidence. Counted reports are generated
 with structured final rows and script-computed totals. The generator preserves the conversation's reasoning setting because children inherit its frozen generation policy.
 Children receive explicit task-scope guidance
