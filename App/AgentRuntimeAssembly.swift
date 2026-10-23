@@ -433,7 +433,7 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
                 of a prior report. Do not carry forward a date or leadership role from unverified notes.
                 Keep unsupported fields unknown. Separate an article's publication date, a grant award
                 date, a project's start date, and a paper's conference year. Respect the requested date
-                range and choose one well-supported representative work instead of copying a whole list.
+                range and preserve evidence for every retained claim.
                 """
             ),
             skills: parent.frozen.skills,

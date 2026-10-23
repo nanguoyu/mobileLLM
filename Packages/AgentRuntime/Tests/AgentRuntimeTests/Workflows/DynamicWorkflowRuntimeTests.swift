@@ -7,6 +7,38 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowRuntimeTests: XCTestCase {
+    func testWebEvidenceQueryFindsMiddleFieldsWithoutIncreasingExcerptBudget() throws {
+        let text = String(repeating: "Unrelated introduction.\n", count: 100)
+            + "| need_content | When false, content is empty; when true it may contain page content. |\n"
+            + "| extra_snippets | Up to five additional excerpts, not full page text. |\n"
+            + String(repeating: "Unrelated footer.\n", count: 100)
+        let record = WorkflowWebObservation(invocationID: "read", toolID: try AgentToolLogicalID(providerID: "builtin", name: "fetch_webpage"),
+            requestedURL: "https://example.edu/reference", status: "completed", text: text)
+        let packet = try WorkflowWebEvidence.packet([("reader", record)], matching: "Compare `need_content` and `extra_snippets` fields")
+        guard case .object(let root) = packet, case .array(let observations)? = root["observations"],
+              case .object(let observation)? = observations.first,
+              case .array(let excerpts)? = observation["matchingExcerpts"] else { return XCTFail("Missing matching excerpts") }
+        let matches = excerpts.compactMap { if case .string(let text) = $0 { return text }; return nil }
+        XCTAssertTrue(matches.contains { $0.contains("When false, content is empty") })
+        XCTAssertTrue(matches.contains { $0.contains("Up to five additional excerpts") })
+        XCTAssertTrue(matches.allSatisfy { text.contains($0) && $0.utf8.count <= 480 })
+        let snippetBytes = matches.reduce(0) { $0 + $1.utf8.count } + 400 + 200
+        XCTAssertLessThanOrEqual(snippetBytes, 1200 + 400 + 4 * 120)
+        XCTAssertEqual(observation["excerptTruncated"], .bool(true))
+        XCTAssertThrowsError(try WorkflowWebEvidence.packet([("reader", record)], matching: String(repeating: "x", count: 65_537)))
+    }
+
+    func testJavaScriptEvidenceQueryReachesReadOnlyHostWithoutSpawningAChild() async throws {
+        let script = try analyze(wrapped("return await webEvidence('need_content');"))
+        let host = WorkflowScriptHost(agent: { _ in XCTFail("Evidence queries do not spawn children"); return .stopped },
+            queryWebEvidence: { query in
+                XCTAssertEqual(query, "need_content")
+                return .string("recorded middle excerpt")
+            })
+        let output = try await JavaScriptCoreWorkflowRuntime().execute(script, args: nil, limits: try limits(), requirement: .init(), host: host)
+        XCTAssertEqual(try decode(output), .string("recorded middle excerpt"))
+    }
+
 
     func testAgentPromptCanonicalizesOuterWhitespaceBeforeHostDispatch() async throws {
         let script = try analyze(wrapped("return await agent('  \\nfirst line\\n  indented data\\n\\t');"))

@@ -190,12 +190,17 @@ when a script catches them and returns a generic message.
 
 `unique(strings)` performs bounded, checkpointed whole-string deduplication in first-occurrence order.
 It rejects non-string entries, getters, and oversized collections without invoking a user iterator.
-`webEvidence()` reads settled children reached by the current execution prefix and returns journal-derived web
+`webEvidence(query?)` reads settled children reached by the current execution prefix and returns journal-derived web
 observations, bounded verbatim excerpts, and observed source URLs. It performs no site requests, cannot
 select another workflow, excludes non-web and remote tool namespaces, and keeps failed reads distinct
 from retrieved pages. Search summaries never become page reads because a model calls them verified.
 The packet has exact top-level keys `observations`, `sources`, and `truncated`. Observations contain
 per-excerpt truncation flags and content digests; the external content itself remains untrusted.
+An optional bounded text query selects up to three verbatim matching windows from the recorded text,
+including middle sections absent from the old head/year/tail summary. This is a local read, not another
+web request. Matching keeps the previous per-observation byte ceiling, records truncation and retains
+the original content digest. Literal query terms and deterministic tie-breaking prevent model prose
+from becoming evidence. The app queries with the goal and draft; cache keys include the query.
 The program passes the packet with `serialize(packet)`. Its cache also invalidates when replay reaches
 another settled child. Later journaled evidence cannot leak backward into an earlier replayed prompt.
 

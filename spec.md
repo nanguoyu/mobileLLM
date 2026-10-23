@@ -1762,9 +1762,11 @@ The injected V1 surface is deliberately small:
   non-preemptible amplification APIs remain unavailable;
 - `unique(strings)` returns distinct string values in first-occurrence order using bounded, checkpointed traversal;
   getters, non-string entries and oversized collections are rejected without invoking user iterators;
-- `webEvidence()` reads bounded excerpts and source URLs from settled children reached by the current execution
+- `webEvidence(query?)` reads bounded excerpts and source URLs from settled children reached by the current execution
   prefix. Later journaled calls cannot leak into earlier prompts during replay. It reads recorded built-in web operations. It cannot read another workflow or perform new network requests. Source content stays untrusted;
-  tool status and retrieval kind come from the journal, and failed reads never count as retrieved page evidence;
+  tool status and retrieval kind come from the journal, and failed reads never count as retrieved page evidence.
+  An optional text query up to 64 KiB selects bounded verbatim matching excerpts from recorded text, without
+  network access or a larger excerpt allowance. Query-dependent packets preserve deterministic replay;
 - `args` is the immutable JSON input supplied at launch;
 - `budget.total`, `budget.spent()`, and `budget.remaining()` expose read-only run accounting;
 - a saved-workflow call primitive may be enabled only with one-level nesting and a registry-pinned script digest. It

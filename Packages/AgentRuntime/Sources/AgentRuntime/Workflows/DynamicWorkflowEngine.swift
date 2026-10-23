@@ -560,7 +560,7 @@ private actor DynamicWorkflowSession {
     private let budgetCounter: WorkflowBudgetCounter
     private var projection: WorkflowRunProjectionV1
     private var stopped = false
-    private var evidenceCache: (sequence: UInt64, value: JSONValue)?
+    private var evidenceCache: (sequence: UInt64, query: String?, value: JSONValue)?
     /// Only observations reached by this execution prefix may enter prompts. A recovered journal
     /// can contain later settled calls, which must not leak backward and change replay identities.
     private var evidenceVisibleCalls: Set<WorkflowAgentCallID> = []
@@ -712,13 +712,17 @@ private actor DynamicWorkflowSession {
             webEvidence: { [weak self] in
                 guard let self else { throw CancellationError() }
                 return try await self.recordedWebEvidence()
+            },
+            queryWebEvidence: { [weak self] query in
+                guard let self else { throw CancellationError() }
+                return try await self.recordedWebEvidence(query: query)
             }
         )
     }
 
-    private func recordedWebEvidence() async throws -> JSONValue {
+    private func recordedWebEvidence(query: String? = nil) async throws -> JSONValue {
         let sequence = projection.lastSequence
-        if let cached = evidenceCache, cached.sequence == sequence { return cached.value }
+        if let cached = evidenceCache, cached.sequence == sequence, cached.query == query { return cached.value }
         var latest: [UInt32: WorkflowAgentCallV1] = [:]
         for call in projection.calls { latest[call.ordinal] = call }
         let calls = latest.values.sorted { $0.ordinal < $1.ordinal }
@@ -732,8 +736,8 @@ private actor DynamicWorkflowSession {
             }
             if records.count > WorkflowWebEvidence.maximumObservations { break }
         }
-        let value = try WorkflowWebEvidence.packet(records)
-        if projection.lastSequence == sequence { evidenceCache = (sequence, value) }
+        let value = try WorkflowWebEvidence.packet(records, matching: query)
+        if projection.lastSequence == sequence { evidenceCache = (sequence, query, value) }
         return value
     }
 

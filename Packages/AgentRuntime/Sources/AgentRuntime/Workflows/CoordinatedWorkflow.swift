@@ -240,7 +240,7 @@ public enum CoordinatedWorkflow {
                 + '\n<artifact-index>\n' + serialize(reviewIndex) + '\n</artifact-index>\nPRIOR REVIEW:\n' + serialize(review),
                 {label:'draft',maxToolCalls:0});
               if (typeof draft !== 'string' || draft.trim().length === 0) { throw new Error('Task incomplete: no deliverable was produced.'); }
-              const evidence = await webEvidence();
+              const evidence = await webEvidence(args.goal.slice(0,4000) + '\n' + draft.slice(0,16000));
               review = await agent(reviewInstruction + context + '\n<draft>\n' + draft + '\n</draft>'
                 + '\n<artifact-index>\n' + serialize(reviewIndex) + '\n</artifact-index>'
                 + '\n<recorded-web-evidence>\n' + serialize(evidence) + '\n</recorded-web-evidence>',

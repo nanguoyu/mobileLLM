@@ -86,10 +86,12 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
     func testRecoveredEvidenceContainsOnlyCallsReachedByTheReplayedPrefix() async throws {
         let fixture = try makeFixture(body: """
         await agent('one');
-        const first = await webEvidence();
+        const first = await webEvidence('one');
+        const otherQuery = await webEvidence('two');
         await agent('two');
         const second = await webEvidence();
-        return [first.sources.length, second.sources.length];
+        return [first.sources.length, second.sources.length,
+          first.observations[0].matchingExcerpts.length, otherQuery.observations[0].matchingExcerpts.length];
         """)
         let journal = InMemoryDynamicWorkflowJournal()
         try await journal.saveScript(fixture.saved)
@@ -119,7 +121,7 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
         let engine = DynamicWorkflowEngine(journal: journal, runtime: JavaScriptCoreWorkflowRuntime(),
             spawner: spawner, requestBuilder: childBuilder())
         let result = try await engine.runAndWait(runID: fixture.launch.runID)
-        XCTAssertEqual(try decode(result), .array([.integer(1), .integer(2)]))
+        XCTAssertEqual(try decode(result), .array([.integer(1), .integer(2), .integer(1), .integer(0)]))
         let counts = await spawner.counts()
         XCTAssertEqual(counts.spawn, 0)
         XCTAssertEqual(counts.collect, 0)

@@ -55,6 +55,7 @@ public struct WorkflowScriptHost: Sendable {
     public let budget: @Sendable () -> WorkflowBudgetSnapshot
     /// Bounded, recorded web observations from this workflow's settled children. No new I/O to sites.
     public let webEvidence: @Sendable () async throws -> JSONValue
+    public let queryWebEvidence: @Sendable (String) async throws -> JSONValue
 
     public init(
         agent: @escaping @Sendable (WorkflowAgentInvocation) async throws -> WorkflowAgentBridgeResult,
@@ -66,7 +67,8 @@ public struct WorkflowScriptHost: Sendable {
         },
         webEvidence: @escaping @Sendable () async throws -> JSONValue = {
             .object(["observations": .array([]), "sources": .array([]), "truncated": .bool(false)])
-        }
+        },
+        queryWebEvidence: (@Sendable (String) async throws -> JSONValue)? = nil
     ) {
         self.agent = agent
         self.callSavedWorkflow = callSavedWorkflow
@@ -74,6 +76,7 @@ public struct WorkflowScriptHost: Sendable {
         self.log = log
         self.budget = budget
         self.webEvidence = webEvidence
+        self.queryWebEvidence = queryWebEvidence ?? { _ in try await webEvidence() }
     }
 }
 

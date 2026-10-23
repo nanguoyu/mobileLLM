@@ -199,8 +199,8 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             [weak self] requestID, name, argsJSON in
             self?.startSavedWorkflow(requestID: requestID, name: name, argsJSON: argsJSON)
         }
-        let startEvidence: @convention(block) (Int32) -> Void = { [weak self] requestID in
-            self?.startEvidence(requestID: requestID)
+        let startEvidence: @convention(block) (Int32, String) -> Void = { [weak self] requestID, query in
+            self?.startEvidence(requestID: requestID, query: query)
         }
         let finished: @convention(block) (Bool, String) -> Void = { [weak self] succeeded, payload in
             self?.scriptFinished(succeeded: succeeded, payload: payload)
@@ -436,7 +436,10 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             }
             return result;
           };
-          const webEvidence = () => __request(__startEvidenceNative, []);
+          const webEvidence = (query = '') => {
+            if (typeof query !== 'string' || query.length > 24000) throw new Error('webEvidence query must be bounded text');
+            return __request(__startEvidenceNative, [query]);
+          };
           const workflow = (name, value) => {
             if (typeof name !== 'string' || name.trim().length === 0) {
               return __RealPromise.reject(new Error('workflow name is required'));
@@ -573,12 +576,15 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         pendingTasks[requestID] = task
     }
 
-    private func startEvidence(requestID: Int32) {
+    private func startEvidence(requestID: Int32, query: String) {
         guard pendingTasks[requestID] == nil, !isCompleted else { return }
         pendingTasks[requestID] = Task { [weak self, host] in
             guard let self else { return }
             do {
-                let value = try await host.webEvidence()
+                guard query.utf8.count <= 64 * 1024 else {
+                    throw WorkflowScriptRuntimeError.invalidArguments("web evidence query exceeds 64 KiB")
+                }
+                let value = query.isEmpty ? try await host.webEvidence() : try await host.queryWebEvidence(query)
                 try Task.checkCancellation()
                 try resolve(requestID: requestID, value: value)
             } catch is CancellationError {

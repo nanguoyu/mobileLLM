@@ -25,7 +25,11 @@ public struct WorkflowWebObservation: Sendable {
 enum WorkflowWebEvidence {
     static let maximumObservations = 32
 
-    static func packet(_ input: [(label: String, observation: WorkflowWebObservation)]) throws -> JSONValue {
+    static func packet(_ input: [(label: String, observation: WorkflowWebObservation)], matching query: String? = nil) throws -> JSONValue {
+        guard (query?.utf8.count ?? 0) <= 64 * 1024 else {
+            throw WorkflowScriptRuntimeError.invalidArguments("web evidence query exceeds 64 KiB")
+        }
+        let terms = try query.map(queryTerms) ?? []
         var observations: [JSONValue] = []
         var sources: [String: (host: String, kind: String)] = [:]
         var clipped = false
@@ -35,7 +39,7 @@ enum WorkflowWebEvidence {
                   ["web_search", "fetch_webpage"].contains(item.toolID.name) else { continue }
             guard observations.count < maximumObservations else { clipped = true; break }
             let reading = item.toolID.name == "fetch_webpage"
-            let prefix = clippedText(item.text, maximumBytes: 1200)
+            let prefix = clippedText(item.text, maximumBytes: terms.isEmpty ? 1200 : 400)
             let shortened = prefix.utf8.count < item.text.utf8.count
             var record: [String: JSONValue] = [
                 "child": .string(label), "invocationID": .string(item.invocationID),
@@ -46,8 +50,11 @@ enum WorkflowWebEvidence {
             ]
             if let requestedURL = item.requestedURL { record["requestedURL"] = .string(requestedURL) }
             if shortened {
-                record["tail"] = .string(clippedText(item.text, maximumBytes: 400, suffix: true))
-                record["yearExcerpts"] = .array(try yearExcerpts(item.text).map(JSONValue.string))
+                record["tail"] = .string(clippedText(item.text, maximumBytes: terms.isEmpty ? 400 : 200, suffix: true))
+                if terms.isEmpty { record["yearExcerpts"] = .array(try yearExcerpts(item.text).map(JSONValue.string)) }
+            }
+            if !terms.isEmpty {
+                record["matchingExcerpts"] = .array(try matchingExcerpts(item.text, terms: terms).map(JSONValue.string))
             }
             observations.append(.object(record))
             guard item.status == "completed", !item.text.isEmpty else { continue }
@@ -104,6 +111,68 @@ enum WorkflowWebEvidence {
             byYear[year] = clippedText(String(bounded[start..<end]), maximumBytes: 120)
         }
         return byYear.keys.sorted(by: >).prefix(4).compactMap { byYear[$0] }
+    }
+
+    private struct QueryTerm { let text: String; let weight: Int }
+
+    /// Literal query terms only. Code/field names receive priority; source data never supplies a
+    /// regex or an instruction. All matching is local to already-authorized recorded observations.
+    private static func queryTerms(_ query: String) throws -> [QueryTerm] {
+        let words = try NSRegularExpression(pattern: #"[\p{L}\p{N}_-]{3,64}"#)
+        let code = try NSRegularExpression(pattern: #"`([^`\n]{3,96})`"#)
+        let stop: Set<String> = ["the", "and", "with", "from", "this", "that", "for", "are", "not", "https", "http", "www", "com", "org", "api", "true", "false", "return", "using", "must", "should", "which", "have", "into"]
+        var terms: [QueryTerm] = []
+        var seen: Set<String> = []
+        func add(_ text: String, code: Bool) {
+            for match in words.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+                guard terms.count < 48, let range = Range(match.range, in: text) else { break }
+                let term = String(text[range]).lowercased()
+                guard !stop.contains(term), seen.insert(term).inserted else { continue }
+                terms.append(QueryTerm(text: term, weight: (code ? 32 : 1) + min(term.count, 16)))
+            }
+        }
+        for match in code.matches(in: query, range: NSRange(query.startIndex..., in: query)).prefix(64) {
+            if let range = Range(match.range(at: 1), in: query) { add(String(query[range]), code: true) }
+        }
+        add(query, code: false)
+        return terms
+    }
+
+    /// Greedy coverage of distinct query terms selects at most three verbatim line windows.
+    /// The 400-byte head + 200-byte tail + 3×480-byte matches fit within the legacy excerpt budget.
+    private static func matchingExcerpts(_ text: String, terms: [QueryTerm]) throws -> [String] {
+        let bounded = clippedText(text, maximumBytes: 64 * 1024)
+        var candidates: [(line: String, hits: Set<Int>)] = []
+        for line in bounded.components(separatedBy: .newlines) where !line.isEmpty {
+            try Task.checkCancellation()
+            let lower = line.lowercased()
+            let hits = Set(terms.indices.filter { lower.contains(terms[$0].text) })
+            if !hits.isEmpty { candidates.append((line, hits)) }
+        }
+        var covered: Set<Int> = []
+        var result: [String] = []
+        for _ in 0..<3 {
+            try Task.checkCancellation()
+            var best: Int?
+            var bestScore = 0
+            for (index, candidate) in candidates.enumerated() {
+                let score = candidate.hits.subtracting(covered).reduce(0) { $0 + terms[$1].weight }
+                if score > bestScore { best = index; bestScore = score }
+            }
+            guard let best else { break }
+            let candidate = candidates.remove(at: best)
+            let newHits = candidate.hits.subtracting(covered)
+            guard let term = newHits.sorted(by: {
+                terms[$0].weight == terms[$1].weight ? $0 < $1 : terms[$0].weight > terms[$1].weight
+            }).first,
+                  let range = candidate.line.range(of: terms[term].text, options: .caseInsensitive) else { break }
+            let start = candidate.line.index(range.lowerBound, offsetBy: -70, limitedBy: candidate.line.startIndex) ?? candidate.line.startIndex
+            let excerpt = clippedText(String(candidate.line[start...]), maximumBytes: 480)
+            result.append(excerpt)
+            // Only terms visible in the actual bounded excerpt count as covered.
+            covered.formUnion(terms.indices.filter { excerpt.lowercased().contains(terms[$0].text) })
+        }
+        return result
     }
 
     private static func clippedText(_ text: String, maximumBytes: Int, suffix: Bool = false) -> String {

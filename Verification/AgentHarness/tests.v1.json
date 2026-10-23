@@ -1998,6 +1998,14 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testReviewRequiresSatisfiedChecksAndNoIssuesWithoutADuplicateProseFlag"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testWebEvidenceQueryFindsMiddleFieldsWithoutIncreasingExcerptBudget"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testJavaScriptEvidenceQueryReachesReadOnlyHostWithoutSpawningAChild"
         }
       ],
       "platforms": [
