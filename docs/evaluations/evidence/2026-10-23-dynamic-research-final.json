@@ -1,0 +1,412 @@
+{
+  "acceptedDelivery": "supervised multi-turn application research; not unattended one-shot success",
+  "researchCutoff": "2026-10-22",
+  "executionDateLocal": "2026-10-23",
+  "testedCommit": "85f7cb8e5e6452f66d148fa530c72518a92e2664",
+  "modelRequest": "deepseek-v4-pro",
+  "providerHost": "api.deepseek.com",
+  "modelAliasNotPinnedSnapshot": true,
+  "workflowID": "4CB762EE-68DA-43C4-81BC-1766116BC516",
+  "state": "completed",
+  "teams": 12,
+  "countries": [
+    "GB",
+    "CH",
+    "DE",
+    "FR",
+    "BE",
+    "NL",
+    "FI",
+    "SE",
+    "AT",
+    "ES"
+  ],
+  "httpsCitationHosts": [
+    "2026.fedcsis.org",
+    "av.dfki.de",
+    "daiedge.eu",
+    "edgeai-informatik.uibk.ac.at",
+    "iis-projects.ee.ethz.ch",
+    "micas.esat.kuleuven.be",
+    "mlsys.cst.cam.ac.uk",
+    "research.aalto.fi",
+    "swisschips.ethz.ch",
+    "www.chalmers.se",
+    "www.cs.cit.tum.de",
+    "www.dfki.de",
+    "www.pepr-ia.fr",
+    "www.tudemi.com"
+  ],
+  "children": [
+    {
+      "callID": "1d4ae47b-50fd-5b91-bf6a-aa0c14f3a794",
+      "childRunID": "da0ab45a-4da0-5a20-87ee-88960d0ae552",
+      "label": "source-verifier",
+      "phase": "source-verifier",
+      "status": "completed",
+      "attempt": 1,
+      "submittedMs": 1792718753618,
+      "settledMs": 1792718849997,
+      "toolSuccesses": 3,
+      "toolFailures": 0,
+      "promptCharacters": 13171,
+      "usage": {
+        "quantities": [
+          {
+            "dimension": "activeMilliseconds",
+            "value": 95290
+          },
+          {
+            "dimension": "consecutiveNoProgressActions",
+            "value": 0
+          },
+          {
+            "dimension": "contextTokensPerAttempt",
+            "value": 20631
+          },
+          {
+            "dimension": "generatedArtifactBytes",
+            "value": 0
+          },
+          {
+            "dimension": "inputTokens",
+            "value": 47899
+          },
+          {
+            "dimension": "modelAttempts",
+            "value": 3
+          },
+          {
+            "dimension": "networkRequestBytes",
+            "value": 265
+          },
+          {
+            "dimension": "networkResponseBytesPerOperation",
+            "value": 19142
+          },
+          {
+            "dimension": "networkResponseBytesTotal",
+            "value": 46254
+          },
+          {
+            "dimension": "outputTokens",
+            "value": 9422
+          },
+          {
+            "dimension": "peakMemoryBytes",
+            "value": 0
+          },
+          {
+            "dimension": "persistedOutputBytes",
+            "value": 40816
+          },
+          {
+            "dimension": "repeatedCallsPerFingerprint",
+            "value": 1
+          },
+          {
+            "dimension": "structuredRepairs",
+            "value": 0
+          },
+          {
+            "dimension": "toolInvocations",
+            "value": 3
+          }
+        ]
+      },
+      "startSeconds": 0.0,
+      "endSeconds": 96.379,
+      "durationSeconds": 96.379
+    },
+    {
+      "callID": "972c3f9d-aef9-5f51-8362-9b04d8338120",
+      "childRunID": "ea869a9f-e5b8-56d8-abc0-538d77535d02",
+      "label": "writer",
+      "phase": "writer",
+      "status": "completed",
+      "attempt": 1,
+      "submittedMs": 1792718850079,
+      "settledMs": 1792718889675,
+      "toolSuccesses": 0,
+      "toolFailures": 0,
+      "promptCharacters": 6803,
+      "usage": {
+        "quantities": [
+          {
+            "dimension": "activeMilliseconds",
+            "value": 39457
+          },
+          {
+            "dimension": "consecutiveNoProgressActions",
+            "value": 0
+          },
+          {
+            "dimension": "contextTokensPerAttempt",
+            "value": 6633
+          },
+          {
+            "dimension": "generatedArtifactBytes",
+            "value": 0
+          },
+          {
+            "dimension": "inputTokens",
+            "value": 6633
+          },
+          {
+            "dimension": "modelAttempts",
+            "value": 1
+          },
+          {
+            "dimension": "networkRequestBytes",
+            "value": 0
+          },
+          {
+            "dimension": "networkResponseBytesPerOperation",
+            "value": 0
+          },
+          {
+            "dimension": "networkResponseBytesTotal",
+            "value": 0
+          },
+          {
+            "dimension": "outputTokens",
+            "value": 3594
+          },
+          {
+            "dimension": "peakMemoryBytes",
+            "value": 0
+          },
+          {
+            "dimension": "persistedOutputBytes",
+            "value": 0
+          },
+          {
+            "dimension": "repeatedCallsPerFingerprint",
+            "value": 0
+          },
+          {
+            "dimension": "structuredRepairs",
+            "value": 0
+          },
+          {
+            "dimension": "toolInvocations",
+            "value": 0
+          }
+        ]
+      },
+      "startSeconds": 96.461,
+      "endSeconds": 136.057,
+      "durationSeconds": 39.596
+    }
+  ],
+  "handoffs": [
+    {
+      "source": "source-verifier",
+      "target": "writer",
+      "fullCanonicalResultInPrompt": true,
+      "upstreamURLCount": 15,
+      "upstreamURLsInPrompt": 15
+    }
+  ],
+  "citationChecks": [
+    {
+      "group": "Cambridge Machine Learning Systems Lab (CaMLSys)",
+      "countryCode": "GB",
+      "officialSource": "https://mlsys.cst.cam.ac.uk/",
+      "workSource": "https://mlsys.cst.cam.ac.uk/",
+      "officialKind": "page-excerpt",
+      "workKind": "page-excerpt",
+      "renderedFieldsMatch": true
+    },
+    {
+      "group": "Digital Circuits and Systems group, ETH Zurich (IIS)",
+      "countryCode": "CH",
+      "officialSource": "https://iis-projects.ee.ethz.ch/images/e/e5/PULP-bio_overview.pdf",
+      "workSource": "https://swisschips.ethz.ch/news-and-events/swisschips-news/2026/01/swisschips-spotlight-gamze-islamoglu-phd-eth-zurich.html",
+      "officialKind": "search-summary",
+      "workKind": "search-summary",
+      "renderedFieldsMatch": true
+    },
+    {
+      "group": "Efficient Machine Learning, Data Analytics and Machine Learning (DAML), TUM",
+      "countryCode": "DE",
+      "officialSource": "https://www.cs.cit.tum.de/en/daml/forschung/efficient-ml/",
+      "workSource": "https://www.cs.cit.tum.de/en/daml/forschung/efficient-ml/",
+      "officialKind": "page-excerpt",
+      "workKind": "page-excerpt",
+      "renderedFieldsMatch": true
+    },
+    {
+      "group": "DFKI FAIRe project team",
+      "countryCode": "DE",
+      "officialSource": "https://av.dfki.de/projects/faire/",
+      "workSource": "https://av.dfki.de/projects/faire/",
+      "officialKind": "page-excerpt",
+      "workKind": "page-excerpt",
+      "renderedFieldsMatch": true
+    },
+    {
+      "group": "DFKI Intelligent Networks / AI-DISCO project team",
+      "countryCode": "DE",
+      "officialSource": "https://www.dfki.de/web/news/dfki-treibt-im-projekt-ai-disco-die-naechste-generation-der-edge-ai-voran",
+      "workSource": "https://www.dfki.de/web/news/dfki-treibt-im-projekt-ai-disco-die-naechste-generation-der-edge-ai-voran",
+      "officialKind": "search-summary",
+      "workKind": "search-summary",
+      "renderedFieldsMatch": true
+    },
+    {
+      "group": "CEA List LIAE (HOLIGRAIL)",
+      "countryCode": "FR",
+      "officialSource": "https://www.pepr-ia.fr/en/projet/holigrail-2/",
+      "workSource": "https://www.pepr-ia.fr/en/projet/holigrail-2/",
+      "officialKind": "search-summary",
+      "workKind": "search-summary",
+      "renderedFieldsMatch": true
+    },
+    {
+      "group": "MICAS Laboratories, KU Leuven",
+      "countryCode": "BE",
+      "officialSource": "https://micas.esat.kuleuven.be/team/arne-symons",
+      "workSource": "https://micas.esat.kuleuven.be/team/arne-symons",
+      "officialKind": "page-excerpt",
+      "workKind": "page-excerpt",
+      "renderedFieldsMatch": true
+    },
+    {
+      "group": "TU Delft Efficient Machine Intelligence Lab (EMI)",
+      "countryCode": "NL",
+      "officialSource": "https://www.tudemi.com/",
+      "workSource": "https://www.tudemi.com/",
+      "officialKind": "page-excerpt",
+      "workKind": "page-excerpt",
+      "renderedFieldsMatch": true
+    },
+    {
+      "group": "Aalto Data-Intensive System group, Aalto University",
+      "countryCode": "FI",
+      "officialSource": "https://research.aalto.fi/en/persons/bo-zhao/",
+      "workSource": "https://research.aalto.fi/en/publications/earl-efficient-agentic-rl-post-training-for-llms-under-dynamic-co/",
+      "officialKind": "page-excerpt",
+      "workKind": "search-summary",
+      "renderedFieldsMatch": true
+    },
+    {
+      "group": "CHART (Chalmers Heterogeneous Architectures and Runtimes Team)",
+      "countryCode": "SE",
+      "officialSource": "https://www.chalmers.se/en/departments/cse/our-research/computer-and-network-systems/chart-research-team/",
+      "workSource": "https://www.chalmers.se/en/departments/cse/our-research/computer-and-network-systems/chart-research-team/",
+      "officialKind": "page-excerpt",
+      "workKind": "page-excerpt",
+      "renderedFieldsMatch": true
+    },
+    {
+      "group": "University of Innsbruck Edge AI Group (Department of Computer Science)",
+      "countryCode": "AT",
+      "officialSource": "https://edgeai-informatik.uibk.ac.at/team/",
+      "workSource": "https://2026.fedcsis.org/sites/2026.fedcsis.org/files/2026-10/Fedcsis2026_Prodan_Radu.pdf",
+      "officialKind": "search-summary",
+      "workKind": "search-summary",
+      "renderedFieldsMatch": true
+    },
+    {
+      "group": "University of Vigo QUAD project team (dAIEDGE 2nd Open Call)",
+      "countryCode": "ES",
+      "officialSource": "https://daiedge.eu/news/meet-winners-juan-jose-rodriguez-and-roberto-fernandez-2nd-open-call",
+      "workSource": "https://daiedge.eu/news/meet-winners-juan-jose-rodriguez-and-roberto-fernandez-2nd-open-call",
+      "officialKind": "search-summary",
+      "workKind": "search-summary",
+      "renderedFieldsMatch": true
+    }
+  ],
+  "retainedEvidenceChain": [
+    {
+      "prefix": "reasoned",
+      "toolOutcomes": {
+        "search_completed": 16,
+        "fetch_completed": 6
+      }
+    },
+    {
+      "prefix": "continuation",
+      "toolOutcomes": {
+        "search_completed": 4
+      }
+    },
+    {
+      "prefix": "recovery",
+      "toolOutcomes": {
+        "search_completed": 16
+      }
+    },
+    {
+      "prefix": "final-canonical",
+      "toolOutcomes": {
+        "search_completed": 6
+      }
+    },
+    {
+      "prefix": "targeted-review",
+      "toolOutcomes": {
+        "fetch_completed": 4,
+        "fetch_failed": 2
+      }
+    },
+    {
+      "prefix": "source-finalization",
+      "toolOutcomes": {
+        "search_completed": 2,
+        "fetch_completed": 1
+      }
+    }
+  ],
+  "timing": {
+    "childSpanSeconds": 136.057,
+    "applicationElapsedMilliseconds": 314653,
+    "uiTestSeconds": 392.718
+  },
+  "hashes": {
+    "rawAnswerSHA256": "301cfb6f5e284ccb16158394628190cd30b735b26b2c6fbc99ad5d8fc352121c",
+    "readableReportSHA256": "cd548caf0127b55e334dd5cb5deddb132fbaa66be4349792a8c98ed023d119c2",
+    "generatedSourceSHA256": "f6655651fde832b58cd2c52fde3f32cdf6ae384013894f30e26c9672046d3d92",
+    "inputGoalSHA256": "19510664b8e803339d46f722967ea55bae78c9fec0637ead472d129de0a7bc27"
+  },
+  "originalUIOutcome": {
+    "passed": false,
+    "onlyFailure": "answer missed concept group: 研究组 | research group"
+  },
+  "offlineAcceptanceReplay": {
+    "citedRows": 12,
+    "httpsHosts": [
+      "2026.fedcsis.org",
+      "av.dfki.de",
+      "daiedge.eu",
+      "edgeai-informatik.uibk.ac.at",
+      "iis-projects.ee.ethz.ch",
+      "micas.esat.kuleuven.be",
+      "mlsys.cst.cam.ac.uk",
+      "research.aalto.fi",
+      "swisschips.ethz.ch",
+      "www.chalmers.se",
+      "www.cs.cit.tum.de",
+      "www.dfki.de",
+      "www.pepr-ia.fr",
+      "www.tudemi.com"
+    ],
+    "markerPresent": true,
+    "originalConceptProfilePassed": false,
+    "reviewedConceptProfilePassed": true,
+    "unrelatedTextRejected": true
+  },
+  "presentationEdit": {
+    "type": "restore recorded countryCode in the first table column and add a code legend",
+    "researchFactsChanged": false,
+    "modelRequests": 0,
+    "reverseTransformationEqualsRawAnswer": true
+  },
+  "limitations": [
+    "Three PI fields remain explicitly unverified: TUM DAML, DFKI FAIRe, DFKI AI-DISCO.",
+    "The report includes project teams and university labs.",
+    "Source labels describe recorded retrieval, not complete-page or independent benchmark verification.",
+    "A maintainer carried original application material across new UI submissions and supplied review feedback. No terminal workflow was silently restarted."
+  ]
+}

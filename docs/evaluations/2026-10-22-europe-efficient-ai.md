@@ -1,5 +1,8 @@
 # 欧洲 Efficient AI 研究组概览
 
+The later [application-generated report](2026-10-23-europe-efficient-ai-app.md) is the current software
+demonstration. This independently edited overview retains its original scope and is not app execution evidence.
+
 核对日期：2026-10-22。本文整理 **12 个研究组或明确的研究方向团队，覆盖 9 个国家**，包括英国、瑞士、奥地利、德国、法国、比利时、荷兰、意大利和捷克。它们分别从模型压缩、训练与推理系统、编译器、芯片和端侧学习降低 AI 的计算与存储成本。
 
 名单来自 mobileLLM 动态子代理实际检索的候选，随后由维护者查阅一手来源并修正。**这是经过编辑核对的研究概览，不是应用一次自主完成的输出。** 应用的完整并行执行只交付了 4 组、3 国；补充调查收集了更多资料，但在最终汇总前失败。分阶段执行证据、原始答案及问题见[测试评估](2026-10-22-dynamic-research.md)。

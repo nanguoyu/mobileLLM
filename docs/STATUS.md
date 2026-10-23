@@ -33,22 +33,28 @@ Evidence is local under `/tmp/mobilellm-deepseek-search-20261022/`, including `D
 
 ## European Efficient AI research evaluation
 
-The original seven-child run proved parallel execution and complete handoff but failed research quality.
-Subsequent live runs exposed and repaired remaining-budget admission, explicit per-role caps, malformed
-provider continuation, repair accounting, page-miss handling, cancellation races, whole-country counting,
-evidence handoff, inherited reasoning settings and Chinese web-tool selection. Runtime fixes have focused
-regression coverage; this does not make earlier reports factually correct.
+The application delivered [12 supported research teams across ten countries](evaluations/2026-10-23-europe-efficient-ai-app.md),
+with 14 HTTPS citation hosts, through supervised multi-stage continuation. Actual geographic investigation
+ran in parallel; later agents checked evidence, corrected identities and sources, and wrote recommendations.
+The final source verifier and writer both completed. The last stage used two searches and one page read,
+then a zero-tool writer, with the complete verified result and all source URLs handed off.
 
-The later run completed parallel investigation but failed in merge/recovery when fixed full-window time
-reservations stranded remaining capacity. Another run prepared a child whose trailing prompt newline
-violated the canonical instruction contract. Both paths have been repaired and have focused checks.
-The final verification/writing stage is running again with the application's existing raw research
-material. **Research acceptance is still in progress; the empty earlier report is not a delivery.**
+The task repaired delegated tool loss, remaining-budget admission, per-role caps, provider continuation,
+repair accounting, page-miss handling, cancellation races, country counting, evidence handoff, inherited
+reasoning settings, Chinese web-tool selection, remaining-time reservations and prompt normalization.
+Focused regressions and actual online execution cover these fixes. Earlier failed runs remain recorded.
 
-The [follow-up evaluation](evaluations/2026-10-23-dynamic-research-followup.md) records the later attempts
-and repairs. The [original evaluation](evaluations/2026-10-22-dynamic-research.md) retains the first seven
-outcomes. The [maintainer-edited overview](evaluations/2026-10-22-europe-efficient-ai.md) is separate from
-application output and is not evidence of autonomous success. Full artifacts remain local under
+The last UI run's only failure was a vocabulary check expecting 研究组 while the answer said 团队.
+The original answer passed offline replay of the same checks with that semantic alternative included;
+no model was rerun for wording. The readable export restores the already returned country codes in the
+table and adds a legend; research facts and recommendations remain unchanged. The raw answer is retained.
+Three PI fields remain explicitly unknown, and this result is evidence of supervised completion rather
+than an unattended one-pass reliability measurement.
+
+The [follow-up evaluation](evaluations/2026-10-23-dynamic-research-followup.md) links raw outputs, actual
+child intervals, source checks and every later outcome. The [original evaluation](evaluations/2026-10-22-dynamic-research.md)
+retains the first seven attempts. The earlier [maintainer-edited overview](evaluations/2026-10-22-europe-efficient-ai.md)
+is separate and was not used as the application's answer. Full private artifacts remain local under
 `/tmp/mobilellm-europe-efficient-ai-20261022/`.
 
 ## Corrections delivered

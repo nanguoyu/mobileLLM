@@ -1,9 +1,16 @@
 # Dynamic research follow-up, 2026-10-23
 
-The earlier report ended before the application could deliver the requested research. That was premature.
-This follow-up continues the same task with the production runtime, signed Simulator, online model and
-DeepSeek Search/Fetch. The target remains 12–16 supported European Efficient AI teams, at least six
-countries and eight HTTPS citation hosts. A passing UI check alone does not establish factual quality.
+The application ultimately produced a research report covering **12 teams, ten countries and 14 HTTPS
+citation hosts**. The [readable report](2026-10-23-europe-efficient-ai-app.md) contains the application's
+research facts and recommendations. Its only presentation change restores the country codes that the
+model returned in structured data but omitted from the table, with a country-code legend. The
+[original answer](evidence/2026-10-23-app-research-original.md) remains unedited.
+
+This result required supervised continuation and review feedback through new app UI submissions. It
+establishes a completed research delivery using the production runtime, signed Simulator, online model
+and DeepSeek Search/Fetch. Unattended one-pass reliability remains unmeasured. The earlier report ended
+before this delivery existed; that was premature. A passing UI check alone does not establish factual
+quality.
 
 The [original evaluation](2026-10-22-dynamic-research.md) retains attempts 1–7. The
 [maintainer-edited overview](2026-10-22-europe-efficient-ai.md) is a separate artifact and has not been
@@ -79,7 +86,40 @@ Local bundle names below have the prefix `EuropeEfficientAI-` and suffix `.xcres
 | 21 | ResearchContinuation | Two investigators started with prior application material. One proposed an oversized batch containing an already executed query; admission rejected it, and the other investigator was cancelled. Four actual searches remain retained. No final report. |
 | 22 | ResearchRecovery | Both investigators completed 12 calls and supplied their full briefs. Merge and recovery then failed because a full time reservation exceeded the remaining allowance after a long model pass. The writer returned an empty table despite 16 actual searches in this run. Script completion is not research acceptance. |
 | 23 | FinalStages | A verifier call was prepared but never submitted. Its generated prompt ended with a newline that violated the child instruction contract. The script caught the error and returned a technical-error message. No research answer. |
-| 24 | FinalCanonical | In progress using the same raw application material after prompt-boundary normalization. Acceptance has not yet been recorded. |
+| 24 | FinalCanonical | Two children completed six searches. UI passed with 13 teams, ten countries and 16 citation hosts. Source review found an attribution supported only by a shared-contact inference, insufficient recent evidence for SWEET, and a search-metadata date presented as a news date. Delivery was not accepted. |
+| 25 | TargetedReview | Two children completed six page-read attempts. UI passed with 12 teams after SWEET was removed and the unsupported paper attribution was replaced with the project description. Aalto still lacked usable primary text and some retrieval labels were inaccurate. |
+| 26 | SourceFinalization | Two children completed two Search calls and one Fetch. The final report has 12 teams, ten countries and 14 citation hosts, with receipt-derived retrieval labels and a primary Aalto publication source. The UI recorded one vocabulary false negative; the unchanged answer passed offline acceptance with the equivalent term 团队 included. |
+
+## Final delivery checks
+
+The final source-verification child ran from 0.000 to 96.379 seconds relative to its submission. The
+writer started at 96.461 seconds and settled at 136.057 seconds. Their caps were three and zero tool
+calls; actual usage was three and zero. Both completed. The writer's durable instruction contains the
+verifier's complete canonical result and all 15 upstream URLs. Every research field in the rendered
+table matches the verifier's structured row, and all six recommended teams occur in those rows.
+
+All 24 row citation fields match successful recorded Search/Fetch observations from the retained
+application evidence chain. Their displayed retrieval types match those records, including the ETH
+links, which are search summaries. The new Aalto research portal provided usable biographical text,
+and its publication record identifies Bo Zhao as an EARL coauthor and dates the paper to April 2026.
+The separate primary-source review confirmed the teams, scope and cited work; the final report leaves
+three PI fields explicitly unverified: TUM DAML, DFKI FAIRe and DFKI AI-DISCO. Project teams are identified
+as such. Retrieval labels are evidence about access, not proof that an entire page or every field was checked.
+
+The final UI test took 392.718 seconds and the app recorded 314.653 seconds, including generation.
+Neither is model-only latency. Its **only** assertion failure was the literal concept alternative
+`研究组 | research group`: the answer uses `团队`. The original failing xcresult is retained. The exact
+`containsAny` implementation and citation checks were reapplied to the unedited answer with
+`研究团队 | 团队` added to that one scenario's alternatives. All concept groups, 12 cited rows, 14 HTTPS
+hosts, the marker and the raw-protocol rejection passed; an unrelated-text control was rejected.
+No new model request was made for vocabulary or table layout. The country-column export was also
+reversed and compared with the original answer, proving that the edit changed presentation only.
+
+The final [metrics and source checks](evidence/2026-10-23-dynamic-research-final.json),
+[unaltered child outputs](evidence/2026-10-23-app-research-data.json), and
+[generated workflow source](evidence/2026-10-23-app-workflow-original.txt) are committed. They distinguish
+live execution, offline checking and presentation changes. The source verifier and writer are the
+application's agents; the coding assistant did not write their research rows or recommendations.
 
 ## Focused checks
 
@@ -103,5 +143,5 @@ those continuation inputs.
 
 Artifacts remain under `/tmp/mobilellm-europe-efficient-ai-20261022/`: exact goals, generated sources,
 raw application answers, consistent SQLite backups and xcresults. Debug products can contain local
-provider configuration and are not publication artifacts. A final research acceptance requires checking
-the unedited answer against those records and primary sources, not copying the separate edited overview.
+provider configuration and are not publication artifacts. The accepted delivery was checked against
+the unedited answer, those records and primary sources. It does not reuse the separate edited overview.

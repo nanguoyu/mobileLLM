@@ -1011,6 +1011,8 @@ public final class AgentRuntimeAssembly {
     Use unique(rows.map(r => r.countryCode)).length for country counts. unique accepts a bounded
     array of strings and compares whole values. Never concatenate codes into a string or count characters.
     Use bounded loops and string concatenation to render the rows. Render citation URLs alongside claims,
+    and display the country as well as the city when geography is part of the scope. Do not discard
+    an available countryCode field from the table while reporting country coverage in the totals.
     including both the entity's official source
     and the dated paper/project source; do not drop citation fields when converting rows to a table.
     A row must identify one team and cite a direct source for its claimed research; related teams

@@ -103,7 +103,7 @@ sources and the test-module import substitution. Simulator runs built and execut
 Overlapping targeted runs are not summed into a new suite count. No full repository suite was repeated
 for prompt or documentation changes.
 
-## Remaining problems exposed by this task
+## Problems exposed by attempts 1–7
 
 1. **Planning requirements are not semantic acceptance conditions.** The latest generator ignored the
    explicit parallel requirement. Analyzer acceptance proves allowed syntax and effects, not adherence
@@ -125,8 +125,8 @@ for prompt or documentation changes.
    delivery did not produce a final answer. This evaluation did not demonstrate recovery from a
    terminal failed workflow or resumption at an individual failed child.
 
-The next acceptance run should follow fixes to these specific failures and check the actual research
-requirements. Repeating the full prompt unchanged until a green run would not establish reliability.
+These failures motivated the [follow-up repairs and delivery checks](2026-10-23-dynamic-research-followup.md).
+Repeating an unchanged prompt until a green run would not establish reliability.
 Physical hardware is unnecessary for these online orchestration issues. This task did not measure
 local-weight residency, warm-up, thermal behavior or GPU performance.
 
