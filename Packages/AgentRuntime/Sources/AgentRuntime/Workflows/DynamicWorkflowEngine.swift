@@ -709,6 +709,10 @@ private actor DynamicWorkflowSession {
             phase: { [signals] in signals.recordPhase($0) },
             log: { [signals] in signals.recordLog($0) },
             budget: { [budgetCounter] in budgetCounter.snapshot() },
+            settledBudget: { [weak self] in
+                guard let self else { throw CancellationError() }
+                return try await self.recordedBudget()
+            },
             webEvidence: { [weak self] in
                 guard let self else { throw CancellationError() }
                 return try await self.recordedWebEvidence()
@@ -718,6 +722,27 @@ private actor DynamicWorkflowSession {
                 return try await self.recordedWebEvidence(query: query)
             }
         )
+    }
+
+    private func recordedBudget() throws -> JSONValue {
+        var consumed = AgentUsage.zero
+        for call in projection.calls where evidenceVisibleCalls.contains(call.callID) {
+            let usage: AgentUsage
+            switch projection.outcomes[call.callID] {
+            case .completed(_, let value), .unavailable(_, let value), .failed(_, let value), .stopped(let value): usage = value
+            case nil: continue
+            }
+            consumed = try consumed.aggregating(usage)
+        }
+        func values(_ quantities: BudgetQuantities) -> JSONValue {
+            .object([
+                "toolCalls": .integer(Int64(clamping: quantities[.toolInvocations])),
+                "modelAttempts": .integer(Int64(clamping: quantities[.modelAttempts])),
+                "inputTokens": .integer(Int64(clamping: quantities[.inputTokens])),
+                "outputTokens": .integer(Int64(clamping: quantities[.outputTokens])),
+            ])
+        }
+        return .object(["limits": values(projection.launch.budget.limits), "consumed": values(consumed.quantities)])
     }
 
     private func recordedWebEvidence(query: String? = nil) async throws -> JSONValue {

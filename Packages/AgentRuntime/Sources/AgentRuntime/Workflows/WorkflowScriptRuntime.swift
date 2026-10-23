@@ -53,6 +53,9 @@ public struct WorkflowScriptHost: Sendable {
     public let phase: @Sendable (String) -> Void
     public let log: @Sendable (String) -> Void
     public let budget: @Sendable () -> WorkflowBudgetSnapshot
+    /// Actual usage of settled calls already reached by this execution prefix, with frozen limits.
+    /// Unlike the live output counter, this is safe to include in replayed coordinator prompts.
+    public let settledBudget: @Sendable () async throws -> JSONValue
     /// Bounded, recorded web observations from this workflow's settled children. No new I/O to sites.
     public let webEvidence: @Sendable () async throws -> JSONValue
     public let queryWebEvidence: @Sendable (String) async throws -> JSONValue
@@ -65,6 +68,9 @@ public struct WorkflowScriptHost: Sendable {
         budget: @escaping @Sendable () -> WorkflowBudgetSnapshot = {
             WorkflowBudgetSnapshot(totalOutputTokens: nil, spentOutputTokens: 0)
         },
+        settledBudget: @escaping @Sendable () async throws -> JSONValue = {
+            throw WorkflowScriptRuntimeError.unsupportedRequirement
+        },
         webEvidence: @escaping @Sendable () async throws -> JSONValue = {
             .object(["observations": .array([]), "sources": .array([]), "truncated": .bool(false)])
         },
@@ -75,6 +81,7 @@ public struct WorkflowScriptHost: Sendable {
         self.phase = phase
         self.log = log
         self.budget = budget
+        self.settledBudget = settledBudget
         self.webEvidence = webEvidence
         self.queryWebEvidence = queryWebEvidence ?? { _ in try await webEvidence() }
     }

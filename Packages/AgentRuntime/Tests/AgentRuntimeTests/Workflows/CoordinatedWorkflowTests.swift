@@ -8,6 +8,52 @@ import XCTest
 
 /// Control-flow regressions. Task correctness is measured separately against real output oracles.
 final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
+    func testUnusedToolAllowancesRemainAvailableForDependentWork() async throws {
+        let probe = CoordinationProbe()
+        let output = try await run(initial: decision("work", tasks: ["a", "b", "c", "d"].map { task($0, tools: 6) }),
+            settledBudget: {
+                let used = await probe.workerCalls
+                return .object(["limits": .object(["toolCalls": .integer(24), "modelAttempts": .integer(32)]),
+                    "consumed": .object(["toolCalls": .integer(Int64(used)), "modelAttempts": .integer(Int64(used))])])
+            }) { call in
+                await probe.enter(call); await probe.leave()
+                if call.options.label == "coordinator" {
+                    if await probe.count("coordinator") == 1 {
+                        XCTAssertTrue(call.prompt.contains("\"tools\":20"), "Four used calls, not 24 allocated calls, consume the budget")
+                        return .value(decision("work", tasks: [task("dependent", inputs: ["a:1"], tools: 6)]))
+                    }
+                    return .value(decision("deliver", answer: "Dependent work completed"))
+                }
+                return .value(.string("Actual result"))
+            }
+        XCTAssertEqual(output, .string("Dependent work completed"))
+        let continuations = await probe.count("dependent")
+        XCTAssertEqual(continuations, 1)
+    }
+
+    func testDependentWorkerReceivesSelectedOriginalRangeInsteadOfAnotherPrefix() async throws {
+        let probe = CoordinationProbe()
+        let source = String(repeating: "x", count: 40_000) + "NEEDED-TAIL-EVIDENCE";
+        let selected: JSONValue = .object(["id": .string("source:1"), "offset": .integer(40_000), "length": .integer(100)])
+        let result = try await run(initial: decision("work", tasks: [task("source")])) { call in
+            await probe.enter(call); await probe.leave()
+            switch call.options.label {
+            case "source": return .value(.string(source))
+            case "coordinator":
+                if await probe.count("coordinator") == 1 {
+                    return .value(decision("work", tasks: [task("verify", inputs: ["source:1"], ranges: [selected])]))
+                }
+                return .value(decision("deliver", answer: "Verified original tail"))
+            case "verify":
+                XCTAssertTrue(call.prompt.contains("NEEDED-TAIL-EVIDENCE"))
+                XCTAssertFalse(call.prompt.contains(String(repeating: "x", count: 100)))
+                return .value(.string("Evidence confirmed"))
+            default: return .stopped
+            }
+        }
+        XCTAssertEqual(result, .string("Verified original tail"))
+    }
+
     func testSupervisorReceivesActualParallelResultsAndContinuesExistingTask() async throws {
         let probe = CoordinationProbe()
         let result = try await run(initial: decision("work", tasks: [task("cost"), task("constraints")]), tools: ["builtin.web_search"]) { call in
@@ -129,12 +175,16 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
     }
 
     private func run(initial: JSONValue, tools: [String] = [],
+                     settledBudget: @escaping @Sendable () async throws -> JSONValue = {
+                         .object(["limits": .object(["toolCalls": .integer(24), "modelAttempts": .integer(32)]),
+                                  "consumed": .object(["toolCalls": .integer(0), "modelAttempts": .integer(0)])])
+                     },
                      agent: @escaping @Sendable (WorkflowAgentInvocation) async throws -> WorkflowAgentBridgeResult) async throws -> JSONValue {
         let analyzed = try DynamicWorkflowScriptAnalyzer().analyze(WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1, source: CoordinatedWorkflow.source))
         let args = try CanonicalJSON(.object(["goal": .string("Determine the total under supplied constraints."),
             "availableTools": .array(tools.map(JSONValue.string)), "runDate": .string("2026-10-23"), "plan": initial]))
         let result = try await JavaScriptCoreWorkflowRuntime().execute(analyzed, args: args, limits: .iPhoneDefault(), requirement: .init(),
-            host: WorkflowScriptHost(agent: agent, webEvidence: {
+            host: WorkflowScriptHost(agent: agent, settledBudget: settledBudget, webEvidence: {
                 .object(["observations": .array([.object(["excerpt": .string("ORIGINAL-RECORDED-PAGE-FACT")])]), "sources": .array([])])
             }))
         return try JSONDecoder().decode(JSONValue.self, from: result.data)
@@ -146,6 +196,7 @@ private actor CoordinationProbe {
     private var active = 0
     var peak = 0
     var total: Int { calls.values.reduce(0, +) }
+    var workerCalls: Int { total - calls["coordinator", default: 0] }
     func enter(_ call: WorkflowAgentInvocation) {
         calls[call.options.label ?? "", default: 0] += 1
         active += 1; peak = max(peak, active)
@@ -153,8 +204,8 @@ private actor CoordinationProbe {
     func leave() { active -= 1 }
     func count(_ label: String) -> Int { calls[label, default: 0] }
 }
-private func task(_ id: String, inputs: [String] = [], instruction: String? = nil, tools: Int64 = 0) -> JSONValue {
-    .object(["id": .string(id), "instruction": .string(instruction ?? "Investigate " + id), "inputs": .array(inputs.map(JSONValue.string)), "maxToolCalls": .integer(tools)])
+private func task(_ id: String, inputs: [String] = [], instruction: String? = nil, tools: Int64 = 0, ranges: [JSONValue] = []) -> JSONValue {
+    .object(["id": .string(id), "instruction": .string(instruction ?? "Investigate " + id), "inputs": .array(inputs.map(JSONValue.string)), "inputRanges": .array(ranges), "maxToolCalls": .integer(tools)])
 }
 private func decision(_ action: String, tasks: [JSONValue] = [], reads: [JSONValue] = [], notes: String = "", answer: String = "") -> JSONValue {
     .object(["action": .string(action), "stage": .string("Work"), "reason": .string("Resolve the task"), "tasks": .array(tasks),

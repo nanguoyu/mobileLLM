@@ -1817,6 +1817,11 @@ durable child runs and do not imply provider-session or KV reuse. No decision ex
 
 Actual worker results, rather than only summaries, return to the supervisor. Bounded previews expose offsets and
 truncation; the original outputs remain available for local reads without another model worker or network request.
+`inputRanges` provides explicit original offsets for dependent handoffs, so reading a late section does
+not degrade to passing only the beginning to another worker. `await budget.snapshot()` exposes frozen
+limits and actual usage from settled calls reached by the current execution prefix. It must not count
+reserved-but-unused allowances as consumption or leak later recovered settlements into earlier prompts.
+The durable ledger remains authoritative for admission, including consumed work from invalidated attempts.
 Independent workers settle behind a barrier. Evidence views for a wave are resolved before dispatch, so concurrent
 completion cannot change a sibling's inputs. Failed workers do not erase useful siblings. Supervisor working notes
 and automatically retained observations persist through recorded decisions and results. Repeated identical actions without progress stop visibly.

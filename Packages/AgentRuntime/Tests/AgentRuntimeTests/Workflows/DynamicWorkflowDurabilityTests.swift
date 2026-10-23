@@ -83,6 +83,50 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
         XCTAssertEqual(count, 0)
     }
 
+    func testRecoveredBudgetExcludesFutureSettlementsAndUsesActualConsumption() async throws {
+        let fixture = try makeFixture(body: """
+        const before = await budget.snapshot();
+        await agent('one');
+        const first = await budget.snapshot();
+        await agent('two');
+        const second = await budget.snapshot();
+        return [before.consumed.toolCalls, first.consumed.toolCalls, second.consumed.toolCalls];
+        """)
+        let journal = InMemoryDynamicWorkflowJournal()
+        try await journal.saveScript(fixture.saved)
+        let cursor = try WorkflowReplayCursor(launch: fixture.launch)
+        var events: [WorkflowRunEventV1] = []
+        try appendEvent(.created(fixture.launch), runID: fixture.launch.runID, to: &events)
+        try appendEvent(.launchApproved(ApprovalID()), runID: fixture.launch.runID, to: &events)
+        try appendEvent(.stateChanged(from: .waitingForLaunchApproval, to: .queued, reason: nil), runID: fixture.launch.runID, to: &events)
+        try appendEvent(.stateChanged(from: .queued, to: .running, reason: nil), runID: fixture.launch.runID, to: &events)
+        var observations: [AgentExecutionHandleID: [WorkflowWebObservation]] = [:]
+        for prompt in ["one", "two"] {
+            guard case .execute(let call) = try await cursor.next(prompt: prompt, options: WorkflowAgentOptionsV1()) else {
+                return XCTFail("Expected a new call")
+            }
+            let handle = AgentExecutionHandleID()
+            observations[handle] = [WorkflowWebObservation(invocationID: prompt,
+                toolID: try AgentToolLogicalID(providerID: "builtin", name: "fetch_webpage"),
+                requestedURL: "https://example.edu/" + prompt, status: "completed", text: prompt)]
+            try appendEvent(.agentCallPrepared(call), runID: fixture.launch.runID, to: &events)
+            try appendEvent(.agentChildSubmitted(callID: call.callID, handleID: handle), runID: fixture.launch.runID, to: &events)
+            try appendEvent(.agentCallSettled(callID: call.callID, outcome: .completed(
+                value: .inline(try CanonicalJSON(.string(prompt))), usage: AgentUsage(quantities: BudgetQuantities([.toolInvocations: prompt == "one" ? 1 : 2])))), runID: fixture.launch.runID, to: &events)
+        }
+        try appendEvent(.usageCommitted(AgentUsage(quantities: BudgetQuantities([.toolInvocations: 3]))), runID: fixture.launch.runID, to: &events)
+        _ = try await journal.append(WorkflowEventAppendRequestV1(runID: fixture.launch.runID,
+            expectedSequence: 0, expectedDigest: nil, events: events))
+        let spawner = WorkflowFakeSpawner(observations: observations)
+        let engine = DynamicWorkflowEngine(journal: journal, runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        let result = try await engine.runAndWait(runID: fixture.launch.runID)
+        XCTAssertEqual(try decode(result), .array([.integer(0), .integer(1), .integer(3)]))
+        let counts = await spawner.counts()
+        XCTAssertEqual(counts.spawn, 0)
+        XCTAssertEqual(counts.collect, 0)
+    }
+
     func testRecoveredEvidenceContainsOnlyCallsReachedByTheReplayedPrefix() async throws {
         let fixture = try makeFixture(body: """
         await agent('one');

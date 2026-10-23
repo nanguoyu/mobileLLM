@@ -91,7 +91,7 @@ final class WorkflowUITests: XCTestCase {
 
         let sourceText = (source.value as? String) ?? source.label
         XCTAssertTrue(sourceText.contains("parallel("), "complex fixture must exercise parallel fan-out")
-        XCTAssertTrue(sourceText.contains("MOBILELLM_COORDINATOR_V2"), "the shipped supervisor program must be inspectable")
+        XCTAssertTrue(sourceText.contains("MOBILELLM_COORDINATOR_V3"), "the shipped supervisor program must be inspectable")
         sourceDisclosure.tap()
 
         let state = app.descendants(matching: .any)["workflow.state"]

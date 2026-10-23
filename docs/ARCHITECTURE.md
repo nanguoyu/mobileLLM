@@ -160,9 +160,10 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   design — is retained for `WorkflowLauncher.resume` of legacy summaries that carry a `WorkflowPlan`, and
   for `MultiAgentWorkflowIntegrationTests`. New launches never use it.
 
-`CoordinatedWorkflow` v2 sends actual worker results to the supervisor. Long outputs have bounded
+`CoordinatedWorkflow` v3 sends actual worker results to the supervisor. Long outputs have bounded
 UTF-8 previews with explicit offsets; `read` returns original ranges without another worker or network
-request. Previously delivered pages stay in the supervisor context alongside its working notes; newest
+request. Exact `inputRanges` can pass an original middle or tail section to a dependent worker.
+Previously delivered pages stay in the supervisor context alongside its working notes; newest
 pages take priority only when the bounded context fills. It can query recorded web evidence
 through the existing read-only host function. All evidence for a wave is selected before child dispatch.
 
@@ -172,8 +173,10 @@ not a persistent provider session or a claim of KV-cache reuse. Other tasks rece
 artifacts. Full outputs stay available even when a preview is truncated. Failures remain labeled and
 successful siblings survive. Three identical actions without progress stop the run.
 
-The program permits at most 12 worker invocations, 24 allocated tool calls and 12 supervisor continuations,
-within the unchanged execution budgets. The supervisor writes the final answer itself. Separate writer,
+The program permits at most 12 worker invocations, 24 actual tool calls and 12 supervisor continuations,
+within the unchanged execution budgets. `await budget.snapshot()` reports actual usage only from settled
+calls reached by replay. Unused worker tool allowances become available to later stages, while the durable
+runtime ledger still enforces admission and all real consumption. The supervisor writes the final answer itself. Separate writer,
 reviewer and consolidation roles are no longer mandatory. A model saying “approved” never established
 correctness in the previous design; external task oracles and primary-source audits measure quality.
 Blocked work and runtime exhaustion fail visibly. Reconciliation still prevents dispatch or completion

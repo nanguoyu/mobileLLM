@@ -202,6 +202,9 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         let startEvidence: @convention(block) (Int32, String) -> Void = { [weak self] requestID, query in
             self?.startEvidence(requestID: requestID, query: query)
         }
+        let startBudgetSnapshot: @convention(block) (Int32) -> Void = { [weak self] requestID in
+            self?.startBudgetSnapshot(requestID: requestID)
+        }
         let finished: @convention(block) (Bool, String) -> Void = { [weak self] succeeded, payload in
             self?.scriptFinished(succeeded: succeeded, payload: payload)
         }
@@ -220,6 +223,7 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         context.setObject(startAgent, forKeyedSubscript: "__mllmStartAgent" as NSString)
         context.setObject(startWorkflow, forKeyedSubscript: "__mllmStartWorkflow" as NSString)
         context.setObject(startEvidence, forKeyedSubscript: "__mllmStartEvidence" as NSString)
+        context.setObject(startBudgetSnapshot, forKeyedSubscript: "__mllmStartBudgetSnapshot" as NSString)
         context.setObject(finished, forKeyedSubscript: "__mllmFinished" as NSString)
     }
 
@@ -250,6 +254,7 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
           const __startAgentNative = globalThis.__mllmStartAgent;
           const __startWorkflowNative = globalThis.__mllmStartWorkflow;
           const __startEvidenceNative = globalThis.__mllmStartEvidence;
+          const __startBudgetSnapshotNative = globalThis.__mllmStartBudgetSnapshot;
           const __finishedNative = globalThis.__mllmFinished;
           const __userFunction = globalThis.__mllmUserFunction;
           for (const __name of ['__mllmCheckpoint','__mllmStopCode','__mllmPhase','__mllmLog',
@@ -447,6 +452,7 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             return __request(__startWorkflowNative, [name, __stringify(value === undefined ? null : value)]);
           };
           const budget = Object.freeze({
+            snapshot: () => __request(__startBudgetSnapshotNative, []),
             get total() { const value = __budgetTotalNative(); return value < 0 ? null : value; },
             spent: () => __budgetSpentNative(),
             remaining: () => { const total = __budgetTotalNative(); return total < 0 ? Infinity : Math.max(0, total - __budgetSpentNative()); },
@@ -574,6 +580,22 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             }
         }
         pendingTasks[requestID] = task
+    }
+
+    private func startBudgetSnapshot(requestID: Int32) {
+        guard pendingTasks[requestID] == nil, !isCompleted else { return }
+        pendingTasks[requestID] = Task { [weak self, host] in
+            guard let self else { return }
+            do {
+                let value = try await host.settledBudget()
+                try Task.checkCancellation()
+                try resolve(requestID: requestID, value: value)
+            } catch is CancellationError {
+                reject(requestID: requestID, error: .cancelled, fatal: true)
+            } catch {
+                reject(requestID: requestID, error: .hostFailure(Self.sanitize(String(describing: error))), fatal: true)
+            }
+        }
     }
 
     private func startEvidence(requestID: Int32, query: String) {

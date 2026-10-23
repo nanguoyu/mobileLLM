@@ -1977,6 +1977,18 @@
         },
         {
           "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testUnusedToolAllowancesRemainAvailableForDependentWork"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testDependentWorkerReceivesSelectedOriginalRangeInsteadOfAnotherPrefix"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testRecoveredBudgetExcludesFutureSettlementsAndUsesActualConsumption"
+        },
+        {
+          "kind": "xctest",
           "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testStructuredRepairDiagnosticLocatesTheConstraintWithoutEchoingOutput"
         },
         {
