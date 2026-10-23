@@ -18,6 +18,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
 
     func testExecutableOracleRejectsDataLossNonatomicityAndWeakUniqueness() throws {
         let correct = """
+        PRAGMA busy_timeout=5000;
         BEGIN IMMEDIATE;
         CREATE TEMP TABLE migration_map AS
         SELECT c.id AS old_id, COALESCE((SELECT d.id FROM contacts d
@@ -40,6 +41,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         XCTAssertFalse(try failures(correct.replacingOccurrences(of:"BEGIN IMMEDIATE;",with:"").replacingOccurrences(of:"COMMIT;",with:"")).isEmpty)
         XCTAssertFalse(try failures(correct.replacingOccurrences(of:"ON contacts(tenant_id,lower(trim(email)))",with:"ON contacts(tenant_id,email)")).isEmpty)
         XCTAssertFalse(try failures(correct.replacingOccurrences(of:"d.updated_at DESC,d.id DESC",with:"d.updated_at ASC,d.id ASC")).isEmpty)
+        XCTAssertFalse(try failures(correct.replacingOccurrences(of:"c.email IS NOT NULL AND trim(c.email) <> ''",with:"c.email IS NOT NULL")).isEmpty)
     }
 
     @MainActor

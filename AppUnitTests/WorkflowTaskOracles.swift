@@ -19,8 +19,9 @@ enum WorkflowLiveCase: String {
             CREATE TABLE tickets(id INTEGER PRIMARY KEY, contact_id INTEGER NOT NULL
               REFERENCES contacts(id), subject TEXT NOT NULL);
             Legacy contacts may duplicate an email within one tenant. Identity is tenant_id plus
-            lower(trim(email)), where trim removes ordinary ASCII spaces. NULL or all-space emails
-            are missing identities; preserve each such contact separately and normalize its email to NULL.
+            lower(trim(email)), where trim removes ordinary ASCII spaces. Missing means email IS NULL or
+            trim(email)='': this includes empty strings and all-space strings. Preserve each missing
+            contact separately and normalize its email to NULL.
             For each nonmissing duplicate identity, keep the row with greatest updated_at, breaking
             ties by greatest id. Preserve that winner's id, display_name, tenant_id and updated_at.
             Repoint every ticket to the winning contact before deleting losers. Preserve all ticket
@@ -227,7 +228,7 @@ private enum MigrationOracle {
         try db.require("PRAGMA foreign_keys=ON; CREATE TABLE contacts(id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,email TEXT,display_name TEXT NOT NULL,updated_at INTEGER NOT NULL); CREATE TABLE tickets(id INTEGER PRIMARY KEY,contact_id INTEGER NOT NULL REFERENCES contacts(id),subject TEXT NOT NULL);")
         var contacts:[Contact] = []
         for id in 1...150 {
-            let email:String? = id % 13 == 0 ? nil : id % 11 == 0 ? "   " : (id % 2 == 0 ? " USER\((id*seed)%17)@EXAMPLE.COM " : "user\((id*seed)%17)@example.com")
+            let email:String? = id % 13 == 0 ? nil : id % 19 == 0 ? "" : id % 11 == 0 ? "   " : (id % 2 == 0 ? " USER\((id*seed)%17)@EXAMPLE.COM " : "user\((id*seed)%17)@example.com")
             let row = Contact(id:id,tenant:(id*7+seed)%3,email:email,name:"Original '\(id)",updated:(id*seed/7)%5)
             contacts.append(row)
             try db.require("INSERT INTO contacts VALUES(\(id),\(row.tenant),\(quote(email)),\(quote(row.name)),\(row.updated));")
@@ -274,8 +275,11 @@ private final class EvaluationDatabase {
             if action == SQLITE_PRAGMA {
                 let name = first.map { String(cString:$0).lowercased() } ?? ""
                 let value = second.map { String(cString:$0).lowercased() }
-                if !["foreign_keys","foreign_key_check","table_info","defer_foreign_keys"].contains(name) { return SQLITE_DENY }
+                if !["foreign_keys","foreign_key_check","table_info","defer_foreign_keys","busy_timeout"].contains(name) { return SQLITE_DENY }
                 if name == "foreign_keys", let value, !["on","1"].contains(value) { return SQLITE_DENY }
+                if name == "busy_timeout", let value {
+                    guard let milliseconds = Int(value), (0...60_000).contains(milliseconds) else { return SQLITE_DENY }
+                }
             }
             return SQLITE_OK
         },context)
