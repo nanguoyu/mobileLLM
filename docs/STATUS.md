@@ -39,9 +39,11 @@ provider continuation, repair accounting, page-miss handling, cancellation races
 evidence handoff, inherited reasoning settings and Chinese web-tool selection. Runtime fixes have focused
 regression coverage; this does not make earlier reports factually correct.
 
-The latest completed run still failed: six children received no web tools for Chinese role prompts,
-produced no usable evidence, and stopped before a report. The current run uses the corrected selector and
-preserves the conversation's reasoning setting. **Research acceptance is still in progress.**
+The later run completed parallel investigation but failed in merge/recovery when fixed full-window time
+reservations stranded remaining capacity. Another run prepared a child whose trailing prompt newline
+violated the canonical instruction contract. Both paths have been repaired and have focused checks.
+The final verification/writing stage is running again with the application's existing raw research
+material. **Research acceptance is still in progress; the empty earlier report is not a delivery.**
 
 The [follow-up evaluation](evaluations/2026-10-23-dynamic-research-followup.md) records the later attempts
 and repairs. The [original evaluation](evaluations/2026-10-22-dynamic-research.md) retains the first seven

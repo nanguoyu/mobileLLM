@@ -41,6 +41,16 @@ the conversation's choice. Chinese requests to retrieve official sources now sel
 without treating a request to retrieve local notes as web intent. A live failed run established that
 this selection issue produced empty advertised-tool lists, not a provider outage.
 
+Long model passes no longer strand active-time capacity. A subsequent attempt's timeout and reservation
+shrink together to the remaining ledger allowance. A 287,813 ms remainder, for example, admits a
+257,813 ms remote request plus 30,000 ms cancellation grace rather than reserving another full 330,000 ms.
+The run's limit stays fixed. Existing model-boundary crash/reopen checks still pass.
+
+The JavaScript bridge now removes outer prompt whitespace before host dispatch, hashing and admission.
+Interior line breaks and indentation remain intact. Safe host errors are recorded even when a generated
+catch returns a generic message. A candidate check also rejects the common missing-`await` pattern that
+would prevent an asynchronous catch from seeing a rejected child promise.
+
 Cancellation uses durable terminal results when acknowledgement or observation is lost. After observer
 loss it may wait 350 ms for the terminal commit without resubmitting work. Cancelled usage remains
 accounted. Truly uncertain results still stop for reconciliation.
@@ -65,7 +75,11 @@ Local bundle names below have the prefix `EuropeEfficientAI-` and suffix `.xcres
 | 17 | GroundedFresh | Four researchers completed 16 calls. The generated script serialized nonexistent `truncationFlag` instead of using the packet's `truncated` field. No final report. |
 | 18 | GroundedContract | A researcher with one call remaining proposed two. The whole batch was rejected; workflow cleanup reported reconciliation before cancelled children settled. No final report. |
 | 19 | BoundedReplan | Six children, zero tools. Chinese role prompts did not select the allowed web tools; reviewers received empty evidence and the identity response failed its schema. No final report. |
-| 20 | ReasonedResearch | In progress with preserved reasoning and corrected Chinese tool selection. Acceptance has not yet been recorded. |
+| 20 | ReasonedResearch | Four parallel investigators collected 13 candidates in nine countries. Six children completed 16 Search and six Fetch calls. The gap stage failed before inference because its duplicated input could not fit the context. The generated script also incorrectly required every citation to be a fetched page. No final report. |
+| 21 | ResearchContinuation | Two investigators started with prior application material. One proposed an oversized batch containing an already executed query; admission rejected it, and the other investigator was cancelled. Four actual searches remain retained. No final report. |
+| 22 | ResearchRecovery | Both investigators completed 12 calls and supplied their full briefs. Merge and recovery then failed because a full time reservation exceeded the remaining allowance after a long model pass. The writer returned an empty table despite 16 actual searches in this run. Script completion is not research acceptance. |
+| 23 | FinalStages | A verifier call was prepared but never submitted. Its generated prompt ended with a newline that violated the child instruction contract. The script caught the error and returned a technical-error message. No research answer. |
+| 24 | FinalCanonical | In progress using the same raw application material after prompt-boundary normalization. Acceptance has not yet been recorded. |
 
 ## Focused checks
 
@@ -76,8 +90,16 @@ not just final text. Overlapping test runs are not added into an inflated suite 
 
 The latest specific checks passed: three batch/repeated-call regressions, three cancellation/reconciliation
 regressions, all 16 selector checks, and the app freezer regression with reasoning enabled and disabled.
-The static verifier passed after the budget and cancellation selectors were registered. Earlier focused
+Two remaining-time tests, two existing model-boundary recovery checks, two prompt-boundary checks and
+the generated-catch app check also passed. The static verifier passed after the time-budget selector was registered. Earlier focused
 results and first failures remain in local logs. No full repository suite was rerun for prompt or prose edits.
+
+Later stages were deliberately continued through new app UI submissions containing unedited prior
+application output and journal excerpts. This transfer was performed by the maintainer. It is not
+unattended continuation or restart of a terminal workflow. The current restart API accepts paused or
+reconciling workflows; this evaluation did not mutate a terminal journal to bypass that contract.
+No institution, paper or corrected answer from the maintainer's independent web checks was added to
+those continuation inputs.
 
 Artifacts remain under `/tmp/mobilellm-europe-efficient-ai-20261022/`: exact goals, generated sources,
 raw application answers, consistent SQLite backups and xcresults. Debug products can contain local
