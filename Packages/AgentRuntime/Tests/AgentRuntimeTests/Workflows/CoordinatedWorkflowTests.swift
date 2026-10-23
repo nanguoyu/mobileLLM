@@ -46,7 +46,7 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
 
     func testSupervisorReadsUntruncatedArtifactLocallyWithoutAnotherWorkerOrWebCall() async throws {
         let probe = CoordinationProbe()
-        let content = String(repeating: "a", count: 20_000) + "UNABRIDGED-TAIL-事实😀"
+        let content = "VISIBLE-START" + String(repeating: "a", count: 40_000) + "UNABRIDGED-TAIL-事实😀"
         let result = try await run(initial: decision("work", tasks: [task("source")])) { call in
             await probe.enter(call); await probe.leave()
             switch call.options.label {
@@ -55,9 +55,10 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
                 if await probe.count("coordinator") == 1 {
                     XCTAssertFalse(call.prompt.contains("UNABRIDGED-TAIL"))
                     XCTAssertTrue(call.prompt.contains("\"truncated\":true"))
-                    return .value(decision("read", reads: [.object(["id": .string("source:1"), "offset": .integer(20_000), "length": .integer(100)])]))
+                    return .value(decision("read", reads: [.object(["id": .string("source:1"), "offset": .integer(40_000), "length": .integer(100)])]))
                 }
                 XCTAssertTrue(call.prompt.contains("UNABRIDGED-TAIL-事实😀"))
+                XCTAssertTrue(call.prompt.contains("VISIBLE-START"), "Reading the tail must not make the supervisor forget the first page")
                 return .value(decision("deliver", answer: "Read the original tail"))
             default: XCTFail("Reading must not dispatch another worker"); return .stopped
             }

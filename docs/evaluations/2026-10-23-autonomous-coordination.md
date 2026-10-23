@@ -66,7 +66,7 @@ file and `STATUS.md` only after their original outputs have been checked.
 
 ## Retained task outcomes
 
-[Compact evidence](evidence/2026-10-23-autonomous-coordination.json) retains 16 outcomes, exact accepted
+[Compact evidence](evidence/2026-10-23-autonomous-coordination.json) retains 18 outcomes, exact accepted
 JSON answers, source/output hashes and selected child timing records. The same code was not used for all
 runs, so these are diagnostic outcomes rather than an aggregate reliability score.
 
@@ -89,4 +89,17 @@ speedup, and a direct solution is not evidence of multi-agent collaboration.
 The initial supervisor call was previously absent from the displayed token counters. Presentation now
 adds its journaled usage once, including after recovery. Old evidence keeps the original counters and
 labels their scope. The Swift app harness compiled this change and its existing per-child budget regression
-passed. Live API-comparison and Europe outcomes for v2 are still pending.
+passed. The first v2 API comparison passed UI checks in 403.931 seconds (323.243 application seconds), using
+two research workers, seven supervisor turns and 11 web calls. Its core endpoint/auth/content distinctions
+match the official APIs. Citation quality is incomplete: the final answer cites an old Brave URL whose
+Fetch had failed, while its worker also supplied a successfully retrieved dashboard URL. It must not be
+counted as a fully verified answer solely because the UI passed.
+
+The first v2 Europe run failed after 402.058 application seconds (512.022 UI seconds): four research
+workers completed, then all twelve supervisor continuations read pages instead of delivering. The host
+had replaced the previous observation page on each turn and relied on model-written notes to preserve
+facts. The notes did not reliably do that. The supervisor now retains observed pages automatically inside
+a bounded context, prioritizes recent pages at the limit, and preserves earlier originals for further reads.
+The strengthened regression requires the original first-page fact and the newly read tail to coexist in the
+next supervisor input. Both that check and dependent-task continuation passed. This is a data-flow fix;
+source and coverage oracles are unchanged. Targeted live checks of the corrected policy are pending.

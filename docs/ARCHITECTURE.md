@@ -162,7 +162,8 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
 
 `CoordinatedWorkflow` v2 sends actual worker results to the supervisor. Long outputs have bounded
 UTF-8 previews with explicit offsets; `read` returns original ranges without another worker or network
-request. The supervisor carries its working notes between decisions. It can query recorded web evidence
+request. Previously delivered pages stay in the supervisor context alongside its working notes; newest
+pages take priority only when the bounded context fills. It can query recorded web evidence
 through the existing read-only host function. All evidence for a wave is selected before child dispatch.
 
 A repeated task ID continues a logical task with its recorded assignments, outputs and selected web

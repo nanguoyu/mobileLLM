@@ -1745,7 +1745,7 @@ Primary references inspected for these constraints:
   <https://opencode.ai/docs/agents/>
 - OpenCode task implementation for durable parent/child sessions, resumption, depth limits, background execution, and
   transitive child permission derivation:
-  <https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/tool/task.ts>
+  <https://github.com/anomalyco/opencode/blob/24b5ed8bcc60aa9a20cf4e3edf1444470e0e6464/packages/core/src/session/subagent-job.ts>
 
 ### 34.2 Compatibility target and script contract
 
@@ -1820,7 +1820,7 @@ Actual worker results, rather than only summaries, return to the supervisor. Bou
 truncation; the original outputs remain available for local reads without another model worker or network request.
 Independent workers settle behind a barrier. Evidence views for a wave are resolved before dispatch, so concurrent
 completion cannot change a sibling's inputs. Failed workers do not erase useful siblings. Supervisor working notes
-persist through its recorded decisions. Repeated identical actions without progress stop visibly.
+and automatically retained observations persist through recorded decisions and results. Repeated identical actions without progress stop visibly.
 
 The supervisor produces the final deliverable. Writer, reviewer and consolidation agents are optional task choices,
 not mandatory phases. Execution completion is not a model-issued certificate of correctness. External task oracles

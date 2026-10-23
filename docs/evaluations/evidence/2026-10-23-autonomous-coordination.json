@@ -894,6 +894,319 @@
       },
       "externalChecksPassed": true,
       "accountingNote": "This pre-fix UI aggregate excludes the initial supervisor model call; zero child tokens is not zero total model usage."
+    },
+    {
+      "id": "api-supervisor",
+      "code": "2cf6b24",
+      "uiSeconds": 403.931,
+      "evaluation": "ui-passed-citation-incomplete",
+      "reason": "Core API fields are supported, but the final answer cites an old Brave URL whose Fetch failed and omits the successfully fetched dashboard URL. Six repeated read decisions added avoidable work.",
+      "capturedWorkflowState": "completed",
+      "aggregated": {
+        "elapsedMilliseconds": 323243,
+        "inputTokens": 167125,
+        "outputTokens": 24982,
+        "subagentCount": 9,
+        "toolInvocationCount": 11
+      },
+      "sourceSHA256": "be379911adc6cc217b4ef8b09c57d18a9a05a4fafecfc6eee8ed54a6d08dc02f",
+      "answerSHA256": "028f40fd2769621d5c9e0f853fd61e767bc75954cbb2abe4981cc014224f4f82",
+      "observedChildren": [
+        {
+          "ordinal": 1,
+          "label": "deepseek_search_fetch_docs",
+          "status": "completed",
+          "startSeconds": 0.0,
+          "endSeconds": 58.261,
+          "tools": {
+            "completed": 5,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 2,
+          "label": "brave_web_search_docs",
+          "status": "completed",
+          "startSeconds": 0.001,
+          "endSeconds": 134.66,
+          "tools": {
+            "completed": 3,
+            "failed": 3
+          }
+        },
+        {
+          "ordinal": 3,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 134.722,
+          "endSeconds": 142.45,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 4,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 142.499,
+          "endSeconds": 159.626,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 5,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 159.676,
+          "endSeconds": 170.642,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 6,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 170.698,
+          "endSeconds": 182.526,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 7,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 182.584,
+          "endSeconds": 191.958,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 8,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 192.017,
+          "endSeconds": 209.87,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 9,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 209.933,
+          "endSeconds": 286.247,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "europe-supervisor",
+      "code": "2cf6b24",
+      "uiSeconds": 512.022,
+      "evaluation": "failed",
+      "reason": "All four research workers completed, then twelve read decisions exhausted supervisor capacity. Previously observed pages were not automatically retained.",
+      "capturedWorkflowState": "failed",
+      "aggregated": {
+        "elapsedMilliseconds": 402058,
+        "inputTokens": 189336,
+        "outputTokens": 64792,
+        "subagentCount": 16,
+        "toolInvocationCount": 20
+      },
+      "sourceSHA256": "be379911adc6cc217b4ef8b09c57d18a9a05a4fafecfc6eee8ed54a6d08dc02f",
+      "answerSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "observedChildren": [
+        {
+          "ordinal": 1,
+          "label": "task-dach",
+          "status": "completed",
+          "startSeconds": 0.0,
+          "endSeconds": 201.46,
+          "tools": {
+            "completed": 5,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 2,
+          "label": "task-uk-ie",
+          "status": "completed",
+          "startSeconds": 0.003,
+          "endSeconds": 131.185,
+          "tools": {
+            "completed": 5,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 3,
+          "label": "task-benelux-nordics-fr",
+          "status": "completed",
+          "startSeconds": 0.006,
+          "endSeconds": 149.539,
+          "tools": {
+            "completed": 5,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 4,
+          "label": "task-southern-eastern",
+          "status": "completed",
+          "startSeconds": 0.01,
+          "endSeconds": 148.804,
+          "tools": {
+            "completed": 5,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 5,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 201.503,
+          "endSeconds": 210.32,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 6,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 210.366,
+          "endSeconds": 221.398,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 7,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 221.458,
+          "endSeconds": 232.974,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 8,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 233.039,
+          "endSeconds": 246.968,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 9,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 247.036,
+          "endSeconds": 257.792,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 10,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 257.858,
+          "endSeconds": 277.484,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 11,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 277.554,
+          "endSeconds": 286.305,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 12,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 286.385,
+          "endSeconds": 299.631,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 13,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 299.717,
+          "endSeconds": 306.242,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 14,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 306.348,
+          "endSeconds": 319.984,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 15,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 320.076,
+          "endSeconds": 339.742,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 16,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 339.838,
+          "endSeconds": 348.782,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        }
+      ]
     }
   ],
   "mechanicalChecks": {
@@ -917,6 +1230,6 @@
     "includedInModelPrompt": false
   },
   "pending": [
-    "SupervisorV2.xcresult: API comparison and Europe research at 2cf6b24"
+    "Targeted API comparison and Europe research after automatic observation retention"
   ]
 }

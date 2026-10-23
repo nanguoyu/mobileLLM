@@ -89,9 +89,10 @@ public enum CoordinatedWorkflow {
         const context = '\nORIGINAL GOAL:\n' + args.goal + '\nENABLED TOOL IDS:\n' + serialize(args.availableTools)
           + '\nACTUAL RUN DATE (UTC): ' + args.runDate;
         const hasWeb = args.availableTools.some(t => t.includes('web_search') || t.includes('fetch_webpage'));
-        const windowBytes = args.contextByteLimit || 16000;
+        const windowBytes = args.contextByteLimit || 32000;
         let decision = args.plan;
         let records = [];
+        let observed = [];
         let allocatedTools = 0;
         let notes = '';
         let lastAction = '';
@@ -116,6 +117,36 @@ public enum CoordinatedWorkflow {
             nextOffset:offset+content.length,totalCharacters:record.content.length,
             truncated:offset+content.length < record.content.length,content:content};
         }
+        function byteLength(text) {
+          let bytes = 0;
+          for (let i = 0; i < text.length; i++) {
+            const c = text.charCodeAt(i);
+            const size = c < 128 ? 1 : c < 2048 ? 2 : c >= 55296 && c <= 56319 ? 4 : 3;
+            bytes += size;
+            if (size === 4) { i++; }
+          }
+          return bytes;
+        }
+        function resultContext(limit) {
+          let result = [];
+          let remaining = Math.min(windowBytes,limit);
+          // A read adds to the conversation instead of replacing the previous page. Working
+          // notes are not a substitute for actual observations. Newest pages win at the bound.
+          for (let i = observed.length-1; i >= 0; i--) {
+            if (remaining < 512) { break; }
+            const previous = observed[i];
+            let item = previous;
+            if (byteLength(serialize(item)) > remaining) {
+              const record = records.find(r => r.id === previous.id);
+              item = artifact(record,previous.offset,previous.nextOffset-previous.offset,(remaining-512)/2);
+            }
+            const size = byteLength(serialize(item));
+            if (size > remaining) { break; }
+            result.unshift(item);
+            remaining -= size;
+          }
+          return result;
+        }
         for (let turn = 0; turn < 13; turn++) {
           let feedback = '';
           let observations = [];
@@ -138,7 +169,7 @@ public enum CoordinatedWorkflow {
               const record = records.find(r => r.id === read.id);
               if (!record) { feedback += 'Unknown artifact: ' + read.id + '. '; }
               else if (read.offset >= record.content.length) { feedback += 'Offset outside artifact: ' + read.id + '. '; }
-              else { observations.push(artifact(record,read.offset,read.length,windowBytes/(2*decision.reads.length))); }
+              else { observations.push(artifact(record,read.offset,read.length,windowBytes/decision.reads.length)); }
             }
             if (hasWeb && decision.query.trim().length > 0) { evidence = await webEvidence(decision.query); }
           } else {
@@ -181,9 +212,13 @@ public enum CoordinatedWorkflow {
               for (const result of results) {
                 result.id = result.taskID + ':' + (records.length+1);
                 records.push(result);
-                observations.push(artifact(result,0,result.content.length,windowBytes/(2*results.length)));
+                observations.push(artifact(result,0,result.content.length,windowBytes/results.length));
               }
             }
+          }
+          for (const item of observations) {
+            observed = observed.filter(p => !(p.id === item.id && p.offset === item.offset && p.nextOffset === item.nextOffset));
+            observed.push(item);
           }
           if (turn === 12) { break; }
           phase('Coordinate');
@@ -195,11 +230,12 @@ public enum CoordinatedWorkflow {
           decisionSchema.properties.reads.items.properties.id = referenceSchema;
           decisionSchema.properties.reads.maxItems = ids.length === 0 ? 0 : 4;
           decisionSchema.properties.tasks.items.properties.maxToolCalls.maximum = Math.min(6,24-allocatedTools);
-          decision = await agent(coordinatorInstruction + context + '\nYOUR WORKING NOTES:\n' + notes
-            + '\nARTIFACT CATALOG:\n' + serialize(index) + '\n<results>\n' + serialize(observations) + '\n</results>'
+          const frame = coordinatorInstruction + context + '\nYOUR WORKING NOTES:\n' + notes
+            + '\nARTIFACT CATALOG:\n' + serialize(index)
             + '\n<recorded-web-evidence>\n' + serialize(evidence) + '\n</recorded-web-evidence>'
             + '\nHOST FEEDBACK:\n' + feedback + '\nREMAINING ALLOCATION:\n'
-            + serialize({workerInvocations:12-records.length,tools:24-allocatedTools,supervisorTurns:12-turn}),
+            + serialize({workerInvocations:12-records.length,tools:24-allocatedTools,supervisorTurns:12-turn});
+          decision = await agent(frame + '\n<results>\n' + serialize(resultContext(Math.max(0,64000-byteLength(frame)))) + '\n</results>',
             {label:'coordinator',maxToolCalls:0,schema:decisionSchema});
           if (decision === null) { throw new Error('Task incomplete: supervisor unavailable.'); }
         }

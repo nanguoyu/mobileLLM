@@ -24,7 +24,9 @@ The replacement supervisor returns actual worker results, supports local artifac
 continuation, and writes the answer without mandatory writer/reviewer agents. Six focused control-flow
 checks pass. The first closed-data procurement answer passed every exact oracle in 23.285 application
 seconds with no unnecessary delegation. Its UI test failed only a minimum-child-count assertion; the
-original answer passed offline replay and was not regenerated. Complex web results are pending. See the [diagnosis, source comparison and
+original answer passed offline replay and was not regenerated. The first API comparison passed UI checks but retained a failed-read citation; Europe still failed through
+repeated paging. Observed pages are now retained across supervisor turns, with a focused regression for
+that exact failure. The corrected policy awaits targeted live checks. See the [diagnosis, source comparison and
 validation](evaluations/2026-10-23-autonomous-coordination.md). Completion still needs external output
 checks; a model's own approval is not an accuracy measurement.
 
