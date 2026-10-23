@@ -1752,7 +1752,8 @@ optional phase descriptors. The remaining body supports top-level `await` and `r
 The injected V1 surface is deliberately small:
 
 - `agent(prompt, options?)` starts one isolated child agent and returns text, a schema-validated JSON value, or `null`
-  only for an explicitly classified model/provider availability failure; every other failure remains typed and fatal;
+  only for an explicitly classified model/provider availability failure; other failures retain their typed, durable
+  outcomes. Handling a child failure cannot bypass cancellation or a required reconciliation;
 - `parallel(thunks)` starts independent thunks concurrently, applies a full barrier, and preserves input result order;
 - `pipeline(items, ...stages)` lets each item advance through its stages independently with no global stage barrier;
 - `phase(title)` and `log(value)` publish bounded observability events but grant no authority;
@@ -1774,7 +1775,9 @@ The injected V1 surface is deliberately small:
 launch or dispatch. Model substitution is policy-owned and observable. Schema
 validation is host-side with at most two bounded corrective turns under the child budget. Invalid output after
 repair exhaustion remains a typed child failure. Only a classified model/provider availability failure may
-settle to `null`; budget, cancellation, schema, and policy failures remain fatal.
+settle to `null`; budget, cancellation, schema, and policy failures cannot be converted into a successful child.
+A workflow may retain a known failed result while continuing independent work. Required reconciliation blocks
+new dispatch and successful completion even if the script catches its error.
 
 `maxToolCalls` is an optional integer from 0 to 1000 that can only reduce the child's host-owned tool budget.
 It cannot enable tools or expand authority. Zero disables tool advertisement; missing values retain host policy.

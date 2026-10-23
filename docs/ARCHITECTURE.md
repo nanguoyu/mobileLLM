@@ -170,9 +170,9 @@ run. Exhaustion is a failure, not permission to increase the budget.
 
 Workers return bounded structured results. A failed worker is retained as a failed record while
 successful siblings remain available. The coordinator can commission follow-up work, request delivery,
-or explain a blocking condition. Only tasks explicitly marked `consolidatesInputs` can replace their upstream bodies after completion.
-Ordinary verification and analysis always preserve upstream artifacts. These completed consolidations replace their upstream bodies in the writer input, with the full artifact
-index retained. Failed or partial consolidations do not hide upstream work. A delivery-stage execution
+or explain a blocking condition. Only completed tasks explicitly marked `consolidatesInputs` can replace their upstream bodies in the
+writer input. Ordinary verification and analysis preserve upstream artifacts. The full artifact index
+remains available. Failed or partial consolidations do not hide upstream work. A delivery-stage execution
 failure returns to the coordinator for a bounded correction, including context consolidation, within
 the same two delivery attempts. The reviewer receives the
 original goal, fixed criteria, draft, artifact index and recorded web evidence, avoiding duplication of
@@ -223,15 +223,12 @@ authorization, arguments and duplicate checks otherwise pass, one repair pass ma
 or a final answer. That pass consumes the existing model and repair budgets. A second oversized batch
 fails; no prefix of a rejected batch executes and the tool ceiling never increases.
 
-Generated candidates with phase metadata must contain a real `phase()` call; metadata declaring
-parallel work must contain a real `parallel()` call. Comments and quoted strings do not satisfy these
-checks. This candidate lint uses the existing single repair and does not change archived V1 replay.
-New candidates also reject the common `try { return agent(...) } catch` mistake: the return must await
-the promise for that catch to handle rejection. Archived V1 scripts retain their analysis contract.
-Actual phase ordering and coverage still require execution evidence. Counted reports are generated
-with structured final rows and script-computed totals. The generator preserves the conversation's reasoning setting because children inherit its frozen generation policy.
-Children receive explicit task-scope guidance
-and their own real tool counters, so upstream claims about exhausted allowances are task data.
+The app validates that phase and parallel declarations correspond to executable calls; strings and
+comments cannot satisfy these checks. The analyzed coordination program awaits asynchronous calls
+inside catch blocks. Archived V1 scripts retain their analysis contract. Actual ordering and result
+quality still require execution evidence. The coordinator preserves the conversation's reasoning
+setting because children inherit its frozen generation policy. Each child receives its own task,
+selected input artifacts and real tool counters; an upstream claim about exhausted tools is only data.
 
 A malformed model response gets one immediate repair. A successful repaired tool action ends that
 repair phase; a later independent error can consume another repair only if the fixed cumulative

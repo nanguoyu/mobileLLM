@@ -140,6 +140,34 @@ xcodebuild -skipMacroValidation -scheme DeviceE2E \
   CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
 ```
 
+### Selecting collaboration evaluations
+
+Use the existing `DynamicWorkflowExplorationUITests` runner for live capability checks. Select the
+scenario affected by a runtime or task-quality change with `-only-testing`; do not run the entire
+DeviceE2E plan for an ordinary edit. The runner sends one original goal through the real UI. Expected
+answers remain in the evaluator, and external corrective prompts or intermediate-answer transfers
+invalidate an autonomous result.
+
+| Test | Task shape | Outcome check |
+| --- | --- | --- |
+| 01 | Current model/device feasibility | Primary sources and direct feasibility reasoning |
+| 02 | Accessible trip with constraints | Routing, budget, dependencies and verified access information |
+| 03 | Architecture decision | Constraint preservation, alternatives and rollout reasoning |
+| 04 | Recovery incident analysis | Causal hypotheses, containment, sound recovery guarantees and crash tests |
+| 05 | Untrusted template | Authority boundaries and actual absence of unauthorized effects |
+| 06 | Closed research directory | Exact eligible set, exclusions and alias deduplication |
+| 07 | Device procurement | Every feasible pair, exact optimum, cost and power |
+| 08 | Dependency scheduling | Durations, dependencies, worker overlap, makespan and lower bound |
+| 09 | Search API comparison | Actual web operations, primary citations, endpoints/authentication/content semantics |
+| 99 | Ad-hoc original goal | Caller-supplied criteria plus independent outcome review |
+
+Tests 06–08 enforce exact data oracles. Keyword/source-count checks in open tasks are only preliminary
+checks; inspect their actual answers and journal evidence. An application's own review verdict is not
+an external quality oracle. Preserve the first failure and tested commit. A failed worker followed by
+successful bounded recovery can pass; missing execution evidence cannot. Do not rerun paid models for
+wording or presentation fixes. The opt-in fixed-response UI fixture is isolated and offline, and proves
+UI/runtime integration only. It is not part of model-capability scores.
+
 ### What runs where
 
 **Hosted CI selects two Linux validation jobs from changed paths.** Prose-only changes skip Swift.
