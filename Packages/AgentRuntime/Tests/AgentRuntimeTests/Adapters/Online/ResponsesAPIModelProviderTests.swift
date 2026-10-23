@@ -550,7 +550,8 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         data: [DONE]
 
         """
-        for streamBody in [streamBody, emptyStreamBody] {
+        let invalidSchemaBody = streamBody.replacingOccurrences(of: #"\"value\""#, with: "17")
+        for streamBody in [streamBody, emptyStreamBody, invalidSchemaBody] {
             MockResponsesURLProtocol.handler = { request in
                 let body = MockResponsesURLProtocol.requestBodyString(request)
                 XCTAssertTrue(body.contains("\"response_format\":{\"type\":\"json_object\"}"), body)
@@ -633,7 +634,7 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
                 authorized: authorized,
                 eventSink: sink
             )
-            if streamBody == emptyStreamBody {
+            if streamBody == emptyStreamBody || streamBody == invalidSchemaBody {
                 guard case .failed(let failure) = result.outcome else {
                     XCTFail("Empty structured output must fail instead of becoming an answer")
                     continue
@@ -641,6 +642,12 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
                 XCTAssertEqual(failure.code, "model.online.structured-output-invalid")
                 XCTAssertEqual(failure.externalEffect, .confirmedNone)
                 XCTAssertEqual(failure.retryAdvice, .never, "The existing controller repair owns the retry")
+                if streamBody == invalidSchemaBody {
+                    XCTAssertTrue(failure.safeMessage.contains("$.q"), failure.safeMessage)
+                    XCTAssertEqual(result.reportedUsage?.inputTokens, 19)
+                    XCTAssertEqual(result.reportedUsage?.outputTokens, 7,
+                        "A schema failure must retain actual usage instead of charging the full reserved output")
+                }
                 continue
             }
             guard case .completed(let completion) = result.outcome,

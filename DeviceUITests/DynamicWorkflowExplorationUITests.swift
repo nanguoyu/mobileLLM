@@ -351,6 +351,10 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
 
         let workflowBar = app.navigationBars["Workflow"]
         for _ in 0 ..< 5 where !workflowBar.exists {
+            // A long user message can leave a newly attached workflow row behind the composer.
+            // Scroll through the real UI before tapping; accessibility existence alone is not visibility.
+            let latest = app.buttons["Scroll to latest"]
+            if latest.exists, latest.isHittable { latest.tap() }
             if row.exists, row.isHittable { row.tap() }
             if workflowBar.waitForExistence(timeout: 3) { break }
         }

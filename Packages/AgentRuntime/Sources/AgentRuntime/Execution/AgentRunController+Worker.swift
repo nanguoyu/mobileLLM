@@ -390,6 +390,7 @@ extension AgentRunController {
                     ? "Your last tool call already executed in this turn. Do NOT call any tool again — "
                         + "answer the user's request directly with text only."
                     : "Return exactly one valid action matching the advertised response contract. "
+                        + lastRepair.1.safeMessage + " "
                         + "Use native function calls for tools, never DSML/XML tool markup in answer text. "
                         + "If no tools are advertised, return the requested final answer."
             )
@@ -892,7 +893,7 @@ extension AgentRunController {
                 stepID: modelRequest.stepID,
                 reservation: reservation,
                 repairAlreadyAttempted: history.pendingRepair?.1.code == "execution.structured-repair",
-                diagnostic: failure.code,
+                diagnostic: failure.safeMessage,
                 reportedUsage: execution.reportedUsage
             )
             return
@@ -1315,7 +1316,7 @@ extension AgentRunController {
                 let repair = try AgentFailure(
                     code: "execution.structured-repair",
                     classification: .transient,
-                    safeMessage: "Retrying once with constrained structured output.",
+                    safeMessage: "Retrying once with constrained structured output. " + String(diagnostic.prefix(512)),
                     retryAdvice: .never,
                     externalEffect: .confirmedNone,
                     requiredUserAction: .none,

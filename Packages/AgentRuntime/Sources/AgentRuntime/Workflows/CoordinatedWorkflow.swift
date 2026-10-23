@@ -48,6 +48,8 @@ public enum CoordinatedWorkflow {
     MOBILELLM_WORKER_V1
     Complete only your assigned task using the original goal and selected artifacts below.
     Return a concise structured result: status, summary, content, and unresolved questions.
+    The original goal's output format is for the final deliverable. Keep this worker's wrapper;
+    place any requested JSON/code inside the content string instead of returning it at the top level.
     Put the actual work in content, preserving calculations, code, records and source URLs needed
     downstream. State unknowns and contradicting evidence. Do not claim that the entire task passed.
     Use the real enabled tools for external facts when needed. Never simulate searches or tests.
@@ -199,8 +201,9 @@ public enum CoordinatedWorkflow {
                 {label:'draft',maxToolCalls:0});
               if (typeof draft !== 'string' || draft.trim().length === 0) { throw new Error('Task incomplete: no deliverable was produced.'); }
               const evidence = await webEvidence();
+              const reviewIndex = records.map(r => ({id:r.id,status:r.status,summary:r.summary,unresolved:r.unresolved}));
               review = await agent(reviewInstruction + context + '\n<draft>\n' + draft + '\n</draft>'
-                + '\n<artifacts>\n' + serialize(records) + '\n</artifacts>'
+                + '\n<artifact-index>\n' + serialize(reviewIndex) + '\n</artifact-index>'
                 + '\n<recorded-web-evidence>\n' + serialize(evidence) + '\n</recorded-web-evidence>',
                 {label:'acceptance-review',maxToolCalls:0,schema:reviewSchema});
               reviews++;

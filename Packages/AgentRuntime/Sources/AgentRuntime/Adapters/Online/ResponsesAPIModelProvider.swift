@@ -514,6 +514,14 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                 } catch {
                     throw AgentModelProviderFailure(try Self.structuredOutputFailure())
                 }
+                if case .structured(let schema) = request.outputRequirement,
+                   try !schema.validates(instance: value) {
+                    // Usage has already been emitted. Returning a typed malformed-output failure
+                    // retains that metering and gives the controller's one repair a useful cause.
+                    throw AgentModelProviderFailure(try Self.structuredOutputFailure(
+                        ModelOutputInstructions.mismatch(value, schema: schema)
+                    ))
+                }
                 action = .finalAnswer(try AgentAnswer(structuredOutput: value))
             } else {
                 action = .finalAnswer(try AgentAnswer(text: finalText))
@@ -1434,11 +1442,11 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         )
     }
 
-    private static func structuredOutputFailure() throws -> AgentFailure {
+    private static func structuredOutputFailure(_ detail: String? = nil) throws -> AgentFailure {
         try AgentFailure(
             code: "model.online.structured-output-invalid",
             classification: .permanent,
-            safeMessage: "The online model returned invalid structured output.",
+            safeMessage: "The online model returned invalid structured output." + (detail.map { " " + $0 } ?? ""),
             retryAdvice: .never,
             externalEffect: .confirmedNone,
             requiredUserAction: .none,

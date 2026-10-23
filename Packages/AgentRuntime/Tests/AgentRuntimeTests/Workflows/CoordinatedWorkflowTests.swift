@@ -7,6 +7,18 @@ import XCTest
 /// Exercises the shipped program with controlled child outcomes. These are scheduler/control-flow
 /// regressions, not evidence that a live model can solve the corresponding user tasks.
 final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
+    func testStructuredRepairDiagnosticLocatesTheConstraintWithoutEchoingOutput() throws {
+        let schema = try JSONSchemaDocument(root: .object([
+            "type": .string("object"), "properties": .object([
+                "content": .object(["type": .string("string"), "maxLength": .integer(5)])]),
+            "required": .array([.string("content")]),
+        ]))
+        let diagnostic = ModelOutputInstructions.mismatch(.object(["content": .string("private-output-value")]), schema: schema)
+        XCTAssertTrue(diagnostic.contains("$.content"))
+        XCTAssertTrue(diagnostic.contains("maxLength"))
+        XCTAssertFalse(diagnostic.contains("private-output-value"))
+    }
+
     func testParallelWorkDependentHandoffAndRejectedDeliveryAreCorrectedInsideOneRun() async throws {
         let probe = CoordinationProbe()
         let result = try await run(initial: decision("work", tasks: [task("cost"), task("constraints")])) { call in
@@ -31,13 +43,16 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
             case "reconcile":
                 XCTAssertTrue(call.prompt.contains("cost-evidence"))
                 XCTAssertTrue(call.prompt.contains("constraints-evidence"))
-                return .value(worker("combined derivation"))
+                return .value(worker("combined derivation", content: "FULL-DERIVATION-BODY"))
             case "correct":
                 XCTAssertTrue(call.prompt.contains("combined derivation"))
+                XCTAssertTrue(call.prompt.contains("FULL-DERIVATION-BODY"))
                 return .value(worker("corrected total 42"))
             case "draft":
                 return .value(.string(await probe.count(label) == 1 ? "wrong total" : "corrected total 42"))
             case "acceptance-review":
+                XCTAssertFalse(call.prompt.contains("FULL-DERIVATION-BODY"),
+                    "Review uses the deliverable, artifact index and recorded evidence, not every intermediate body again")
                 return .value(review(approved: await probe.count(label) > 1, gap: await probe.count(label) == 1 ? "wrong total" : ""))
             default: XCTFail("Unexpected child \(label)"); return .stopped
             }
@@ -150,8 +165,8 @@ private func decision(_ action: String, tasks: [JSONValue] = []) -> JSONValue {
     .object(["action": .string(action), "stage": .string("Work"), "reason": .string("Resolve the task"), "tasks": .array(tasks)])
 }
 
-private func worker(_ text: String) -> JSONValue {
-    .object(["status": .string("completed"), "summary": .string(text), "content": .string(text), "unresolved": .array([])])
+private func worker(_ text: String, content: String? = nil) -> JSONValue {
+    .object(["status": .string("completed"), "summary": .string(text), "content": .string(content ?? text), "unresolved": .array([])])
 }
 
 private func review(approved: Bool, gap: String) -> JSONValue {
