@@ -131,9 +131,12 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   never races the durable ledger.
 - **Dynamic workflows** (`/workflow <goal>`, spec §34): the primary orchestration path since 2026-08-09.
   The `/workflow` marker may appear anywhere in the message; the remaining text is the goal. `WorkflowLauncher`
-  (App) first submits a durable, schema-constrained supervisor decision. It saves the exact
+  (App) calls the shared `AgentRuntimeAssembly.prepareCoordinatedWorkflow` entry point, also used by
+  opt-in native evaluation. It first submits a durable, schema-constrained supervisor decision. It saves the exact
   `CoordinatedWorkflow` program with the original goal, decision and enabled tool IDs in immutable args.
   The supervisor delegates work, reads stored results, continues logical tasks and returns the answer.
+  Host delegation remains available when workers have no external tools; explicit user stage requirements
+  cannot be replaced by a direct answer solely to minimize agent count.
   The coordinator's `suppressModelTools` flag hides its own tools while retaining the conversation's
   catalog, policy and selected web-service account for children. Recovery uses that frozen catalog.
   `DynamicWorkflowScriptAnalyzer` still validates the program and accepts archived authored scripts
@@ -182,8 +185,9 @@ correctness in the previous design; external task oracles and primary-source aud
 Blocked work and runtime exhaustion fail visibly. Reconciliation still prevents dispatch or completion
 until an uncertain effect is resolved. Saved v1 programs retain their exact source and replay semantics.
 
-See the [source comparison and evaluation](evaluations/2026-10-23-autonomous-coordination.md) for the
-reason for this change and the remaining limitations. Earlier supervised reports do not establish
+See the [source comparison](evaluations/2026-10-23-autonomous-coordination.md) and
+[native multi-stage evaluation](evaluations/2026-10-23-multistage-native.md) for the rationale, actual
+execution evidence and remaining limitations. Earlier supervised reports do not establish
 autonomous research coverage.
 
 The JavaScript bridge trims only outer prompt whitespace before host dispatch, prefix hashing and

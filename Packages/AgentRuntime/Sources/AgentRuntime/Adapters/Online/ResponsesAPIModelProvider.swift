@@ -486,7 +486,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             let structured = Self.isStructured(request)
             let finalText = structured ? Self.structuredJSONText(parsed.text) : parsed.text
             let trimmed = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if ["<｜｜DSML｜｜", "<｜DSML｜", "<tool_call>"].contains(where: trimmed.hasPrefix) {
+            if ["<｜｜DSML｜｜", "<｜DSML｜", "<tool_call>", "<tool_calls>"].contains(where: trimmed.hasPrefix) {
                 // Tool protocol text is neither an answer nor an authorized native invocation.
                 // The controller owns a single recorded repair, including for text-only children.
                 throw AgentModelProviderFailure(try AgentFailure(

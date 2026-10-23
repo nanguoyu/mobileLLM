@@ -1,0 +1,523 @@
+{
+  "date": "2026-10-23",
+  "purpose": "Independent multi-stage collaboration across engineering tasks, using real online model calls and production execution.",
+  "serviceModel": "deepseek-v4-pro",
+  "environment": "iPhone 17 / iOS 27 Simulator, native app-unit host",
+  "evaluationMethod": "Exact production preparation/approval/executor path; fixed model outputs unavailable; only original task input is provided during each run. Domain oracles and exact artifact-handoff checks run after the application finishes.",
+  "limits": "These are diagnostic task cases over supplied contracts and data. This is not a population-wide reliability estimate or a claim that the application executed SQL itself.",
+  "buildOnlyFailure": {
+    "revision": "44cb51b8a7ebfd1c2d5842c886bd813db165ba43",
+    "problem": "macOS-only home directory fallback was unavailable in iOS",
+    "modelCalls": 0,
+    "fixedIn": "f0d33a5f5df6a2ffe40a2eb16cb06133216b049e"
+  },
+  "cases": [
+    {
+      "answer": "{\"marker\":\"EVAL_RECOVERY\",\"claims\":[{\"id\":\"C1\",\"verdict\":\"supported\",\"evidence\":\"E2 and E5 record two send attempts; supplied event trace says both sends are observed.\"},{\"id\":\"C2\",\"verdict\":\"unknown\",\"evidence\":\"Only send attempts are observed. E3 is a timeout with no ack, and no provider execution logs or accepted-write records exist, so whether either or both became external writes is not established.\"},{\"id\":\"C3\",\"verdict\":\"refuted\",\"evidence\":\"Lease expiry is local and cannot prove the remote operation did not happen; the remote operation could have executed before or despite lease expiry.\"},{\"id\":\"C4\",\"verdict\":\"supported\",\"evidence\":\"Contract states deduplication only applies to the same idempotency key; different keys may create different effects.\"},{\"id\":\"C5\",\"verdict\":\"refuted\",\"evidence\":\"Contract states local state cannot reveal whether a sent request took effect without a durable provider key/result, so a local fencing token alone cannot guarantee exactly-once effects.\"}],\"recovery\":[{\"id\":\"R1\",\"action\":\"dispatch_new\",\"reason\":\"No prior dispatch and no competing owner, so a new dispatch is safe.\"},{\"id\":\"R2\",\"action\":\"retry_same_key\",\"reason\":\"Within the 24-hour dedup/lookup window, the original key and identical payload can be idempotently resubmitted; optionally precede with lookup to recover the result.\"},{\"id\":\"R3\",\"action\":\"reconcile\",\"reason\":\"Without dedup or lookup, the external outcome is unknown; automatic resubmission could duplicate effects, so pause and establish the external outcome.\"},{\"id\":\"R4\",\"action\":\"reuse_result\",\"reason\":\"A durable successful result already matches the payload, so no send is needed.\"},{\"id\":\"R5\",\"action\":\"reject_conflict\",\"reason\":\"Same logical job with a different payload hash conflicts with the durable record; reject and require explicit resolution.\"},{\"id\":\"R6\",\"action\":\"reconcile\",\"reason\":\"The dedup window has expired, so safe same-key retry is unavailable; pause automatic resend and establish the external outcome or seek explicit resolution.\"}],\"safeguards\":[\"Persist the outbox record durably before any dispatch with logical job id, stable idempotency key, payload hash, and state=pending.\",\"Record a dispatch-intent transition only after durable commit; if send times out, mark outcome unknown until provider result or lookup is durably recorded.\",\"Keep the original idempotency key for retries of the same logical job within the provider's 24-hour dedup window; do not mint a new key for the same unresolved job.\",\"During the dedup window, attempt provider lookup by original key before retrying and persist any returned result.\",\"Treat local lease expiry only as a signal to stop that worker's lease, never as evidence that the remote operation did not execute.\",\"Use local fencing tokens to prevent concurrent dispatch, but always combine with provider-side idempotency/lookup and durable result capture.\",\"On unknown outcome after the dedup window expires, or when the provider lacks dedup/lookup, stop automatic resubmission and enter explicit reconciliation.\",\"Persist successful results with payload hash and never reuse a result when the payload hash differs; reject conflicting duplicates instead of sending.\",\"Treat this decision table as diagnostic; production dispatch requires separate authorization and controls.\"]}",
+      "calls": [],
+      "case": "incident",
+      "checksPassed": false,
+      "dependentWorkers": 0,
+      "distinctWorkerIDs": [],
+      "elapsedSeconds": 56.491257071495056,
+      "failures": [
+        "Requested staged collaboration missing: 0 worker waves, 0 dependent workers, 0 distinct task IDs"
+      ],
+      "goal": "Analyze this distributed-job recovery incident and deliver an implementable decision table.\nContract: the provider deduplicates requests with the same idempotency key ONLY for 24 hours.\nIt supports lookup by that key during that period. Different keys may create different effects.\nWithout a durable provider key/result, local state cannot reveal whether a sent request took effect.\nEvents: E1 local outbox durably records logical job J, stable key K and payload hash H.\nE2 worker W1 records dispatch intent and sends the request. E3 the connection times out;\nno acknowledgement/result is committed locally. E4 W1's local lease expires. E5 worker W2\nsends the same logical job using NEW key K2. E6 the trace ends. No provider execution logs,\naccepted-write records or lookup results are available. Both sends are observed; effects are not.\nAssess these claims with supported/refuted/unknown, using only the supplied evidence:\nC1: two send attempts happened; C2: two external writes definitely happened;\nC3: expiry of a local lease proves W1's remote operation did not happen;\nC4: changing K to K2 can bypass the provider's same-key deduplication;\nC5: a local fencing token alone guarantees exactly-once external effects under this contract.\nDesign recovery actions for these cases. Return exactly one action per case from\ndispatch_new, retry_same_key, reconcile, reuse_result, reject_conflict:\nR1: durable evidence proves no dispatch occurred yet, with no competing owner.\nR2: a request was sent and timed out; original key and identical payload are durable;\n    provider deduplication/lookup window is still valid.\nR3: request sent with unknown result, but provider supports neither deduplication nor lookup.\nR4: same logical job already has a durable successful result matching the payload.\nR5: a duplicate logical job arrives with a different payload hash.\nR6: sent request has unknown result; its old provider deduplication window has expired.\nThe retry_same_key action means an idempotent resubmission with the ORIGINAL key and payload,\noptionally preceded by lookup. reconcile means stop automatic resubmission and establish the\nexternal outcome or seek an explicit resolution; it never means assume failure and repeat.\nUse separate event-evidence and protocol-safety agents, then a designer consuming those\nfindings, followed by an independent counterexample check of the actual candidate.\nThis is diagnosis/design, not authorization to send any request or modify a real service.\nReturn ONLY JSON with marker=\"EVAL_RECOVERY\", claims (array {id,verdict,evidence}),\nrecovery (array {id,action,reason}), and safeguards (array of concrete implementation steps).",
+      "inputTokens": 2366,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-pro",
+      "outputTokens": 6385,
+      "sourceSHA256": "7c7a6170506eae759c2804bf4275babf6746a0a9d6d6605d3ffecba385ad63ae",
+      "state": "completed",
+      "successfulToolCalls": 0,
+      "toolCalls": 0,
+      "workerWaves": 0,
+      "testedCommit": "f0d33a5f5df6a2ffe40a2eb16cb06133216b049e",
+      "resultSHA256": "23c779060f7ded9d7a444b9e0fc5f2ff08f3c573de28c78a4b281526e3cf060f",
+      "attempt": "first-native/incident-6952D68B-F67B-4E71-89C1-97BC42FCE6BD"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_MIGRATION\",\"sql\":\"PRAGMA foreign_keys = ON;\\n\\nBEGIN IMMEDIATE;\\n\\nUPDATE contacts\\nSET email = CASE\\n    WHEN email IS NULL THEN NULL\\n    WHEN trim(email) = '' THEN NULL\\n    ELSE lower(trim(email))\\nEND;\\n\\nWITH ranked AS (\\n    SELECT\\n        id,\\n        tenant_id,\\n        email,\\n        FIRST_VALUE(id) OVER (\\n            PARTITION BY tenant_id, email\\n            ORDER BY updated_at DESC, id DESC\\n            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\\n        ) AS winner_id\\n    FROM contacts\\n    WHERE email IS NOT NULL\\n)\\nUPDATE tickets\\nSET contact_id = (\\n    SELECT r.winner_id\\n    FROM ranked r\\n    WHERE r.id = tickets.contact_id\\n)\\nWHERE EXISTS (\\n    SELECT 1\\n    FROM ranked r\\n    WHERE r.id = tickets.contact_id\\n      AND r.id <> r.winner_id\\n);\\n\\nWITH ranked AS (\\n    SELECT\\n        id,\\n        tenant_id,\\n        email,\\n        FIRST_VALUE(id) OVER (\\n            PARTITION BY tenant_id, email\\n            ORDER BY updated_at DESC, id DESC\\n            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\\n        ) AS winner_id\\n    FROM contacts\\n    WHERE email IS NOT NULL\\n)\\nDELETE FROM contacts\\nWHERE id IN (\\n    SELECT r.id\\n    FROM ranked r\\n    WHERE r.id <> r.winner_id\\n);\\n\\nCREATE UNIQUE INDEX IF NOT EXISTS uq_contacts_tenant_email_norm\\nON contacts(\\n    tenant_id,\\n    CASE\\n        WHEN email IS NULL THEN NULL\\n        WHEN trim(email) = '' THEN NULL\\n        ELSE lower(trim(email))\\n    END\\n)\\nWHERE CASE\\n        WHEN email IS NULL THEN NULL\\n        WHEN trim(email) = '' THEN NULL\\n        ELSE lower(trim(email))\\n      END IS NOT NULL;\\n\\nCOMMIT;\",\"rationale\":\"Normalizes legacy emails, merges duplicate identities per tenant using updated_at DESC and id DESC, repoints tickets before deleting losers, and creates a partial unique expression index that excludes NULL/all-space emails. The migration is enclosed in BEGIN IMMEDIATE...COMMIT and keeps PRAGMA foreign_keys ON. No SQL execution was performed in this environment; rerunning the script is a no-op.\"}",
+      "calls": [],
+      "case": "migration",
+      "checksPassed": false,
+      "dependentWorkers": 0,
+      "distinctWorkerIDs": [],
+      "elapsedSeconds": 156.21088099479675,
+      "failures": [
+        "Requested staged collaboration missing: 0 worker waves, 0 dependent workers, 0 distinct task IDs"
+      ],
+      "goal": "Deliver a production SQLite 3.45+ migration script for this legacy help-desk database.\nExisting schema, with foreign_keys=ON:\nCREATE TABLE contacts(id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL,\n  email TEXT, display_name TEXT NOT NULL, updated_at INTEGER NOT NULL);\nCREATE TABLE tickets(id INTEGER PRIMARY KEY, contact_id INTEGER NOT NULL\n  REFERENCES contacts(id), subject TEXT NOT NULL);\nLegacy contacts may duplicate an email within one tenant. Identity is tenant_id plus\nlower(trim(email)), where trim removes ordinary ASCII spaces. NULL or all-space emails\nare missing identities; preserve each such contact separately and normalize its email to NULL.\nFor each nonmissing duplicate identity, keep the row with greatest updated_at, breaking\nties by greatest id. Preserve that winner's id, display_name, tenant_id and updated_at.\nRepoint every ticket to the winning contact before deleting losers. Preserve all ticket\nIDs and subjects. Normalize retained nonmissing emails. Enforce this same normalized\nuniqueness rule for FUTURE INSERTs and UPDATEs, without merging across tenants or making\nmissing emails unique. Add a unique index, without triggers or rebuilding the tables.\nNever disable foreign-key enforcement.\nThe script must be atomic, including creation of the uniqueness constraint. If a statement\nfails before COMMIT the transaction must still be rollbackable. Running the script twice\nmust produce the same data and constraints. Do not assume a particular row count or IDs.\nOrganize the work in dependent stages: have independent agents analyze data/FK invariants\nand transaction/retry hazards; use their findings for an implementation agent; then have\na separate agent inspect that candidate for concrete counterexamples before delivery.\nCorrect any issue they identify within this run. You do not have a SQL execution tool,\nso do not claim execution; deliver the script for an external SQLite evaluator.\nReturn ONLY JSON: {\"marker\":\"EVAL_MIGRATION\",\"sql\":\"complete script\", \"rationale\":\"...\"}.",
+      "inputTokens": 2046,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-pro",
+      "outputTokens": 18515,
+      "sourceSHA256": "7c7a6170506eae759c2804bf4275babf6746a0a9d6d6605d3ffecba385ad63ae",
+      "state": "completed",
+      "successfulToolCalls": 0,
+      "toolCalls": 0,
+      "workerWaves": 0,
+      "testedCommit": "f0d33a5f5df6a2ffe40a2eb16cb06133216b049e",
+      "resultSHA256": "3d67f73c1b62b0e511fc33c809b21fcbd0ef17085cbb6adbb09bd46824124226",
+      "attempt": "first-native/migration-7192D143-2272-4E44-8F8F-B05F75C192A8"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_ROLLOUT\",\"baseline\":{\"makespan\":13,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":9,\"end\":12,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":12,\"end\":13,\"resource\":\"App\"}]},\"revised\":{\"makespan\":14,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":8,\"end\":10,\"resource\":\"App\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":10,\"end\":13,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":13,\"end\":14,\"resource\":\"App\"}]},\"changedStartIDs\":[\"D\",\"G\",\"H\"],\"laborCostEUR\":1680,\"lowerBounds\":{\"baseline\":13,\"outage\":14},\"explanation\":\"Baseline optimal by dependency chain A->C->E->G->H = 13 hours. Outage forces App task D to start no earlier than 8, so D ends at 10, G starts at 10 and ends at 13, therefore H ends at 14; lower bound follows from D duration plus outage and the G/H chain. Only D, G, and H starts change. Active task cost: DB 11h*100 + App 5h*80 + QA 3h*60 = 1680 EUR, within 1800.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 1,
+          "role": "workflow-supervisor",
+          "settledSequence": 8,
+          "submittedSequence": 7
+        }
+      ],
+      "case": "rollout",
+      "checksPassed": false,
+      "dependentWorkers": 0,
+      "distinctWorkerIDs": [],
+      "elapsedSeconds": 141.68013501167297,
+      "failures": [
+        "Requested staged collaboration missing: 0 worker waves, 0 dependent workers, 0 distinct task IDs",
+        "Required Calculator operation was not executed"
+      ],
+      "goal": "Create an executable maintenance staffing plan and then adapt it to a resource outage.\nTime is integer hours from zero. Tasks cannot be split. Each task occupies its stated\nresource for its entire duration. One DB engineer, one App engineer and one QA engineer\nare available, each doing at most one task at a time. All dependencies must finish first.\nTasks (ID, duration, resource, dependencies):\nA,3,DB,none (snapshot); B,2,App,none (warm pool); C,2,DB,A (schema change);\nD,2,App,B+C (API rollout); E,4,DB,C (backfill); F,2,DB,E (index build);\nG,3,QA,D+E (end-to-end verification); H,1,App,F+G (cutover).\nLabor rates are DB=100, App=80, QA=60 EUR/hour. Only active task time is billed, not idle\nor outage time. Total labor must stay within EUR1800. Use the Calculator tool for the cost.\nFirst minimize baseline makespan. Then the App engineer becomes unavailable in [5,8);\nadapt the ACTUAL baseline schedule, first minimizing revised makespan, then minimizing\nthe number of tasks whose start time changes. Half-open intervals sharing an endpoint\ndo not overlap. Give a valid lower bound proving each makespan optimal.\nUse independent scheduling and resource/cost agents first. Once their results exist,\ndelegate the outage adaptation using that baseline to another agent. Have a later agent\nverify the proposed schedules, changes and constraints, and repair errors before delivery.\nReturn ONLY JSON with marker=\"EVAL_ROLLOUT\", baseline and revised objects containing\nmakespan and tasks (array of {id,start,end,resource}), changedStartIDs, laborCostEUR,\nlowerBounds={baseline:...,outage:...}, and explanation.",
+      "inputTokens": 6247,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-pro",
+      "outputTokens": 14250,
+      "sourceSHA256": "7c7a6170506eae759c2804bf4275babf6746a0a9d6d6605d3ffecba385ad63ae",
+      "state": "completed",
+      "successfulToolCalls": 0,
+      "toolCalls": 0,
+      "workerWaves": 0,
+      "testedCommit": "f0d33a5f5df6a2ffe40a2eb16cb06133216b049e",
+      "resultSHA256": "725c3305ce45aed5aac0c2c52cbe30eba57e6b0faa29a98964a93e3f48b1e17d",
+      "attempt": "first-native/rollout-4C2C1BFA-E801-45CD-AA61-AB9360A5601E"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_RECOVERY\",\"claims\":[{\"id\":\"C1\",\"verdict\":\"supported\",\"evidence\":\"E2 states worker W1 records dispatch intent and sends the request; E5 states worker W2 sends the same logical job using new key K2; supplied facts state both sends are observed.\"},{\"id\":\"C2\",\"verdict\":\"unknown\",\"evidence\":\"Both sends are observed but effects are not. E3 timed out with no acknowledgement/result committed locally, and no provider execution logs, accepted-write records, or lookup results are available. Without a durable provider key/result, local state cannot reveal whether a sent request took effect, so two external writes cannot be definitely established.\"},{\"id\":\"C3\",\"verdict\":\"refuted\",\"evidence\":\"E4 only shows W1's local lease expired. The contract states local state cannot reveal whether a sent request took effect without a durable provider key/result, so lease expiry does not prove W1's remote operation did not happen.\"},{\"id\":\"C4\",\"verdict\":\"supported\",\"evidence\":\"The contract deduplicates only same idempotency key for 24 hours, and different keys may create different effects. Changing from K to K2 removes same-key identity and can bypass that deduplication.\"},{\"id\":\"C5\",\"verdict\":\"refuted\",\"evidence\":\"The contract provides only 24-hour same-key deduplication/lookup and allows different keys to create different effects. It does not state that a local fencing token alone guarantees exactly-once external effects; W2's send under K2 demonstrates this gap.\"}],\"recovery\":[{\"id\":\"R1\",\"action\":\"dispatch_new\",\"reason\":\"Durable evidence shows no dispatch has occurred and there is no competing owner, so this is the initial safe send for the logical job.\"},{\"id\":\"R2\",\"action\":\"retry_same_key\",\"reason\":\"The original idempotency key K and identical payload H are durable, and the provider deduplication/lookup window is still valid. An idempotent resubmission with original key K and identical payload is safe and may be preceded by lookup; if an alternate key such as K2 has an unknown outcome, route to reconcile before retrying.\"},{\"id\":\"R3\",\"action\":\"reconcile\",\"reason\":\"The request outcome is unknown and the provider supports neither deduplication nor lookup. Automatic retry could create a duplicate or divergent effect; stop automatic resubmission and establish the external outcome or seek explicit resolution.\"},{\"id\":\"R4\",\"action\":\"reuse_result\",\"reason\":\"A durable successful result already exists for the same logical job and matching payload, so the known result can be reused without resubmission.\"},{\"id\":\"R5\",\"action\":\"reject_conflict\",\"reason\":\"The duplicate logical job has a different payload hash, conflicting with the durably recorded payload. It cannot be treated as the same operation and must be rejected as a conflict.\"},{\"id\":\"R6\",\"action\":\"reconcile\",\"reason\":\"The original provider deduplication/lookup window has expired, so the original key can no longer make automatic retry safely idempotent. Stop automatic resubmission and establish the external outcome or seek explicit resolution.\"}],\"safeguards\":[\"Persist the outbox entry with logical job J, stable idempotency key K, payload hash H, and created timestamp before any network send.\",\"Record dispatch intent durably before sending, including worker identity, idempotency key, payload hash, and send time.\",\"Enforce a single active worker lease or fencing token before dispatch; never dispatch_new while a competing owner may still be active.\",\"On timeout, keep the original key K and payload hash H durable; do not switch to a new key unless the old key window has expired and explicit reconciliation determines that is safe.\",\"Before retry_same_key, perform provider lookup by the original key if lookup is supported and verify the 24-hour deduplication/lookup window is still valid; resubmit only with the original key and identical payload.\",\"Before retry_same_key, verify that no alternate idempotency key for the same logical job has an unknown outcome; if K2 or another key was used, route to reconcile even if K's window is still valid.\",\"Track provider dedup/lookup window expiry from the original send time; if the 24-hour window has expired, stop automatic retry and transition to reconcile.\",\"On unknown outcomes without provider deduplication or lookup, stop automatic resubmission and open explicit reconciliation; never assume failure and repeat.\",\"When entering reconcile, durably record a reconciling state for job J, block all automatic dispatch of J, collect provider-side evidence if obtainable, and require an explicit durable resolution before any new attempt.\",\"Validate the payload hash of any duplicate logical job; if it differs from durable H, reject the duplicate as a conflict rather than overwriting or retrying.\",\"Persist accepted provider results or resolution outcomes durably; if a successful matching result exists, reuse it instead of resending.\",\"Treat local fencing tokens as coordination aids only, not as a guarantee of exactly-once external effects under this contract.\"]}",
+      "calls": [
+        {
+          "completed": true,
+          "inputArtifactIDs": [],
+          "label": "event_evidence_agent",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 12,
+          "submittedSequence": 8
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [],
+          "label": "protocol_safety_agent",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 10,
+          "submittedSequence": 9
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 17,
+          "submittedSequence": 16
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [
+            "event_evidence_agent:1",
+            "protocol_safety_agent:2"
+          ],
+          "label": "designer_agent",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 22,
+          "submittedSequence": 21
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 27,
+          "submittedSequence": 26
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [
+            "event_evidence_agent:1",
+            "protocol_safety_agent:2",
+            "designer_agent:3"
+          ],
+          "label": "counterexample_check_agent",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 32,
+          "submittedSequence": 31
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 37,
+          "submittedSequence": 36
+        }
+      ],
+      "case": "incident",
+      "checksPassed": true,
+      "codeRevision": "8e9bd6aa7e09f6f8838173802cd27ef183640b56",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "counterexample_check_agent",
+        "designer_agent",
+        "event_evidence_agent",
+        "protocol_safety_agent"
+      ],
+      "elapsedSeconds": 212.51205599308014,
+      "failures": [],
+      "goal": "Analyze this distributed-job recovery incident and deliver an implementable decision table.\nContract: the provider deduplicates requests with the same idempotency key ONLY for 24 hours.\nIt supports lookup by that key during that period. Different keys may create different effects.\nWithout a durable provider key/result, local state cannot reveal whether a sent request took effect.\nEvents: E1 local outbox durably records logical job J, stable key K and payload hash H.\nE2 worker W1 records dispatch intent and sends the request. E3 the connection times out;\nno acknowledgement/result is committed locally. E4 W1's local lease expires. E5 worker W2\nsends the same logical job using NEW key K2. E6 the trace ends. No provider execution logs,\naccepted-write records or lookup results are available. Both sends are observed; effects are not.\nAssess these claims with supported/refuted/unknown, using only the supplied evidence:\nC1: two send attempts happened; C2: two external writes definitely happened;\nC3: expiry of a local lease proves W1's remote operation did not happen;\nC4: changing K to K2 can bypass the provider's same-key deduplication;\nC5: a local fencing token alone guarantees exactly-once external effects under this contract.\nDesign recovery actions for these cases. Return exactly one action per case from\ndispatch_new, retry_same_key, reconcile, reuse_result, reject_conflict:\nR1: durable evidence proves no dispatch occurred yet, with no competing owner.\nR2: a request was sent and timed out; original key and identical payload are durable;\n    provider deduplication/lookup window is still valid.\nR3: request sent with unknown result, but provider supports neither deduplication nor lookup.\nR4: same logical job already has a durable successful result matching the payload.\nR5: a duplicate logical job arrives with a different payload hash.\nR6: sent request has unknown result; its old provider deduplication window has expired.\nThe retry_same_key action means an idempotent resubmission with the ORIGINAL key and payload,\noptionally preceded by lookup. reconcile means stop automatic resubmission and establish the\nexternal outcome or seek an explicit resolution; it never means assume failure and repeat.\nUse separate event-evidence and protocol-safety agents, then a designer consuming those\nfindings, followed by an independent counterexample check of the actual candidate.\nThis is diagnosis/design, not authorization to send any request or modify a real service.\nReturn ONLY JSON with marker=\"EVAL_RECOVERY\", claims (array {id,verdict,evidence}),\nrecovery (array {id,action,reason}), and safeguards (array of concrete implementation steps).",
+      "inputTokens": 30319,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-pro",
+      "outputTokens": 27704,
+      "sourceSHA256": "de292f93219f527ae503fc483c1b4befaea599475b87787df11330f781cf8970",
+      "state": "completed",
+      "successfulToolCalls": 0,
+      "toolCalls": 0,
+      "workerWaves": 3,
+      "testedCommit": "8e9bd6aa7e09f6f8838173802cd27ef183640b56",
+      "resultSHA256": "928976f0d9d031e0bee7b3ceb6b83c6b4285d721fda8dfca263c4e70b56f08bc",
+      "attempt": "contract-native/incident-8E477B07-B831-4C44-AD06-5CFB8CF1CDBF"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_MIGRATION\",\"sql\":\"PRAGMA foreign_keys = ON;\\nPRAGMA busy_timeout = 5000;\\n\\nBEGIN IMMEDIATE;\\n\\nDROP INDEX IF EXISTS ux_contacts_tenant_normemail;\\n\\n-- Treat only NULL and all-space emails as missing identities.\\nUPDATE contacts\\nSET email = NULL\\nWHERE email IS NOT NULL\\n  AND email <> ''\\n  AND trim(email) = '';\\n\\n-- Normalize retained nonmissing emails. Empty string is a valid identity.\\nUPDATE contacts\\nSET email = lower(trim(email))\\nWHERE email IS NOT NULL\\n  AND (email = '' OR lower(trim(email)) <> '')\\n  AND email <> lower(trim(email));\\n\\n-- Repoint tickets from duplicate losers to winners before deleting losers.\\nWITH ranked AS MATERIALIZED (\\n  SELECT id,\\n         tenant_id,\\n         lower(trim(email)) AS canonical_email,\\n         ROW_NUMBER() OVER (\\n           PARTITION BY tenant_id, lower(trim(email))\\n           ORDER BY updated_at DESC, id DESC\\n         ) AS rn\\n  FROM contacts\\n  WHERE email IS NOT NULL\\n    AND (email = '' OR lower(trim(email)) <> '')\\n),\\nmapping AS MATERIALIZED (\\n  SELECT loser.id AS loser_id,\\n         winner.id AS winner_id\\n  FROM ranked AS loser\\n  JOIN ranked AS winner\\n    ON winner.rn = 1\\n   AND loser.rn > 1\\n   AND loser.tenant_id = winner.tenant_id\\n   AND loser.canonical_email = winner.canonical_email\\n)\\nUPDATE tickets\\nSET contact_id = (\\n  SELECT mapping.winner_id\\n  FROM mapping\\n  WHERE mapping.loser_id = tickets.contact_id\\n)\\nWHERE EXISTS (\\n  SELECT 1\\n  FROM mapping\\n  WHERE mapping.loser_id = tickets.contact_id\\n);\\n\\n-- Delete losing duplicate contacts only after ticket repointing.\\nWITH ranked AS MATERIALIZED (\\n  SELECT id,\\n         tenant_id,\\n         lower(trim(email)) AS canonical_email,\\n         ROW_NUMBER() OVER (\\n           PARTITION BY tenant_id, lower(trim(email))\\n           ORDER BY updated_at DESC, id DESC\\n         ) AS rn\\n  FROM contacts\\n  WHERE email IS NOT NULL\\n    AND (email = '' OR lower(trim(email)) <> '')\\n)\\nDELETE FROM contacts\\nWHERE id IN (\\n  SELECT id\\n  FROM ranked\\n  WHERE rn > 1\\n);\\n\\n-- Future normalized uniqueness: same identity, nonmissing only, per tenant.\\nCREATE UNIQUE INDEX ux_contacts_tenant_normemail\\nON contacts(tenant_id, lower(trim(email)))\\nWHERE email = '' OR (email IS NOT NULL AND lower(trim(email)) <> '');\\n\\nCOMMIT;\\n\",\"rationale\":\"Single BEGIN IMMEDIATE transaction with foreign_keys=ON before writes. Missing identities are exactly NULL or all-space, normalized to NULL and excluded from dedupe/index. Empty string is valid and deduplicated. Winner selection uses ROW_NUMBER() ORDER BY updated_at DESC, id DESC. Tickets are repointed to winners before losers are deleted. A partial unique expression index enforces tenant_id + lower(trim(email)) only for nonmissing identities. Drop/recreate index inside the transaction is idempotent and rollbackable; no triggers, table rebuilds, or FK disabling.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "inputArtifactIDs": [],
+          "label": "invariants",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 12,
+          "submittedSequence": 8
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [],
+          "label": "tx_hazards",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 10,
+          "submittedSequence": 9
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 17,
+          "submittedSequence": 16
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [
+            "invariants:1",
+            "tx_hazards:2"
+          ],
+          "label": "implementation",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 22,
+          "submittedSequence": 21
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 27,
+          "submittedSequence": 26
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [
+            "invariants:1",
+            "tx_hazards:2",
+            "implementation:3"
+          ],
+          "label": "inspector",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 32,
+          "submittedSequence": 31
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 37,
+          "submittedSequence": 36
+        }
+      ],
+      "case": "migration",
+      "checksPassed": false,
+      "codeRevision": "8e9bd6aa7e09f6f8838173802cd27ef183640b56",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "implementation",
+        "inspector",
+        "invariants",
+        "tx_hazards"
+      ],
+      "elapsedSeconds": 798.920371890068,
+      "failures": [
+        "SQLite rejected migration (code 23): not authorized"
+      ],
+      "goal": "Deliver a production SQLite 3.45+ migration script for this legacy help-desk database.\nExisting schema, with foreign_keys=ON:\nCREATE TABLE contacts(id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL,\n  email TEXT, display_name TEXT NOT NULL, updated_at INTEGER NOT NULL);\nCREATE TABLE tickets(id INTEGER PRIMARY KEY, contact_id INTEGER NOT NULL\n  REFERENCES contacts(id), subject TEXT NOT NULL);\nLegacy contacts may duplicate an email within one tenant. Identity is tenant_id plus\nlower(trim(email)), where trim removes ordinary ASCII spaces. NULL or all-space emails\nare missing identities; preserve each such contact separately and normalize its email to NULL.\nFor each nonmissing duplicate identity, keep the row with greatest updated_at, breaking\nties by greatest id. Preserve that winner's id, display_name, tenant_id and updated_at.\nRepoint every ticket to the winning contact before deleting losers. Preserve all ticket\nIDs and subjects. Normalize retained nonmissing emails. Enforce this same normalized\nuniqueness rule for FUTURE INSERTs and UPDATEs, without merging across tenants or making\nmissing emails unique. Add a unique index, without triggers or rebuilding the tables.\nNever disable foreign-key enforcement.\nThe script must be atomic, including creation of the uniqueness constraint. If a statement\nfails before COMMIT the transaction must still be rollbackable. Running the script twice\nmust produce the same data and constraints. Do not assume a particular row count or IDs.\nOrganize the work in dependent stages: have independent agents analyze data/FK invariants\nand transaction/retry hazards; use their findings for an implementation agent; then have\na separate agent inspect that candidate for concrete counterexamples before delivery.\nCorrect any issue they identify within this run. You do not have a SQL execution tool,\nso do not claim execution; deliver the script for an external SQLite evaluator.\nReturn ONLY JSON: {\"marker\":\"EVAL_MIGRATION\",\"sql\":\"complete script\", \"rationale\":\"...\"}.",
+      "inputTokens": 80888,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-pro",
+      "outputTokens": 102196,
+      "sourceSHA256": "de292f93219f527ae503fc483c1b4befaea599475b87787df11330f781cf8970",
+      "state": "completed",
+      "successfulToolCalls": 0,
+      "toolCalls": 0,
+      "workerWaves": 3,
+      "testedCommit": "8e9bd6aa7e09f6f8838173802cd27ef183640b56",
+      "resultSHA256": "df443056fb01742f1dd97c5ccf1b3000ab9b14755504b895dedcfabe166b6a7e",
+      "attempt": "contract-native/migration-49D9DB71-69DF-4438-AD79-21C1FAF5ED1A",
+      "offlineFollowup": {
+        "originalOutputChanged": false,
+        "reason": "A valid bounded busy_timeout pragma was initially rejected by the evaluator. After allowing it, a stronger fixture including empty strings rejects the original script for merging/preserving empty identities incorrectly. The new task explicitly defines missing as NULL or trim(email)=empty.",
+        "checksPassed": false
+      }
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_ROLLOUT\",\"baseline\":{\"makespan\":13,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":9,\"end\":12,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":12,\"end\":13,\"resource\":\"App\"}]},\"revised\":{\"makespan\":14,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":8,\"end\":10,\"resource\":\"App\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":10,\"end\":13,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":13,\"end\":14,\"resource\":\"App\"}]},\"changedStartIDs\":[\"D\",\"G\",\"H\"],\"laborCostEUR\":1680,\"lowerBounds\":{\"baseline\":13,\"outage\":14},\"explanation\":\"Baseline is feasible and makespan 13 is optimal because the dependency chain A->C->E->G->H has total duration 3+2+4+3+1=13. Active labor cost is DB 11h*100 + App 5h*80 + QA 3h*60 = 1680 EUR, within the 1800 EUR budget. After App outage [5,8), C cannot finish before 5, so D cannot start before 5; the outage forces D to start no earlier than 8, finish no earlier than 10; G then cannot finish before 13; H cannot finish before 14. The revised schedule achieves 14, so the revised makespan is optimal. Among makespan-14 schedules, D, G, and H must change starts, while A, B, C, E, and F retain their baseline starts; therefore changedStartIDs = [D, G, H] is minimal.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "inputArtifactIDs": [],
+          "label": "baseline_schedule_agent",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 12,
+          "submittedSequence": 8
+        },
+        {
+          "completed": false,
+          "inputArtifactIDs": [],
+          "label": "resource_cost_agent",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 10,
+          "submittedSequence": 9
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 18,
+          "submittedSequence": 17
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [],
+          "label": "baseline_schedule_full",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 27,
+          "submittedSequence": 23
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [],
+          "label": "resource_cost_full",
+          "ordinal": 5,
+          "role": "workflow-worker",
+          "settledSequence": 25,
+          "submittedSequence": 24
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 6,
+          "role": "workflow-supervisor",
+          "settledSequence": 32,
+          "submittedSequence": 31
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [
+            "baseline_schedule_full:3",
+            "resource_cost_full:4"
+          ],
+          "label": "outage_adaptation_agent",
+          "ordinal": 7,
+          "role": "workflow-worker",
+          "settledSequence": 37,
+          "submittedSequence": 36
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 42,
+          "submittedSequence": 41
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [
+            "baseline_schedule_full:3",
+            "resource_cost_full:4",
+            "outage_adaptation_agent:5"
+          ],
+          "label": "outage_verification_agent",
+          "ordinal": 9,
+          "role": "workflow-worker",
+          "settledSequence": 47,
+          "submittedSequence": 46
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 10,
+          "role": "workflow-supervisor",
+          "settledSequence": 52,
+          "submittedSequence": 51
+        }
+      ],
+      "case": "rollout",
+      "checksPassed": true,
+      "codeRevision": "8e9bd6aa7e09f6f8838173802cd27ef183640b56",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "baseline_schedule_agent",
+        "baseline_schedule_full",
+        "outage_adaptation_agent",
+        "outage_verification_agent",
+        "resource_cost_full"
+      ],
+      "elapsedSeconds": 301.5291590690613,
+      "failures": [],
+      "goal": "Create an executable maintenance staffing plan and then adapt it to a resource outage.\nTime is integer hours from zero. Tasks cannot be split. Each task occupies its stated\nresource for its entire duration. One DB engineer, one App engineer and one QA engineer\nare available, each doing at most one task at a time. All dependencies must finish first.\nTasks (ID, duration, resource, dependencies):\nA,3,DB,none (snapshot); B,2,App,none (warm pool); C,2,DB,A (schema change);\nD,2,App,B+C (API rollout); E,4,DB,C (backfill); F,2,DB,E (index build);\nG,3,QA,D+E (end-to-end verification); H,1,App,F+G (cutover).\nLabor rates are DB=100, App=80, QA=60 EUR/hour. Only active task time is billed, not idle\nor outage time. Total labor must stay within EUR1800. Use the Calculator tool for the cost.\nFirst minimize baseline makespan. Then the App engineer becomes unavailable in [5,8);\nadapt the ACTUAL baseline schedule, first minimizing revised makespan, then minimizing\nthe number of tasks whose start time changes. Half-open intervals sharing an endpoint\ndo not overlap. Give a valid lower bound proving each makespan optimal.\nUse independent scheduling and resource/cost agents first. Once their results exist,\ndelegate the outage adaptation using that baseline to another agent. Have a later agent\nverify the proposed schedules, changes and constraints, and repair errors before delivery.\nReturn ONLY JSON with marker=\"EVAL_ROLLOUT\", baseline and revised objects containing\nmakespan and tasks (array of {id,start,end,resource}), changedStartIDs, laborCostEUR,\nlowerBounds={baseline:...,outage:...}, and explanation.",
+      "inputTokens": 47632,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-pro",
+      "outputTokens": 35856,
+      "sourceSHA256": "de292f93219f527ae503fc483c1b4befaea599475b87787df11330f781cf8970",
+      "state": "completed",
+      "successfulToolCalls": 4,
+      "toolCalls": 4,
+      "workerWaves": 4,
+      "testedCommit": "8e9bd6aa7e09f6f8838173802cd27ef183640b56",
+      "resultSHA256": "aacb5051f5fe2f8a62f4af899d4397867bd040763c8894c459382963011f0a1c",
+      "attempt": "contract-native/rollout-321761AE-B138-47DF-9C43-36C10AB80409"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_MIGRATION\",\"sql\":\"PRAGMA foreign_keys = ON;\\nPRAGMA busy_timeout = 5000;\\n\\nBEGIN IMMEDIATE;\\n\\nDROP TABLE IF EXISTS temp.migration_loser_winner;\\n\\n-- 1. Missing emails become NULL and are preserved separately.\\nUPDATE contacts\\n   SET email = NULL\\n WHERE email IS NOT NULL\\n   AND trim(email) = '';\\n\\n-- 2. Normalize nonmissing retained emails.\\nUPDATE contacts\\n   SET email = lower(trim(email))\\n WHERE email IS NOT NULL\\n   AND trim(email) <> '';\\n\\n-- 3. Build loser_id -> winner_id for duplicate nonmissing identities only.\\nCREATE TEMP TABLE migration_loser_winner AS\\nSELECT c.id AS loser_id,\\n       w.id AS winner_id\\nFROM contacts AS c\\nJOIN (\\n    SELECT id,\\n           tenant_id,\\n           email,\\n           ROW_NUMBER() OVER (\\n               PARTITION BY tenant_id, email\\n               ORDER BY updated_at DESC, id DESC\\n           ) AS rn\\n      FROM contacts\\n     WHERE email IS NOT NULL\\n) AS w\\n  ON w.tenant_id = c.tenant_id\\n AND w.email = c.email\\n AND w.rn = 1\\n AND w.id <> c.id\\nWHERE c.email IS NOT NULL;\\n\\n-- 4. Repoint tickets to winners before deleting losers.\\nUPDATE tickets\\n   SET contact_id = (\\n           SELECT m.winner_id\\n             FROM temp.migration_loser_winner AS m\\n            WHERE m.loser_id = tickets.contact_id\\n       )\\n WHERE tickets.contact_id IN (\\n           SELECT loser_id\\n             FROM temp.migration_loser_winner\\n       );\\n\\n-- 5. Delete only losing duplicate contacts.\\nDELETE FROM contacts\\n WHERE id IN (\\n       SELECT loser_id\\n         FROM temp.migration_loser_winner\\n       );\\n\\n-- 6. Enforce future nonmissing normalized uniqueness per tenant.\\nCREATE UNIQUE INDEX IF NOT EXISTS ux_contacts_tenant_normemail\\n    ON contacts(tenant_id, lower(trim(email)))\\n WHERE email IS NOT NULL\\n   AND trim(email) <> '';\\n\\nCOMMIT;\",\"rationale\":\"Uses one BEGIN IMMEDIATE transaction after setting foreign_keys=ON and busy_timeout outside the transaction. Normalizes missing emails to NULL without merging them, normalizes nonmissing emails to lower(trim(email)), then builds a loser->winner map with ROW_NUMBER ordered by updated_at DESC, id DESC. Tickets are repointed to winners before losers are deleted, so foreign keys are never disabled and child references remain valid. The partial unique expression index IF NOT EXISTS enforces the same normalized nonmissing uniqueness per tenant while excluding missing emails; all DDL/DML is transactional and a runner that stops on first error and issues ROLLBACK can rollback atomically.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "inputArtifactIDs": [],
+          "label": "data_fk_invariants",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 10,
+          "submittedSequence": 8
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [],
+          "label": "txn_retry_hazards",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 12,
+          "submittedSequence": 9
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 17,
+          "submittedSequence": 16
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [
+            "data_fk_invariants:1",
+            "txn_retry_hazards:2"
+          ],
+          "label": "implementation",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 22,
+          "submittedSequence": 21
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 27,
+          "submittedSequence": 26
+        },
+        {
+          "completed": true,
+          "inputArtifactIDs": [
+            "data_fk_invariants:1",
+            "txn_retry_hazards:2",
+            "implementation:3"
+          ],
+          "label": "inspector",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 32,
+          "submittedSequence": 31
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 37,
+          "submittedSequence": 36
+        }
+      ],
+      "case": "migration",
+      "checksPassed": true,
+      "codeRevision": "89104d385eb729facbc199032d3c9eebf8e8ec26",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "data_fk_invariants",
+        "implementation",
+        "inspector",
+        "txn_retry_hazards"
+      ],
+      "elapsedSeconds": 715.9255839586258,
+      "failures": [],
+      "goal": "Deliver a production SQLite 3.45+ migration script for this legacy help-desk database.\nExisting schema, with foreign_keys=ON:\nCREATE TABLE contacts(id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL,\n  email TEXT, display_name TEXT NOT NULL, updated_at INTEGER NOT NULL);\nCREATE TABLE tickets(id INTEGER PRIMARY KEY, contact_id INTEGER NOT NULL\n  REFERENCES contacts(id), subject TEXT NOT NULL);\nLegacy contacts may duplicate an email within one tenant. Identity is tenant_id plus\nlower(trim(email)), where trim removes ordinary ASCII spaces. Missing means email IS NULL or\ntrim(email)='': this includes empty strings and all-space strings. Preserve each missing\ncontact separately and normalize its email to NULL.\nFor each nonmissing duplicate identity, keep the row with greatest updated_at, breaking\nties by greatest id. Preserve that winner's id, display_name, tenant_id and updated_at.\nRepoint every ticket to the winning contact before deleting losers. Preserve all ticket\nIDs and subjects. Normalize retained nonmissing emails. Enforce this same normalized\nuniqueness rule for FUTURE INSERTs and UPDATEs, without merging across tenants or making\nmissing emails unique. Add a unique index, without triggers or rebuilding the tables.\nNever disable foreign-key enforcement.\nThe script must be atomic, including creation of the uniqueness constraint. If a statement\nfails before COMMIT the transaction must still be rollbackable. Running the script twice\nmust produce the same data and constraints. Do not assume a particular row count or IDs.\nOrganize the work in dependent stages: have independent agents analyze data/FK invariants\nand transaction/retry hazards; use their findings for an implementation agent; then have\na separate agent inspect that candidate for concrete counterexamples before delivery.\nCorrect any issue they identify within this run. You do not have a SQL execution tool,\nso do not claim execution; deliver the script for an external SQLite evaluator.\nReturn ONLY JSON: {\"marker\":\"EVAL_MIGRATION\",\"sql\":\"complete script\", \"rationale\":\"...\"}.",
+      "inputTokens": 79606,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-pro",
+      "outputTokens": 100849,
+      "sourceSHA256": "de292f93219f527ae503fc483c1b4befaea599475b87787df11330f781cf8970",
+      "state": "completed",
+      "successfulToolCalls": 0,
+      "toolCalls": 0,
+      "workerWaves": 3,
+      "testedCommit": "89104d385eb729facbc199032d3c9eebf8e8ec26",
+      "resultSHA256": "d63890ef554f7744491a32b0881087453283e841c6682ca0ea25ae181fcdb349",
+      "attempt": "final-native/migration-D7523A42-0179-4DEC-9CE0-C1B99149DF0A"
+    }
+  ]
+}

@@ -1,5 +1,9 @@
 # Autonomous collaboration: diagnosis and source comparison
 
+The later [native multi-stage evaluation](2026-10-23-multistage-native.md) tests general collaboration
+across database migration, constrained planning and incident recovery. This page retains the earlier
+research-focused outcomes and source comparison unchanged.
+
 As of 2026-10-23, mobileLLM has not demonstrated reliable completion of general open-ended,
 multistage tasks. Three closed-data tasks passed exact checks on earlier revisions. The API-comparison
 and autonomous Europe-research tasks failed. A model reviewer approved an incident analysis whose

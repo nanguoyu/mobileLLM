@@ -10,30 +10,34 @@ and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
 
 ## Autonomous collaboration: current assessment
 
-The current supervisor sends actual worker results to the parent, retains observed pages, reads artifacts
-locally, continues logical tasks and delivers without compulsory writer/reviewer agents. This replaces the
-previous summary-only coordinator and repeated extraction pipeline. The unchanged execution layer supplies
-permissions, bounded parallelism, accounting, cancellation and durable replay.
+The general supervisor now completes independently checked multi-stage engineering tasks. Real online
+runs on the iPhone 17 / iOS 27 Simulator passed three different task types:
 
-Real Simulator results at `55c2a71`:
+| Task | Work and validation | Native time |
+| --- | --- | ---: |
+| SQLite migration | Three worker waves; generated script passes data, FK, normalized uniqueness, idempotency and rollback checks | 715.926 s |
+| Maintenance/outage plan | Four worker waves; recovered from a failed worker, used Calculator, then adapted and verified the plan | 301.529 s |
+| Incident recovery | Three worker waves; correct evidence classifications and recovery choices without unsupported effect claims | 212.512 s |
 
-- API comparison: two independent researchers plus one supervisor, 10 web calls, 220.045 application
-  seconds. UI passed, and the required endpoint/authentication/content comparisons match primary docs.
-- Europe research: four researchers plus one supervisor, 24 web calls, 341.955 application seconds.
-  It delivered 16 groups across nine countries but missed TU Graz ELSS. The coverage test failed.
-- The preceding procurement run solved the exact optimization in 23.285 application seconds without
-  delegation. Its unchanged answer oracle passed offline; a minimum-child-count UI failure was retained
-  and that unnecessary requirement was removed for the closed-data cases. No model rerun was needed.
+Every accepted run has at least two dependent workers receiving exact earlier artifacts after their source
+settled. Only the original task was supplied during execution. The app produced the SQL; the evaluator
+executed it unchanged in isolated databases. The [native evaluation](evaluations/2026-10-23-multistage-native.md)
+records exact versions, all seven attempts, the actual failed-worker recovery and the strengthened migration
+boundary cases. This is evidence of staged collaboration across task types, not an arbitrary-task success-rate estimate.
 
-General reliable autonomy remains unproven. The latest runs establish successful information transfer and
-final delivery; broad discovery still misses relevant groups. Native persistent worker conversations and
-asynchronous peer messaging are not implemented. Recorded context continuation is explicit and does not
-claim provider-session or KV reuse. Six focused runtime regressions pass, with the paging fix rechecked in
-two of them. The app source compilation/budget check, static verifier and CI for `55c2a71` passed.
+General fixes include actual settled-budget accounting, exact input ranges for dependent handoffs, retained
+observations, and a clear distinction between host delegation and worker tools. Explicit collaboration
+requirements are honored rather than replaced by a direct answer. Format repair preserves the assigned
+role and output protocol. Native evaluations share the production preparation/execution path used by chat,
+with live calls disabled unless explicitly opted in. Nine focused orchestration/replay checks, two repair
+regressions and executable-oracle counterexamples passed. A final offline regression rejects standalone
+XML tool-call envelopes while preserving quoted examples; it uses the existing repair path. No full suite
+was repeated for prose.
 
-The [source comparison and evaluation](evaluations/2026-10-23-autonomous-coordination.md) preserves all
-20 outcomes, including failed runs and the incident answer that passed UI/model review but failed semantic
-inspection. Earlier supervised reports below do not prove autonomous coverage and omitted the user's group.
+The earlier [research evaluation](evaluations/2026-10-23-autonomous-coordination.md) remains historical:
+its API comparison passed core checks, while the Europe answer missed ELSS. No ELSS-specific runtime rule
+was added. Research coverage and broad repeated-run reliability remain open measurements. Native persistent
+worker conversations, asynchronous peer messaging and production code-execution tools remain separate gaps.
 
 ## DeepSeek Search and Fetch integration
 

@@ -415,10 +415,14 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
     }
 
     func testGenerateUsesOfficialDeepSeekChatEndpointAndStreamsAnswer() async throws {
-        for answerText in [
-            "Kimi K3 cannot run locally on an iPhone 16 Pro.",
-            "The literal marker `<｜｜DSML｜｜tool_calls>` identifies a tool envelope.",
-            "<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name=\"fetch_webpage\">\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>"
+        let malformedXML = "<tool_calls>\n<invoke name=\"calculator\">\n<parameter name=\"expression\">3*100 + 2*80 + 2*100 + 2*80 + 4*100 + 2*100 + 3*60 + 1*80</parameter>\n</invoke>\n</tool_calls>"
+        for (answerText, protocolOnly) in [
+            ("Kimi K3 cannot run locally on an iPhone 16 Pro.", false),
+            ("The literal marker `<｜｜DSML｜｜tool_calls>` identifies a tool envelope.", false),
+            ("<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name=\"fetch_webpage\">\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>", true),
+            (malformedXML, true),
+            ("A `<tool_calls>` element is XML protocol syntax, not execution evidence.", false),
+            ("```xml\n" + malformedXML + "\n```", false),
         ] {
             let encodedText = String(decoding: try JSONEncoder().encode(answerText), as: UTF8.self)
             let streamBody = """
@@ -515,7 +519,7 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
                 provider: provider,
                 authorized: authorized
             )
-            if answerText.hasPrefix("<｜｜DSML｜｜tool_calls>") {
+            if protocolOnly {
                 guard case .failed(let failure) = result.outcome else {
                     XCTFail("Raw tool markup must not be committed as an answer or executed as a tool")
                     continue
