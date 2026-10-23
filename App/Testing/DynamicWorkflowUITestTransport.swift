@@ -26,7 +26,7 @@ private final class DynamicWorkflowUITestResponsesProtocol: URLProtocol, @unchec
         let body = Self.requestBodyString(request)
         let text: String
         if body.contains("MOBILELLM_ACCEPTANCE_REVIEW_V1") {
-            text = #"{"approved":true,"checks":[{"criterionID":"feasibility","status":"satisfied","evidence":"The fixture draft gives a constraint-based verdict and alternatives.","gap":""}],"issues":[]}"#
+            text = #"{"approved":true,"checks":[{"criterionID":"feasibility","status":"satisfied","evidence":"The fixture draft gives a constraint-based verdict and alternatives."}],"issues":[]}"#
         } else if body.contains("MOBILELLM_DRAFT_V1") {
             text = "EVAL_KIMI_LOCAL: The complete Kimi K3 model as local weights on an iPhone 16 Pro is not feasible under this fixture's assumed memory and storage constraints. Use a smaller local model or a remote API."
         } else if body.contains("MOBILELLM_COORDINATOR_NEXT_V1") {

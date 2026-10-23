@@ -51,6 +51,35 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
         XCTAssertFalse(diagnostic.contains("private-output-value"))
     }
 
+    func testReviewRequiresSatisfiedChecksAndNoIssuesWithoutADuplicateProseFlag() async throws {
+        for rejected in [false, true] {
+            let probe = CoordinationProbe()
+            do {
+                let result = try await run(initial: decision("work", tasks: [task("facts")])) { call in
+                    await probe.enter(call); await probe.leave()
+                    switch call.options.label {
+                    case "facts": return .value(worker("Supplied evidence"))
+                    case "coordinator":
+                        return .value(decision(await probe.count("coordinator") == 1 ? "deliver" : "blocked"))
+                    case "draft": return .value(.string("A complete deliverable"))
+                    case "acceptance-review":
+                        let verdict: JSONValue = .object(["approved": .bool(true), "issues": .array([]), "checks": .array([
+                            .object(["criterionID": .string("correct"), "status": .string(rejected ? "unknown" : "satisfied"),
+                                     "evidence": .string(rejected ? "Evidence is missing" : "The calculation matches; no material gap.")])])])
+                        XCTAssertTrue(try XCTUnwrap(call.options.schema).validates(instance: verdict))
+                        return .value(verdict)
+                    default: return .stopped
+                    }
+                }
+                XCTAssertFalse(rejected, "Approval must not override an unknown check")
+                XCTAssertEqual(result, .string("A complete deliverable"))
+            } catch {
+                XCTAssertTrue(rejected, "A satisfied, evidence-bearing review must not trigger redundant correction")
+                XCTAssertTrue(String(describing: error).contains("Task incomplete"))
+            }
+        }
+    }
+
     func testParallelWorkDependentHandoffAndRejectedDeliveryAreCorrectedInsideOneRun() async throws {
         let probe = CoordinationProbe()
         let result = try await run(initial: decision("work", tasks: [task("cost"), task("constraints")])) { call in
@@ -211,5 +240,5 @@ private func worker(_ text: String, content: String? = nil) -> JSONValue {
 private func review(approved: Bool, gap: String) -> JSONValue {
     .object(["approved": .bool(approved), "issues": .array(gap.isEmpty ? [] : [.string(gap)]),
              "checks": .array([.object(["criterionID": .string("correct"),
-                 "status": .string(approved ? "satisfied" : "unmet"), "evidence": .string("Recomputed total"), "gap": .string(gap)])])])
+                 "status": .string(approved ? "satisfied" : "unmet"), "evidence": .string("Recomputed total")])])])
 }

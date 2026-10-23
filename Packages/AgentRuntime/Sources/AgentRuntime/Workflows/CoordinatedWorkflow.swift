@@ -75,7 +75,8 @@ public enum CoordinatedWorkflow {
     private static let reviewInstruction = """
     MOBILELLM_ACCEPTANCE_REVIEW_V1
     Independently review this draft against the ORIGINAL goal and every frozen criterion.
-    Return one check for each criterion ID, with satisfied/unmet/unknown, concrete evidence and gap.
+    Return one check for each criterion ID, with satisfied/unmet/unknown and concrete evidence.
+    For unmet/unknown checks, explain what is missing in evidence and list the needed follow-up in issues.
     Check that the criteria themselves cover the original goal. Put any omitted requirement in issues.
     Inspect actual content, calculations, constraints, sources, counterexamples and missing categories.
     A polished answer, many rows, agent agreement or a self-reported successful test is not proof.
@@ -134,7 +135,7 @@ public enum CoordinatedWorkflow {
         "approved": .object(["type": .string("boolean")]),
         "checks": .object(["type": .string("array"), "minItems": .integer(1), "maxItems": .integer(16), "items": object([
             "criterionID": string(48, minimum: 1), "status": choices("satisfied", "unmet", "unknown"),
-            "evidence": string(800), "gap": string(800),
+            "evidence": string(800, minimum: 1),
         ])]),
         "issues": strings(12, length: 800),
     ]))
@@ -243,7 +244,7 @@ public enum CoordinatedWorkflow {
                 const complete = checkedIDs.length === criterionIDs.length
                   && unique(checkedIDs).length === checkedIDs.length
                   && criterionIDs.every(id => checkedIDs.includes(id));
-                const satisfied = review.checks.every(c => c.status === 'satisfied' && c.evidence.trim().length > 0 && c.gap.trim().length === 0);
+                const satisfied = review.checks.every(c => c.status === 'satisfied' && c.evidence.trim().length > 0);
                 if (review.approved && complete && satisfied && review.issues.length === 0) {
                   log('coordination: acceptance review passed for every frozen criterion');
                   return draft;

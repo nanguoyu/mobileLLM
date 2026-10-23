@@ -1994,6 +1994,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testFailedAdmissionIsDurableInsteadOfLeavingAnUnsettledPreparedCall"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testReviewRequiresSatisfiedChecksAndNoIssuesWithoutADuplicateProseFlag"
         }
       ],
       "platforms": [
