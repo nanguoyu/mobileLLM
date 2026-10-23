@@ -2006,6 +2006,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testJavaScriptEvidenceQueryReachesReadOnlyHostWithoutSpawningAChild"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testPartialArtifactsCanReachIndependentReviewWithoutPretendingTheyAreComplete"
         }
       ],
       "platforms": [

@@ -168,7 +168,9 @@ The program allows up to 12 workers, 24 allocated tool calls, six subsequent coo
 two draft/review cycles, all within the existing runtime budgets. These bounds need not all fit in one
 run. Exhaustion is a failure, not permission to increase the budget.
 
-Workers return bounded structured results. A failed worker is retained as a failed record while
+Workers return bounded structured results. Nonempty partial artifacts can enter draft/review while
+retaining their unknowns; only the independent acceptance gate determines whether the task is met.
+Failed or blocked workers cannot substitute for usable work. A failed worker is retained as a failed record while
 successful siblings remain available. The coordinator can commission follow-up work, request delivery,
 or explain a blocking condition. Only completed tasks explicitly marked `consolidatesInputs` can replace their upstream bodies in the
 writer input. Ordinary verification and analysis preserve upstream artifacts. The full artifact index

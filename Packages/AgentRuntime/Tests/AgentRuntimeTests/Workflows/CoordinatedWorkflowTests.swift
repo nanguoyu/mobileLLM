@@ -9,6 +9,29 @@ import XCTest
 /// Exercises the shipped program with controlled child outcomes. These are scheduler/control-flow
 /// regressions, not evidence that a live model can solve the corresponding user tasks.
 final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
+    func testPartialArtifactsCanReachIndependentReviewWithoutPretendingTheyAreComplete() async throws {
+        let probe = CoordinationProbe()
+        let result = try await run(initial: decision("work", tasks: [task("partial-facts")])) { call in
+            await probe.enter(call); await probe.leave()
+            switch call.options.label {
+            case "partial-facts":
+                return .value(.object(["status": .string("partial"), "summary": .string("Total verified; optional detail unavailable"),
+                    "content": .string("The total is 42. Optional appendix is unavailable."),
+                    "unresolved": .array([.string("Optional appendix")])]))
+            case "coordinator": return .value(decision("deliver"))
+            case "draft":
+                XCTAssertTrue(call.prompt.contains("partial"))
+                XCTAssertTrue(call.prompt.contains("Optional appendix"))
+                return .value(.string("The total is 42; optional appendix unavailable."))
+            case "acceptance-review": return .value(review(approved: true, gap: ""))
+            default: return .stopped
+            }
+        }
+        XCTAssertEqual(result, .string("The total is 42; optional appendix unavailable."))
+        let coordinatorCalls = await probe.count("coordinator")
+        XCTAssertEqual(coordinatorCalls, 1, "A worker's partial status must not manufacture extra work waves")
+    }
+
     func testDeliveryFailureReturnsToCoordinatorAndConsolidationReplacesUpstreamBodies() async throws {
         let probe = CoordinationProbe()
         let output = try await run(initial: decision("work", tasks: [task("source")])) { call in

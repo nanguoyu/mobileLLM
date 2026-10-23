@@ -224,7 +224,9 @@ public enum CoordinatedWorkflow {
               log('coordination: settled worker wave');
             }
           } else if (decision.action === 'deliver') {
-            if (!records.some(r => r.status === 'completed')) { feedback = 'No completed work exists to deliver.'; }
+            if (!records.some(r => (r.status === 'completed' || r.status === 'partial') && r.content.trim().length > 0)) {
+              feedback = 'No usable work exists to draft. Failed or blocked workers are not evidence.';
+            }
             else {
               if (reviews >= 2) { throw new Error('Task incomplete: independent acceptance review did not pass within the delivery allowance.'); }
               reviews++;
