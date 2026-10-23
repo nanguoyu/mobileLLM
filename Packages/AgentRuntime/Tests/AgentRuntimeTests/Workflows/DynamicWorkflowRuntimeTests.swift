@@ -7,6 +7,56 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowRuntimeTests: XCTestCase {
+    func testStructuredSearchKeepsContentProvenanceAndNeverPromotesEmbeddedLinks() throws {
+        let tool = try AgentToolLogicalID(providerID: "builtin", name: "web_search")
+        let result = try WorkflowSearchEvidence.result(query: "official group", sources: [
+            .init(url: "https://example.edu/group", title: "Group", summary: "Search summary",
+                  pageExcerpt: "Actual page text with https://unread.example/linked-page inside it.", truncated: true, publicationDate: nil),
+            .init(url: "https://example.edu/summary", title: "Another result", summary: "Summary only",
+                  pageExcerpt: "", truncated: false, publicationDate: nil),
+        ])
+        let observations = try XCTUnwrap(WorkflowSearchEvidence.observations(result, invocationID: "search-1", toolID: tool))
+        XCTAssertEqual(observations.map(\.sourceKind), [.searchContent, .searchSummary])
+        let packet = try WorkflowWebEvidence.packet(observations.map { ("researcher", $0) }, matching: "https://example.edu/group")
+        guard case .object(let root) = packet, case .array(let sources)? = root["sources"] else { return XCTFail("Sources missing") }
+        XCTAssertEqual(sources, [
+            .object(["url": .string("https://example.edu/group"), "host": .string("example.edu"), "kind": .string("search-content-excerpt")]),
+            .object(["url": .string("https://example.edu/summary"), "host": .string("example.edu"), "kind": .string("search-summary")]),
+        ])
+        let empty = try WorkflowSearchEvidence.result(query: "https://unread.example/", sources: [])
+        let emptyObservations = try XCTUnwrap(WorkflowSearchEvidence.observations(empty, invocationID: "empty", toolID: tool))
+        let emptyPacket = try WorkflowWebEvidence.packet(emptyObservations.map { ("researcher", $0) })
+        guard case .object(let emptyRoot) = emptyPacket else { return XCTFail("Empty packet") }
+        XCTAssertEqual(emptyRoot["sources"], .array([]), "Query URLs are not returned source evidence")
+    }
+
+    func testEnrichedEvidencePrioritizesLaterCitedSourcesWithinAGlobalTextBound() throws {
+        let tool = try AgentToolLogicalID(providerID: "builtin", name: "web_search")
+        let input = (0..<80).map { index in
+            ("researcher", WorkflowWebObservation(invocationID: "search-\(index)", toolID: tool, requestedURL: nil,
+                status: "completed", text: "Specific information for source \(index). " + String(repeating: "body ", count: 900),
+                sourceURL: "https://example.edu/source-\(index)", sourceKind: .searchContent))
+        }
+        let packet = try WorkflowWebEvidence.packet(input, matching: "Cite https://example.edu/source-79")
+        guard case .object(let root) = packet, case .array(let observations)? = root["observations"],
+              case .object(let source)? = observations.first else { return XCTFail("Missing source") }
+        XCTAssertEqual(observations.count, 1, "A URL prefix such as source-7 must not match source-79")
+        XCTAssertEqual(source["sourceURL"], .string("https://example.edu/source-79"))
+        XCTAssertEqual(root["truncated"], .bool(true))
+        let all = try WorkflowWebEvidence.packet(input, matching: "information body")
+        guard case .object(let allRoot) = all, case .array(let records)? = allRoot["observations"] else { return XCTFail("Missing records") }
+        var bytes = 0
+        for record in records {
+            guard case .object(let row) = record else { continue }
+            for key in ["excerpt", "tail", "title"] { if case .string(let text)? = row[key] { bytes += text.utf8.count } }
+            if case .array(let excerpts)? = row["matchingExcerpts"] {
+                for excerpt in excerpts { if case .string(let text) = excerpt { bytes += text.utf8.count } }
+            }
+        }
+        XCTAssertLessThanOrEqual(records.count, 32)
+        XCTAssertLessThanOrEqual(bytes, 24 * 1024)
+    }
+
     func testWebEvidenceQueryFindsMiddleFieldsWithoutIncreasingExcerptBudget() throws {
         let text = String(repeating: "Unrelated introduction.\n", count: 100)
             + "| need\\_content | When false, content is empty; when true it may contain page content. |\n"

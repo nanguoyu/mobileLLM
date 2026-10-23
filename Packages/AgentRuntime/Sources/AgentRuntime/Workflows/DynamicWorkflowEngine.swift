@@ -734,7 +734,7 @@ private actor DynamicWorkflowSession {
             for observation in try await spawner.webObservations(handle) {
                 records.append((call.options.label ?? "agent-\(call.ordinal)", observation))
             }
-            if records.count > WorkflowWebEvidence.maximumObservations { break }
+            if records.count >= WorkflowWebEvidence.maximumCandidates { break }
         }
         let value = try WorkflowWebEvidence.packet(records, matching: query)
         if projection.lastSequence == sequence { evidenceCache = (sequence, query, value) }

@@ -412,6 +412,16 @@ final class ToolV2AdapterTests: XCTestCase {
             let other = try AppDeepSeekWebToolAdapter.makeDescriptor(operation: operation, serviceID: "account-B")
             XCTAssertNotEqual(descriptor.id, other.id, "Changing account invalidates descriptor-bound approval")
         }
+        let legacy = try AppDeepSeekWebToolAdapter.makeDescriptor(operation: .search, serviceID: "account-A", enrichedSearch: false)
+        let restoredLegacy = try await catalog.tool(for: legacy.id)
+        XCTAssertEqual(restoredLegacy?.descriptor, legacy, "Archived summary-only runs keep their exact v1 descriptor")
+        XCTAssertFalse(AppDeepSeekWebToolAdapter.usesSearchContent(legacy.id))
+        let enriched = try AppDeepSeekWebToolAdapter.makeDescriptor(operation: .search, serviceID: "account-A")
+        XCTAssertTrue(AppDeepSeekWebToolAdapter.usesSearchContent(enriched.id))
+        XCTAssertNotEqual(legacy.id, enriched.id)
+        let argument: JSONValue = .object(["query": .string("official sources"), "include_content": .bool(false)])
+        XCTAssertTrue(try enriched.inputSchema.validates(instance: argument))
+        XCTAssertFalse(try legacy.inputSchema.validates(instance: argument))
         let disabled = try builder.frozenInputs(snapshot: snapshot.withText("Hello", toolsEnabled: false), artifactReferences: [])
         XCTAssertFalse(disabled.toolCatalog.descriptors.contains { ["web_search", "fetch_webpage"].contains($0.id.logicalID.name) })
     }

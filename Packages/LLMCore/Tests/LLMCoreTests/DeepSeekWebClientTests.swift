@@ -4,6 +4,24 @@ import XCTest
 @testable import LLMCore
 
 final class DeepSeekWebClientTests: XCTestCase {
+    func testSearchCanReturnBoundedPageContentWithoutCallingFetchOrInventingFreshness() async throws {
+        let original = String(repeating: "界😊", count: 1000) + " https://unread.example/linked-page"
+        let spy = DeepSeekRequestProbe(content: original)
+        let response = try await makeClient(spy).perform(operation: .search, argument: "primary group", apiKey: "test-key", includeSearchContent: true)
+        let hit = try XCTUnwrap(response.searchResults?.first)
+        XCTAssertFalse(hit.pageExcerpt.isEmpty)
+        XCTAssertTrue(original.hasPrefix(hit.pageExcerpt))
+        XCTAssertLessThanOrEqual(hit.pageExcerpt.utf8.count, 3000)
+        XCTAssertTrue(hit.pageExcerptTruncated)
+        let requests = await spy.requests
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertTrue(requests[0].url!.path.hasSuffix("/search"))
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requests[0].httpBody!) as? [String: Any])
+        XCTAssertEqual(body["need_content"] as? Bool, true)
+        let summaryOnly = try await makeClient(spy).perform(operation: .search, argument: "primary group", apiKey: "test-key", includeSearchContent: false)
+        XCTAssertEqual(summaryOnly.searchResults?.first?.pageExcerpt, "", "A summary-only request cannot be promoted to page content")
+    }
+
     func testQueryLimitsCountUnicodeScalarsAndPreserveSearchOperators() throws {
         let query = "官方文档 site:api-docs.deepseek.com"
         let body = try DeepSeekWebClient.requestBody(operation: .search, argument: query)
@@ -98,14 +116,20 @@ private actor DeepSeekRequestProbe {
     func account(_ bytes: UInt64) { accountedBytes += bytes }
     let status: Int
     let truncated: Bool
-    init(status: Int = 200, truncated: Bool = false) { self.status = status; self.truncated = truncated }
+    let content: String?
+    init(status: Int = 200, truncated: Bool = false, content: String? = nil) {
+        self.status = status; self.truncated = truncated; self.content = content
+    }
     func load(_ request: URLRequest, limit: Int) -> WebHTTPResponse {
         requests.append(request)
-        let body = status != 200 ? "server-secret" : request.url!.path.hasSuffix("search")
-            ? #"{"results":[{"title":"Article","url":"https://example.com/article","snippet":"Short","summary":"Long summary","date":"2025-09-04T00:00:00+00:00"}]}"#
-            : ##"{"title":"Article","content":"# Article body"}"##
+        let search = try! JSONSerialization.data(withJSONObject: ["results": [[
+            "title": "Article", "url": "https://example.com/article", "snippet": "Short", "summary": "Long summary",
+            "date": "2025-09-04T00:00:00+00:00", "content": content as Any? ?? NSNull(),
+        ]]])
+        let body = status != 200 ? Data("server-secret".utf8) : request.url!.path.hasSuffix("search")
+            ? search : Data(##"{"title":"Article","content":"# Article body"}"##.utf8)
         return WebHTTPResponse(response: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
             headerFields: status == 302 ? ["Location": "https://api.deepseek.com/redirect"] : [:])!,
-            body: Data(body.utf8), wasTruncated: truncated)
+            body: body, wasTruncated: truncated)
     }
 }

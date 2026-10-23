@@ -194,11 +194,11 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
         let history = try ExecutionHistory(events: snapshot.events, projection: snapshot.facts.projection)
         let ids = try [AgentToolLogicalID(providerID: "builtin", name: "web_search"),
                        AgentToolLogicalID(providerID: "builtin", name: "fetch_webpage")]
-        return try history.toolOutcomes.sorted { $0.value.0.sequence < $1.value.0.sequence }.compactMap { id, recorded in
+        return try history.toolOutcomes.sorted { $0.value.0.sequence < $1.value.0.sequence }.flatMap { id, recorded -> [WorkflowWebObservation] in
             guard let plan = history.toolIntents[id]?.1.plan, plan.kind == .tool,
                   plan.effects == [.networkRead], plan.idempotency == .pureRead,
                   let toolID = ids.first(where: { $0.description == plan.subjectID }),
-                  let argumentsPayload = plan.canonicalArguments else { return nil }
+                  let argumentsPayload = plan.canonicalArguments else { return [] }
             let arguments = try AgentWireDecoder.decode(JSONValue.self, from: argumentsPayload.value.data, limits: .inlineValue)
             let url: String?
             if case .object(let object) = arguments, case .string(let value)? = object["url"] { url = value }
@@ -208,6 +208,14 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
             switch recorded.1 {
             case .completed(let values):
                 status = "completed"
+                if toolID.name == "web_search" {
+                    for value in values {
+                        if case .structured(let result) = value,
+                           let sources = try WorkflowSearchEvidence.observations(result, invocationID: id.description, toolID: toolID) {
+                            return sources
+                        }
+                    }
+                }
                 text = values.compactMap { value -> String? in
                     guard case .text(let result) = value else { return nil }
                     return result.value
@@ -215,7 +223,7 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
             case .failed(let failure): status = "failed"; text = failure.safeMessage
             case .uncertain(let failure): status = "uncertain"; text = failure.safeMessage
             }
-            return WorkflowWebObservation(invocationID: id.description, toolID: toolID, requestedURL: url, status: status, text: text)
+            return [WorkflowWebObservation(invocationID: id.description, toolID: toolID, requestedURL: url, status: status, text: text)]
         }
     }
 

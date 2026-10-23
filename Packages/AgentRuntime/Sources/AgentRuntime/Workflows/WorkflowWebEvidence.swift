@@ -3,6 +3,11 @@
 import AgentContracts
 import Foundation
 
+public enum WorkflowWebSourceKind: String, Sendable {
+    case searchSummary = "search-summary"
+    case searchContent = "search-content-excerpt"
+}
+
 /// An observation read from an authorized run's durable tool journal, never from model prose.
 public struct WorkflowWebObservation: Sendable {
     public let invocationID: String
@@ -10,13 +15,22 @@ public struct WorkflowWebObservation: Sendable {
     public let requestedURL: String?
     public let status: String
     public let text: String
+    public let sourceURL: String?
+    public let sourceKind: WorkflowWebSourceKind?
+    public let sourceTitle: String?
+    public let sourceTruncated: Bool
+    public let publicationDate: String?
 
-    public init(invocationID: String, toolID: AgentToolLogicalID, requestedURL: String?, status: String, text: String) {
+    public init(invocationID: String, toolID: AgentToolLogicalID, requestedURL: String?, status: String, text: String,
+                sourceURL: String? = nil, sourceKind: WorkflowWebSourceKind? = nil, sourceTitle: String? = nil,
+                sourceTruncated: Bool = false, publicationDate: String? = nil) {
         self.invocationID = invocationID
         self.toolID = toolID
         self.requestedURL = requestedURL
         self.status = status
         self.text = text
+        self.sourceURL = sourceURL; self.sourceKind = sourceKind; self.sourceTitle = sourceTitle
+        self.sourceTruncated = sourceTruncated; self.publicationDate = publicationDate
     }
 }
 
@@ -24,23 +38,48 @@ public struct WorkflowWebObservation: Sendable {
 /// from the host's records. Failed fetches never become read-page evidence or eligible citations.
 enum WorkflowWebEvidence {
     static let maximumObservations = 32
+    static let maximumCandidates = 256
 
     static func packet(_ input: [(label: String, observation: WorkflowWebObservation)], matching query: String? = nil) throws -> JSONValue {
         guard (query?.utf8.count ?? 0) <= 64 * 1024 else {
             throw WorkflowScriptRuntimeError.invalidArguments("web evidence query exceeds 64 KiB")
         }
         let terms = try query.map(queryTerms) ?? []
+        let eligible = input.filter { $0.observation.toolID.providerID == "builtin"
+            && ["web_search", "fetch_webpage"].contains($0.observation.toolID.name) }
+        let pool = Array(eligible.prefix(maximumCandidates))
+        let enriched = pool.contains { $0.observation.sourceKind != nil }
+        let selected = enriched ? selectSources(pool, query: query, terms: terms) : Array(pool.prefix(maximumObservations))
+        // Enriched search may contain several distinct sources per invocation. Keep a global
+        // text bound so more returned sources cannot inflate a review beyond its context window.
+        let sourceAllowance = enriched ? min(2080, 24 * 1024 / max(1, selected.count)) : 2080
         var observations: [JSONValue] = []
         var sources: [String: (host: String, kind: String)] = [:]
-        var clipped = false
-        for (label, item) in input {
-            try Task.checkCancellation()
-            guard item.toolID.providerID == "builtin",
-                  ["web_search", "fetch_webpage"].contains(item.toolID.name) else { continue }
-            guard observations.count < maximumObservations else { clipped = true; break }
+        var clipped = eligible.count > pool.count || selected.count < pool.count
+        for (_, item) in enriched ? pool : selected {
+            guard item.status == "completed" else { continue }
+            guard item.sourceKind != nil || !item.text.isEmpty else { continue }
             let reading = item.toolID.name == "fetch_webpage"
-            let prefix = clippedText(item.text, maximumBytes: terms.isEmpty ? 1200 : 400)
-            let shortened = prefix.utf8.count < item.text.utf8.count
+            let urls: [String]
+            if item.sourceKind != nil { urls = item.sourceURL.map { [$0] } ?? [] }
+            else if reading { urls = item.requestedURL.map { [$0] } ?? [] }
+            else { urls = try sourceURLs(in: item.text) }
+            let kind = reading ? "page-excerpt" : item.sourceKind?.rawValue ?? "search-summary"
+            for raw in urls {
+                guard let url = normalizedURL(raw), let host = url.host?.lowercased() else { continue }
+                if sources[url.absoluteString].map({ kindRank(kind) > kindRank($0.kind) }) ?? true {
+                    sources[url.absoluteString] = (host, kind)
+                }
+            }
+        }
+        for (label, item) in selected {
+            try Task.checkCancellation()
+            let title = item.sourceTitle.map { clippedText($0, maximumBytes: 128) }
+            let allowance = sourceAllowance - (title?.utf8.count ?? 0)
+            let headBytes = enriched ? (terms.isEmpty ? allowance : allowance / 5) : (terms.isEmpty ? 1200 : 400)
+            let matchBytes = enriched ? min(480, (allowance - headBytes) / 3) : 480
+            let prefix = clippedText(item.text, maximumBytes: headBytes)
+            let shortened = item.sourceTruncated || prefix.utf8.count < item.text.utf8.count
             var record: [String: JSONValue] = [
                 "child": .string(label), "invocationID": .string(item.invocationID),
                 "tool": .string(item.toolID.name), "status": .string(item.status),
@@ -49,28 +88,25 @@ enum WorkflowWebEvidence {
                 "sourceTrust": .string("untrusted web content")
             ]
             if let requestedURL = item.requestedURL { record["requestedURL"] = .string(requestedURL) }
+            if let sourceURL = item.sourceURL { record["sourceURL"] = .string(sourceURL) }
+            if let kind = item.sourceKind { record["kind"] = .string(kind.rawValue) }
+            if let title { record["title"] = .string(title) }
+            if let date = item.publicationDate { record["publicationDate"] = .string(date) }
             if shortened {
-                record["tail"] = .string(clippedText(item.text, maximumBytes: terms.isEmpty ? 400 : 200, suffix: true))
-                if terms.isEmpty { record["yearExcerpts"] = .array(try yearExcerpts(item.text).map(JSONValue.string)) }
+                let tailBytes = enriched ? max(0, allowance - headBytes - (terms.isEmpty ? 0 : 3 * matchBytes)) : (terms.isEmpty ? 400 : 200)
+                if tailBytes > 0 { record["tail"] = .string(clippedText(item.text, maximumBytes: tailBytes, suffix: true)) }
+                if terms.isEmpty && !enriched { record["yearExcerpts"] = .array(try yearExcerpts(item.text).map(JSONValue.string)) }
             }
             if !terms.isEmpty {
-                record["matchingExcerpts"] = .array(try matchingExcerpts(item.text, terms: terms).map(JSONValue.string))
+                record["matchingExcerpts"] = .array(try matchingExcerpts(item.text, terms: terms, maximumBytes: matchBytes).map(JSONValue.string))
             }
             observations.append(.object(record))
-            guard item.status == "completed", !item.text.isEmpty else { continue }
-            let urls = reading ? item.requestedURL.map { [$0] } ?? [] : try sourceURLs(in: item.text)
-            for raw in urls {
-                guard let url = normalizedURL(raw), let host = url.host?.lowercased() else { continue }
-                if reading || sources[url.absoluteString] == nil {
-                    sources[url.absoluteString] = (host, reading ? "page-excerpt" : "search-summary")
-                }
-            }
         }
         var bytes = 0
         var sourceRows: [JSONValue] = []
         // Prefer actual page reads when the packet's bounded source list is full.
         let ordered = sources.sorted {
-            if $0.value.kind != $1.value.kind { return $0.value.kind == "page-excerpt" }
+            if $0.value.kind != $1.value.kind { return kindRank($0.value.kind) > kindRank($1.value.kind) }
             return $0.key < $1.key
         }
         for (url, source) in ordered {
@@ -79,6 +115,34 @@ enum WorkflowWebEvidence {
             sourceRows.append(.object(["url": .string(url), "host": .string(source.host), "kind": .string(source.kind)]))
         }
         return .object(["observations": .array(observations), "sources": .array(sourceRows), "truncated": .bool(clipped)])
+    }
+
+    private static func kindRank(_ kind: String) -> Int {
+        switch kind { case "page-excerpt": 3; case "search-content-excerpt": 2; default: 1 }
+    }
+
+    private static func selectSources(_ input: [(label: String, observation: WorkflowWebObservation)],
+                                      query: String?, terms: [QueryTerm]) -> [(label: String, observation: WorkflowWebObservation)] {
+        let query = (query ?? "").replacingOccurrences(of: "\\/", with: "/")
+            .replacingOccurrences(of: "\\_", with: "_").replacingOccurrences(of: "\\&", with: "&")
+        let mentionedURLs = Set((try? sourceURLs(in: query)) ?? [])
+        var seen: Set<String> = []
+        let scored = input.enumerated().compactMap { index, entry -> (index: Int, score: Int, mentioned: Bool)? in
+            let item = entry.observation
+            let url = item.sourceURL ?? item.requestedURL ?? ""
+            let key = item.toolID.name + "|" + item.status + "|" + url + "|" + (item.sourceKind?.rawValue ?? "")
+                + "|" + StableDigest.sha256(Data(item.text.utf8)).rawValue
+            guard seen.insert(key).inserted else { return nil }
+            let mentioned = !url.isEmpty && mentionedURLs.contains(url)
+            let text = matchingText((item.sourceTitle ?? "") + " " + clippedText(item.text, maximumBytes: 64 * 1024))
+            let score = terms.reduce(0) { $0 + (text.contains($1.text) ? $1.weight : 0) }
+                + (item.status == "completed" ? 1 : 0)
+            return (index, score, mentioned)
+        }
+        let focused = scored.contains(where: \.mentioned) ? scored.filter(\.mentioned) : scored
+        return focused.sorted {
+            $0.score == $1.score ? $0.index < $1.index : $0.score > $1.score
+        }.prefix(maximumObservations).map { input[$0.index] }
     }
 
     private static func normalizedURL(_ value: String) -> URL? {
@@ -158,7 +222,7 @@ enum WorkflowWebEvidence {
 
     /// Greedy coverage of distinct query terms selects at most three verbatim line windows.
     /// The 400-byte head + 200-byte tail + 3×480-byte matches fit within the legacy excerpt budget.
-    private static func matchingExcerpts(_ text: String, terms: [QueryTerm]) throws -> [String] {
+    private static func matchingExcerpts(_ text: String, terms: [QueryTerm], maximumBytes: Int = 480) throws -> [String] {
         let bounded = clippedText(text, maximumBytes: 64 * 1024)
         var candidates: [(line: String, range: Range<String.Index>, hits: Set<Int>)] = []
         for slice in bounded.split(whereSeparator: \.isNewline) {
@@ -195,8 +259,8 @@ enum WorkflowWebEvidence {
                   let range = Range(match.range, in: candidate.line) else { continue }
             let offset = candidate.line.distance(from: candidate.line.startIndex, to: range.lowerBound)
             let matchStart = bounded.index(candidate.range.lowerBound, offsetBy: offset)
-            let start = bounded.index(matchStart, offsetBy: -70, limitedBy: bounded.startIndex) ?? bounded.startIndex
-            let excerpt = clippedText(String(bounded[start...]), maximumBytes: 480)
+            let before = clippedText(String(bounded[..<matchStart]), maximumBytes: maximumBytes / 4, suffix: true)
+            let excerpt = clippedText(before + String(bounded[matchStart...]), maximumBytes: maximumBytes)
             result.append(excerpt)
             // Only terms visible in the actual bounded excerpt count as covered.
             let visible = matchingText(excerpt)

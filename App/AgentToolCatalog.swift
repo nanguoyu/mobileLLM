@@ -317,7 +317,9 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
         if let serviceID = AppDeepSeekWebToolAdapter.serviceID(from: descriptorID),
            let operation = [DeepSeekWebOperation.search, .fetch].first(where: { $0.toolName == descriptorID.logicalID.name }) {
             let adapter = try AppDeepSeekWebToolAdapter(operation: operation, serviceID: serviceID,
-                                                      session: session, resolveKey: deepSeekAPIKey)
+                                                      session: session,
+                                                      enrichedSearch: AppDeepSeekWebToolAdapter.usesSearchContent(descriptorID),
+                                                      resolveKey: deepSeekAPIKey)
             return adapter.descriptor.id == descriptorID ? adapter : nil
         }
         // MCP adapters are built lazily from the explicit discovery cache; a descriptor can only

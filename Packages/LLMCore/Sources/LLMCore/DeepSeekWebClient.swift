@@ -32,6 +32,18 @@ public struct DeepSeekWebResponse: Sendable {
     public let text: String
     public let requestBytes: UInt64
     public let responseBytes: UInt64
+    public let searchResults: [DeepSeekWebSearchResult]?
+}
+
+/// Bounded fields returned by Search. Page content is supplied by the search service and does not
+/// establish a live Fetch or a crawl timestamp. Empty content remains a summary-only result.
+public struct DeepSeekWebSearchResult: Sendable {
+    public let url: String
+    public let title: String
+    public let summary: String
+    public let pageExcerpt: String
+    public let pageExcerptTruncated: Bool
+    public let publicationDate: String?
 }
 
 /// Official Search/Fetch JSON APIs. Credentials never follow redirects or enter tool arguments.
@@ -52,12 +64,13 @@ public struct DeepSeekWebClient: Sendable {
         pagePolicy = policy
     }
 
-    public static func requestBody(operation: DeepSeekWebOperation, argument: String) throws -> Data {
+    public static func requestBody(operation: DeepSeekWebOperation, argument: String,
+                                   includeSearchContent: Bool = false) throws -> Data {
         let value = argument.trimmingCharacters(in: .whitespacesAndNewlines)
         switch operation {
         case .search:
             guard !value.isEmpty, value.unicodeScalars.count <= 128 else { throw DeepSeekWebError.invalidArgument }
-            return try JSONSerialization.data(withJSONObject: ["query": value, "count": 6, "need_content": false], options: [.sortedKeys])
+            return try JSONSerialization.data(withJSONObject: ["query": value, "count": 6, "need_content": includeSearchContent], options: [.sortedKeys])
         case .fetch:
             guard value.unicodeScalars.count <= 8192, let url = URL(string: value),
                   url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty,
@@ -68,8 +81,9 @@ public struct DeepSeekWebClient: Sendable {
     }
 
     public func perform(operation: DeepSeekWebOperation, argument: String, apiKey: String,
+                        includeSearchContent: Bool = false,
                         consumeResponseBytes: @Sendable (UInt64) async throws -> Void = { _ in }) async throws -> DeepSeekWebResponse {
-        let body = try Self.requestBody(operation: operation, argument: argument)
+        let body = try Self.requestBody(operation: operation, argument: argument, includeSearchContent: includeSearchContent)
         guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !apiKey.contains("\r"), !apiKey.contains("\n") else { throw DeepSeekWebError.missingAPIKey }
         if operation == .fetch, let url = URL(string: argument.trimmingCharacters(in: .whitespacesAndNewlines)) {
@@ -89,11 +103,22 @@ public struct DeepSeekWebClient: Sendable {
         guard !response.wasTruncated else { throw DeepSeekWebError.responseTooLarge }
         guard response.response.statusCode == 200 else { throw DeepSeekWebError.httpStatus(response.response.statusCode) }
         let text: String
+        var searchResults: [DeepSeekWebSearchResult]?
         do {
             switch operation {
             case .search:
                 let results = try JSONDecoder().decode(SearchResponse.self, from: response.body).results
                 let dateParser = ISO8601DateFormatter()
+                searchResults = results.prefix(6).compactMap { item in
+                    guard let url = URL(string: item.url), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
+                          let host = url.host, !WebURLPolicy.isBlockedHost(host), url.user == nil, url.password == nil else { return nil }
+                    let content = includeSearchContent ? (item.content ?? "") : ""
+                    let excerpt = content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : Self.prefix(content, bytes: 3000)
+                    return DeepSeekWebSearchResult(url: item.url, title: Self.prefix(item.title, bytes: 256),
+                        summary: Self.prefix(item.summary.isEmpty ? item.snippet : item.summary, bytes: 800),
+                        pageExcerpt: excerpt, pageExcerptTruncated: excerpt.utf8.count < content.utf8.count,
+                        publicationDate: item.date.flatMap { dateParser.date(from: $0) == nil ? nil : String($0.prefix(64)) })
+                }
                 let entries = results.prefix(6).enumerated().compactMap { index, item -> String? in
                     guard let url = URL(string: item.url), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
                           url.host != nil, url.user == nil, url.password == nil else { return nil }
@@ -110,12 +135,22 @@ public struct DeepSeekWebClient: Sendable {
                     + "\(page.title.prefix(512))\nSource: \(argument)\n\n\(page.content.prefix(20000))"
             }
         } catch { throw DeepSeekWebError.invalidResponse }
-        return DeepSeekWebResponse(text: text, requestBytes: UInt64(body.count), responseBytes: UInt64(response.body.count))
+        return DeepSeekWebResponse(text: text, requestBytes: UInt64(body.count), responseBytes: UInt64(response.body.count),
+                                  searchResults: searchResults)
+    }
+
+    private static func prefix(_ text: String, bytes limit: Int) -> String {
+        var bytes = Array(text.utf8.prefix(limit))
+        for _ in 0..<4 {
+            if let value = String(bytes: bytes, encoding: .utf8) { return value }
+            if !bytes.isEmpty { bytes.removeLast() }
+        }
+        return ""
     }
 
     private struct SearchResponse: Decodable {
         let results: [Result]
-        struct Result: Decodable { let title: String; let url: String; let snippet: String; let summary: String; let date: String? }
+        struct Result: Decodable { let title: String; let url: String; let snippet: String; let summary: String; let date: String?; let content: String? }
     }
     private struct PageResponse: Decodable { let title: String; let content: String }
 }

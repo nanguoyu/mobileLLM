@@ -9,6 +9,36 @@ import XCTest
 /// Exercises the shipped program with controlled child outcomes. These are scheduler/control-flow
 /// regressions, not evidence that a live model can solve the corresponding user tasks.
 final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
+    func testLaterAnalysisUsesRecordedSourceContentWithoutRepeatingResearch() async throws {
+        let probe = CoordinationProbe()
+        let packet: JSONValue = .object(["observations": .array([.object([
+            "excerpt": .string("ORIGINAL-RECORDED-PAGE-FACT"), "status": .string("completed")])]),
+            "sources": .array([.object(["url": .string("https://example.edu/source"), "kind": .string("search-content-excerpt")])]),
+            "truncated": .bool(false)])
+        let result = try await run(initial: decision("work", tasks: [task("discover")]),
+            tools: ["builtin.web_search"], evidence: packet) { call in
+                await probe.enter(call); await probe.leave()
+                switch call.options.label {
+                case "discover": return .value(worker("Source located"))
+                case "coordinator":
+                    XCTAssertTrue(call.prompt.contains("https://example.edu/source"))
+                    XCTAssertFalse(call.prompt.contains("ORIGINAL-RECORDED-PAGE-FACT"), "Coordinator uses a compact index")
+                    return .value(await probe.count("coordinator") == 1
+                        ? decision("work", tasks: [task("analyze", inputs: ["discover"])]) : decision("deliver"))
+                case "analyze":
+                    XCTAssertEqual(call.options.maximumToolCalls, 0)
+                    XCTAssertTrue(call.prompt.contains("ORIGINAL-RECORDED-PAGE-FACT"))
+                    return .value(worker("Verified from recorded data"))
+                case "draft": return .value(.string("Supported answer"))
+                case "acceptance-review": return .value(review(approved: true, gap: ""))
+                default: return .stopped
+                }
+            }
+        XCTAssertEqual(result, .string("Supported answer"))
+        let discoveries = await probe.count("discover")
+        XCTAssertEqual(discoveries, 1)
+    }
+
     func testPartialArtifactsCanReachIndependentReviewWithoutPretendingTheyAreComplete() async throws {
         let probe = CoordinationProbe()
         let result = try await run(initial: decision("work", tasks: [task("partial-facts")])) { call in
@@ -217,19 +247,21 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
 
     private func run(
         initial: JSONValue,
+        tools: [String] = [],
+        evidence: JSONValue = .object(["observations": .array([]), "sources": .array([]), "truncated": .bool(false)]),
         agent: @escaping @Sendable (WorkflowAgentInvocation) async throws -> WorkflowAgentBridgeResult
     ) async throws -> JSONValue {
         let script = try WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1, source: CoordinatedWorkflow.source)
         let analyzed = try DynamicWorkflowScriptAnalyzer().analyze(script)
         let args = try CanonicalJSON(.object([
             "goal": .string("Determine the total under the supplied constraints."),
-            "availableTools": .array([]),
+            "availableTools": .array(tools.map(JSONValue.string)),
             "runDate": .string("2026-10-23"),
             "plan": .object(["criteria": .array([.object(["id": .string("correct"), "requirement": .string("Correct total")])]),
                              "decision": initial]),
         ]))
         let result = try await JavaScriptCoreWorkflowRuntime().execute(analyzed, args: args,
-            limits: .iPhoneDefault(), requirement: .init(), host: WorkflowScriptHost(agent: agent))
+            limits: .iPhoneDefault(), requirement: .init(), host: WorkflowScriptHost(agent: agent, webEvidence: { evidence }))
         return try JSONDecoder().decode(JSONValue.self, from: result.data)
     }
 }
