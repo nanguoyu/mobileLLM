@@ -883,10 +883,12 @@ public final class AgentRuntimeAssembly {
 
     /// The initial coordinator freezes the original acceptance criteria and proposes only the
     /// first work wave. The app executes a reviewed program, not model-generated control flow.
-    public func makeWorkflowCoordinator(snapshot: AgentRunRequestSnapshot) throws -> AgentRequest {
+    public func makeWorkflowCoordinator(snapshot: AgentRunRequestSnapshot, runDate: String? = nil) throws -> AgentRequest {
         let tools = try availableWorkflowTools(snapshot: snapshot)
+        let date = runDate ?? String(ISO8601DateFormatter().string(Date()).prefix(10))
         let instruction = CoordinatedWorkflow.planningInstruction
             + "\nENABLED TOOL IDS (empty means no tools):\n" + tools.joined(separator: ", ")
+            + "\nACTUAL RUN DATE (UTC): " + date
             + "\nORIGINAL GOAL:\n" + snapshot.text
         let source = try frozenBuilder.request(snapshot: snapshot, artifactReferences: [])
         // Dynamic execution uses the same frozen authority/model/tool policy as the conversation,

@@ -398,7 +398,8 @@ final class WorkflowLauncher {
                 assembly.frozenBuilder.registration(snapshot: snapshot)
             )
         }
-        let coordinator = try assembly.makeWorkflowCoordinator(snapshot: snapshot)
+        let runDate = String(ISO8601DateFormatter().string(Date()).prefix(10))
+        let coordinator = try assembly.makeWorkflowCoordinator(snapshot: snapshot, runDate: runDate)
         let handleID = try await assembly.executor.submit(coordinator, commandID: AgentCommandID())
         let handle = try await assembly.executor.attach(to: handleID)
         guard let result = try await waitForTerminalResult(handle: handle),
@@ -414,6 +415,7 @@ final class WorkflowLauncher {
             scope: scope,
             args: try CanonicalJSON(.object([
                 "goal": .string(goal), "plan": plan,
+                "runDate": .string(runDate),
                 "availableTools": .array(try assembly.availableWorkflowTools(snapshot: snapshot).map(JSONValue.string)),
             ])),
             initiatingRunID: coordinator.runID,

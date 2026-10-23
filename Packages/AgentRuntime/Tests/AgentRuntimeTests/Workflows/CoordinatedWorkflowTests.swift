@@ -107,6 +107,9 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
                     switch await probe.count("coordinator") {
                     case 1:
                         XCTAssertTrue(call.prompt.contains("already settled artifacts"))
+                        let schema = try XCTUnwrap(call.options.schema)
+                        XCTAssertFalse(try schema.validates(instance: decision("work", tasks: [task("x", inputs: ["future"])])),
+                            "The next model's schema must constrain references, not just repeat instructions")
                         return .value(decision("work", tasks: [task("valid")]))
                     case 2: return .value(decision("deliver"))
                     default:
@@ -167,6 +170,7 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
         let args = try CanonicalJSON(.object([
             "goal": .string("Determine the total under the supplied constraints."),
             "availableTools": .array([]),
+            "runDate": .string("2026-10-23"),
             "plan": .object(["criteria": .array([.object(["id": .string("correct"), "requirement": .string("Correct total")])]),
                              "decision": initial]),
         ]))

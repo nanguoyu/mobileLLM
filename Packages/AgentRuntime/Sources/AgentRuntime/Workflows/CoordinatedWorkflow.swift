@@ -13,6 +13,8 @@ public enum CoordinatedWorkflow {
     Extract all material acceptance criteria, including coverage, correctness, constraints, evidence,
     and requested output. Criteria describe the user's outcome, not how many agents run. Keep their
     IDs stable. Do not replace broad coverage with an arbitrary small item count.
+    Do not turn optional details or your preferred method into new acceptance requirements. Distinguish
+    the requested evidence cutoff from the actual run date. Never backdate an observation or retrieval.
     Propose only the NEXT wave of 1–4 independent tasks. Different expertise or search strategies
     should cover different gaps. Dependent work belongs in a later wave after its inputs exist.
     Use the smallest useful team, not all four slots by default. Do not commission a final writer
@@ -152,6 +154,10 @@ public enum CoordinatedWorkflow {
         const criteria = args.plan.criteria;
         const criterionIDs = criteria.map(c => c.id);
         if (unique(criterionIDs).length !== criterionIDs.length) { throw new Error('Duplicate acceptance criterion IDs'); }
+        decisionSchema.properties.tasks.items.properties.criteria.items.enum = criterionIDs;
+        reviewSchema.properties.checks.items.properties.criterionID.enum = criterionIDs;
+        reviewSchema.properties.checks.minItems = criterionIDs.length;
+        reviewSchema.properties.checks.maxItems = criterionIDs.length;
         let decision = args.plan.decision;
         let records = [];
         let allocatedTools = 0;
@@ -160,22 +166,23 @@ public enum CoordinatedWorkflow {
         let draft = '';
         let feedback = '';
         const context = '\nORIGINAL GOAL:\n' + args.goal + '\nFROZEN CRITERIA:\n' + serialize(criteria)
-          + '\nENABLED TOOL IDS:\n' + serialize(args.availableTools);
+          + '\nENABLED TOOL IDS:\n' + serialize(args.availableTools)
+          + '\nACTUAL RUN DATE (UTC): ' + args.runDate;
         for (let turn = 0; turn < 7; turn++) {
           feedback = '';
           const knownIDs = records.map(r => r.id);
           if (decision.action === 'work') {
             const ids = decision.tasks.map(t => t.id);
             let requestedTools = 0;
-            if (ids.length === 0 || unique(ids).length !== ids.length) { feedback = 'Work needs unique nonempty task IDs.'; }
-            if (records.length + ids.length > 12) { feedback = 'The 12 worker-task allocation is exhausted.'; }
+            if (ids.length === 0 || unique(ids).length !== ids.length) { feedback += 'Work needs unique nonempty task IDs. '; }
+            if (records.length + ids.length > 12) { feedback += 'The 12 worker-task allocation is exhausted. '; }
             for (const task of decision.tasks) {
               requestedTools += task.maxToolCalls;
-              if (knownIDs.includes(task.id)) { feedback = 'Task IDs must be new, including replacements for failed tasks.'; }
-              if (task.inputs.some(id => !knownIDs.includes(id))) { feedback = 'Inputs must reference already settled artifacts, never same-wave or missing tasks.'; }
-              if (task.criteria.length === 0 || task.criteria.some(id => !criterionIDs.includes(id))) { feedback = 'Each task must address existing acceptance criteria.'; }
+              if (knownIDs.includes(task.id)) { feedback += 'Task IDs must be new, including replacements for failed tasks. '; }
+              if (task.inputs.some(id => !knownIDs.includes(id))) { feedback += 'Inputs must reference already settled artifacts, never same-wave or missing tasks. '; }
+              if (task.criteria.length === 0 || task.criteria.some(id => !criterionIDs.includes(id))) { feedback += 'Each task must use the frozen criterion IDs, not prose descriptions. '; }
             }
-            if (allocatedTools + requestedTools > 24) { feedback = 'The requested tool allocation exceeds the remaining workflow allowance.'; }
+            if (allocatedTools + requestedTools > 24) { feedback += 'Wave allocates ' + requestedTools + ' tools but only ' + (24-allocatedTools) + ' remain. Reduce the SUM of task allowances. '; }
             if (feedback === '') {
               phase(decision.stage);
               allocatedTools += requestedTools;
@@ -249,6 +256,13 @@ public enum CoordinatedWorkflow {
           if (turn === 6) { break; }
           phase('Coordinate next stage');
           const index = records.map(r => ({id:r.id,status:r.status,summary:r.summary,unresolved:r.unresolved,contentCharacters:r.content.length}));
+          const availableIDs = records.map(r => r.id);
+          const inputRule = decisionSchema.properties.tasks.items.properties.inputs;
+          inputRule.maxItems = availableIDs.length;
+          if (availableIDs.length > 0) { inputRule.items = {type:'string',enum:availableIDs}; }
+          else { inputRule.items = {type:'string'}; }
+          const remainingTools = 24-allocatedTools;
+          decisionSchema.properties.tasks.items.properties.maxToolCalls.maximum = remainingTools < 6 ? remainingTools : 6;
           decision = await agent(coordinatorInstruction + context + '\nARTIFACT INDEX:\n' + serialize(index)
             + '\nREVIEW:\n' + serialize(review) + '\nHOST FEEDBACK:\n' + feedback
             + '\nALLOCATION:\n' + serialize({workersRemaining:12-records.length,toolsRemaining:24-allocatedTools,
