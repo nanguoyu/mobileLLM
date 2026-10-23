@@ -80,6 +80,12 @@ public enum CoordinatedWorkflow {
     Check that the criteria themselves cover the original goal. Put any omitted requirement in issues.
     Inspect actual content, calculations, constraints, sources, counterexamples and missing categories.
     A polished answer, many rows, agent agreement or a self-reported successful test is not proof.
+    Evidence must explain why a requirement is met, not merely report that a section mentions it.
+    Try to falsify the central conclusion with an input or execution allowed by the stated assumptions.
+    For process designs, check whether the proposed safeguard still works across its own failure and
+    recovery boundaries. For optimization, check feasibility and a competing solution or lower bound.
+    Unsupported guarantees must be narrowed or repaired before approval. Do not claim tests were run
+    when you only inspected an argument, and do not add requirements unrelated to the user's goal.
     In discovery tasks, distinguish a sample from broad coverage and inspect unresolved coverage gaps.
     Retrieved source kind proves retrieval, not the truth of every nearby claim. Cross-check claims
     against the recorded excerpts. User-supplied facts do not require invented web receipts.
