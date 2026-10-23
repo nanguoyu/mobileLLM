@@ -10,8 +10,7 @@
     "sha256": "f46a1213c95f72a01ef31ce62e6ebce87fdc6769feb09f13ab5bab9859f66870",
     "section": "8, 9.3, and 22",
     "lineStart": 222,
-    "lineEnd": 1153,
-    "capturedAtUTC": "2026-10-23T08:19:10Z"
+    "lineEnd": 1153
   },
   "evaluationSemantics": {
     "version": 1,
