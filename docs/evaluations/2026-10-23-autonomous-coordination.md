@@ -66,7 +66,7 @@ file and `STATUS.md` only after their original outputs have been checked.
 
 ## Retained task outcomes
 
-[Compact evidence](evidence/2026-10-23-autonomous-coordination.json) retains 18 outcomes, exact accepted
+[Compact evidence](evidence/2026-10-23-autonomous-coordination.json) retains 20 outcomes, exact accepted
 JSON answers, source/output hashes and selected child timing records. The same code was not used for all
 runs, so these are diagnostic outcomes rather than an aggregate reliability score.
 
@@ -102,4 +102,35 @@ facts. The notes did not reliably do that. The supervisor now retains observed p
 a bounded context, prioritizes recent pages at the limit, and preserves earlier originals for further reads.
 The strengthened regression requires the original first-page fact and the newly read tail to coexist in the
 next supervisor input. Both that check and dependent-task continuation passed. This is a data-flow fix;
-source and coverage oracles are unchanged. Targeted live checks of the corrected policy are pending.
+source and coverage oracles are unchanged. Targeted live outcomes for the corrected policy follow below.
+
+## Results with retained supervisor observations
+
+The final targeted run used `55c2a71`, the same configured `deepseek-v4-pro` model, DeepSeek Search/Fetch,
+and the signed iPhone 17 / iOS 27 Simulator. It received only each original task. No maintainer prompt,
+intermediate answer or manually corrected source was supplied during execution.
+
+| Task | Application time | Child invocations | Web calls | Assessment |
+| --- | ---: | ---: | ---: | --- |
+| API comparison | 220.045 s | 3: two researchers, one supervisor | 10 | UI passed in 299.818 s. Primary-source inspection supports the required endpoints, authentication, content behavior and examples. Exact historical page versions remain unavailable. |
+| Europe research | 341.955 s | 5: four researchers, one supervisor | 24 | Runtime delivered 16 groups across nine countries. UI failed in 419.414 s because ELSS was absent. Coverage remains below the requested standard. |
+
+The API workers started 2 ms apart; their in-flight intervals overlapped for approximately 36.4 seconds.
+The supervisor then delivered directly. The previous run needed six repeated read decisions. This is a
+single diagnostic comparison, not a statistical speed or reliability estimate. The final API citations
+include the successfully retrieved Brave dashboard guide. Its main comparisons were checked against
+[DeepSeek's guide](https://api-docs.deepseek.com/guides/search/) and
+[Brave's Web Search documentation](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started).
+
+The Europe failure is retained as a coverage failure even though its workflow completed. Neither ELSS,
+Graz nor Saukh was included in the original task. No mobileLLM repository URL was found in either run's
+tool-result text. The returned Europe records are preserved unchanged in the evidence file, not rewritten
+into a successful report. The count and country threshold alone cannot establish comprehensive coverage.
+
+The implementation now avoids the observed mandatory writing/review overhead and lost-page loop. Remaining
+work concerns discovery coverage, entity verification and stronger evidence across diverse complex tasks.
+Live testing has not yet established reliable adaptive replanning over multiple worker waves. Native worker
+conversations, asynchronous peer messaging and production code-execution tools also remain separate gaps.
+The six runtime regressions, two strengthened reruns, the app compilation/budget check and the static verifier
+passed. GitHub CI for `55c2a71` passed. No full repository suite was repeated, and the procurement model call
+was not rerun after correcting its unnecessary child-count assertion.

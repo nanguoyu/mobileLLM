@@ -1743,8 +1743,7 @@ Primary references inspected for these constraints:
   <https://developers.openai.com/api/docs/guides/latest-model>
 - OpenCode agent model, permissions, child-session navigation, and task permissions:
   <https://opencode.ai/docs/agents/>
-- OpenCode task implementation for durable parent/child sessions, resumption, depth limits, background execution, and
-  transitive child permission derivation:
+- OpenCode job implementation for child-session resumption, background lifecycle, and parent completion notification:
   <https://github.com/anomalyco/opencode/blob/24b5ed8bcc60aa9a20cf4e3edf1444470e0e6464/packages/core/src/session/subagent-job.ts>
 
 ### 34.2 Compatibility target and script contract

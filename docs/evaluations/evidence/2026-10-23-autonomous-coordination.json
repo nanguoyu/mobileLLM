@@ -4,7 +4,7 @@
   "modelAlias": "deepseek-v4-pro",
   "device": "iPhone 17 / iOS 27 Simulator",
   "externalIntervention": "No corrective prompts or intermediate answers were supplied during accepted runs. Explicitly interrupted runs remain separate.",
-  "metricsNote": "App elapsed includes initial planning and execution; UI durations include navigation. Token aggregates include conservative accounting in early malformed-response runs and are not billing totals.",
+  "metricsNote": "Application elapsed includes initial planning and execution; UI durations also include navigation. Earlier displayed token totals excluded the initial planning call; 55c2a71 includes it. Early malformed-response runs include conservative accounting, so these are not billing totals. The inspected runs used different revisions; no aggregate reliability rate is reported.",
   "cases": [
     {
       "id": "corpus-first",
@@ -1207,6 +1207,435 @@
           }
         }
       ]
+    },
+    {
+      "id": "api-retained",
+      "code": "55c2a71",
+      "uiSeconds": 299.818,
+      "evaluation": "core-request-passed",
+      "reason": "Two independent researchers and one supervisor delivered the comparison; endpoints, auth, content behavior and request examples match primary docs. Working primary citations are retained. Exact historical page snapshots remain unverified.",
+      "capturedWorkflowState": "completed",
+      "aggregated": {
+        "elapsedMilliseconds": 220045,
+        "inputTokens": 116618,
+        "outputTokens": 24564,
+        "subagentCount": 3,
+        "toolInvocationCount": 10
+      },
+      "sourceSHA256": "ffe1904cfe2ec292870c8ce30d99861098302be812e17aefdb0ae5766087dbb7",
+      "answerSHA256": "f53ebeae592f4aade5e6adacdeca8b0bfb6a70e5f24acec4b7f86a2787ba92dd",
+      "observedChildren": [
+        {
+          "ordinal": 1,
+          "label": "t1_deepseek",
+          "status": "completed",
+          "startSeconds": 0.0,
+          "endSeconds": 36.383,
+          "tools": {
+            "completed": 4,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 2,
+          "label": "t2_brave",
+          "status": "completed",
+          "startSeconds": 0.002,
+          "endSeconds": 109.414,
+          "tools": {
+            "completed": 6,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 3,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 109.485,
+          "endSeconds": 200.359,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        }
+      ],
+      "intervention": "Original user task only; no corrective prompts or externally supplied facts during the run.",
+      "auditedPrimarySources": [
+        "https://api-docs.deepseek.com/guides/search/",
+        "https://api-docs.deepseek.com/api/search/",
+        "https://api-dashboard.search.brave.com/app/documentation/web-search/get-started",
+        "https://api-dashboard.search.brave.com/api-reference/web/search/post",
+        "https://api-dashboard.search.brave.com/documentation/services/llm-context"
+      ]
+    },
+    {
+      "id": "europe-retained",
+      "code": "55c2a71",
+      "uiSeconds": 419.414,
+      "evaluation": "coverage-failed",
+      "reason": "Runtime delivered 16 groups across nine countries with four researchers and one supervisor. The held-out ELSS group was missing; the coverage oracle failed. Group-by-group factual completeness is not established.",
+      "capturedWorkflowState": "completed",
+      "aggregated": {
+        "elapsedMilliseconds": 341955,
+        "inputTokens": 179622,
+        "outputTokens": 74653,
+        "subagentCount": 5,
+        "toolInvocationCount": 24
+      },
+      "sourceSHA256": "ffe1904cfe2ec292870c8ce30d99861098302be812e17aefdb0ae5766087dbb7",
+      "answerSHA256": "c9508b2f6578468368c4052a167e7b8e4eb0b8358dbeb1e31fb9dc4b3c1b7198",
+      "observedChildren": [
+        {
+          "ordinal": 1,
+          "label": "efficient-ai-uk-de",
+          "status": "completed",
+          "startSeconds": 0.0,
+          "endSeconds": 200.34,
+          "tools": {
+            "completed": 6,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 2,
+          "label": "efficient-ai-fr-nl-ch",
+          "status": "completed",
+          "startSeconds": 0.009,
+          "endSeconds": 203.486,
+          "tools": {
+            "completed": 6,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 3,
+          "label": "efficient-ai-nordic-south-east",
+          "status": "completed",
+          "startSeconds": 0.014,
+          "endSeconds": 155.867,
+          "tools": {
+            "completed": 6,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 4,
+          "label": "efficient-ai-verify-known",
+          "status": "completed",
+          "startSeconds": 0.018,
+          "endSeconds": 109.355,
+          "tools": {
+            "completed": 6,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 5,
+          "label": "coordinator",
+          "status": "completed",
+          "startSeconds": 203.591,
+          "endSeconds": 309.901,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        }
+      ],
+      "intervention": "Original user task only; no corrective prompts or externally supplied facts during the run.",
+      "returnedGroups": 16,
+      "returnedCountries": 9,
+      "knownPositiveFound": false,
+      "originalAnswer": {
+        "marker": "EVAL_EUROPE_COVERAGE",
+        "groups": [
+          {
+            "name": "Cambridge Machine Learning Systems Lab (CaMLSys)",
+            "institution": "University of Cambridge, Department of Computer Science and Technology",
+            "countryCode": "GB",
+            "lead": "Nicholas D. Lane",
+            "topics": [
+              "efficient machine learning",
+              "on-device machine learning",
+              "federated learning",
+              "resource-constrained ML systems"
+            ],
+            "representativeWork": "EmBench: Quantifying Performance Variations of Deep Neural Networks across Modern Commodity Devices (EMDL 2019)",
+            "sourceURLs": [
+              "https://mlsys.cst.cam.ac.uk/",
+              "https://www.cst.cam.ac.uk/news/mobile-computing-rockstar-talks-revolution"
+            ]
+          },
+          {
+            "name": "Torr Vision Group",
+            "institution": "University of Oxford, Department of Engineering Science",
+            "countryCode": "GB",
+            "lead": "Philip H. S. Torr",
+            "topics": [
+              "efficient training methods",
+              "efficient inference",
+              "neural network pruning",
+              "LLM efficiency"
+            ],
+            "representativeWork": "FORCE: neural network discretization/pruning (ICLR 2021)",
+            "sourceURLs": [
+              "https://eng.ox.ac.uk/about/computer-vision-and-machine-learning",
+              "https://puneetdokania.github.io/"
+            ]
+          },
+          {
+            "name": "Hardware and Artificial Intelligence (HAWAII) Lab",
+            "institution": "Heidelberg University, Institute of Computer Engineering",
+            "countryCode": "DE",
+            "lead": "Holger Fröning",
+            "topics": [
+              "hardware/software co-design",
+              "automatic model compression",
+              "energy-efficient computing",
+              "Bayesian neural network acceleration",
+              "edge ML"
+            ],
+            "representativeWork": "Variance-Aware Noisy Training: Hardening DNNs against Unstable Analog Computations (ECML-PKDD 2025)",
+            "sourceURLs": [
+              "https://hawaii.ziti.uni-heidelberg.de/members/holger_froening/"
+            ]
+          },
+          {
+            "name": "ITIV - Chair of Embedded Electronic Systems",
+            "institution": "Karlsruhe Institute of Technology (KIT)",
+            "countryCode": "DE",
+            "lead": "Jürgen Becker",
+            "topics": [
+              "AI in embedded systems",
+              "hardware/software co-design",
+              "on-device learning",
+              "mixed-precision partitioning",
+              "ML compilation"
+            ],
+            "representativeWork": "General Compilation and Mixed-Precision Partitioning for Adaptive On-Device Learning (IEEE TVLSI 2025)",
+            "sourceURLs": [
+              "https://www.itiv.kit.edu/english/21_3015.php?sort_table=3144&sort_field=typ&sort_order=SORT_DESC"
+            ]
+          },
+          {
+            "name": "Institute of Networked Cyber-Physical Systems (NCPS)",
+            "institution": "Hamburg University of Technology",
+            "countryCode": "DE",
+            "lead": "Olaf Landsiedel",
+            "topics": [
+              "TinyML",
+              "edge AI",
+              "embedded machine learning",
+              "on-device ML"
+            ],
+            "representativeWork": "LightEQ: On-Device Earthquake Detection with Embedded Machine Learning (2023)",
+            "sourceURLs": [
+              "https://orcid.org/0000-0001-6432-300X"
+            ]
+          },
+          {
+            "name": "TARAN",
+            "institution": "Inria/CNRS/Université de Rennes/ENS Rennes, IRISA",
+            "countryCode": "FR",
+            "lead": "Olivier Sentieys",
+            "topics": [
+              "energy-efficient architectures",
+              "domain-specific hardware accelerators",
+              "approximate computing",
+              "mixed-precision quantization",
+              "hardware-software co-design"
+            ],
+            "representativeWork": "TARAN 2024 activity report (includes mixed-precision QAT research)",
+            "sourceURLs": [
+              "https://www.irisa.fr/en/teams/taran",
+              "https://radar.inria.fr/report/2024/taran/index.html"
+            ]
+          },
+          {
+            "name": "SIERRA",
+            "institution": "Inria Paris, École normale supérieure, CNRS, PSL University",
+            "countryCode": "FR",
+            "lead": "Francis Bach",
+            "topics": [
+              "sparsity",
+              "low-rank methods",
+              "large-scale optimization",
+              "model compression"
+            ],
+            "representativeWork": null,
+            "sourceURLs": [
+              "https://www.di.ens.fr/sierra/"
+            ]
+          },
+          {
+            "name": "Amsterdam Machine Learning Lab (AMLab)",
+            "institution": "University of Amsterdam",
+            "countryCode": "NL",
+            "lead": "Max Welling",
+            "topics": [
+              "model compression",
+              "sparsity",
+              "Bayesian deep learning",
+              "efficient inference"
+            ],
+            "representativeWork": "Bayesian Compression for Deep Learning (NeurIPS 2017)",
+            "sourceURLs": [
+              "https://amlab.science.uva.nl/",
+              "https://arxiv.org/abs/1705.08665"
+            ]
+          },
+          {
+            "name": "Sparse Neural Networks Group (DAI cluster)",
+            "institution": "Eindhoven University of Technology",
+            "countryCode": "NL",
+            "lead": "Decebal Constantin Mocanu",
+            "topics": [
+              "sparse neural networks",
+              "efficient training from scratch",
+              "adaptive sparse connectivity",
+              "efficient inference"
+            ],
+            "representativeWork": "Scalable Training of Artificial Neural Networks with Adaptive Sparse Connectivity (Nature Communications 2018)",
+            "sourceURLs": [
+              "https://dai.win.tue.nl/researchprojects/120/",
+              "https://www.nature.com/articles/s41467-018-04316-3"
+            ]
+          },
+          {
+            "name": "Machine Learning and Optimization Laboratory (MLO)",
+            "institution": "École Polytechnique Fédérale de Lausanne (EPFL)",
+            "countryCode": "CH",
+            "lead": "Martin Jaggi",
+            "topics": [
+              "efficient/distributed training",
+              "gradient compression",
+              "federated learning",
+              "sparsity",
+              "low-rank methods"
+            ],
+            "representativeWork": "PowerSGD: Practical Low-Rank Gradient Compression for Distributed Optimization (NeurIPS 2019)",
+            "sourceURLs": [
+              "https://www.epfl.ch/labs/mlo/",
+              "https://arxiv.org/abs/1905.13727"
+            ]
+          },
+          {
+            "name": "Digital Circuits and Systems Group, Integrated Systems Laboratory (IIS)",
+            "institution": "ETH Zurich",
+            "countryCode": "CH",
+            "lead": "Luca Benini",
+            "topics": [
+              "energy-efficient architectures",
+              "TinyML",
+              "RISC-V/PULP",
+              "hardware-software co-design",
+              "efficient inference"
+            ],
+            "representativeWork": "DORY: Automatic End-to-End Deployment of Real-World DNNs on Low-Cost IoT MCUs",
+            "sourceURLs": [
+              "https://iis.ee.ethz.ch/",
+              "https://arxiv.org/abs/2008.00627"
+            ]
+          },
+          {
+            "name": "Scalable Parallel Computing Laboratory (SPCL)",
+            "institution": "ETH Zurich",
+            "countryCode": "CH",
+            "lead": "Torsten Hoefler",
+            "topics": [
+              "efficient training infrastructure",
+              "communication compression",
+              "distributed deep learning",
+              "high-performance computing"
+            ],
+            "representativeWork": "SparCML: High-Performance Sparse Communication for Machine Learning",
+            "sourceURLs": [
+              "https://spcl.inf.ethz.ch/",
+              "https://arxiv.org/abs/1802.08021"
+            ]
+          },
+          {
+            "name": "Alistarh Group (Deep Algorithms and Systems Lab, DASLab)",
+            "institution": "Institute of Science and Technology Austria (ISTA)",
+            "countryCode": "AT",
+            "lead": "Dan Alistarh",
+            "topics": [
+              "efficient training",
+              "efficient inference",
+              "model compression",
+              "sparsity",
+              "quantization",
+              "low-rank methods",
+              "distributed ML"
+            ],
+            "representativeWork": "RoSA: Accurate Parameter-Efficient Fine-Tuning via Robust Adaptation (arXiv:2401.04679)",
+            "sourceURLs": [
+              "https://ist.ac.at/en/research/alistarh-group/",
+              "https://ar5iv.labs.arxiv.org/html/2401.04679"
+            ]
+          },
+          {
+            "name": "VANDAL Laboratory",
+            "institution": "Politecnico di Torino, Dipartimento di Automatica e Informatica (DAUIN)",
+            "countryCode": "IT",
+            "lead": "Tatiana Tommasi",
+            "topics": [
+              "model compression",
+              "pruning",
+              "efficient deep learning",
+              "computer vision"
+            ],
+            "representativeWork": "A Second-Order Perspective on Pruning at Initialization and Knowledge Transfer (ICIAP 2025)",
+            "sourceURLs": [
+              "https://www.polito.it/ateneo/comunicazione-e-ufficio-stampa/poliflash/dal-laboratorio-vandal-la-ricerca-che-rende-l-ai-piu-leggera"
+            ]
+          },
+          {
+            "name": "MICAS (Micro-electronics And Sensors)",
+            "institution": "KU Leuven, ESAT/Electrical Engineering",
+            "countryCode": "BE",
+            "lead": "Marian Verhelst",
+            "topics": [
+              "efficient AI hardware",
+              "edge AI accelerators",
+              "algorithm-hardware co-design",
+              "quantization and sparsity",
+              "in-memory computing"
+            ],
+            "representativeWork": "Stream: Design Space Exploration of Layer-fused DNNs on Heterogeneous Dataflow Accelerators (IEEE Transactions on Computers, 2025)",
+            "sourceURLs": [
+              "https://micas.esat.kuleuven.be/",
+              "https://micas.esat.kuleuven.be/team/arne-symons"
+            ]
+          },
+          {
+            "name": "CTTC/UPC Signal Processing for Lightweight Neural Networks",
+            "institution": "Centre Tecnologic de Telecomunicacions de Catalunya (CTTC) / Universitat Politecnica de Catalunya (UPC)",
+            "countryCode": "ES",
+            "lead": "Ana Perez-Neira",
+            "topics": [
+              "lightweight neural networks",
+              "efficient AI",
+              "edge computing",
+              "signal processing"
+            ],
+            "representativeWork": "Expressive Neural Network (ENN) using Discrete Cosine Transform activations",
+            "sourceURLs": [
+              "https://www.itu.int/en/journal/j-fet/webinars/20250610/Pages/default.aspx",
+              "https://signalprocessingsociety.org/index.php/events/sps-webinar-signal-processing-expressive-neural-networks-toward-lightweight-intelligence"
+            ]
+          }
+        ],
+        "coverageGaps": [
+          "This is not an exhaustive map of European efficient-AI research groups; many more qualified groups exist beyond this list.",
+          "Nordic countries (Sweden, Denmark, Finland, Norway) are not represented in the final verified groups and remain a clear coverage gap.",
+          "Eastern Europe is largely absent from this list.",
+          "Several promising candidates from the evidence (e.g., University of Turin compression group, ISTI-CNR, UPC CS resource-efficient DNN group, Polito DET Edge-AI group) were not included in the final groups because their group names, leadership, or official lab homepages were not fully verified; they should be revisited with primary pages.",
+          "Some leads are still unconfirmed and are set to null or inferred; several sourceURLs point to individual, author, or event pages rather than dedicated lab homepages.",
+          "Large-scale efficient training foundational algorithm research is underrepresented; the list leans toward hardware-software co-design, on-device ML, and model compression.",
+          "Cross-institutional projects and frameworks (e.g., Flower, M/EDGE, MANNHEIM-FlexKI) were excluded because they are not single research groups.",
+          "Samsung AI Center Cambridge (industry lab) and Oxford OATML (weak efficient-AI group-level focus) were considered but not included."
+        ]
+      }
     }
   ],
   "mechanicalChecks": {
@@ -1229,7 +1658,5 @@
     "primaryURL": "https://www.tugraz.at/en/arbeitsgruppen/iti-teams/elss/team-contact",
     "includedInModelPrompt": false
   },
-  "pending": [
-    "Targeted API comparison and Europe research after automatic observation retention"
-  ]
+  "pending": []
 }

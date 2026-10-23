@@ -10,25 +10,30 @@ and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
 
 ## Autonomous collaboration: current assessment
 
-General autonomous completion remains unproven. Three closed-data tasks passed exact answer checks on
-prior revisions: full directory selection with aliases, constrained procurement, and dependency scheduling.
-Open-ended API comparison and Europe research failed. An incident answer passed its UI check and internal
-model review but failed independent semantic inspection. These are not a combined success-rate estimate.
+The current supervisor sends actual worker results to the parent, retains observed pages, reads artifacts
+locally, continues logical tasks and delivers without compulsory writer/reviewer agents. This replaces the
+previous summary-only coordinator and repeated extraction pipeline. The unchanged execution layer supplies
+permissions, bounded parallelism, accounting, cancellation and durable replay.
 
-The latest v1 Europe run at `7a89e1b` used 17 child invocations and 24 web tools over 1,321.789 application
-seconds, then exhausted its budget without delivering an answer. ELSS appeared in intermediate outputs;
-that does not count as successful final coverage. The older supervised report below also omitted the
-user's group and must not be presented as complete autonomous research.
+Real Simulator results at `55c2a71`:
 
-The replacement supervisor returns actual worker results, supports local artifact reads and logical task
-continuation, and writes the answer without mandatory writer/reviewer agents. Six focused control-flow
-checks pass. The first closed-data procurement answer passed every exact oracle in 23.285 application
-seconds with no unnecessary delegation. Its UI test failed only a minimum-child-count assertion; the
-original answer passed offline replay and was not regenerated. The first API comparison passed UI checks but retained a failed-read citation; Europe still failed through
-repeated paging. Observed pages are now retained across supervisor turns, with a focused regression for
-that exact failure. The corrected policy awaits targeted live checks. See the [diagnosis, source comparison and
-validation](evaluations/2026-10-23-autonomous-coordination.md). Completion still needs external output
-checks; a model's own approval is not an accuracy measurement.
+- API comparison: two independent researchers plus one supervisor, 10 web calls, 220.045 application
+  seconds. UI passed, and the required endpoint/authentication/content comparisons match primary docs.
+- Europe research: four researchers plus one supervisor, 24 web calls, 341.955 application seconds.
+  It delivered 16 groups across nine countries but missed TU Graz ELSS. The coverage test failed.
+- The preceding procurement run solved the exact optimization in 23.285 application seconds without
+  delegation. Its unchanged answer oracle passed offline; a minimum-child-count UI failure was retained
+  and that unnecessary requirement was removed for the closed-data cases. No model rerun was needed.
+
+General reliable autonomy remains unproven. The latest runs establish successful information transfer and
+final delivery; broad discovery still misses relevant groups. Native persistent worker conversations and
+asynchronous peer messaging are not implemented. Recorded context continuation is explicit and does not
+claim provider-session or KV reuse. Six focused runtime regressions pass, with the paging fix rechecked in
+two of them. The app source compilation/budget check, static verifier and CI for `55c2a71` passed.
+
+The [source comparison and evaluation](evaluations/2026-10-23-autonomous-coordination.md) preserves all
+20 outcomes, including failed runs and the incident answer that passed UI/model review but failed semantic
+inspection. Earlier supervised reports below do not prove autonomous coverage and omitted the user's group.
 
 ## DeepSeek Search and Fetch integration
 
