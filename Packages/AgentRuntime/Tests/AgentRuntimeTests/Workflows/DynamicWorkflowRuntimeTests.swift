@@ -9,7 +9,7 @@ import XCTest
 final class DynamicWorkflowRuntimeTests: XCTestCase {
     func testWebEvidenceQueryFindsMiddleFieldsWithoutIncreasingExcerptBudget() throws {
         let text = String(repeating: "Unrelated introduction.\n", count: 100)
-            + "| need_content | When false, content is empty; when true it may contain page content. |\n"
+            + "| need\\_content | When false, content is empty; when true it may contain page content. |\n"
             + "| extra_snippets | Up to five additional excerpts, not full page text. |\n"
             + String(repeating: "Unrelated footer.\n", count: 100)
         let record = WorkflowWebObservation(invocationID: "read", toolID: try AgentToolLogicalID(providerID: "builtin", name: "fetch_webpage"),

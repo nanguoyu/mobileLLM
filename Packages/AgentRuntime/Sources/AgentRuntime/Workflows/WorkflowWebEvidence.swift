@@ -115,9 +115,15 @@ enum WorkflowWebEvidence {
 
     private struct QueryTerm { let text: String; let weight: Int }
 
+    private static func matchingText(_ text: String) -> String {
+        text.lowercased().replacingOccurrences(of: "\\_", with: "_")
+            .replacingOccurrences(of: "\\-", with: "-")
+    }
+
     /// Literal query terms only. Code/field names receive priority; source data never supplies a
     /// regex or an instruction. All matching is local to already-authorized recorded observations.
     private static func queryTerms(_ query: String) throws -> [QueryTerm] {
+        let query = matchingText(query)
         let words = try NSRegularExpression(pattern: #"[\p{L}\p{N}_-]{3,64}"#)
         let code = try NSRegularExpression(pattern: #"`([^`\n]{3,96})`"#)
         let stop: Set<String> = ["the", "and", "with", "from", "this", "that", "for", "are", "not", "https", "http", "www", "com", "org", "api", "true", "false", "return", "using", "must", "should", "which", "have", "into"]
@@ -145,7 +151,7 @@ enum WorkflowWebEvidence {
         var candidates: [(line: String, hits: Set<Int>)] = []
         for line in bounded.components(separatedBy: .newlines) where !line.isEmpty {
             try Task.checkCancellation()
-            let lower = line.lowercased()
+            let lower = matchingText(line)
             let hits = Set(terms.indices.filter { lower.contains(terms[$0].text) })
             if !hits.isEmpty { candidates.append((line, hits)) }
         }
@@ -164,13 +170,22 @@ enum WorkflowWebEvidence {
             let newHits = candidate.hits.subtracting(covered)
             guard let term = newHits.sorted(by: {
                 terms[$0].weight == terms[$1].weight ? $0 < $1 : terms[$0].weight > terms[$1].weight
-            }).first,
-                  let range = candidate.line.range(of: terms[term].text, options: .caseInsensitive) else { break }
+            }).first else { break }
+            // Markdown can escape identifiers such as need\_content. Match those escapes while
+            // keeping the returned range in the ORIGINAL text, never a normalized reconstruction.
+            let pattern = terms[term].text.map { character in
+                (character == "_" || character == "-" ? #"(?:\\)?"# : "")
+                    + NSRegularExpression.escapedPattern(for: String(character))
+            }.joined()
+            let matcher = try NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+            guard let match = matcher.firstMatch(in: candidate.line, range: NSRange(candidate.line.startIndex..., in: candidate.line)),
+                  let range = Range(match.range, in: candidate.line) else { continue }
             let start = candidate.line.index(range.lowerBound, offsetBy: -70, limitedBy: candidate.line.startIndex) ?? candidate.line.startIndex
             let excerpt = clippedText(String(candidate.line[start...]), maximumBytes: 480)
             result.append(excerpt)
             // Only terms visible in the actual bounded excerpt count as covered.
-            covered.formUnion(terms.indices.filter { excerpt.lowercased().contains(terms[$0].text) })
+            let visible = matchingText(excerpt)
+            covered.formUnion(terms.indices.filter { visible.contains(terms[$0].text) })
         }
         return result
     }
