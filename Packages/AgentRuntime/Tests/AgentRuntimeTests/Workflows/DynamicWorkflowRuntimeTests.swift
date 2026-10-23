@@ -8,6 +8,16 @@ import XCTest
 
 final class DynamicWorkflowRuntimeTests: XCTestCase {
 
+    func testAgentPromptCanonicalizesOuterWhitespaceBeforeHostDispatch() async throws {
+        let script = try analyze(wrapped("return await agent('  \\nfirst line\\n  indented data\\n\\t');"))
+        let result = try await JavaScriptCoreWorkflowRuntime().execute(script, args: nil, limits: try limits(),
+            requirement: .init(), host: WorkflowScriptHost(agent: { invocation in
+                XCTAssertEqual(invocation.prompt, "first line\n  indented data")
+                return .value(.string(invocation.prompt))
+            }))
+        XCTAssertEqual(try decode(result), .string("first line\n  indented data"))
+    }
+
     func testBoundedUniqueCountsWholeCodesAndWebEvidenceIsAReadOnlyHostSnapshot() async throws {
         let value = try analyze(wrapped("""
         const packet = await webEvidence();

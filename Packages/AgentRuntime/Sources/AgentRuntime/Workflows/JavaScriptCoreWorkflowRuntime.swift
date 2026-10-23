@@ -529,12 +529,19 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             guard let self else { return }
             do {
                 let options = try Self.decodeOptions(optionsJSON)
+                // Chat instructions are canonical at the contract boundary. A generated prompt
+                // often ends with a newline after its data delimiter; normalize before hashing,
+                // journaling or building the child, while preserving all interior whitespace.
+                let canonicalPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !canonicalPrompt.isEmpty else {
+                    throw WorkflowScriptRuntimeError.invalidResult("agent prompt must be non-empty")
+                }
                 guard sequence > 0 else {
                     throw WorkflowScriptRuntimeError.internalInvariant("invalid agent sequence")
                 }
                 let result = try await host.agent(WorkflowAgentInvocation(
                     sequence: UInt32(sequence),
-                    prompt: prompt,
+                    prompt: canonicalPrompt,
                     options: options
                 ))
                 guard !Task.isCancelled else { throw CancellationError() }
@@ -552,9 +559,13 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             } catch let error as WorkflowScriptRuntimeError {
                 reject(requestID: requestID, error: error, fatal: true)
             } catch {
+                let safeMessage = Self.sanitize(String(describing: error))
+                // A script may intentionally catch a failed child. Keep the safe cause observable
+                // even if its catch returns a generic message before a child handle was created.
+                host.log("agent \(sequence) failed: \(safeMessage)")
                 reject(
                     requestID: requestID,
-                    error: .hostFailure(Self.sanitize(String(describing: error))),
+                    error: .hostFailure(safeMessage),
                     fatal: true
                 )
             }
