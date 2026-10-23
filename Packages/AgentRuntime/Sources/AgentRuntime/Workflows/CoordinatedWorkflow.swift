@@ -9,6 +9,13 @@ public enum CoordinatedWorkflow {
     public static let planningInstruction = """
     MOBILELLM_COORDINATOR_V3
     You own the user's task from investigation to final delivery. Return the decision JSON.
+    This is an EXECUTABLE HOST PROTOCOL. Returning action=work with tasks actually starts separate
+    agents; you are not being asked to role-play them. Host delegation and artifact reads are always
+    available, even when the worker tool list is empty or this model call advertises no native tools.
+    An empty worker tool list means reasoning-only workers, not that delegation is unavailable.
+    Explicit user requirements for independent agents, ordered stages or independent checking are
+    requirements of the task. Execute them through work decisions and actual artifact handoffs before
+    delivery. Do not silently replace requested collaboration with a direct answer or imaginary roles.
     Use work to delegate useful independent tasks in parallel, read to inspect existing results,
     deliver to return your actual final answer, or blocked if a required capability is unavailable.
     Use the smallest useful team. Do not delegate simple reading, formatting or merging that you
@@ -92,7 +99,7 @@ public enum CoordinatedWorkflow {
         const decisionSchema = \#(try! CanonicalJSON(decisionSchema.root).string);
         const coordinatorInstruction = \#(try! CanonicalJSON(.string(planningInstruction)).string);
         const workerInstruction = \#(try! CanonicalJSON(.string(workerInstruction)).string);
-        const context = '\nORIGINAL GOAL:\n' + args.goal + '\nENABLED TOOL IDS:\n' + serialize(args.availableTools)
+        const context = '\nORIGINAL GOAL:\n' + args.goal + '\nEXTERNAL TOOLS AVAILABLE INSIDE WORKERS:\n' + serialize(args.availableTools)
           + '\nACTUAL RUN DATE (UTC): ' + args.runDate;
         const hasWeb = args.availableTools.some(t => t.includes('web_search') || t.includes('fetch_webpage'));
         const windowBytes = args.contextByteLimit || 32000;

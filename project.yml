@@ -141,9 +141,7 @@ targets:
     dependencies:
       - target: mobileLLM
 
-  # App-level Tool V2 adapter unit tests (AH-TOOLS-005) + lifecycle bridge seams. Hosted on macOS so
-  # the full app module (adapters included) is testable without a booted iOS simulator; the iOS build
-  # path is covered by the generic-device build gate.
+  # App adapters, lifecycle seams and opt-in live workflows use the same host on Mac or Simulator.
   mobileLLMUnitTests:
     type: bundle.unit-test
     supportedDestinations: [iOS, macOS]

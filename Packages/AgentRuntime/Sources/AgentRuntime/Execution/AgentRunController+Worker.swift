@@ -388,11 +388,12 @@ extension AgentRunController {
             stateFields["repairInstruction"] = .string(
                 lastRepair.1.code == "execution.tool-budget-repair" ? lastRepair.1.safeMessage : lastRepair.1.code == "execution.repeated-tool-call"
                     ? "Your last tool call already executed in this turn. Do NOT call any tool again — "
-                        + "answer the user's request directly with text only."
+                        + "use the recorded results and follow your assigned role and declared output protocol."
                     : "Return exactly one valid action matching the advertised response contract. "
                         + lastRepair.1.safeMessage + " "
                         + "Use native function calls for tools, never DSML/XML tool markup in answer text. "
-                        + "If no tools are advertised, return the requested final answer."
+                        + "If no native tools are advertised, still follow your assigned role and output protocol. "
+                        + "Do not substitute the overall goal's final answer for a required control response."
             )
         }
         let stateJSON = try CanonicalJSON(.object(stateFields))

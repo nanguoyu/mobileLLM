@@ -68,6 +68,12 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         var failures:[String] = []
         do {
             let snapshot = makeSnapshot(goal:task.goal,model:model,serviceID:serviceID,tools:task.usesCalculator)
+            if task.usesCalculator {
+                let id = try AgentToolLogicalID(providerID:"builtin",name:"calculator").description
+                guard try assembly.availableWorkflowTools(snapshot:snapshot).contains(id) else {
+                    throw LiveEvaluationError("Calculator capability is missing before model dispatch")
+                }
+            }
             _ = try await assembly.prepareCoordinatedWorkflow(snapshot:snapshot,runID:runID)
             _ = try await assembly.dynamicWorkflows.approveAndStart(runID:runID,reuseScope:nil)
             let deadline = Date().addingTimeInterval(900)
@@ -98,6 +104,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             let summary = try await assembly.dynamicWorkflows.projection(runID:runID)
             let evidence:[String:Any] = [
                 "case":task.rawValue,"model":model,"goal":task.goal,"sourceSHA256":projection.launch.scriptReference.sourceDigest.rawValue,
+                "codeRevision":ProcessInfo.processInfo.environment["MOBILELLM_LIVE_REVISION"] ?? "unrecorded",
                 "state":projection.state.rawValue,"elapsedSeconds":Date().timeIntervalSince(started),
                 "toolCalls":projection.usage.quantities[.toolInvocations],
                 "inputTokens":summary?.usage.quantities[.inputTokens] ?? 0,"outputTokens":summary?.usage.quantities[.outputTokens] ?? 0,
@@ -226,7 +233,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             messages:[Message(id:messageID,role:.user,answer:goal)],systemPrompt:"You are a capable assistant. Complete the user's task with accurate evidence and explicit uncertainty.",
             memoryFacts:[],activeSkill:nil,model:local,variant:local.defaultVariantValue,weightsDirectory:FileManager.default.temporaryDirectory,
             thinkingEnabled:false,contextLength:8192,maxTokens:8192,temperature:0.2,topP:0.9,topK:40,repetitionPenalty:1,
-            toolsEnabled:tools,localToolNames:tools ? ["Calculator"] : [],memorySeamAvailable:false,eventSeamAvailable:false,
+            toolsEnabled:tools,localToolNames:tools ? ["calculator"] : [],memorySeamAvailable:false,eventSeamAvailable:false,
             locationSeamAvailable:false,mcpToolDescriptors:[],webSearchDestinations:[],toolPolicy:nil,
             onlineModelEnabled:true,onlineModelID:model,onlineServiceID:serviceID,onlineConfigurationID:"live-frozen-config",
             onlineReasoningEnabled:true,onlineContextLength:32768,onlineOutputBudgetAuto:true,onlineMaximumOutputTokens:nil,
