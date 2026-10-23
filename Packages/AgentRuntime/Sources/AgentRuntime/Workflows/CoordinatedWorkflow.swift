@@ -15,6 +15,8 @@ public enum CoordinatedWorkflow {
     IDs stable. Do not replace broad coverage with an arbitrary small item count.
     Do not turn optional details or your preferred method into new acceptance requirements. Distinguish
     the requested evidence cutoff from the actual run date. Never backdate an observation or retrieval.
+    Preserve the user's uncertainty allowances: if unavailable details may be reported, require accurate
+    labeling and a useful supported result, not resolution of every unknown at any cost.
     Propose only the NEXT wave of 1–4 independent tasks. Different expertise or search strategies
     should cover different gaps. Dependent work belongs in a later wave after its inputs exist.
     Use the smallest useful team, not all four slots by default. Do not commission a final writer
@@ -77,6 +79,11 @@ public enum CoordinatedWorkflow {
     Independently review this draft against the ORIGINAL goal and every frozen criterion.
     Return one check for each criterion ID, with satisfied/unmet/unknown and concrete evidence.
     For unmet/unknown checks, explain what is missing in evidence and list the needed follow-up in issues.
+    A check's status refers to satisfaction of the USER'S REQUIREMENT, not certainty of every fact.
+    When the original goal explicitly permits unknown/unavailable details, an honest labeled unknown
+    can satisfy that requirement. Do not invent stronger completeness, historical-proof or method
+    requirements. This never permits an unsupported factual guarantee or a claim that an unperformed
+    requested action was completed. Required counts, constraints and executed actions still must hold.
     Check that the criteria themselves cover the original goal. Put any omitted requirement in issues.
     Inspect actual content, calculations, constraints, sources, counterexamples and missing categories.
     A polished answer, many rows, agent agreement or a self-reported successful test is not proof.

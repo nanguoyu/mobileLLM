@@ -22,10 +22,8 @@ private struct DynamicWorkflowExplorationScenario {
     let requiredConceptGroups: [[String]]
     var markerPlacement: MarkerPlacement = .suffix
     var exactCheck: ExactCheck? = nil
-    /// Held-out positive checks are never appended to the model's goal.
-    var knownPositive: [[String]] = []
 
-    enum ExactCheck { case coverage, procurement, schedule }
+    enum ExactCheck { case coverage, procurement, schedule, europeanGroups }
 
     var command: String {
         switch markerPlacement {
@@ -110,13 +108,15 @@ private extension DynamicWorkflowExplorationScenario {
         低秩方法、端侧机器学习和软硬件系统。不要只找名称含 efficient AI 的实验室。
         给出至少12个不同研究组，覆盖至少6个国家，说明机构、负责人、主要方向和代表工作，
         用官方或一手来源链接支持事实。清楚区分已核实、未知、研究组与跨机构项目。
-        结果应为易读的比较表和简短结论，说明仍有哪些覆盖空白，不要把达到数量门槛称作完整。
-        最终答案包含 EVAL_EUROPE_COVERAGE。
+        返回JSON，包含 marker="EVAL_EUROPE_COVERAGE"、groups数组和coverageGaps。
+        每个group包含name、institution、countryCode（国家二字母代码）、lead（未知可为null）、
+        topics字符串数组、representativeWork（未知可为null）、sourceURLs数组。
+        groups只计研究组，不把跨机构项目直接当成研究组。说明仍有哪些覆盖空白，
+        不要把达到数量门槛称作完整。除JSON外不要返回其他文字。
         """,
         marker: "EVAL_EUROPE_COVERAGE", enabledTools: ["Web search", "Webpage reader"],
         minimumAgentCalls: 4, minimumAnswerCharacters: 700, requireParallelSource: true,
-        requiredConceptGroups: [["https://"]],
-        knownPositive: [["ELSS", "Embedded Learning and Sensing Systems"], ["TU Graz", "Graz University of Technology", "格拉茨"], ["Saukh"]]
+        requiredConceptGroups: [["https://"]], exactCheck: .europeanGroups
     )
 
     static let kimiLocal = Self(
@@ -499,9 +499,6 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
         for group in scenario.requiredConceptGroups where !containsAny(group, in: answer) {
             failures.append("answer missed concept group: \(group.joined(separator: " | "))")
         }
-        for group in scenario.knownPositive where !containsAny(group, in: answer) {
-            failures.append("Research missed an independently established eligible group: \(group.joined(separator: " | "))")
-        }
         if let check = scenario.exactCheck {
             failures += exactFailures(check, answer: answer)
         }
@@ -621,6 +618,37 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
             return ["The requested JSON deliverable is invalid"]
         }
         switch check {
+        case .europeanGroups:
+            guard let groups = value["groups"] as? [[String: Any]], groups.count >= 12 else {
+                return ["European research returned fewer than 12 structured groups"]
+            }
+            var countries: Set<String> = []
+            var names: Set<String> = []
+            var foundKnownGroup = false
+            for group in groups {
+                guard let name = group["name"] as? String, !name.trimmingCharacters(in: .whitespaces).isEmpty,
+                      let institution = group["institution"] as? String, !institution.isEmpty,
+                      let country = group["countryCode"] as? String, country.count == 2,
+                      let topics = group["topics"] as? [String], !topics.isEmpty,
+                      let sources = group["sourceURLs"] as? [String], !sources.isEmpty,
+                      sources.allSatisfy({ URL(string: $0)?.scheme == "https" && URL(string: $0)?.host != nil }) else {
+                    return ["A group is missing identity, country, research direction, or HTTPS source evidence"]
+                }
+                names.insert(name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+                countries.insert(country.uppercased() == "UK" ? "GB" : country.uppercased())
+                // The expected group is held out of the prompt and must appear as a supported
+                // group record, not merely a mention in a disclaimer or coverage-gap list.
+                if containsAny(["ELSS", "Embedded Learning and Sensing Systems"], in: name),
+                   containsAny(["Graz", "格拉茨"], in: institution), country.uppercased() == "AT",
+                   let lead = group["lead"] as? String, lead.localizedCaseInsensitiveContains("Saukh"),
+                   sources.contains(where: { source in
+                       let host = URL(string: source)?.host?.lowercased() ?? ""
+                       return host == "tugraz.at" || host.hasSuffix(".tugraz.at")
+                           || host == "olgasaukh.com" || host.hasSuffix(".olgasaukh.com")
+                   }) { foundKnownGroup = true }
+            }
+            guard names.count == groups.count, countries.count >= 6 else { return ["Duplicate groups or fewer than six distinct countries"] }
+            return foundKnownGroup ? [] : ["Coverage missed the independently confirmed TU Graz ELSS group led by Olga Saukh"]
         case .coverage:
             let expected: Set<String> = ["G01", "G02", "G05", "G07", "G09", "G10", "G11", "G12"]
             guard let ids = value["selectedIDs"] as? [String], ids.count == expected.count, Set(ids) == expected else {

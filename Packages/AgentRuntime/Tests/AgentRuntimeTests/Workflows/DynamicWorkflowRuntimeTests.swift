@@ -11,6 +11,7 @@ final class DynamicWorkflowRuntimeTests: XCTestCase {
         let text = String(repeating: "Unrelated introduction.\n", count: 100)
             + "| need\\_content | When false, content is empty; when true it may contain page content. |\n"
             + "| extra_snippets | Up to five additional excerpts, not full page text. |\n"
+            + "| ZXQ | A named research team in the recorded page. |\n"
             + String(repeating: "Unrelated footer.\n", count: 100)
         let record = WorkflowWebObservation(invocationID: "read", toolID: try AgentToolLogicalID(providerID: "builtin", name: "fetch_webpage"),
             requestedURL: "https://example.edu/reference", status: "completed", text: text)
@@ -25,6 +26,12 @@ final class DynamicWorkflowRuntimeTests: XCTestCase {
         let snippetBytes = matches.reduce(0) { $0 + $1.utf8.count } + 400 + 200
         XCTAssertLessThanOrEqual(snippetBytes, 1200 + 400 + 4 * 120)
         XCTAssertEqual(observation["excerptTruncated"], .bool(true))
+        let longQuery = (0..<80).map { "backgroundword\($0)" }.joined(separator: " ") + " ZXQ"
+        let namedPacket = try WorkflowWebEvidence.packet([("reader", record)], matching: longQuery)
+        guard case .object(let namedRoot) = namedPacket, case .array(let namedRecords)? = namedRoot["observations"],
+              case .object(let named)? = namedRecords.first, case .array(let namedMatches)? = named["matchingExcerpts"] else { return XCTFail("Named evidence missing") }
+        XCTAssertTrue(namedMatches.contains { if case .string(let text) = $0 { return text.contains("ZXQ") }; return false },
+            "Long introductory prose must not displace a later named entity from the bounded query")
         XCTAssertThrowsError(try WorkflowWebEvidence.packet([("reader", record)], matching: String(repeating: "x", count: 65_537)))
     }
 

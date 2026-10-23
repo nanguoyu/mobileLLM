@@ -123,25 +123,37 @@ enum WorkflowWebEvidence {
     /// Literal query terms only. Code/field names receive priority; source data never supplies a
     /// regex or an instruction. All matching is local to already-authorized recorded observations.
     private static func queryTerms(_ query: String) throws -> [QueryTerm] {
-        let query = matchingText(query)
+        let query = query.replacingOccurrences(of: "\\_", with: "_").replacingOccurrences(of: "\\-", with: "-")
         let words = try NSRegularExpression(pattern: #"[\p{L}\p{N}_-]{3,64}"#)
         let code = try NSRegularExpression(pattern: #"`([^`\n]{3,96})`"#)
         let stop: Set<String> = ["the", "and", "with", "from", "this", "that", "for", "are", "not", "https", "http", "www", "com", "org", "api", "true", "false", "return", "using", "must", "should", "which", "have", "into"]
         var terms: [QueryTerm] = []
-        var seen: Set<String> = []
+        var positions: [String: Int] = [:]
         func add(_ text: String, code: Bool) {
             for match in words.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-                guard terms.count < 48, let range = Range(match.range, in: text) else { break }
-                let term = String(text[range]).lowercased()
-                guard !stop.contains(term), seen.insert(term).inserted else { continue }
-                terms.append(QueryTerm(text: term, weight: (code ? 32 : 1) + min(term.count, 16)))
+                guard let range = Range(match.range, in: text) else { continue }
+                let original = String(text[range])
+                let term = matchingText(original)
+                guard !stop.contains(term) else { continue }
+                let capitalized = original.rangeOfCharacter(from: .uppercaseLetters) != nil
+                let identityWeight = original.contains("_") ? 24
+                    : capitalized ? (original == original.uppercased() ? 24 : 16) : 1
+                let weight = (code ? 32 : identityWeight) + min(term.count, 16)
+                if let position = positions[term] {
+                    if weight > terms[position].weight { terms[position] = QueryTerm(text: term, weight: weight) }
+                } else if terms.count < 2048 {
+                    positions[term] = terms.count
+                    terms.append(QueryTerm(text: term, weight: weight))
+                }
             }
         }
         for match in code.matches(in: query, range: NSRange(query.startIndex..., in: query)).prefix(64) {
             if let range = Range(match.range(at: 1), in: query) { add(String(query[range]), code: true) }
         }
         add(query, code: false)
-        return terms
+        return terms.enumerated().sorted {
+            $0.element.weight == $1.element.weight ? $0.offset < $1.offset : $0.element.weight > $1.element.weight
+        }.prefix(48).map(\.element)
     }
 
     /// Greedy coverage of distinct query terms selects at most three verbatim line windows.
