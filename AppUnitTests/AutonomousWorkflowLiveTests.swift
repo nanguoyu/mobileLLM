@@ -239,10 +239,15 @@ private struct LiveConfiguration:Decodable,Sendable {
     let baseURL:String
     let model:String
     static func load() throws -> Self {
+        #if os(macOS)
+        let fallback:URL? = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".mobilellm/openai.json")
+        #else
+        let fallback:URL? = nil
+        #endif
         let file = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_CONFIG_PATH"].map { URL(fileURLWithPath:$0) }
             ?? Bundle.main.url(forResource:"openai-config",withExtension:"json")
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".mobilellm/openai.json")
-        guard let bytes = try? Data(contentsOf:file), let value = try? JSONDecoder().decode(Self.self,from:bytes),
+            ?? fallback
+        guard let file, let bytes = try? Data(contentsOf:file), let value = try? JSONDecoder().decode(Self.self,from:bytes),
               !value.apiKey.isEmpty, !value.baseURL.isEmpty, !value.model.isEmpty else {
             throw LiveEvaluationError("A valid private online service configuration is required; no fallback model is used")
         }
