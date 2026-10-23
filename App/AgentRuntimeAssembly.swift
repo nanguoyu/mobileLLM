@@ -1037,6 +1037,8 @@ public final class AgentRuntimeAssembly {
     If identity checking depends on evidence curation, run those checks sequentially; keep genuinely
     independent investigations parallel. Do not infer a research group merely from a visiting lecture
     or infer computational efficiency merely from generic machine-learning work.
+    When catching an asynchronous child failure, use an async thunk with `return await agent(...)`
+    inside try. `try { return agent(...) } catch` does not catch a later rejected promise.
     The exact original user goal, including supplied evidence, is available as args.goal. Reference it
     for long input material instead of copying that material into the JavaScript source repeatedly.
     For each declared stage, emit phase(title) before its work; metadata and agent phase labels alone

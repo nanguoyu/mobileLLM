@@ -725,6 +725,11 @@ public actor AppDynamicWorkflowService {
     /// Candidate-only lint. Archived scripts retain the V1 analyzer/replay contract. A metadata
     /// promise is not execution: comments and string literals cannot satisfy these call checks.
     static func validateDeclaredStages(_ analyzed: AnalyzedWorkflowScriptV1, requireExplicitToolBudgets: Bool = false) throws {
+        if requireExplicitToolBudgets, analyzed.hasUnawaitedHostReturnInCatch {
+            throw WorkflowScriptAnalysisError.unsupportedConstruct(
+                "an async try/catch must return await agent(...) to catch a rejected host call; returning its promise does not catch rejection"
+            )
+        }
         if requireExplicitToolBudgets, analyzed.explicitlyBudgetedAgentCallSites != analyzed.staticAgentCallSites {
             throw WorkflowScriptAnalysisError.unsupportedConstruct(
                 "each generated agent must declare maxToolCalls; use the role allowance or zero for tool-free synthesis"

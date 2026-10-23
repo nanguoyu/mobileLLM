@@ -40,6 +40,7 @@ public struct AnalyzedWorkflowScriptV1: Hashable, Sendable {
     public let staticPhaseCallSites: UInt32
     public let staticParallelCallSites: UInt32
     public let explicitlyBudgetedAgentCallSites: UInt32
+    public let hasUnawaitedHostReturnInCatch: Bool
     public let checkpointSites: UInt32
     public let savedWorkflowNames: [String]
 
@@ -52,6 +53,7 @@ public struct AnalyzedWorkflowScriptV1: Hashable, Sendable {
         staticPhaseCallSites: UInt32,
         staticParallelCallSites: UInt32,
         explicitlyBudgetedAgentCallSites: UInt32,
+        hasUnawaitedHostReturnInCatch: Bool,
         checkpointSites: UInt32,
         savedWorkflowNames: [String]
     ) {
@@ -63,6 +65,7 @@ public struct AnalyzedWorkflowScriptV1: Hashable, Sendable {
         self.staticPhaseCallSites = staticPhaseCallSites
         self.staticParallelCallSites = staticParallelCallSites
         self.explicitlyBudgetedAgentCallSites = explicitlyBudgetedAgentCallSites
+        self.hasUnawaitedHostReturnInCatch = hasUnawaitedHostReturnInCatch
         self.checkpointSites = checkpointSites
         self.savedWorkflowNames = savedWorkflowNames
         analysisDigest = StableDigest.fingerprint(
@@ -111,9 +114,26 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
             staticPhaseCallSites: calls("phase"),
             staticParallelCallSites: calls("parallel"),
             explicitlyBudgetedAgentCallSites: explicitlyBudgetedCalls,
+            hasUnawaitedHostReturnInCatch: Self.returnsUnawaitedHostCallFromTry(tokens),
             checkpointSites: UInt32(instrumentation.insertions.count),
             savedWorkflowNames: savedWorkflowNames
         )
+    }
+
+    /// Candidate lint for the common `try { return agent(...) } catch` mistake. Returning a
+    /// promise bypasses this catch when it later rejects. Strings/comments are already lexed out.
+    private static func returnsUnawaitedHostCallFromTry(_ tokens: [JSToken]) -> Bool {
+        let asynchronousHosts: Set<String> = ["agent", "parallel", "pipeline", "workflow", "webEvidence"]
+        for i in tokens.indices where tokens[i].identifier == "try" {
+            guard i + 4 < tokens.count, tokens[i + 1].symbol == "{",
+                  tokens[i + 2].identifier == "return",
+                  let host = tokens[i + 3].identifier, asynchronousHosts.contains(host),
+                  tokens[i + 4].symbol == "(",
+                  let end = matchingClose(in: tokens, openingAt: i + 1, open: "{", close: "}"),
+                  end + 1 < tokens.count, tokens[end + 1].identifier == "catch" else { continue }
+            return true
+        }
+        return false
     }
 
     private static func savedWorkflowNames(in tokens: [JSToken]) throws -> [String] {

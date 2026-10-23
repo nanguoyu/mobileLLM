@@ -338,6 +338,10 @@ final class ToolV2AdapterTests: XCTestCase {
         XCTAssertNoThrow(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); return await agent('A');", detail: "sequential research")))
         XCTAssertThrowsError(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); return await agent('A');", detail: "sequential research"), requireExplicitToolBudgets: true))
         XCTAssertNoThrow(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); return await agent('A', {maxToolCalls: 0});", detail: "sequential research"), requireExplicitToolBudgets: true))
+        let rejected = try analyzed("phase('Discovery'); return await parallel([async () => { try { return agent('A', {maxToolCalls: 0}); } catch (e) { return 'failed'; } }]);")
+        XCTAssertThrowsError(try AppDynamicWorkflowService.validateDeclaredStages(rejected, requireExplicitToolBudgets: true))
+        XCTAssertNoThrow(try AppDynamicWorkflowService.validateDeclaredStages(rejected), "Archived V1 analysis remains unchanged")
+        XCTAssertNoThrow(try AppDynamicWorkflowService.validateDeclaredStages(analyzed("phase('Discovery'); return await parallel([async () => { try { return await agent('A', {maxToolCalls: 0}); } catch (e) { return 'failed'; } }]);"), requireExplicitToolBudgets: true))
     }
 
     // TEST-ID: AHT-DYNAMIC-001
