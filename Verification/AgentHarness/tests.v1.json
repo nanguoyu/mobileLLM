@@ -2010,6 +2010,18 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testPartialArtifactsCanReachIndependentReviewWithoutPretendingTheyAreComplete"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testStructuredSearchKeepsContentProvenanceAndNeverPromotesEmbeddedLinks"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testEnrichedEvidencePrioritizesLaterCitedSourcesWithinAGlobalTextBound"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testLaterAnalysisUsesRecordedSourceContentWithoutRepeatingResearch"
         }
       ],
       "platforms": [
@@ -2749,6 +2761,10 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.ToolV2AdapterTests/testOnlyMissingFetchedPagesReceiveTheLocalNonessentialMissClassification"
+        },
+        {
+          "kind": "xctest",
+          "value": "LLMCoreTests.DeepSeekWebClientTests/testSearchCanReturnBoundedPageContentWithoutCallingFetchOrInventingFreshness"
         }
       ],
       "platforms": [

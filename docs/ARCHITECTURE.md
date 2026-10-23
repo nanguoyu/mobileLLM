@@ -425,12 +425,26 @@ Each call crosses the normal Tool V2 prepare/authorize/execute boundary with `we
 data categories and the fixed `https://api.deepseek.com` destination. The selected account must still
 be configured for that origin before its Keychain credential is read. `DeepSeekWebClient` calls
 `/v1/tools/search` or `/v1/tools/fetch` through the bounded nonredirecting transport. Search returns
-links and summaries; Fetch returns bounded Markdown. Invalid URL arguments settle as normal tool
+typed source links, summaries and bounded page excerpts when available; Fetch returns bounded Markdown. Invalid URL arguments settle as normal tool
 failures during execution before credentials or network access; preparation does not abort the
 workflow for such inputs. Neither operation calls a model. The UI leaves
 public engines/direct page reads as the default; choosing DeepSeek replaces both, with no fallback.
 These standalone APIs are separate from provider-hosted model tools in spec §15.5. Tool observations
-label Search summaries separately from fetched page excerpts. Only a Fetch HTTP 404 is classified by
+label search summaries, search-returned page excerpts and separate Fetch results distinctly.
+New Search descriptors use revision v2 and default `include_content` to true. Callers can request
+summary-only discovery with false. Archived v1 descriptors reconstruct their original summary-only
+schema and behavior. The client keeps at most six results, 800 UTF-8 bytes of summary and 3,000 bytes
+of page excerpt per result under the unchanged 1 MiB HTTP response ceiling. Structured source records
+keep each URL separate from its untrusted text, so embedded hyperlinks are not promoted to returned
+sources. Empty page text remains summary-only; publication metadata is not a crawl or modification date.
+
+For enriched results, the evidence reader considers a bounded pool of source records, prioritizes
+cited URLs and query matches, removes exact duplicate observations and selects at most 32 records.
+Its total excerpt text is bounded to 24 KiB. The source index retains observed URL/kind metadata within
+its existing URL-byte limit. The coordinator receives that index, and analysis-only later workers
+receive relevant recorded excerpts before their work wave. This enables verification from existing
+material without another search or page request. The snapshot precedes the parallel wave, so peers'
+completion timing cannot change its replay inputs. Only a Fetch HTTP 404 is classified by
 the local adapter as `tool.web.safe-read-miss`. The runtime accepts this nonessential miss only for the
 built-in public-page reader with pure read effects, no external uncertainty and no requested user action.
 It keeps the failed observation, charges its invocation, and allows remaining batch calls and planning.

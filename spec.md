@@ -859,6 +859,13 @@ bounded, budget-accounted, and framed as untrusted content. Missing or removed a
 service errors, and empty results must not trigger a silent switch to another provider. The settings
 UI must disclose that successful Search/Fetch requests are billed by DeepSeek.
 
+A versioned Search descriptor may request `need_content` and expose bounded, attributed page excerpts
+returned by Search. Summary-only requests remain available, and archived descriptors retain their pinned
+behavior. Search-returned content is distinct from a separate Fetch and does not establish freshness or
+completeness. URL identity and retrieval kind must be bound to typed result fields, not inferred from
+hyperlinks or statements inside untrusted page text. Source excerpts must remain bounded and available
+to dependent analysis without repeating network operations. Existing authorization and byte ceilings apply.
+
 ## 16. Context compiler, Memory, and Skills
 
 `ContextCompiler` is deterministic for a frozen run snapshot. It composes and budgets:

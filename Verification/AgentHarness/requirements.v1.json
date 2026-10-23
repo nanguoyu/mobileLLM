@@ -4,8 +4,8 @@
   "documentID": "AH-REQUIREMENTS-V1",
   "sourceSpecification": {
     "path": "spec.md",
-    "sha256": "1db1d5f648756fafc96e07812df07c8fddbb4a5311d3c2cc9e1763d126ace4c5",
-    "capturedAtUTC": "2026-10-23T09:44:00Z"
+    "sha256": "72cb574056ce18b1ca077ab29a2e7442e7e5e92228294095841d36c4e8e08f16",
+    "capturedAtUTC": "2026-10-23T13:55:59Z"
   },
   "requirements": [
     {
@@ -19,8 +19,8 @@
         {
           "section": "27",
           "heading": "Test strategy",
-          "lineStart": 1270,
-          "lineEnd": 1462
+          "lineStart": 1277,
+          "lineEnd": 1469
         }
       ],
       "platforms": [
@@ -50,8 +50,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1388,
-          "lineEnd": 1462
+          "lineStart": 1395,
+          "lineEnd": 1469
         }
       ],
       "platforms": [
@@ -81,8 +81,8 @@
         {
           "section": "27",
           "heading": "Test strategy",
-          "lineStart": 1270,
-          "lineEnd": 1462
+          "lineStart": 1277,
+          "lineEnd": 1469
         }
       ],
       "platforms": [
@@ -112,8 +112,8 @@
         {
           "section": "27.1",
           "heading": "Deterministic unit and property tests",
-          "lineStart": 1281,
-          "lineEnd": 1318
+          "lineStart": 1288,
+          "lineEnd": 1325
         }
       ],
       "platforms": [
@@ -143,14 +143,14 @@
         {
           "section": "27.1",
           "heading": "Deterministic unit and property tests",
-          "lineStart": 1281,
-          "lineEnd": 1318
+          "lineStart": 1288,
+          "lineEnd": 1325
         },
         {
           "section": "27.3",
           "heading": "Real-device matrix",
-          "lineStart": 1340,
-          "lineEnd": 1370
+          "lineStart": 1347,
+          "lineEnd": 1377
         }
       ],
       "platforms": [
@@ -179,8 +179,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1388,
-          "lineEnd": 1462
+          "lineStart": 1395,
+          "lineEnd": 1469
         }
       ],
       "platforms": [
@@ -210,8 +210,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1388,
-          "lineEnd": 1462
+          "lineStart": 1395,
+          "lineEnd": 1469
         }
       ],
       "platforms": [
@@ -241,8 +241,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1388,
-          "lineEnd": 1462
+          "lineStart": 1395,
+          "lineEnd": 1469
         }
       ],
       "platforms": [
@@ -308,8 +308,8 @@
         {
           "section": "23",
           "heading": "Unified staged and Dynamic Workflows boundary",
-          "lineStart": 1155,
-          "lineEnd": 1222
+          "lineStart": 1162,
+          "lineEnd": 1229
         }
       ],
       "platforms": [
@@ -497,8 +497,8 @@
         {
           "section": "20",
           "heading": "Unified UI and interaction model",
-          "lineStart": 977,
-          "lineEnd": 1031
+          "lineStart": 984,
+          "lineEnd": 1038
         }
       ],
       "platforms": [
@@ -532,8 +532,8 @@
         {
           "section": "18",
           "heading": "Retry, idempotency, and uncertainty",
-          "lineStart": 919,
-          "lineEnd": 932
+          "lineStart": 926,
+          "lineEnd": 939
         }
       ],
       "platforms": [
@@ -1254,8 +1254,8 @@
         {
           "section": "24",
           "heading": "Security and privacy requirements",
-          "lineStart": 1223,
-          "lineEnd": 1238
+          "lineStart": 1230,
+          "lineEnd": 1245
         }
       ],
       "platforms": [
@@ -1290,8 +1290,8 @@
         {
           "section": "16",
           "heading": "Context compiler, Memory, and Skills",
-          "lineStart": 862,
-          "lineEnd": 882
+          "lineStart": 869,
+          "lineEnd": 889
         }
       ],
       "platforms": [
@@ -1319,8 +1319,8 @@
         {
           "section": "16",
           "heading": "Context compiler, Memory, and Skills",
-          "lineStart": 862,
-          "lineEnd": 882
+          "lineStart": 869,
+          "lineEnd": 889
         }
       ],
       "platforms": [
@@ -1355,8 +1355,8 @@
         {
           "section": "17",
           "heading": "Artifact system",
-          "lineStart": 883,
-          "lineEnd": 918
+          "lineStart": 890,
+          "lineEnd": 925
         }
       ],
       "platforms": [
@@ -1385,8 +1385,8 @@
         {
           "section": "17.1",
           "heading": "Data protection and backup",
-          "lineStart": 904,
-          "lineEnd": 918
+          "lineStart": 911,
+          "lineEnd": 925
         }
       ],
       "platforms": [
@@ -1414,8 +1414,8 @@
         {
           "section": "18",
           "heading": "Retry, idempotency, and uncertainty",
-          "lineStart": 919,
-          "lineEnd": 932
+          "lineStart": 926,
+          "lineEnd": 939
         }
       ],
       "platforms": [
@@ -1444,8 +1444,8 @@
         {
           "section": "19.1",
           "heading": "iOS 17 baseline",
-          "lineStart": 935,
-          "lineEnd": 953
+          "lineStart": 942,
+          "lineEnd": 960
         }
       ],
       "platforms": [
@@ -1482,8 +1482,8 @@
         {
           "section": "19.1",
           "heading": "iOS 17 baseline",
-          "lineStart": 935,
-          "lineEnd": 953
+          "lineStart": 942,
+          "lineEnd": 960
         }
       ],
       "platforms": [
@@ -1513,8 +1513,8 @@
         {
           "section": "19.2",
           "heading": "iOS 26 continued processing",
-          "lineStart": 954,
-          "lineEnd": 976
+          "lineStart": 961,
+          "lineEnd": 983
         }
       ],
       "platforms": [
@@ -1543,8 +1543,8 @@
         {
           "section": "20",
           "heading": "Unified UI and interaction model",
-          "lineStart": 977,
-          "lineEnd": 1031
+          "lineStart": 984,
+          "lineEnd": 1038
         }
       ],
       "platforms": [
@@ -1574,8 +1574,8 @@
         {
           "section": "20",
           "heading": "Unified UI and interaction model",
-          "lineStart": 977,
-          "lineEnd": 1031
+          "lineStart": 984,
+          "lineEnd": 1038
         }
       ],
       "platforms": [
@@ -1604,8 +1604,8 @@
         {
           "section": "21.1",
           "heading": "Isolation from the private implementation",
-          "lineStart": 1034,
-          "lineEnd": 1045
+          "lineStart": 1041,
+          "lineEnd": 1052
         }
       ],
       "platforms": [
@@ -1635,8 +1635,8 @@
         {
           "section": "21.2",
           "heading": "Two-level integration",
-          "lineStart": 1046,
-          "lineEnd": 1096
+          "lineStart": 1053,
+          "lineEnd": 1103
         }
       ],
       "platforms": [
@@ -1664,8 +1664,8 @@
         {
           "section": "21.2",
           "heading": "Two-level integration",
-          "lineStart": 1046,
-          "lineEnd": 1096
+          "lineStart": 1053,
+          "lineEnd": 1103
         }
       ],
       "platforms": [
@@ -1694,8 +1694,8 @@
         {
           "section": "22",
           "heading": "Subagent compatibility seam",
-          "lineStart": 1097,
-          "lineEnd": 1154
+          "lineStart": 1104,
+          "lineEnd": 1161
         }
       ],
       "platforms": [
@@ -1722,8 +1722,8 @@
         {
           "section": "22",
           "heading": "Subagent compatibility seam",
-          "lineStart": 1097,
-          "lineEnd": 1154
+          "lineStart": 1104,
+          "lineEnd": 1161
         }
       ],
       "platforms": [
@@ -1752,8 +1752,8 @@
         {
           "section": "34.5",
           "heading": "Parallel subagent, authority, and lifecycle contract",
-          "lineStart": 1872,
-          "lineEnd": 1888
+          "lineStart": 1879,
+          "lineEnd": 1895
         }
       ],
       "platforms": [
@@ -1813,8 +1813,8 @@
         {
           "section": "23",
           "heading": "Unified staged and Dynamic Workflows boundary",
-          "lineStart": 1155,
-          "lineEnd": 1222
+          "lineStart": 1162,
+          "lineEnd": 1229
         }
       ],
       "platforms": [
@@ -1843,8 +1843,8 @@
         {
           "section": "34",
           "heading": "P0 full Dynamic Workflows program",
-          "lineStart": 1705,
-          "lineEnd": 1938
+          "lineStart": 1712,
+          "lineEnd": 1945
         }
       ],
       "platforms": [
@@ -1879,8 +1879,8 @@
         {
           "section": "24",
           "heading": "Security and privacy requirements",
-          "lineStart": 1223,
-          "lineEnd": 1238
+          "lineStart": 1230,
+          "lineEnd": 1245
         }
       ],
       "platforms": [
@@ -1909,14 +1909,14 @@
         {
           "section": "17.1",
           "heading": "Data protection and backup",
-          "lineStart": 904,
-          "lineEnd": 918
+          "lineStart": 911,
+          "lineEnd": 925
         },
         {
           "section": "24",
           "heading": "Security and privacy requirements",
-          "lineStart": 1223,
-          "lineEnd": 1238
+          "lineStart": 1230,
+          "lineEnd": 1245
         }
       ],
       "platforms": [
@@ -1945,8 +1945,8 @@
         {
           "section": "25",
           "heading": "Observability",
-          "lineStart": 1239,
-          "lineEnd": 1255
+          "lineStart": 1246,
+          "lineEnd": 1262
         }
       ],
       "platforms": [
@@ -1975,8 +1975,8 @@
         {
           "section": "26",
           "heading": "Backward compatibility and rollout",
-          "lineStart": 1256,
-          "lineEnd": 1269
+          "lineStart": 1263,
+          "lineEnd": 1276
         }
       ],
       "platforms": [
@@ -2006,8 +2006,8 @@
         {
           "section": "26",
           "heading": "Backward compatibility and rollout",
-          "lineStart": 1256,
-          "lineEnd": 1269
+          "lineStart": 1263,
+          "lineEnd": 1276
         }
       ],
       "platforms": [
@@ -2036,8 +2036,8 @@
         {
           "section": "27.1",
           "heading": "Deterministic unit and property tests",
-          "lineStart": 1281,
-          "lineEnd": 1318
+          "lineStart": 1288,
+          "lineEnd": 1325
         }
       ],
       "platforms": [
@@ -2066,8 +2066,8 @@
         {
           "section": "27.2",
           "heading": "Integration tests",
-          "lineStart": 1319,
-          "lineEnd": 1339
+          "lineStart": 1326,
+          "lineEnd": 1346
         }
       ],
       "platforms": [
@@ -2095,8 +2095,8 @@
         {
           "section": "27.3",
           "heading": "Real-device matrix",
-          "lineStart": 1340,
-          "lineEnd": 1370
+          "lineStart": 1347,
+          "lineEnd": 1377
         }
       ],
       "platforms": [
@@ -2127,8 +2127,8 @@
         {
           "section": "27.4",
           "heading": "Performance and resource gates",
-          "lineStart": 1371,
-          "lineEnd": 1387
+          "lineStart": 1378,
+          "lineEnd": 1394
         }
       ],
       "platforms": [
@@ -2157,8 +2157,8 @@
         {
           "section": "29.1",
           "heading": "Audit cadence and stop rule",
-          "lineStart": 1517,
-          "lineEnd": 1538
+          "lineStart": 1524,
+          "lineEnd": 1545
         }
       ],
       "platforms": [
@@ -2193,7 +2193,7 @@
           "section": "15.6",
           "heading": "Standalone authenticated web APIs",
           "lineStart": 848,
-          "lineEnd": 861
+          "lineEnd": 868
         }
       ],
       "platforms": [

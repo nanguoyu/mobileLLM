@@ -64,7 +64,8 @@ and release-validation work. See [Current status](docs/STATUS.md) for known gaps
   fail closed instead of silently changing execution semantics. Workflows inherit only the conversation's enabled tools —
   never force-enabled, and with no hard-coded dependency on web search or the page reader.
 - 🔎 **Optional DeepSeek Search + Fetch.** In Settings → Choose tools → Web service, select a configured
-  official DeepSeek service to use its authenticated search and Markdown page-reading APIs. The same
+  official DeepSeek service to use its authenticated search and Markdown page-reading APIs. Search
+  can retain bounded page excerpts returned by the service, labeled separately from summaries and live page reads. The same
   tools work with local models, online models, and workflows. Keys stay in Keychain; search and page
   reading keep their individual switches and approvals. DeepSeek bills successful requests. Public
   engines remain the default, and errors never silently switch the selected service.
