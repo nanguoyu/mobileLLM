@@ -11,8 +11,8 @@ import XCTest
 final class AgentExecutorToolIntegrationTests: XCTestCase {
     // TEST-ID: AHT-BUDGET-001
     func testOversizedToolBatchCanReplanOnceWithoutExecutingRejectedCallsOrIncreasingCapacity() async throws {
-        for repeats in [false, true] {
-            let offset = repeats ? 681 : 680
+        for (repeats, hasPriorCall) in [(false, false), (true, false), (false, true)] {
+            let offset = hasPriorCall ? 682 : repeats ? 681 : 680
             let model = try ExecutorTestModelDefinition(offset: offset, additionalCapabilities: [.multipleToolCalls])
             let definition = try ExecutorTestToolDefinition(name: "budgeted-lookup")
             let rejected = try [definition.call(offset: offset, query: "first"),
@@ -21,16 +21,21 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
             func completion(_ action: AgentAction) throws -> AgentModelAttemptOutcome {
                 .completed(try AgentModelCompletion(action: action, usage: modelUsage(input: 8, output: 3, milliseconds: 4, memory: 48)))
             }
-            let provider = SequencedModelOutcomeProvider(model: model, outcomes: try [
+            var outcomes: [AgentModelAttemptOutcome] = []
+            if hasPriorCall {
+                outcomes.append(try completion(.callTools([definition.call(offset: offset + 30, query: "first")])))
+            }
+            outcomes += try [
                 completion(.callTools(rejected)),
                 completion(.callTools(repeats ? rejected : [accepted])),
                 completion(.finalAnswer(AgentAnswer(text: "Answer from the chosen observation")))
-            ])
+            ]
+            let provider = SequencedModelOutcomeProvider(model: model, outcomes: outcomes)
             let counter = ExecutorTestToolCounter()
             let tool = ExecutorTestTool(definition: definition, behavior: .complete("chosen observation"), counter: counter)
             let defaults = try AgentBudget.firstReleaseDefaults(contextTokensPerAttempt: 4096, outputTokens: 1024, peakMemoryBytes: 1_073_741_824)
             var capacity = Dictionary(uniqueKeysWithValues: defaults.limits.entries.map { ($0.dimension, $0.value) })
-            capacity[.toolInvocations] = 1
+            capacity[.toolInvocations] = hasPriorCall ? 2 : 1
             let budget = try AgentBudget(limits: BudgetQuantities(capacity), maximumThermalState: defaults.maximumThermalState, memoryPressureResponse: defaults.memoryPressureResponse)
             let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model,
                 toolDescriptors: [definition.descriptor], tools: SingleExecutorTestToolCatalog(tool: tool),
@@ -41,12 +46,14 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
             let result = try await handle.result()
             let requests = await provider.script.capturedRequests()
             let counts = await counter.snapshot()
-            XCTAssertEqual(counts.executions, repeats ? 0 : 1)
-            XCTAssertEqual(result?.usage.quantities[.toolInvocations], repeats ? 0 : 1)
+            let expectedCalls = hasPriorCall ? 2 : repeats ? 0 : 1
+            let repairIndex = hasPriorCall ? 2 : 1
+            XCTAssertEqual(counts.executions, expectedCalls)
+            XCTAssertEqual(result?.usage.quantities[.toolInvocations], UInt64(expectedCalls))
             XCTAssertEqual(result?.usage.quantities[.structuredRepairs], 1)
-            XCTAssertEqual(requests.count, repeats ? 2 : 3)
-            XCTAssertTrue(requests[1].messages.map(\.content).joined().contains("Only 1 tool calls remain"))
-            XCTAssertFalse(requests[1].advertisedTools.isEmpty)
+            XCTAssertEqual(requests.count, hasPriorCall ? 4 : repeats ? 2 : 3)
+            XCTAssertTrue(requests[repairIndex].messages.map(\.content).joined().contains("Only 1 tool calls remain"))
+            XCTAssertFalse(requests[repairIndex].advertisedTools.isEmpty)
             XCTAssertFalse(events.contains {
                 guard case .toolOutcomeRecorded(let callID, _) = $0.payload.event else { return false }
                 return rejected.contains { $0.invocationID == callID }
@@ -55,7 +62,7 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
                 XCTAssertEqual(result?.status.failure?.code, "execution.tool-budget-repair-exhausted")
             } else {
                 XCTAssertEqual(result?.status.state, .completed)
-                XCTAssertTrue(requests[2].advertisedTools.isEmpty)
+                XCTAssertTrue(requests.last!.advertisedTools.isEmpty)
             }
         }
     }

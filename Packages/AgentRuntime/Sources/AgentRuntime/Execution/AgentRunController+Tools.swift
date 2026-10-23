@@ -192,7 +192,9 @@ extension AgentRunController {
                     proposedCalls: proposedCalls,
                     advertisedDescriptors: selected.descriptors,
                     maximumCalls: .max,
-                    previouslyExecutedFingerprints: previous
+                    // Prior-call repetition is itself repairable. Structural duplicates within
+                    // this batch, unadvertised tools and invalid arguments must still fail closed.
+                    previouslyExecutedFingerprints: []
                 )
             } catch {
                 try await failRun(runID: facts.projection.runID, reason: .internalFailure,
@@ -209,7 +211,8 @@ extension AgentRunController {
             let repair = try AgentFailure(
                 code: "execution.tool-budget-repair", classification: .transient,
                 safeMessage: "The whole proposed batch of \(proposedCalls.count) calls was rejected and NONE executed. "
-                    + "Only \(remaining) tool calls remain. Submit at most \(remaining) calls, or answer from existing evidence.",
+                    + "Only \(remaining) tool calls remain. Submit at most \(remaining) NEW calls, never repeat an executed call, "
+                    + "or answer from existing evidence.",
                 retryAdvice: .never, externalEffect: .confirmedNone, requiredUserAction: .none,
                 redaction: Self.publicRedaction
             )
