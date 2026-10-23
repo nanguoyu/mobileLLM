@@ -16,6 +16,8 @@ final class WorkflowUITests: XCTestCase {
     func testWorkflowCommandShowsMessageAnchoredRecord() throws {
         let app = XCUIApplication()
         app.launchEnvironment["MOBILELLM_DYNAMIC_WORKFLOW_RESPONSES_FIXTURE"] = "1"
+        app.launchEnvironment["MOBILELLM_DEVICE_E2E"] = "1"
+        app.launchEnvironment["MOBILELLM_E2E_STORAGE_NAMESPACE"] = UUID().uuidString
         app.launch()
 
         let newChat = app.buttons.matching(identifier: "New chat").firstMatch
