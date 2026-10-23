@@ -1950,6 +1950,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowAdversarialTests/testFailedParallelWorkflowWaitsForDelayedCancellationCommitWithoutRespawning"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testAgentPromptCanonicalizesOuterWhitespaceBeforeHostDispatch"
         }
       ],
       "platforms": [

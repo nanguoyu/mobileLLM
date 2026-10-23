@@ -168,6 +168,10 @@ branching. These prompt instructions do not guarantee useful answers or complian
 requested parallel plan. The [2026-10-22 research evaluation](evaluations/2026-10-22-dynamic-research.md)
 distinguishes actual handoff evidence from task-quality failures.
 
+The JavaScript bridge trims only outer prompt whitespace before host dispatch, prefix hashing and
+child construction. Interior newlines and indentation remain intact. Safe host errors are recorded even
+when a script catches them and returns a generic message.
+
 `unique(strings)` performs bounded, checkpointed whole-string deduplication in first-occurrence order.
 It rejects non-string entries, getters, and oversized collections without invoking a user iterator.
 `webEvidence()` reads settled children from the current workflow and returns journal-derived web
