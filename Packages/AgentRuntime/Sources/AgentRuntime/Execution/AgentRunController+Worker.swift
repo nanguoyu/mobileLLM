@@ -680,15 +680,9 @@ extension AgentRunController {
         // Local decodes are bounded tightly (a stuck engine should fail fast); online providers make a
         // real network round trip that legitimately runs minutes for long answers, so the per-attempt
         // ceiling is generous and the run budget still bounds the whole run (15 minutes by default).
-        let attemptTimeoutCap: UInt64 = provider.descriptor.location == .remote ? 300_000 : 60_000
-        let attemptActiveReservation: UInt64 = if provider.descriptor.location == .remote {
-            // Remote providers may legitimately use the full five-minute request window. Reserve
-            // that window plus bounded cancellation/settlement grace; the prior fixed 120s local
-            // allowance made a healthy long response fail only when its usage was committed.
-            min(attemptTimeoutCap + 30_000, facts.submission!.request.payload.budget.limits[.activeMilliseconds])
-        } else {
-            min(2 * attemptTimeoutCap, facts.submission!.request.payload.budget.limits[.activeMilliseconds])
-        }
+        guard let timingLedger = facts.budgetLedger else { throw AgentExecutionError.invalidRecoveryBoundary }
+        let timing = try Self.modelAttemptTimeBudget(remote: provider.descriptor.location == .remote,
+            available: timingLedger.availableCapacity[.activeMilliseconds])
         let prepContext = try ModelPreparationContext(
             conversationID: facts.submission!.request.payload.conversationID,
             modelPolicy: facts.submission!.request.payload.modelPolicy,
@@ -696,10 +690,7 @@ extension AgentRunController {
             authorizationPayload: authPayload,
             maximumRequestBytes: UInt64(max(4, authPayload.data.count)),
             maximumResponseBytes: max(1, facts.submission!.request.payload.budget.limits[.persistedOutputBytes]),
-            timeoutMilliseconds: max(1, min(
-                attemptTimeoutCap,
-                facts.submission!.request.payload.budget.limits[.activeMilliseconds]
-            ))
+            timeoutMilliseconds: timing.timeout
         )
         let prepared = try await AgentModelRequestPreparer().prepare(
             provider: provider,
@@ -816,7 +807,7 @@ extension AgentRunController {
         let reservation = try modelReservation(
             request: modelRequest,
             budget: facts.submission!.request.payload.budget,
-            maximumActiveMilliseconds: attemptActiveReservation,
+            maximumActiveMilliseconds: timing.reservation,
             structuredRepair: history.pendingRepair != nil
         )
         guard let durableLedger = facts.budgetLedger else {
@@ -939,6 +930,18 @@ extension AgentRunController {
             thinkingMode: .disabled,
             seed: original.seed
         )
+    }
+
+    /// Shrink both the timeout and reservation to the unspent allowance. Reserving a full request
+    /// window after a long successful/failed pass would otherwise strand usable time for repair.
+    static func modelAttemptTimeBudget(remote: Bool, available: UInt64) throws -> (timeout: UInt64, reservation: UInt64) {
+        guard available > 0 else {
+            throw AgentContractError.budgetExceeded(dimension: .activeMilliseconds, limit: 0, requested: 1)
+        }
+        let cap: UInt64 = remote ? 300_000 : 60_000
+        let grace: UInt64 = remote ? 30_000 : 60_000
+        let reservation = min(available, cap + grace)
+        return (min(cap, max(1, reservation - min(grace, reservation / 2))), reservation)
     }
 
     private func modelReservation(

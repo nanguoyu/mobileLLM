@@ -10,6 +10,40 @@ import XCTest
 // TEST-ID: AHT-TEST-002
 final class AgentExecutorToolIntegrationTests: XCTestCase {
     // TEST-ID: AHT-BUDGET-001
+    func testModelContinuationUsesRemainingActiveTimeWithoutIncreasingTheRunBudget() async throws {
+        let timing = try AgentRunController.modelAttemptTimeBudget(remote: true, available: 287_813)
+        XCTAssertEqual(timing.reservation, 287_813)
+        XCTAssertEqual(timing.timeout, 257_813)
+        XCTAssertThrowsError(try AgentRunController.modelAttemptTimeBudget(remote: true, available: 0))
+        let offset = 683
+        let model = try ExecutorTestModelDefinition(offset: offset)
+        let definition = try ExecutorTestToolDefinition(name: "time-budget-lookup")
+        let provider = SequencedModelOutcomeProvider(model: model, outcomes: [
+            .completed(try AgentModelCompletion(action: .callTools([definition.call(offset: offset)]),
+                usage: modelUsage(input: 8, output: 3, milliseconds: 40_000, memory: 48))),
+            .completed(try AgentModelCompletion(action: .finalAnswer(AgentAnswer(text: "Continued within remaining time")),
+                usage: modelUsage(input: 9, output: 4, milliseconds: 4, memory: 48)))
+        ])
+        let defaults = try AgentBudget.firstReleaseDefaults(contextTokensPerAttempt: 4096, outputTokens: 1024, peakMemoryBytes: 1_073_741_824)
+        var capacity = Dictionary(uniqueKeysWithValues: defaults.limits.entries.map { ($0.dimension, $0.value) })
+        capacity[.activeMilliseconds] = 150_000
+        let budget = try AgentBudget(limits: BudgetQuantities(capacity), maximumThermalState: defaults.maximumThermalState, memoryPressureResponse: defaults.memoryPressureResponse)
+        let tool = ExecutorTestTool(definition: definition, behavior: .complete("observation"))
+        let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model,
+            toolDescriptors: [definition.descriptor], tools: SingleExecutorTestToolCatalog(tool: tool),
+            explicitlyRequestedToolIDs: [definition.descriptor.id.logicalID], budget: budget)
+        let id = try await harness.executor.submit(harness.request, commandID: ExecutorTestID.command(offset))
+        let handle = try await harness.executor.attach(to: id)
+        _ = try await collectTerminalEvents(from: handle)
+        let result = try await handle.result()
+        XCTAssertEqual(result?.status.state, .completed)
+        XCTAssertEqual(result?.usage.quantities[.modelAttempts], 2)
+        XCTAssertEqual(result?.usage.quantities[.toolInvocations], 1)
+        XCTAssertGreaterThanOrEqual(result?.usage.quantities[.activeMilliseconds] ?? 0, 40_004)
+        XCTAssertLessThanOrEqual(result?.usage.quantities[.activeMilliseconds] ?? .max, 150_000)
+    }
+
+    // TEST-ID: AHT-BUDGET-001
     func testOversizedToolBatchCanReplanOnceWithoutExecutingRejectedCallsOrIncreasingCapacity() async throws {
         for (repeats, hasPriorCall) in [(false, false), (true, false), (false, true)] {
             let offset = hasPriorCall ? 682 : repeats ? 681 : 680
