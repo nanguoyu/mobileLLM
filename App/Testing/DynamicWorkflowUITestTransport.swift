@@ -23,38 +23,16 @@ private final class DynamicWorkflowUITestResponsesProtocol: URLProtocol, @unchec
         }
         let body = Self.requestBodyString(request)
         let text: String
-        if body.contains("KIMI_SYNTHESIS_TRACK") {
-            text = """
-            EVAL_KIMI_LOCAL: Running the complete Kimi K3 weights entirely offline on an iPhone 16 Pro is not feasible. The phone's RAM and storage are far below the order of magnitude required even after aggressive quantization. Use a much smaller on-device model, or keep Kimi K3 on a remote server/API and make the iPhone a private client.
-            """
-        } else if body.contains("KIMI_MODEL_TRACK") {
-            text = "The full model has an enormous parameter footprint; quantization reduces bytes per weight but does not make phone-class deployment realistic."
-        } else if body.contains("IPHONE_LIMIT_TRACK") {
-            text = "An iPhone 16 Pro has phone-class unified memory and storage, both orders of magnitude below the complete model's practical runtime requirements."
-        } else if body.contains("DEPLOYMENT_PATH_TRACK") {
-            text = "Realistic paths are a smaller local model for offline work or a remote Kimi deployment/API with explicit network and privacy controls."
-        } else if body.contains("mobileLLM Dynamic Workflow V1")
-            || body.contains("Repair one mobileLLM Dynamic Workflow V1")
-        {
-            text = """
-            export const meta = {
-              name: "kimi-local-feasibility",
-              description: "Researches model scale, device limits, and deployment alternatives before producing a concrete verdict.",
-              whenToUse: "A user asks whether a very large model can run fully locally on an iPhone.",
-              phases: [
-                { title: "Research", detail: "Run three independent constraint tracks in parallel." },
-                { title: "Synthesize", detail: "Turn the evidence into a direct deployment verdict." }
-              ]
-            };
-            phase("Research");
-            const findings = await parallel([
-              () => agent("KIMI_MODEL_TRACK: Estimate the complete Kimi K3 weight and runtime footprint.", { label: "Model scale", phase: "Research" }),
-              () => agent("IPHONE_LIMIT_TRACK: Assess iPhone 16 Pro RAM and storage constraints.", { label: "Device limits", phase: "Research" }),
-              () => agent("DEPLOYMENT_PATH_TRACK: Identify honest local and remote deployment alternatives.", { label: "Alternatives", phase: "Research" })
-            ]);
-            phase("Synthesize");
-            return await agent(`KIMI_SYNTHESIS_TRACK: Give a direct verdict using all three findings. Preserve the token EVAL_KIMI_LOCAL. Model: ${findings[0]} Device: ${findings[1]} Alternatives: ${findings[2]}`, { label: "Final verdict", phase: "Synthesize" });
-            """
+        if body.contains("MOBILELLM_ACCEPTANCE_REVIEW_V1") {
+            text = #"{"approved":true,"checks":[{"criterionID":"feasibility","status":"satisfied","evidence":"The fixture draft gives a constraint-based verdict and alternatives.","gap":""}],"issues":[]}"#
+        } else if body.contains("MOBILELLM_DRAFT_V1") {
+            text = "EVAL_KIMI_LOCAL: The complete Kimi K3 model as local weights on an iPhone 16 Pro is not feasible under this fixture's assumed memory and storage constraints. Use a smaller local model or a remote API."
+        } else if body.contains("MOBILELLM_COORDINATOR_NEXT_V1") {
+            text = #"{"action":"deliver","stage":"Deliver","reason":"The three fixture investigations are available.","tasks":[]}"#
+        } else if body.contains("MOBILELLM_COORDINATOR_V1") {
+            text = #"{"criteria":[{"id":"feasibility","requirement":"Assess the complete local model and give alternatives."}],"decision":{"action":"work","stage":"Investigate","reason":"Independent constraint tracks.","tasks":[{"id":"model","instruction":"Assess model memory constraints.","criteria":["feasibility"],"inputs":[],"maxToolCalls":0},{"id":"device","instruction":"Assess phone constraints.","criteria":["feasibility"],"inputs":[],"maxToolCalls":0},{"id":"alternatives","instruction":"Assess smaller local and remote alternatives.","criteria":["feasibility"],"inputs":[],"maxToolCalls":0}]}}"#
+        } else if body.contains("MOBILELLM_WORKER_V1") {
+            text = #"{"status":"completed","summary":"Fixture constraints exclude the complete model.","content":"Under the fixture assumptions the phone lacks RAM and storage for complete local weights; consider a smaller local model or remote API.","unresolved":[]}"#
         } else {
             text = "unexpected simulator workflow request"
         }

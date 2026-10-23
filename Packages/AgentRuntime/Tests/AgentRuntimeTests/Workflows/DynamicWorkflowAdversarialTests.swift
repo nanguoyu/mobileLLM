@@ -287,7 +287,12 @@ final class DynamicWorkflowAdversarialTests: XCTestCase {
     }
 
     func testUncertainChildStopsForReconciliationWithoutSettlingOrRetrying() async throws {
-        let fixture = try ADWorkflowFixture(body: "return await agent('external-effect');")
+        for body in [
+            "return await agent('external-effect');",
+            "try { await agent('external-effect'); } catch(e) {} return 'pretend success';",
+            "try { await agent('external-effect'); } catch(e) {} return await agent('repeat-effect');"
+        ] {
+        let fixture = try ADWorkflowFixture(body: body)
         let journal = InMemoryDynamicWorkflowJournal()
         let spawner = ADControlledSpawner(mode: .uncertain)
         let engine = ADWorkflowFixture.engine(journal: journal, spawner: spawner)
@@ -307,10 +312,12 @@ final class DynamicWorkflowAdversarialTests: XCTestCase {
         XCTAssertEqual(projection.calls.count, 1)
         XCTAssertTrue(projection.outcomes.isEmpty)
         XCTAssertNil(projection.failure)
+        XCTAssertNil(projection.output)
         let spawnCount = await spawner.spawnCount
         let collectCount = await spawner.collectCount
         XCTAssertEqual(spawnCount, 1)
         XCTAssertEqual(collectCount, 1)
+            }
     }
 
     func testManualReconciliationIsCallBoundDurableAndSettlesExactlyOnce() async throws {

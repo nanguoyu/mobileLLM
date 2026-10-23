@@ -8,6 +8,48 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowDurabilityTests: XCTestCase {
+    func testRecoveredEvidenceContainsOnlyCallsReachedByTheReplayedPrefix() async throws {
+        let fixture = try makeFixture(body: """
+        await agent('one');
+        const first = await webEvidence();
+        await agent('two');
+        const second = await webEvidence();
+        return [first.sources.length, second.sources.length];
+        """)
+        let journal = InMemoryDynamicWorkflowJournal()
+        try await journal.saveScript(fixture.saved)
+        let cursor = try WorkflowReplayCursor(launch: fixture.launch)
+        var events: [WorkflowRunEventV1] = []
+        try appendEvent(.created(fixture.launch), runID: fixture.launch.runID, to: &events)
+        try appendEvent(.launchApproved(ApprovalID()), runID: fixture.launch.runID, to: &events)
+        try appendEvent(.stateChanged(from: .waitingForLaunchApproval, to: .queued, reason: nil), runID: fixture.launch.runID, to: &events)
+        try appendEvent(.stateChanged(from: .queued, to: .running, reason: nil), runID: fixture.launch.runID, to: &events)
+        var observations: [AgentExecutionHandleID: [WorkflowWebObservation]] = [:]
+        for prompt in ["one", "two"] {
+            guard case .execute(let call) = try await cursor.next(prompt: prompt, options: WorkflowAgentOptionsV1()) else {
+                return XCTFail("Expected a new call")
+            }
+            let handle = AgentExecutionHandleID()
+            observations[handle] = [WorkflowWebObservation(invocationID: prompt,
+                toolID: try AgentToolLogicalID(providerID: "builtin", name: "fetch_webpage"),
+                requestedURL: "https://example.edu/" + prompt, status: "completed", text: prompt)]
+            try appendEvent(.agentCallPrepared(call), runID: fixture.launch.runID, to: &events)
+            try appendEvent(.agentChildSubmitted(callID: call.callID, handleID: handle), runID: fixture.launch.runID, to: &events)
+            try appendEvent(.agentCallSettled(callID: call.callID, outcome: .completed(
+                value: .inline(try CanonicalJSON(.string(prompt))), usage: .zero)), runID: fixture.launch.runID, to: &events)
+        }
+        _ = try await journal.append(WorkflowEventAppendRequestV1(runID: fixture.launch.runID,
+            expectedSequence: 0, expectedDigest: nil, events: events))
+        let spawner = WorkflowFakeSpawner(observations: observations)
+        let engine = DynamicWorkflowEngine(journal: journal, runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        let result = try await engine.runAndWait(runID: fixture.launch.runID)
+        XCTAssertEqual(try decode(result), .array([.integer(1), .integer(2)]))
+        let counts = await spawner.counts()
+        XCTAssertEqual(counts.spawn, 0)
+        XCTAssertEqual(counts.collect, 0)
+    }
+
     func testSQLiteJournalIsLazyExactReplayCASAndReopensFromEvents() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("workflow-journal-\(UUID().uuidString)", isDirectory: true)
@@ -317,9 +359,16 @@ private actor WorkflowFakeSpawner: SubagentSpawning {
     private var promptsByHandle: [AgentExecutionHandleID: (AgentRunID, String)]
     private(set) var spawnCount = 0
     private(set) var collectCount = 0
+    private let observations: [AgentExecutionHandleID: [WorkflowWebObservation]]
 
-    init(preexisting: [AgentExecutionHandleID: (AgentRunID, String)] = [:]) {
+    init(preexisting: [AgentExecutionHandleID: (AgentRunID, String)] = [:],
+         observations: [AgentExecutionHandleID: [WorkflowWebObservation]] = [:]) {
         promptsByHandle = preexisting
+        self.observations = observations
+    }
+
+    func webObservations(_ handleID: AgentExecutionHandleID) async throws -> [WorkflowWebObservation] {
+        observations[handleID, default: []]
     }
 
     func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID {

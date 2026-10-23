@@ -21,6 +21,9 @@ private struct DynamicWorkflowExplorationScenario {
     let requireParallelSource: Bool
     let requiredConceptGroups: [[String]]
     var markerPlacement: MarkerPlacement = .suffix
+    var exactCheck: ExactCheck? = nil
+
+    enum ExactCheck { case coverage, procurement, schedule }
 
     var command: String {
         switch markerPlacement {
@@ -31,6 +34,73 @@ private struct DynamicWorkflowExplorationScenario {
 }
 
 private extension DynamicWorkflowExplorationScenario {
+    static let closedCorpusCoverage = Self(
+        id: "closed-corpus-coverage",
+        goal: """
+        Audit this supplied fictional research directory. Select ALL distinct European teams with a
+        dated 2024–2026 result that improves computational efficiency, including efficient training,
+        inference, compression and accelerator work. Resolve aliases and distinguish technical
+        efficiency from accuracy or policy work. Use only these records. Return ONLY JSON with
+        marker="EVAL_CORPUS", selectedIDs (canonical IDs), and excluded (ID and reason).
+        Directory A: G01, Austria, 2025, 4-bit quantization reduces memory; G02, UK, 2024, sparse
+        inference reduces FLOPs; G03, USA, 2026, faster kernels; G04, France, 2023, model compression;
+        G05, Italy, 2026, distillation reduces deployment cost; G06, Spain, 2026, higher accuracy only.
+        Directory B: Alpine Lab is an alias of G01, same team and result; G07, Germany, 2024, kernel
+        optimization reduces runtime; G08, Norway, 2025, AI sustainability policy with no computation
+        result; G09, Switzerland, 2025, low-power inference accelerator; G10, Poland, 2026, pruning
+        reduces model storage; G11, Sweden, 2026, training method reduces FLOPs at fixed accuracy;
+        G12, Portugal, 2025, edge compression reduces memory. No other records are available.
+        """,
+        marker: "EVAL_CORPUS", enabledTools: [], minimumAgentCalls: 4,
+        minimumAnswerCharacters: 80, requireParallelSource: true, requiredConceptGroups: [],
+        exactCheck: .coverage
+    )
+
+    static let constrainedProcurement = Self(
+        id: "constrained-procurement",
+        goal: """
+        Choose exactly two DIFFERENT devices from this supplied catalog to maximize combined throughput.
+        The total price must be at most EUR 950 and combined power at most 100 W. No discounts,
+        fractional devices or extra facts. Catalog (ID, EUR, throughput units/s, W): A,320,70,40;
+        B,470,110,65; C,550,150,90; D,620,130,55; E,390,75,35. Establish optimality by comparing all
+        feasible pairs and checking both constraints. Return ONLY JSON with marker="EVAL_PURCHASE",
+        selectedIDs, totalPrice, totalThroughput, totalPower and feasiblePairs (each an array of IDs).
+        """,
+        marker: "EVAL_PURCHASE", enabledTools: [], minimumAgentCalls: 4,
+        minimumAnswerCharacters: 80, requireParallelSource: true, requiredConceptGroups: [],
+        exactCheck: .procurement
+    )
+
+    static let dependencySchedule = Self(
+        id: "dependency-scheduling",
+        goal: """
+        Produce a minimum-duration execution schedule from the supplied facts. Two identical workers
+        are available at time zero. Each task uses one worker, cannot be interrupted, and starts only
+        after its dependencies finish. A takes 3 hours with no dependencies; B takes 2 with none;
+        C takes 4 after A; D takes 2 after BOTH A and B; E takes 1 after BOTH C and D. Give a lower
+        bound proving optimality. Return ONLY JSON with marker="EVAL_SCHEDULE", makespan,
+        lowerBound, and schedule (one record per task with id, start, end, worker where worker is 1 or 2).
+        """,
+        marker: "EVAL_SCHEDULE", enabledTools: [], minimumAgentCalls: 4,
+        minimumAnswerCharacters: 160, requireParallelSource: true, requiredConceptGroups: [],
+        exactCheck: .schedule
+    )
+
+    static let searchServiceComparison = Self(
+        id: "search-service-comparison",
+        goal: """
+        Compare the official DeepSeek Search/Fetch APIs with Brave's Web Search API for an agent
+        application, using documentation current as of 2026-10-22. Identify exact HTTPS endpoints,
+        authentication, whether search results include page contents, and when a separate page read
+        is necessary. Give a minimal request example for each service and an implementation choice
+        with limitations. Use primary documentation, cite the sources, and separate verified details
+        from anything unavailable. Return a readable comparison containing EVAL_WEB_APIS.
+        """,
+        marker: "EVAL_WEB_APIS", enabledTools: ["Web search", "Webpage reader"], minimumAgentCalls: 4,
+        minimumAnswerCharacters: 350, requireParallelSource: true,
+        requiredConceptGroups: [["DeepSeek"], ["Brave"], ["https://"], ["authentication", "Authorization", "认证", "鉴权"]]
+    )
+
     static let kimiLocal = Self(
         id: "kimi-local-feasibility",
         goal: """
@@ -165,6 +235,11 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
         try run(.untrustedGoal)
     }
 
+    @MainActor func test06ClosedCorpusCoverageAndAliases() throws { try run(.closedCorpusCoverage) }
+    @MainActor func test07ConstrainedProcurementOptimality() throws { try run(.constrainedProcurement) }
+    @MainActor func test08DependencyScheduleFeasibilityAndLowerBound() throws { try run(.dependencySchedule) }
+    @MainActor func test09SearchServiceComparisonFromPrimarySources() throws { try run(.searchServiceComparison) }
+
     /// Ad-hoc probe for future reports without editing the suite. Expected concepts use
     /// `groupAAlternative1|groupAAlternative2;groupB` and tools use comma-separated display names.
     @MainActor
@@ -229,9 +304,8 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
         }
 
         var rowState = workflowValue(row)
-        // The app allows one full generator pass plus one analyzer-guided repair. Each live-model
-        // request has a ten-minute terminal bound, so the probe must observe that complete contract
-        // instead of reporting a false candidate failure while a valid repair is still in flight.
+        // Initial planning is a schema-constrained durable model call. Observe its terminal bound
+        // without submitting a corrective prompt or silently retrying the user's task.
         let candidateDeadline = Date().addingTimeInterval(1_200)
         while Date() < candidateDeadline,
               !rowState.contains("Running"),
@@ -358,8 +432,8 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
                 "only \(childCalls.count) child calls; expected at least \(scenario.minimumAgentCalls)"
             )
         }
-        if childCalls.contains(where: { $0.localizedCaseInsensitiveContains("failed") || $0.localizedCaseInsensitiveContains("detail unavailable") }) {
-            failures.append("A child failed or its execution evidence is missing")
+        if childCalls.contains(where: { $0.localizedCaseInsensitiveContains("detail unavailable") }) {
+            failures.append("A child's execution evidence is missing")
         }
         if scenario.enabledTools.contains("Web search") {
             let detector = try NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
@@ -390,7 +464,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
                     + "\(scenario.minimumAnswerCharacters)"
             )
         }
-        if scenario.id != "ad-hoc",
+        if scenario.id != "ad-hoc", scenario.exactCheck == nil,
            let decoded = try? JSONSerialization.jsonObject(with: Data(answer.utf8)),
            decoded is [String: Any] || decoded is [Any] {
             failures.append("The final chat answer exposes a raw internal JSON result instead of readable analysis")
@@ -400,6 +474,9 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
         }
         for group in scenario.requiredConceptGroups where !containsAny(group, in: answer) {
             failures.append("answer missed concept group: \(group.joined(separator: " | "))")
+        }
+        if let check = scenario.exactCheck {
+            failures += exactFailures(check, answer: answer)
         }
         if app.buttons["Once"].exists || app.buttons["Always"].exists || app.buttons["Deny"].exists {
             failures.append("obsolete workflow launch authorization UI reappeared")
@@ -507,5 +584,57 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
 
     private func containsAny(_ alternatives: [String], in text: String) -> Bool {
         alternatives.contains { text.localizedCaseInsensitiveContains($0) }
+    }
+
+    /// Ground truth stays in the evaluator. Prompts contain the problem data, never these answers.
+    /// These checks reject omissions, invalid constraints and suboptimal results even if every
+    /// application agent (including its reviewer) declares success.
+    private func exactFailures(_ check: DynamicWorkflowExplorationScenario.ExactCheck, answer: String) -> [String] {
+        guard let value = try? JSONSerialization.jsonObject(with: Data(answer.utf8)) as? [String: Any] else {
+            return ["The requested JSON deliverable is invalid"]
+        }
+        switch check {
+        case .coverage:
+            let expected: Set<String> = ["G01", "G02", "G05", "G07", "G09", "G10", "G11", "G12"]
+            guard let ids = value["selectedIDs"] as? [String], ids.count == expected.count, Set(ids) == expected else {
+                return ["Coverage omitted an eligible group, included an ineligible group, or counted an alias twice"]
+            }
+            return []
+        case .procurement:
+            guard Set(value["selectedIDs"] as? [String] ?? []) == ["A", "D"],
+                  value["totalPrice"] as? Int == 940, value["totalThroughput"] as? Int == 200,
+                  value["totalPower"] as? Int == 95,
+                  let pairs = value["feasiblePairs"] as? [[String]], pairs.count == 3,
+                  Set(pairs.map { $0.sorted().joined(separator: ",") }) == ["A,D", "A,E", "B,E"] else {
+                return ["Procurement violated constraints, optimality, arithmetic, or feasible-pair completeness"]
+            }
+            return []
+        case .schedule:
+            guard value["makespan"] as? Int == 8, value["lowerBound"] as? Int == 8,
+                  let rows = value["schedule"] as? [[String: Any]], rows.count == 5 else {
+                return ["Schedule did not establish the 8-hour optimum"]
+            }
+            let durations = ["A": 3, "B": 2, "C": 4, "D": 2, "E": 1]
+            let dependencies = ["A": [String](), "B": [], "C": ["A"], "D": ["A", "B"], "E": ["C", "D"]]
+            var tasks: [String: (start: Int, end: Int, worker: Int)] = [:]
+            for row in rows {
+                guard let id = row["id"] as? String, tasks[id] == nil,
+                      let duration = durations[id], let start = row["start"] as? Int,
+                      let end = row["end"] as? Int, let worker = row["worker"] as? Int,
+                      start >= 0, end <= 8, end - start == duration, [1, 2].contains(worker) else {
+                    return ["Schedule contains an invalid or duplicate task"]
+                }
+                tasks[id] = (start, end, worker)
+            }
+            for (id, task) in tasks {
+                for dependency in dependencies[id, default: []] where (tasks[dependency]?.end ?? Int.max) > task.start {
+                    return ["Schedule starts \(id) before \(dependency) finishes"]
+                }
+                for (otherID, other) in tasks where otherID != id && other.worker == task.worker {
+                    if task.start < other.end && other.start < task.end { return ["One worker has overlapping tasks"] }
+                }
+            }
+            return []
+        }
     }
 }
