@@ -160,12 +160,13 @@ enum WorkflowWebEvidence {
     /// The 400-byte head + 200-byte tail + 3×480-byte matches fit within the legacy excerpt budget.
     private static func matchingExcerpts(_ text: String, terms: [QueryTerm]) throws -> [String] {
         let bounded = clippedText(text, maximumBytes: 64 * 1024)
-        var candidates: [(line: String, hits: Set<Int>)] = []
-        for line in bounded.components(separatedBy: .newlines) where !line.isEmpty {
+        var candidates: [(line: String, range: Range<String.Index>, hits: Set<Int>)] = []
+        for slice in bounded.split(whereSeparator: \.isNewline) {
             try Task.checkCancellation()
+            let line = String(slice)
             let lower = matchingText(line)
             let hits = Set(terms.indices.filter { lower.contains(terms[$0].text) })
-            if !hits.isEmpty { candidates.append((line, hits)) }
+            if !hits.isEmpty { candidates.append((line, slice.startIndex..<slice.endIndex, hits)) }
         }
         var covered: Set<Int> = []
         var result: [String] = []
@@ -192,8 +193,10 @@ enum WorkflowWebEvidence {
             let matcher = try NSRegularExpression(pattern: pattern, options: .caseInsensitive)
             guard let match = matcher.firstMatch(in: candidate.line, range: NSRange(candidate.line.startIndex..., in: candidate.line)),
                   let range = Range(match.range, in: candidate.line) else { continue }
-            let start = candidate.line.index(range.lowerBound, offsetBy: -70, limitedBy: candidate.line.startIndex) ?? candidate.line.startIndex
-            let excerpt = clippedText(String(candidate.line[start...]), maximumBytes: 480)
+            let offset = candidate.line.distance(from: candidate.line.startIndex, to: range.lowerBound)
+            let matchStart = bounded.index(candidate.range.lowerBound, offsetBy: offset)
+            let start = bounded.index(matchStart, offsetBy: -70, limitedBy: bounded.startIndex) ?? bounded.startIndex
+            let excerpt = clippedText(String(bounded[start...]), maximumBytes: 480)
             result.append(excerpt)
             // Only terms visible in the actual bounded excerpt count as covered.
             let visible = matchingText(excerpt)

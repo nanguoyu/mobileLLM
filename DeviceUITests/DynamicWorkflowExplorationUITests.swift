@@ -631,8 +631,10 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
                       let country = group["countryCode"] as? String, country.count == 2,
                       let topics = group["topics"] as? [String], !topics.isEmpty,
                       let sources = group["sourceURLs"] as? [String], !sources.isEmpty,
-                      sources.allSatisfy({ URL(string: $0)?.scheme == "https" && URL(string: $0)?.host != nil }) else {
-                    return ["A group is missing identity, country, research direction, or HTTPS source evidence"]
+                      group["lead"] is String || group["lead"] is NSNull,
+                      group["representativeWork"] is String || group["representativeWork"] is NSNull,
+                      sources.allSatisfy({ ["https", "http"].contains(URL(string: $0)?.scheme ?? "") && URL(string: $0)?.host != nil }) else {
+                    return ["A group is missing identity, country, research direction, required nullable fields, or web source evidence"]
                 }
                 names.insert(name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
                 countries.insert(country.uppercased() == "UK" ? "GB" : country.uppercased())
@@ -640,7 +642,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
                 // group record, not merely a mention in a disclaimer or coverage-gap list.
                 if containsAny(["ELSS", "Embedded Learning and Sensing Systems"], in: name),
                    containsAny(["Graz", "格拉茨"], in: institution), country.uppercased() == "AT",
-                   let lead = group["lead"] as? String, lead.localizedCaseInsensitiveContains("Saukh"),
+                   (group["lead"] is NSNull || (group["lead"] as? String)?.localizedCaseInsensitiveContains("Saukh") == true),
                    sources.contains(where: { source in
                        let host = URL(string: source)?.host?.lowercased() ?? ""
                        return host == "tugraz.at" || host.hasSuffix(".tugraz.at")

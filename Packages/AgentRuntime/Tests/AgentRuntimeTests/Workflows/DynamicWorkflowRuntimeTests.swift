@@ -11,7 +11,7 @@ final class DynamicWorkflowRuntimeTests: XCTestCase {
         let text = String(repeating: "Unrelated introduction.\n", count: 100)
             + "| need\\_content | When false, content is empty; when true it may contain page content. |\n"
             + "| extra_snippets | Up to five additional excerpts, not full page text. |\n"
-            + "| ZXQ | A named research team in the recorded page. |\n"
+            + "## ZXQ\nThe leader is ExampleLead, on the next line below the matched heading.\n"
             + String(repeating: "Unrelated footer.\n", count: 100)
         let record = WorkflowWebObservation(invocationID: "read", toolID: try AgentToolLogicalID(providerID: "builtin", name: "fetch_webpage"),
             requestedURL: "https://example.edu/reference", status: "completed", text: text)
@@ -32,6 +32,8 @@ final class DynamicWorkflowRuntimeTests: XCTestCase {
               case .object(let named)? = namedRecords.first, case .array(let namedMatches)? = named["matchingExcerpts"] else { return XCTFail("Named evidence missing") }
         XCTAssertTrue(namedMatches.contains { if case .string(let text) = $0 { return text.contains("ZXQ") }; return false },
             "Long introductory prose must not displace a later named entity from the bounded query")
+        XCTAssertTrue(namedMatches.contains { if case .string(let text) = $0 { return text.contains("ExampleLead") }; return false },
+            "A matching heading must include adjacent context within the same excerpt allowance")
         XCTAssertThrowsError(try WorkflowWebEvidence.packet([("reader", record)], matching: String(repeating: "x", count: 65_537)))
     }
 
