@@ -40,6 +40,9 @@ public enum CoordinatedWorkflow {
     Choose complementary roles based on the remaining problem, not a fixed team size or phase list.
     Do not duplicate delivery's writer/reviewer with a worker that merely drafts the final format.
     Preserve useful prior work. To inspect a full artifact, assign a task with that input ID.
+    If delivery reports oversized context, commission a bounded consolidation using selected inputs,
+    preserving required facts, citations and open questions. Completed consolidations replace their
+    upstream bodies in the draft context, while the full artifact index remains inspectable.
     After a rejected delivery, address every material review issue before requesting delivery again.
     Delivery produces a draft and an independent acceptance review, not automatic success.
     Never redo a possibly effectful failed operation without establishing its actual outcome.
@@ -184,7 +187,7 @@ public enum CoordinatedWorkflow {
                     + '\n<artifacts>\n' + serialize(inputs) + '\n</artifacts>',
                     {label:task.id, maxToolCalls:task.maxToolCalls, schema:workerSchema});
                   if (result === null) { return {id:task.id,status:'failed',summary:'Worker unavailable',content:'',unresolved:['No result was returned.']}; }
-                  return {id:task.id,status:result.status,summary:result.summary,content:result.content,unresolved:result.unresolved};
+                  return {id:task.id,status:result.status,summary:result.summary,content:result.content,unresolved:result.unresolved,inputs:task.inputs};
                 } catch (error) {
                   return {id:task.id,status:'failed',summary:'Worker failed',content:'',unresolved:[error.message.slice(0,800)]};
                 }
@@ -196,21 +199,31 @@ public enum CoordinatedWorkflow {
             if (!records.some(r => r.status === 'completed')) { feedback = 'No completed work exists to deliver.'; }
             else {
               if (reviews >= 2) { throw new Error('Task incomplete: independent acceptance review did not pass within the delivery allowance.'); }
+              reviews++;
+              try {
               phase('Draft and acceptance review');
+              const consumedInputs = [];
+              for (const record of records) {
+                if (record.status === 'completed' && record.inputs) {
+                  for (const id of record.inputs) { consumedInputs.push(id); }
+                }
+              }
+              const draftArtifacts = records.filter(r => !consumedInputs.includes(r.id));
+              const reviewIndex = records.map(r => ({id:r.id,status:r.status,summary:r.summary,
+                unresolved:r.unresolved,contentCharacters:r.content.length}));
               draft = await agent('MOBILELLM_DRAFT_V1\nProduce the requested final deliverable from the actual work below. '
                 + 'Use the user\'s language and format. Preserve facts, calculations and citations. '
                 + 'Do not claim completeness or execution beyond the evidence. Address prior review issues. '
                 + 'Return only the deliverable, not commentary about agents.' + context
-                + '\n<artifacts>\n' + serialize(records) + '\n</artifacts>\nPRIOR REVIEW:\n' + serialize(review),
+                + '\n<artifacts>\n' + serialize(draftArtifacts) + '\n</artifacts>'
+                + '\n<artifact-index>\n' + serialize(reviewIndex) + '\n</artifact-index>\nPRIOR REVIEW:\n' + serialize(review),
                 {label:'draft',maxToolCalls:0});
               if (typeof draft !== 'string' || draft.trim().length === 0) { throw new Error('Task incomplete: no deliverable was produced.'); }
               const evidence = await webEvidence();
-              const reviewIndex = records.map(r => ({id:r.id,status:r.status,summary:r.summary,unresolved:r.unresolved}));
               review = await agent(reviewInstruction + context + '\n<draft>\n' + draft + '\n</draft>'
                 + '\n<artifact-index>\n' + serialize(reviewIndex) + '\n</artifact-index>'
                 + '\n<recorded-web-evidence>\n' + serialize(evidence) + '\n</recorded-web-evidence>',
                 {label:'acceptance-review',maxToolCalls:0,schema:reviewSchema});
-              reviews++;
               if (review !== null) {
                 const checkedIDs = review.checks.map(c => c.criterionID);
                 const complete = checkedIDs.length === criterionIDs.length
@@ -224,13 +237,18 @@ public enum CoordinatedWorkflow {
               }
               feedback = 'The independent review rejected delivery or omitted a required check. Resolve the actual gaps before delivery.';
               log('coordination: delivery rejected; correction required');
+              } catch (error) {
+                feedback = 'Delivery could not be evaluated: ' + error.message.slice(0,800)
+                  + '. Preserve prior work and resolve this cause before requesting delivery again.';
+                log('coordination: delivery execution failed; correction required');
+              }
             }
           } else {
             throw new Error('Task incomplete: ' + decision.reason);
           }
           if (turn === 6) { break; }
           phase('Coordinate next stage');
-          const index = records.map(r => ({id:r.id,status:r.status,summary:r.summary,unresolved:r.unresolved}));
+          const index = records.map(r => ({id:r.id,status:r.status,summary:r.summary,unresolved:r.unresolved,contentCharacters:r.content.length}));
           decision = await agent(coordinatorInstruction + context + '\nARTIFACT INDEX:\n' + serialize(index)
             + '\nREVIEW:\n' + serialize(review) + '\nHOST FEEDBACK:\n' + feedback
             + '\nALLOCATION:\n' + serialize({workersRemaining:12-records.length,toolsRemaining:24-allocatedTools,

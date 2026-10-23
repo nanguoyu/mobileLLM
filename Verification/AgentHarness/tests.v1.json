@@ -1982,6 +1982,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowAdversarialTests/testUncertainChildStopsForReconciliationWithoutSettlingOrRetrying"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testDeliveryFailureReturnsToCoordinatorAndConsolidationReplacesUpstreamBodies"
         }
       ],
       "platforms": [

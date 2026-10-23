@@ -170,7 +170,10 @@ run. Exhaustion is a failure, not permission to increase the budget.
 
 Workers return bounded structured results. A failed worker is retained as a failed record while
 successful siblings remain available. The coordinator can commission follow-up work, request delivery,
-or explain a blocking condition. The writer receives the actual artifacts. The reviewer receives the
+or explain a blocking condition. Completed consolidations replace their upstream bodies in the writer input, with the full artifact
+index retained. Failed or partial consolidations do not hide upstream work. A delivery-stage execution
+failure returns to the coordinator for a bounded correction, including context consolidation, within
+the same two delivery attempts. The reviewer receives the
 original goal, fixed criteria, draft, artifact index and recorded web evidence, avoiding duplication of
 every intermediate body. Approval must cover every criterion exactly once, with evidence, no unmet or
 unknown checks and no material issues. Rejection returns to coordination. The runtime prevents a

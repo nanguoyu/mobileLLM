@@ -953,48 +953,9 @@ public final class AgentRuntimeAssembly {
         return max(1, min(24_576, context - reservedInput))
     }
 
-    /// Builds the reserved workflow-root request from a normal conversation snapshot. The root's
-    /// ceiling/budget/model policy are frozen exactly like a chat run; children attenuate from it.
-    public func makeWorkflowRoot(
-        snapshot: AgentRunRequestSnapshot,
-        workflowID: UUID
-    ) throws -> AgentRequest {
-        let source = try frozenBuilder.request(snapshot: snapshot, artifactReferences: [])
-        let workflowBudget = try dynamicWorkflowBudget(from: source.budget)
-        let planInstruction = """
-        You are a workflow planner. Decompose the user's goal into 2-4 execution phases. Each phase \
-        must contain 1-4 subagent instructions. Return ONLY the JSON plan:
-        {"goal":"<the goal>","phases":[{"sequence":1,"title":"...","acceptanceCriteria":"...",\
-        "childInstructions":["..."]}]}
-        Decide the phase count, the subagent count per phase, and each subagent's concrete task from \
-        the goal itself — do not copy this prompt's shape. For research/deployment goals use phases \
-        such as explore → plan → audit; for coding goals use analyze → implement → review → fix. Each \
-        child instruction must name what that subagent investigates or produces and, when relevant, \
-        that it MUST call the web_search tool before answering.
-        Goal: \(snapshot.text)
-        """
-        return try AgentRequest(
-            id: source.id,
-            runID: WorkflowIdentity.rootRun(workflowID: workflowID),
-            conversationID: source.conversationID,
-            userTurnID: source.userTurnID,
-            role: "workflow-root",
-            instruction: planInstruction,
-            outputRequirement: .structured(WorkflowPlanSchema.document),
-            modelPolicy: source.modelPolicy,
-            capabilityCeiling: source.capabilityCeiling,
-            budget: workflowBudget,
-            contextReferences: source.contextReferences,
-            artifactReferences: [],
-            labels: source.labels,
-            provenance: AgentRequestProvenance(source: .workflow),
-            approvalMode: source.approvalMode
-        )
-    }
-
     private func dynamicWorkflowBudget(
         from baseline: AgentBudget,
-        maximumOutputTokensPerAttempt: UInt64? = nil
+        maximumOutputTokensPerAttempt: UInt64
     ) throws -> AgentBudget {
         var values = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map {
             ($0, baseline.limits[$0])
@@ -1015,7 +976,6 @@ public final class AgentRuntimeAssembly {
         // Reserve enough cumulative capacity for the permitted passes, keeping per-pass ceilings.
         let attempts = values[.modelAttempts, default: 0]
         let outputPerAttempt = maximumOutputTokensPerAttempt
-            ?? (baseline.limits[.outputTokens] / max(1, baseline.limits[.modelAttempts]))
         for (dimension, perAttempt) in [
             (BudgetDimension.inputTokens, baseline.limits[.contextTokensPerAttempt]),
             (.outputTokens, outputPerAttempt)
@@ -1039,22 +999,7 @@ public final class AgentRuntimeAssembly {
         )
     }
 
-    /// The parent context workflow children attenuate from. The requesting step is stable per
-    /// workflow so the journal tree is identical across relaunches.
-    public func workflowParentContext(
-        workflowID: UUID,
-        request: AgentRequest
-    ) -> WorkflowParentContext {
-        WorkflowParentContext(
-            runID: request.runID,
-            requestID: request.id,
-            requestingStepID: WorkflowIdentity.rootStep(workflowID: workflowID),
-            capabilityCeiling: request.capabilityCeiling,
-            budget: request.budget,
-            modelPolicy: request.modelPolicy,
-            approvalMode: request.approvalMode
-        )
-    }
+
 }
 
 /// Bounded in-memory operational log for device diagnostics. Codes and metadata are redacted by the

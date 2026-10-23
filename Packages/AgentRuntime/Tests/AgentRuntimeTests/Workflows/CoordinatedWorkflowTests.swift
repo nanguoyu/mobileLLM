@@ -9,6 +9,36 @@ import XCTest
 /// Exercises the shipped program with controlled child outcomes. These are scheduler/control-flow
 /// regressions, not evidence that a live model can solve the corresponding user tasks.
 final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
+    func testDeliveryFailureReturnsToCoordinatorAndConsolidationReplacesUpstreamBodies() async throws {
+        let probe = CoordinationProbe()
+        let output = try await run(initial: decision("work", tasks: [task("source")])) { call in
+            await probe.enter(call); await probe.leave()
+            switch call.options.label {
+            case "source": return .value(worker("Original evidence", content: "LARGE-ORIGINAL-BODY"))
+            case "coordinator":
+                if await probe.count("coordinator") == 2 {
+                    XCTAssertTrue(call.prompt.contains("context cannot fit"))
+                    XCTAssertTrue(call.prompt.contains("contentCharacters"))
+                    return .value(decision("work", tasks: [task("consolidated", inputs: ["source"])]))
+                }
+                return .value(decision("deliver"))
+            case "consolidated":
+                XCTAssertTrue(call.prompt.contains("LARGE-ORIGINAL-BODY"))
+                return .value(worker("Bounded evidence", content: "COMPACT-PROVENANCE-PRESERVED"))
+            case "draft":
+                if await probe.count("draft") == 1 { throw WorkflowScriptRuntimeError.hostFailure("context cannot fit") }
+                XCTAssertFalse(call.prompt.contains("LARGE-ORIGINAL-BODY"))
+                XCTAssertTrue(call.prompt.contains("COMPACT-PROVENANCE-PRESERVED"))
+                return .value(.string("Accepted result"))
+            case "acceptance-review": return .value(review(approved: true, gap: ""))
+            default: XCTFail("Unexpected child"); return .stopped
+            }
+        }
+        XCTAssertEqual(output, .string("Accepted result"))
+        let drafts = await probe.count("draft")
+        XCTAssertEqual(drafts, 2, "Recovery must remain within the original delivery allowance")
+    }
+
     func testStructuredRepairDiagnosticLocatesTheConstraintWithoutEchoingOutput() throws {
         let schema = try JSONSchemaDocument(root: .object([
             "type": .string("object"), "properties": .object([
