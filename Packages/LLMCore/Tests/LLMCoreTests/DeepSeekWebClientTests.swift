@@ -3,6 +3,8 @@
 import XCTest
 @testable import LLMCore
 
+// TEST-ID: AHT-TOOL-005
+
 final class DeepSeekWebClientTests: XCTestCase {
     func testSearchCanReturnBoundedPageContentWithoutCallingFetchOrInventingFreshness() async throws {
         let original = String(repeating: "界😊", count: 1000) + " https://unread.example/linked-page"
