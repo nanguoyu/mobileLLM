@@ -34,6 +34,7 @@ private struct DynamicWorkflowExplorationScenario {
 }
 
 private extension DynamicWorkflowExplorationScenario {
+    // Two workers plus their supervisor demonstrate cooperation; mandatory delivery roles add no evidence.
     static let closedCorpusCoverage = Self(
         id: "closed-corpus-coverage",
         goal: """
@@ -51,7 +52,7 @@ private extension DynamicWorkflowExplorationScenario {
         reduces model storage; G11, Sweden, 2026, training method reduces FLOPs at fixed accuracy;
         G12, Portugal, 2025, edge compression reduces memory. No other records are available.
         """,
-        marker: "EVAL_CORPUS", enabledTools: [], minimumAgentCalls: 4,
+        marker: "EVAL_CORPUS", enabledTools: [], minimumAgentCalls: 3,
         minimumAnswerCharacters: 80, requireParallelSource: true, requiredConceptGroups: [],
         exactCheck: .coverage
     )
@@ -66,7 +67,7 @@ private extension DynamicWorkflowExplorationScenario {
         feasible pairs and checking both constraints. Return ONLY JSON with marker="EVAL_PURCHASE",
         selectedIDs, totalPrice, totalThroughput, totalPower and feasiblePairs (each an array of IDs).
         """,
-        marker: "EVAL_PURCHASE", enabledTools: [], minimumAgentCalls: 4,
+        marker: "EVAL_PURCHASE", enabledTools: [], minimumAgentCalls: 3,
         minimumAnswerCharacters: 80, requireParallelSource: true, requiredConceptGroups: [],
         exactCheck: .procurement
     )
@@ -81,7 +82,7 @@ private extension DynamicWorkflowExplorationScenario {
         bound proving optimality. Return ONLY JSON with marker="EVAL_SCHEDULE", makespan,
         lowerBound, and schedule (one record per task with id, start, end, worker where worker is 1 or 2).
         """,
-        marker: "EVAL_SCHEDULE", enabledTools: [], minimumAgentCalls: 4,
+        marker: "EVAL_SCHEDULE", enabledTools: [], minimumAgentCalls: 3,
         minimumAnswerCharacters: 160, requireParallelSource: true, requiredConceptGroups: [],
         exactCheck: .schedule
     )
@@ -96,7 +97,7 @@ private extension DynamicWorkflowExplorationScenario {
         with limitations. Use primary documentation, cite the sources, and separate verified details
         from anything unavailable. Return a readable comparison containing EVAL_WEB_APIS.
         """,
-        marker: "EVAL_WEB_APIS", enabledTools: ["Web search", "Webpage reader"], minimumAgentCalls: 4,
+        marker: "EVAL_WEB_APIS", enabledTools: ["Web search", "Webpage reader"], minimumAgentCalls: 3,
         minimumAnswerCharacters: 350, requireParallelSource: true,
         requiredConceptGroups: [["DeepSeek"], ["Brave"], ["https://"], ["authentication", "Authorization", "认证", "鉴权"]]
     )
@@ -115,7 +116,7 @@ private extension DynamicWorkflowExplorationScenario {
         不要把达到数量门槛称作完整。除JSON外不要返回其他文字。
         """,
         marker: "EVAL_EUROPE_COVERAGE", enabledTools: ["Web search", "Webpage reader"],
-        minimumAgentCalls: 4, minimumAnswerCharacters: 700, requireParallelSource: true,
+        minimumAgentCalls: 3, minimumAnswerCharacters: 700, requireParallelSource: true,
         requiredConceptGroups: [["https://"]], exactCheck: .europeanGroups
     )
 
