@@ -19,7 +19,7 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
                 if await probe.count("coordinator") == 2 {
                     XCTAssertTrue(call.prompt.contains("context cannot fit"))
                     XCTAssertTrue(call.prompt.contains("contentCharacters"))
-                    return .value(decision("work", tasks: [task("consolidated", inputs: ["source"])]))
+                    return .value(decision("work", tasks: [task("consolidated", inputs: ["source"], consolidates: true)]))
                 }
                 return .value(decision("deliver"))
             case "consolidated":
@@ -81,6 +81,8 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
                 XCTAssertTrue(call.prompt.contains("FULL-DERIVATION-BODY"))
                 return .value(worker("corrected total 42"))
             case "draft":
+                XCTAssertTrue(call.prompt.contains("cost-evidence"), "Ordinary dependent work must not replace its upstream evidence")
+                XCTAssertTrue(call.prompt.contains("constraints-evidence"))
                 return .value(.string(await probe.count(label) == 1 ? "wrong total" : "corrected total 42"))
             case "acceptance-review":
                 XCTAssertFalse(call.prompt.contains("FULL-DERIVATION-BODY"),
@@ -192,9 +194,10 @@ private actor CoordinationProbe {
     func count(_ label: String) -> Int { calls[label, default: 0] }
 }
 
-private func task(_ id: String, inputs: [String] = []) -> JSONValue {
+private func task(_ id: String, inputs: [String] = [], consolidates: Bool = false) -> JSONValue {
     .object(["id": .string(id), "instruction": .string("Investigate " + id),
-             "criteria": .array([.string("correct")]), "inputs": .array(inputs.map(JSONValue.string)), "maxToolCalls": .integer(0)])
+             "criteria": .array([.string("correct")]), "inputs": .array(inputs.map(JSONValue.string)),
+             "consolidatesInputs": .bool(consolidates), "maxToolCalls": .integer(0)])
 }
 
 private func decision(_ action: String, tasks: [JSONValue] = []) -> JSONValue {

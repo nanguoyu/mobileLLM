@@ -22,6 +22,8 @@ public enum CoordinatedWorkflow {
     summary-only tasks unless they resolve a real information-size or contradiction problem.
     Each task has a unique id, a concrete instruction, relevant criterion IDs, input artifact IDs,
     and a maximum tool-call allowance from 0 to 6. Initial input artifact IDs must be empty.
+    Set consolidatesInputs=false for normal work and verification. Set it true only for an explicitly
+    requested, information-preserving consolidation that can replace all supplied input bodies.
     Use 0 for reasoning from supplied material. Tools are limited to the user's enabled capabilities.
     Plan verification and leave capacity for correcting gaps. You have at most 12 worker tasks,
     24 allocated tool calls, 6 coordination decisions after this plan, and 2 delivery reviews.
@@ -45,6 +47,8 @@ public enum CoordinatedWorkflow {
     If delivery reports oversized context, commission a bounded consolidation using selected inputs,
     preserving required facts, citations and open questions. Completed consolidations replace their
     upstream bodies in the draft context, while the full artifact index remains inspectable.
+    Mark those tasks consolidatesInputs=true. Normal analysis or verification uses false because its
+    result supplements inputs rather than replacing them.
     After a rejected delivery, address every material review issue before requesting delivery again.
     Delivery produces a draft and an independent acceptance review, not automatic success.
     Never redo a possibly effectful failed operation without establishing its actual outcome.
@@ -110,6 +114,7 @@ public enum CoordinatedWorkflow {
         "tasks": .object(["type": .string("array"), "maxItems": .integer(4), "items": object([
             "id": string(48, minimum: 1), "instruction": string(2_000, minimum: 1),
             "criteria": strings(16), "inputs": strings(12),
+            "consolidatesInputs": .object(["type": .string("boolean")]),
             "maxToolCalls": .object(["type": .string("integer"), "minimum": .integer(0), "maximum": .integer(6)]),
         ])]),
     ]))
@@ -181,6 +186,7 @@ public enum CoordinatedWorkflow {
               if (knownIDs.includes(task.id)) { feedback += 'Task IDs must be new, including replacements for failed tasks. '; }
               if (task.inputs.some(id => !knownIDs.includes(id))) { feedback += 'Inputs must reference already settled artifacts, never same-wave or missing tasks. '; }
               if (task.criteria.length === 0 || task.criteria.some(id => !criterionIDs.includes(id))) { feedback += 'Each task must use the frozen criterion IDs, not prose descriptions. '; }
+              if (task.consolidatesInputs && task.inputs.length === 0) { feedback += 'A consolidation needs existing inputs to replace. '; }
             }
             if (allocatedTools + requestedTools > 24) { feedback += 'Wave allocates ' + requestedTools + ' tools but only ' + (24-allocatedTools) + ' remain. Reduce the SUM of task allowances. '; }
             if (feedback === '') {
@@ -194,7 +200,8 @@ public enum CoordinatedWorkflow {
                     + '\n<artifacts>\n' + serialize(inputs) + '\n</artifacts>',
                     {label:task.id, maxToolCalls:task.maxToolCalls, schema:workerSchema});
                   if (result === null) { return {id:task.id,status:'failed',summary:'Worker unavailable',content:'',unresolved:['No result was returned.']}; }
-                  return {id:task.id,status:result.status,summary:result.summary,content:result.content,unresolved:result.unresolved,inputs:task.inputs};
+                  return {id:task.id,status:result.status,summary:result.summary,content:result.content,unresolved:result.unresolved,
+                    inputs:task.inputs,replacesInputs:task.consolidatesInputs ? task.inputs : []};
                 } catch (error) {
                   return {id:task.id,status:'failed',summary:'Worker failed',content:'',unresolved:[error.message.slice(0,800)]};
                 }
@@ -211,8 +218,8 @@ public enum CoordinatedWorkflow {
               phase('Draft and acceptance review');
               const consumedInputs = [];
               for (const record of records) {
-                if (record.status === 'completed' && record.inputs) {
-                  for (const id of record.inputs) { consumedInputs.push(id); }
+                if (record.status === 'completed' && record.replacesInputs) {
+                  for (const id of record.replacesInputs) { consumedInputs.push(id); }
                 }
               }
               const draftArtifacts = records.filter(r => !consumedInputs.includes(r.id));
