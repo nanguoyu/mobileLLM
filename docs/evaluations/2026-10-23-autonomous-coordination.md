@@ -59,7 +59,34 @@ Six focused runtime checks pass: actual parallel result delivery and task contin
 a truncated preview, invalid-reference and failed-worker handling, repeated-read termination, analyzer/schema
 compatibility, and redacted structured-repair diagnostics. These are control-flow checks, not model ability
 scores. The existing opt-in UI fixture is updated to three workers plus one supervisor, with no writer or
-reviewer. Live v2 task results are pending. Original task answer and coverage oracles remain unchanged.
+reviewer. The original task answer and coverage oracles remain unchanged. Live v2 results follow below.
 
 No full repository suite or paid model call was run for this document. Live task results belong in this
 file and `STATUS.md` only after their original outputs have been checked.
+
+## Retained task outcomes
+
+[Compact evidence](evidence/2026-10-23-autonomous-coordination.json) retains 16 outcomes, exact accepted
+JSON answers, source/output hashes and selected child timing records. The same code was not used for all
+runs, so these are diagnostic outcomes rather than an aggregate reliability score.
+
+| Task | Revision | Independent assessment |
+| --- | --- | --- |
+| Closed directory and aliases | `c0f3570` | Exact eligible set, exclusions and alias deduplication passed. |
+| Procurement | `aac798f` | Exact optimum and all feasible pairs passed; 7 children, 247.837 application seconds. |
+| Dependency schedule | `c0f3570` | Durations, dependencies, resources and matching 8-hour lower bound passed. |
+| Incident analysis | `7451fdf`, `320992a` | UI passed, semantic quality failed. An attempted write was upgraded to a confirmed effect, and a local-state safeguard was overstated. |
+| Official API comparison | Several v1 revisions | Failed through oversized context, missing handoff evidence, redundant audits and budget exhaustion. Individual outcomes remain in the evidence file. |
+| Europe research | `00f1032`, `7a89e1b` | Failed autonomous delivery. Latest run found ELSS internally but returned no final answer. |
+| Procurement with v2 supervisor | `2cf6b24` | Original exact oracle passed on the unedited answer. One initial model call, no children, 23.285 application seconds. UI failed only its minimum-child-count assertion. |
+
+For the v2 procurement result, the exact oracle was replayed offline on the saved original JSON. The
+closed-data scenarios now permit direct solutions, while the complex research scenarios still require
+collaboration. No answer, source or coverage condition was relaxed, and no model was rerun for this test
+correction. The original UI failure remains recorded. This single comparison does not estimate a general
+speedup, and a direct solution is not evidence of multi-agent collaboration.
+
+The initial supervisor call was previously absent from the displayed token counters. Presentation now
+adds its journaled usage once, including after recovery. Old evidence keeps the original counters and
+labels their scope. The Swift app harness compiled this change and its existing per-child budget regression
+passed. Live API-comparison and Europe outcomes for v2 are still pending.

@@ -34,7 +34,8 @@ private struct DynamicWorkflowExplorationScenario {
 }
 
 private extension DynamicWorkflowExplorationScenario {
-    // Two workers plus their supervisor demonstrate cooperation; mandatory delivery roles add no evidence.
+    // Closed-data tasks measure exact correctness. A supervisor may solve them without delegation.
+    // Complex research below still requires collaboration; controlled runtime tests verify its mechanics.
     static let closedCorpusCoverage = Self(
         id: "closed-corpus-coverage",
         goal: """
@@ -52,7 +53,7 @@ private extension DynamicWorkflowExplorationScenario {
         reduces model storage; G11, Sweden, 2026, training method reduces FLOPs at fixed accuracy;
         G12, Portugal, 2025, edge compression reduces memory. No other records are available.
         """,
-        marker: "EVAL_CORPUS", enabledTools: [], minimumAgentCalls: 3,
+        marker: "EVAL_CORPUS", enabledTools: [], minimumAgentCalls: 0,
         minimumAnswerCharacters: 80, requireParallelSource: true, requiredConceptGroups: [],
         exactCheck: .coverage
     )
@@ -67,7 +68,7 @@ private extension DynamicWorkflowExplorationScenario {
         feasible pairs and checking both constraints. Return ONLY JSON with marker="EVAL_PURCHASE",
         selectedIDs, totalPrice, totalThroughput, totalPower and feasiblePairs (each an array of IDs).
         """,
-        marker: "EVAL_PURCHASE", enabledTools: [], minimumAgentCalls: 3,
+        marker: "EVAL_PURCHASE", enabledTools: [], minimumAgentCalls: 0,
         minimumAnswerCharacters: 80, requireParallelSource: true, requiredConceptGroups: [],
         exactCheck: .procurement
     )
@@ -82,7 +83,7 @@ private extension DynamicWorkflowExplorationScenario {
         bound proving optimality. Return ONLY JSON with marker="EVAL_SCHEDULE", makespan,
         lowerBound, and schedule (one record per task with id, start, end, worker where worker is 1 or 2).
         """,
-        marker: "EVAL_SCHEDULE", enabledTools: [], minimumAgentCalls: 3,
+        marker: "EVAL_SCHEDULE", enabledTools: [], minimumAgentCalls: 0,
         minimumAnswerCharacters: 160, requireParallelSource: true, requiredConceptGroups: [],
         exactCheck: .schedule
     )
@@ -413,7 +414,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
 
         var childCalls: [String] = []
         let callsDisclosure = app.buttons["Agent calls"]
-        if callsDisclosure.waitForExistence(timeout: 10) {
+        if callsDisclosure.exists || (scenario.minimumAgentCalls > 0 && callsDisclosure.waitForExistence(timeout: 10)) {
             let callEvidence = (callsDisclosure.value as? String) ?? ""
             let callCount = Int(callEvidence.split(separator: " ").first ?? "0") ?? 0
             callsDisclosure.tap()

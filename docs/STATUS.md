@@ -22,7 +22,9 @@ user's group and must not be presented as complete autonomous research.
 
 The replacement supervisor returns actual worker results, supports local artifact reads and logical task
 continuation, and writes the answer without mandatory writer/reviewer agents. Six focused control-flow
-checks pass. Live outcomes for this replacement are pending. See the [diagnosis, source comparison and
+checks pass. The first closed-data procurement answer passed every exact oracle in 23.285 application
+seconds with no unnecessary delegation. Its UI test failed only a minimum-child-count assertion; the
+original answer passed offline replay and was not regenerated. Complex web results are pending. See the [diagnosis, source comparison and
 validation](evaluations/2026-10-23-autonomous-coordination.md). Completion still needs external output
 checks; a model's own approval is not an accuracy measurement.
 

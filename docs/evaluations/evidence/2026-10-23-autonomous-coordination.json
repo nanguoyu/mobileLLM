@@ -1,0 +1,922 @@
+{
+  "date": "2026-10-23",
+  "purpose": "Evaluate autonomous mobileLLM collaboration, not maintainer-assisted report delivery.",
+  "modelAlias": "deepseek-v4-pro",
+  "device": "iPhone 17 / iOS 27 Simulator",
+  "externalIntervention": "No corrective prompts or intermediate answers were supplied during accepted runs. Explicitly interrupted runs remain separate.",
+  "metricsNote": "App elapsed includes initial planning and execution; UI durations include navigation. Token aggregates include conservative accounting in early malformed-response runs and are not billing totals.",
+  "cases": [
+    {
+      "id": "corpus-first",
+      "code": "aac798f",
+      "evaluation": "interrupted",
+      "reason": "UI could not open the partly obscured workflow row; no outcome quality verdict",
+      "uiSeconds": 168.614,
+      "capturedWorkflowState": "running",
+      "aggregated": {
+        "elapsedMilliseconds": 84533,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "subagentCount": 3,
+        "toolInvocationCount": 0
+      },
+      "sourceSHA256": "96808249ed2392a809465d0b11f049bcbfa069743fb32466efc9f8fea942fbb7",
+      "answerSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "procurement-first",
+      "code": "aac798f",
+      "evaluation": "passed",
+      "reason": "Exact feasible pairs, optimum, cost, power and exactly two devices",
+      "uiSeconds": 331.97,
+      "capturedWorkflowState": "completed",
+      "aggregated": {
+        "elapsedMilliseconds": 247837,
+        "inputTokens": 109982,
+        "outputTokens": 91020,
+        "subagentCount": 7,
+        "toolInvocationCount": 0
+      },
+      "sourceSHA256": "96808249ed2392a809465d0b11f049bcbfa069743fb32466efc9f8fea942fbb7",
+      "answerSHA256": "ab7a6622483c0e270f2cdb73b5656e266a2b8185cd6ac7380c32d7cee7d9990c",
+      "exactAnswer": {
+        "marker": "EVAL_PURCHASE",
+        "selectedIDs": [
+          "A",
+          "D"
+        ],
+        "totalPrice": 940,
+        "totalThroughput": 200,
+        "totalPower": 95,
+        "feasiblePairs": [
+          [
+            "A",
+            "D"
+          ],
+          [
+            "A",
+            "E"
+          ],
+          [
+            "B",
+            "E"
+          ]
+        ]
+      },
+      "externalChecksPassed": true,
+      "observedChildren": [
+        {
+          "ordinal": 1,
+          "label": "t1_enumerate_pairs",
+          "phase": "wave1_computation_and_verification",
+          "status": "completed",
+          "startSeconds": 0.0,
+          "endSeconds": 18.382,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 2,
+          "label": "t2_find_optimal",
+          "phase": "wave1_computation_and_verification",
+          "status": "completed",
+          "startSeconds": 0.02,
+          "endSeconds": 65.431,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 3,
+          "label": "t3_draft_json",
+          "phase": "wave1_computation_and_verification",
+          "status": "failed",
+          "startSeconds": 0.024,
+          "endSeconds": 9.794,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 4,
+          "label": "t4_independent_check",
+          "phase": "wave1_computation_and_verification",
+          "status": "completed",
+          "startSeconds": 0.028,
+          "endSeconds": 75.635,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 5,
+          "label": "coordinator",
+          "phase": "Coordinate next stage",
+          "status": "completed",
+          "startSeconds": 75.684,
+          "endSeconds": 129.621,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 6,
+          "label": "draft",
+          "phase": "Draft and acceptance review",
+          "status": "completed",
+          "startSeconds": 129.659,
+          "endSeconds": 135.213,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 7,
+          "label": "acceptance-review",
+          "phase": "Draft and acceptance review",
+          "status": "completed",
+          "startSeconds": 135.291,
+          "endSeconds": 165.847,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "schedule-first",
+      "code": "aac798f",
+      "evaluation": "failed",
+      "reason": "Worker and coordinator failed their structured output contract",
+      "uiSeconds": 301.112,
+      "capturedWorkflowState": "failed",
+      "aggregated": {
+        "elapsedMilliseconds": 188202,
+        "inputTokens": 133854,
+        "outputTokens": 104926,
+        "subagentCount": 4,
+        "toolInvocationCount": 0
+      },
+      "sourceSHA256": "96808249ed2392a809465d0b11f049bcbfa069743fb32466efc9f8fea942fbb7",
+      "answerSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "web-first",
+      "code": "aac798f",
+      "evaluation": "failed",
+      "reason": "Review input exceeded the configured context capacity",
+      "uiSeconds": 517.267,
+      "capturedWorkflowState": "failed",
+      "aggregated": {
+        "elapsedMilliseconds": 406035,
+        "inputTokens": 222444,
+        "outputTokens": 52615,
+        "subagentCount": 10,
+        "toolInvocationCount": 24
+      },
+      "sourceSHA256": "96808249ed2392a809465d0b11f049bcbfa069743fb32466efc9f8fea942fbb7",
+      "answerSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "corpus-corrected",
+      "code": "c0f3570",
+      "evaluation": "passed",
+      "reason": "Exact eligible set, no ineligible IDs or duplicate alias",
+      "uiSeconds": 332.315,
+      "capturedWorkflowState": "completed",
+      "aggregated": {
+        "elapsedMilliseconds": 235692,
+        "inputTokens": 15078,
+        "outputTokens": 23658,
+        "subagentCount": 7,
+        "toolInvocationCount": 0
+      },
+      "sourceSHA256": "4e528e3b9dd3fc0d7f03f077ee10f9363d66099a13f83655815ed6dd2d28b7bf",
+      "answerSHA256": "06cfcbdf4aa0ed4def1caf2ed1de0988b95b8fc35f4c3ecf2194287d9af812f0",
+      "exactAnswer": {
+        "marker": "EVAL_CORPUS",
+        "selectedIDs": [
+          "G01",
+          "G02",
+          "G05",
+          "G07",
+          "G09",
+          "G10",
+          "G11",
+          "G12"
+        ],
+        "excluded": [
+          {
+            "ID": "Alpine Lab",
+            "reason": "Alias of G01; same team and result (duplicate)"
+          },
+          {
+            "ID": "G03",
+            "reason": "Non-European team (USA)"
+          },
+          {
+            "ID": "G04",
+            "reason": "Out-of-range date (2023)"
+          },
+          {
+            "ID": "G06",
+            "reason": "Higher accuracy only; no computational-efficiency result"
+          },
+          {
+            "ID": "G08",
+            "reason": "AI sustainability policy; no computation result"
+          }
+        ]
+      },
+      "externalChecksPassed": true,
+      "observedChildren": [
+        {
+          "ordinal": 1,
+          "label": "T1",
+          "phase": "wave1_audit_planning",
+          "status": "completed",
+          "startSeconds": 0.0,
+          "endSeconds": 97.061,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 2,
+          "label": "T2",
+          "phase": "wave1_audit_planning",
+          "status": "completed",
+          "startSeconds": 0.017,
+          "endSeconds": 73.084,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 3,
+          "label": "T3",
+          "phase": "wave1_audit_planning",
+          "status": "completed",
+          "startSeconds": 0.021,
+          "endSeconds": 18.719,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 4,
+          "label": "T4",
+          "phase": "wave1_audit_planning",
+          "status": "completed",
+          "startSeconds": 0.024,
+          "endSeconds": 39.205,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 5,
+          "label": "coordinator",
+          "phase": "Coordinate next stage",
+          "status": "completed",
+          "startSeconds": 97.116,
+          "endSeconds": 134.722,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 6,
+          "label": "draft",
+          "phase": "Draft and acceptance review",
+          "status": "completed",
+          "startSeconds": 134.761,
+          "endSeconds": 152.591,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 7,
+          "label": "acceptance-review",
+          "phase": "Draft and acceptance review",
+          "status": "completed",
+          "startSeconds": 152.671,
+          "endSeconds": 190.757,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "schedule-corrected",
+      "code": "c0f3570",
+      "evaluation": "passed",
+      "reason": "Valid dependencies and worker allocation with matching 8-hour optimum/lower bound",
+      "uiSeconds": 218.167,
+      "capturedWorkflowState": "completed",
+      "aggregated": {
+        "elapsedMilliseconds": 135477,
+        "inputTokens": 11380,
+        "outputTokens": 13971,
+        "subagentCount": 7,
+        "toolInvocationCount": 0
+      },
+      "sourceSHA256": "4e528e3b9dd3fc0d7f03f077ee10f9363d66099a13f83655815ed6dd2d28b7bf",
+      "answerSHA256": "e8bcbff23b7d1f0b3c142c9e952eb6c2483a3668429f3f37e993466999ff2c0f",
+      "exactAnswer": {
+        "marker": "EVAL_SCHEDULE",
+        "makespan": 8,
+        "lowerBound": 8,
+        "schedule": [
+          {
+            "id": "A",
+            "start": 0,
+            "end": 3,
+            "worker": 1
+          },
+          {
+            "id": "B",
+            "start": 0,
+            "end": 2,
+            "worker": 2
+          },
+          {
+            "id": "C",
+            "start": 3,
+            "end": 7,
+            "worker": 1
+          },
+          {
+            "id": "D",
+            "start": 3,
+            "end": 5,
+            "worker": 2
+          },
+          {
+            "id": "E",
+            "start": 7,
+            "end": 8,
+            "worker": 1
+          }
+        ]
+      },
+      "externalChecksPassed": true,
+      "observedChildren": [
+        {
+          "ordinal": 1,
+          "label": "derive_lower_bound",
+          "phase": "model_and_verify",
+          "status": "completed",
+          "startSeconds": 0.0,
+          "endSeconds": 47.732,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 2,
+          "label": "construct_optimal_schedule",
+          "phase": "model_and_verify",
+          "status": "completed",
+          "startSeconds": 0.029,
+          "endSeconds": 28.688,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 3,
+          "label": "verify_feasibility_and_optimality",
+          "phase": "model_and_verify",
+          "status": "completed",
+          "startSeconds": 0.033,
+          "endSeconds": 31.971,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 4,
+          "label": "prepare_deliverable",
+          "phase": "model_and_verify",
+          "status": "completed",
+          "startSeconds": 0.037,
+          "endSeconds": 46.433,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 5,
+          "label": "coordinator",
+          "phase": "Coordinate next stage",
+          "status": "completed",
+          "startSeconds": 47.769,
+          "endSeconds": 60.746,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 6,
+          "label": "draft",
+          "phase": "Draft and acceptance review",
+          "status": "completed",
+          "startSeconds": 60.78,
+          "endSeconds": 72.49,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 7,
+          "label": "acceptance-review",
+          "phase": "Draft and acceptance review",
+          "status": "completed",
+          "startSeconds": 72.563,
+          "endSeconds": 98.321,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "web-corrected",
+      "code": "c0f3570",
+      "evaluation": "failed",
+      "reason": "Repeated invalid plans and temporary reservation failures exhausted coordination",
+      "uiSeconds": 974.599,
+      "capturedWorkflowState": "failed",
+      "aggregated": {
+        "elapsedMilliseconds": 862032,
+        "inputTokens": 205363,
+        "outputTokens": 77288,
+        "subagentCount": 13,
+        "toolInvocationCount": 22
+      },
+      "sourceSHA256": "4e528e3b9dd3fc0d7f03f077ee10f9363d66099a13f83655815ed6dd2d28b7bf",
+      "answerSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "incident-review-contract",
+      "code": "7451fdf",
+      "evaluation": "quality-failed",
+      "reason": "UI passed, but the gap prose field caused a false rejection and redundant work; recovery guarantees were incomplete",
+      "uiSeconds": 776.966,
+      "capturedWorkflowState": "completed",
+      "aggregated": {
+        "elapsedMilliseconds": 690870,
+        "inputTokens": 52168,
+        "outputTokens": 59875,
+        "subagentCount": 12,
+        "toolInvocationCount": 0
+      },
+      "sourceSHA256": "691f8c0c62a9c28510a6bf377955e8e79d4a3288cf41b19df89936456b56bbbe",
+      "answerSHA256": "fcb59ef77f4506009bfbcd62372cf202bc26cc8bb0468b177a5d3d9bc6460ab9"
+    },
+    {
+      "id": "incident-final",
+      "code": "320992a",
+      "evaluation": "quality-failed",
+      "reason": "UI passed, but attempted writes became asserted executions and guarantees exceeded the supplied evidence",
+      "uiSeconds": 442.902,
+      "capturedWorkflowState": "completed",
+      "aggregated": {
+        "elapsedMilliseconds": 353885,
+        "inputTokens": 23217,
+        "outputTokens": 38152,
+        "subagentCount": 7,
+        "toolInvocationCount": 0
+      },
+      "sourceSHA256": "df74539e2176fc249be8088ac54509e9e4b2a898ef600d91599a106747ec798f",
+      "answerSHA256": "3025138d84e0f9dffaa2d6ee0f27aaa0d69ad940a8751e09436414f5905198c5",
+      "qualityCounterexamples": [
+        {
+          "quote": "The provider executed the write for `handle-A` and later reported completion. It then accepted or executed the write for `handle-B`.",
+          "reason": "The input states that both handles attempted the write; execution/acceptance of both effects was not established."
+        },
+        {
+          "quote": "With these fixes, duplicate external writes are prevented by the local durable state machine, not by reliance on provider idempotency or manual reconciliation.",
+          "reason": "Local state alone cannot establish an unknown remote effect after a lost acknowledgement. The answer also requires provider idempotency elsewhere, contradicting this unconditional guarantee."
+        }
+      ]
+    },
+    {
+      "id": "web-before-query",
+      "code": "320992a",
+      "evaluation": "failed",
+      "reason": "Relevant middle-source fields were absent from bounded handoff; remaining evidence requirements were unresolved",
+      "uiSeconds": 1055.768,
+      "capturedWorkflowState": "failed",
+      "aggregated": {
+        "elapsedMilliseconds": 943136,
+        "inputTokens": 264852,
+        "outputTokens": 93337,
+        "subagentCount": 13,
+        "toolInvocationCount": 23
+      },
+      "sourceSHA256": "df74539e2176fc249be8088ac54509e9e4b2a898ef600d91599a106747ec798f",
+      "answerSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "web-query",
+      "code": "9b0482d",
+      "evaluation": "failed",
+      "reason": "Required/optional uncertainty was overconstrained and remaining primary details were unavailable after the tool budget",
+      "uiSeconds": 894.46,
+      "capturedWorkflowState": "failed",
+      "aggregated": {
+        "elapsedMilliseconds": 780733,
+        "inputTokens": 296794,
+        "outputTokens": 84780,
+        "subagentCount": 15,
+        "toolInvocationCount": 24
+      },
+      "sourceSHA256": "3ed566d61eb681f795fb016afb9cb3302146b75ee37a8d308b1ba54b81e038be",
+      "answerSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "web-partial-gate",
+      "code": "1e2864d",
+      "evaluation": "failed",
+      "reason": "The host rejected delivery despite usable partial artifacts; the subsequent Europe task was interrupted",
+      "uiSeconds": 905.298,
+      "capturedWorkflowState": "running",
+      "aggregated": {
+        "elapsedMilliseconds": 787515,
+        "inputTokens": 311911,
+        "outputTokens": 88166,
+        "subagentCount": 16,
+        "toolInvocationCount": 24
+      },
+      "sourceSHA256": "db923d2e729282a8a4cd4ae8db33382048a9db5562ad6d85f63e39f22acb7eb7",
+      "answerSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "snapshotNote": "Snapshot predates the final UI failure; UI outcome and duration come from the completed test log."
+    },
+    {
+      "id": "api-usable",
+      "code": "00f1032",
+      "evaluation": "failed",
+      "reason": "Repeated audits of unrequested details consumed remaining capacity",
+      "uiSeconds": 1318.936,
+      "capturedWorkflowState": "failed",
+      "aggregated": {
+        "elapsedMilliseconds": 1201923,
+        "inputTokens": 315388,
+        "outputTokens": 127925,
+        "subagentCount": 20,
+        "toolInvocationCount": 23
+      },
+      "sourceSHA256": "d10c3e10fb944da1216b7b42fc72b631937db7d9b5c7ec93d4a4b33e14a87698",
+      "answerSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "europe-first",
+      "code": "00f1032",
+      "evaluation": "failed",
+      "reason": "Insufficient verified group and country coverage before budget exhaustion",
+      "uiSeconds": 606.112,
+      "capturedWorkflowState": "failed",
+      "aggregated": {
+        "elapsedMilliseconds": 487913,
+        "inputTokens": 145146,
+        "outputTokens": 90932,
+        "subagentCount": 9,
+        "toolInvocationCount": 21
+      },
+      "sourceSHA256": "d10c3e10fb944da1216b7b42fc72b631937db7d9b5c7ec93d4a4b33e14a87698",
+      "answerSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "europe-search-content",
+      "code": "7a89e1b",
+      "evaluation": "failed",
+      "reason": "Search returned page content and ELSS was found, but repeated extraction and oversized worker outputs exhausted the budget without delivery",
+      "uiSeconds": null,
+      "capturedWorkflowState": "failed",
+      "aggregated": {
+        "elapsedMilliseconds": 1321789,
+        "inputTokens": 277570,
+        "outputTokens": 161501,
+        "subagentCount": 17,
+        "toolInvocationCount": 24
+      },
+      "sourceSHA256": "c2825c8ebe0e720fcde086208c45aacd25ccfe1ee47a145dfbd30ea5e00fa420",
+      "answerSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "observedChildren": [
+        {
+          "ordinal": 1,
+          "label": "t1_west_nordic",
+          "phase": "wave1_discovery",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 0.0,
+          "endSeconds": 168.807,
+          "tools": {
+            "completed": 6,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 2,
+          "label": "t2_south_east",
+          "phase": "wave1_discovery",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 0.003,
+          "endSeconds": 175.69,
+          "tools": {
+            "completed": 6,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 3,
+          "label": "t3_specialized_techniques",
+          "phase": "wave1_discovery",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 0.007,
+          "endSeconds": 184.165,
+          "tools": {
+            "completed": 6,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 4,
+          "label": "coordinator",
+          "phase": "Coordinate next stage",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 184.987,
+          "endSeconds": 259.104,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 5,
+          "label": "t4_extract_candidates_from_artifacts",
+          "phase": "group_expansion_and_verification",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 259.876,
+          "endSeconds": 469.128,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 6,
+          "label": "t5_verify_additional_groups_official",
+          "phase": "group_expansion_and_verification",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 259.883,
+          "endSeconds": 480.091,
+          "tools": {
+            "completed": 2,
+            "failed": 1
+          }
+        },
+        {
+          "ordinal": 7,
+          "label": "t6_fill_missing_known_group_details",
+          "phase": "group_expansion_and_verification",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 259.891,
+          "endSeconds": 371.636,
+          "tools": {
+            "completed": 1,
+            "failed": 2
+          }
+        },
+        {
+          "ordinal": 8,
+          "label": "t7_gap_analysis",
+          "phase": "group_expansion_and_verification",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 371.68,
+          "endSeconds": 443.263,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 9,
+          "label": "coordinator",
+          "phase": "Coordinate next stage",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 480.986,
+          "endSeconds": 579.932,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 10,
+          "label": "t8_extract_all_efficient_ai_groups",
+          "phase": "consolidate_candidate_groups",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 580.999,
+          "endSeconds": 707.721,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 11,
+          "label": "coordinator",
+          "phase": "Coordinate next stage",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 708.639,
+          "endSeconds": 762.685,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 12,
+          "label": "t9_extract_all_candidates_from_recorded_sources",
+          "phase": "synthesize_existing_evidence",
+          "status": "failed",
+          "journalOutcome": "failed",
+          "startSeconds": 763.597,
+          "endSeconds": 945.613,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 13,
+          "label": "t10_reconcile_candidates_and_gap_check",
+          "phase": "synthesize_existing_evidence",
+          "status": "failed",
+          "journalOutcome": "failed",
+          "startSeconds": 945.675,
+          "endSeconds": 945.86,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 14,
+          "label": "coordinator",
+          "phase": "Coordinate next stage",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 946.811,
+          "endSeconds": 999.391,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 15,
+          "label": "t11_extract_verified_groups_from_sources",
+          "phase": "work_extract_and_audit",
+          "status": "failed",
+          "journalOutcome": "failed",
+          "startSeconds": 1000.369,
+          "endSeconds": 1125.102,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 16,
+          "label": "t12_gap_and_verification_audit",
+          "phase": "work_extract_and_audit",
+          "status": "completed",
+          "journalOutcome": "completed",
+          "startSeconds": 1125.159,
+          "endSeconds": 1203.243,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        },
+        {
+          "ordinal": 17,
+          "label": "coordinator",
+          "phase": "Coordinate next stage",
+          "status": "failed",
+          "journalOutcome": "failed",
+          "startSeconds": 1204.262,
+          "endSeconds": 1272.266,
+          "tools": {
+            "completed": 0,
+            "failed": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "procurement-supervisor",
+      "code": "2cf6b24",
+      "evaluation": "answer-passed-ui-count-failed",
+      "reason": "All original exact answer checks passed. UI failed only because it required three children; the supervisor solved the closed-data task directly. No corrective prompt or model rerun.",
+      "uiSeconds": 113.881,
+      "capturedWorkflowState": "completed",
+      "aggregated": {
+        "elapsedMilliseconds": 23285,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "subagentCount": 0,
+        "toolInvocationCount": 0
+      },
+      "sourceSHA256": "be379911adc6cc217b4ef8b09c57d18a9a05a4fafecfc6eee8ed54a6d08dc02f",
+      "answerSHA256": "ab7a6622483c0e270f2cdb73b5656e266a2b8185cd6ac7380c32d7cee7d9990c",
+      "exactAnswer": {
+        "marker": "EVAL_PURCHASE",
+        "selectedIDs": [
+          "A",
+          "D"
+        ],
+        "totalPrice": 940,
+        "totalThroughput": 200,
+        "totalPower": 95,
+        "feasiblePairs": [
+          [
+            "A",
+            "D"
+          ],
+          [
+            "A",
+            "E"
+          ],
+          [
+            "B",
+            "E"
+          ]
+        ]
+      },
+      "externalChecksPassed": true,
+      "accountingNote": "This pre-fix UI aggregate excludes the initial supervisor model call; zero child tokens is not zero total model usage."
+    }
+  ],
+  "mechanicalChecks": {
+    "offlineUI": {
+      "passed": 1,
+      "uiSeconds": 88.066,
+      "capabilityEvidence": false
+    },
+    "buildFailure": {
+      "code": "c53c274",
+      "reason": "Date formatter argument label corrected before model execution",
+      "modelExecution": false
+    }
+  },
+  "knownPositiveReference": {
+    "group": "Embedded Learning and Sensing Systems (ELSS)",
+    "institution": "TU Graz",
+    "countryCode": "AT",
+    "lead": "Olga Saukh",
+    "primaryURL": "https://www.tugraz.at/en/arbeitsgruppen/iti-teams/elss/team-contact",
+    "includedInModelPrompt": false
+  },
+  "pending": [
+    "SupervisorV2.xcresult: API comparison and Europe research at 2cf6b24"
+  ]
+}

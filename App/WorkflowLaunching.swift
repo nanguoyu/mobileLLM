@@ -502,7 +502,7 @@ public struct AppDynamicWorkflowProjection: Hashable, Sendable {
     public let reconciliationCallID: WorkflowAgentCallID?
     public let failure: String?
 
-    init(_ projection: WorkflowRunProjectionV1) {
+    init(_ projection: WorkflowRunProjectionV1, preparationUsage: AgentUsage = .zero) throws {
         runID = projection.runID
         state = projection.state
         currentPhase = projection.currentPhase
@@ -550,7 +550,7 @@ public struct AppDynamicWorkflowProjection: Hashable, Sendable {
             )
         }
         completedCallCount = projection.outcomes.count
-        usage = projection.usage
+        usage = try projection.usage.aggregating(preparationUsage)
         output = projection.output
         reconciliationCallID = projection.reconciliationCallID
         failure = projection.failure
@@ -765,7 +765,8 @@ public actor AppDynamicWorkflowService {
     }
 
     public func projection(runID: WorkflowRunID) async throws -> AppDynamicWorkflowProjection? {
-        try await engine.projection(runID: runID).map(AppDynamicWorkflowProjection.init)
+        guard let projection = try await engine.projection(runID: runID) else { return nil }
+        return try await presentation(projection)
     }
 
     public func recoveredCandidate(
@@ -779,8 +780,18 @@ public actor AppDynamicWorkflowService {
         else { return nil }
         return AppDynamicWorkflowRecoveredCandidate(
             savedScript: script,
-            projection: AppDynamicWorkflowProjection(projection)
+            projection: try await presentation(projection)
         )
+    }
+
+    private func presentation(_ projection: WorkflowRunProjectionV1) async throws -> AppDynamicWorkflowProjection {
+        // Preparation is a real model call even when it returns the answer without delegating.
+        // Derive its usage afresh from the journal, so repeated projection cannot double-count it.
+        let parent = try await repository.loadRunFacts(for: projection.launch.initiatingRunID)
+        let role = parent?.submission?.request.payload.role
+        let preparation = role == "workflow-coordinator" || role == "workflow-generator"
+            ? parent?.projection.cumulativeUsage ?? .zero : .zero
+        return try AppDynamicWorkflowProjection(projection, preparationUsage: preparation)
     }
 
     public func resolvedOutput(runID: WorkflowRunID) async throws -> CanonicalJSON? {
