@@ -2125,6 +2125,52 @@
       }
     },
     {
+      "id": "AHT-DYNAMIC-LIVE-001",
+      "title": "Native production runtime live multi-stage task evaluation",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-DYNAMIC-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/test11TransactionalMigrationWithDependentReview"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/test12MaintenancePlanAndOutageReplanning"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/test13IncidentEvidenceAndSafeRecovery"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/testExecutableOracleRejectsDataLossNonatomicityAndWeakUniqueness"
+        }
+      ],
+      "platforms": [
+        "ios-simulator",
+        "ios-device"
+      ],
+      "verificationTiers": [
+        "nightly",
+        "release-candidate"
+      ],
+      "requiredEvidence": [
+        "Original goal and final artifact, real online provider identity, exact source digest, actual usage and durable call sequences",
+        "At least three completed worker waves with exact prior-result handoffs and at least three distinct worker task IDs",
+        "Executable SQLite migration invariants including atomic failure and idempotency; optimal baseline/outage schedules and actual Calculator result; evidence-bounded incident decisions"
+      ],
+      "determinism": {
+        "fixedSeedRequired": false,
+        "rotatingSeedRequired": false
+      },
+      "notes": "Real model calls require MOBILELLM_LIVE_WORKFLOWS=1. Chat and evaluations share prepareCoordinatedWorkflow. Ordinary test runs skip model calls; the offline oracle counterexample test remains cheap and deterministic."
+    },
+    {
       "id": "AHT-DYNAMIC-EXPLORATION-001",
       "title": "Real-model Dynamic Workflow complex-goal decomposition and answer quality matrix",
       "status": "active",

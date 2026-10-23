@@ -146,7 +146,7 @@ targets:
   # path is covered by the generic-device build gate.
   mobileLLMUnitTests:
     type: bundle.unit-test
-    platform: macOS
+    supportedDestinations: [iOS, macOS]
     sources:
       - AppUnitTests
     settings:
@@ -154,9 +154,9 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.example.mobileLLMUnitTests
         SWIFT_VERSION: "6.0"
-        # macOS app bundles put the executable under Contents/MacOS; XcodeGen's inferred TEST_HOST
-        # points at the bundle root, which xcodebuild rejects.
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/mobileLLM.app/Contents/MacOS/mobileLLM"
+        # Keep the app-unit entry point available both on Simulator and on the native Mac host.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/mobileLLM.app/mobileLLM"
+        "TEST_HOST[sdk=macosx*]": "$(BUILT_PRODUCTS_DIR)/mobileLLM.app/Contents/MacOS/mobileLLM"
         BUNDLE_LOADER: "$(TEST_HOST)"
     dependencies:
       - target: mobileLLM

@@ -1861,6 +1861,7 @@
         "AHT-DYNAMIC-UI-001",
         "AHT-DYNAMIC-UI-002",
         "AHT-DYNAMIC-EXPLORATION-001",
+        "AHT-DYNAMIC-LIVE-001",
         "AHT-DYNAMIC-DEVICE-001"
       ],
       "requiredEvidence": [

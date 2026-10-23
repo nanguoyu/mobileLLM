@@ -219,7 +219,7 @@ public enum CoordinatedWorkflow {
                     + '\nLOGICAL TASK ID: ' + task.id + '\nPRIOR INSTRUCTIONS:\n' + serialize(item.priorInstructions)
                     + '\n<input-artifacts>\n' + serialize(item.inputs) + '\n</input-artifacts>'
                     + '\n<recorded-web-evidence>\n' + serialize(item.recorded) + '\n</recorded-web-evidence>',
-                    {label:task.id,maxToolCalls:task.maxToolCalls});
+                    {label:task.id,agentType:'workflow-worker',maxToolCalls:task.maxToolCalls});
                   return {taskID:task.id,instruction:task.instruction,status:typeof result === 'string' && result.trim().length > 0 ? 'completed' : 'failed',
                     content:typeof result === 'string' ? result : 'No worker result was returned.'};
                 } catch (error) {
@@ -256,7 +256,7 @@ public enum CoordinatedWorkflow {
             + '\nHOST FEEDBACK:\n' + feedback + '\nREMAINING ALLOCATION:\n'
             + serialize({workerInvocations:12-records.length,tools:toolsRemaining(accounting),modelAttempts:Math.max(0,accounting.limits.modelAttempts-accounting.consumed.modelAttempts),supervisorTurns:12-turn});
           decision = await agent(frame + '\n<results>\n' + serialize(resultContext(Math.max(0,64000-byteLength(frame)))) + '\n</results>',
-            {label:'coordinator',maxToolCalls:0,schema:decisionSchema});
+            {label:'coordinator',agentType:'workflow-supervisor',maxToolCalls:0,schema:decisionSchema});
           if (decision === null) { throw new Error('Task incomplete: supervisor unavailable.'); }
         }
         throw new Error('Task incomplete: supervisor allowance exhausted.');

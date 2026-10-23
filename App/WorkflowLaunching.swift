@@ -393,33 +393,8 @@ final class WorkflowLauncher {
         ) else {
             throw WorkflowLaunchError.snapshotUnavailable("dynamic workflow snapshot unavailable")
         }
-        if !AppFrozenInputBuilder.isOnline(snapshot: snapshot) {
-            try await assembly.requestBuilder.localModels.register(
-                assembly.frozenBuilder.registration(snapshot: snapshot)
-            )
-        }
-        let runDate = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
-        let coordinator = try assembly.makeWorkflowCoordinator(snapshot: snapshot, runDate: runDate)
-        let handleID = try await assembly.executor.submit(coordinator, commandID: AgentCommandID())
-        let handle = try await assembly.executor.attach(to: handleID)
-        guard let result = try await waitForTerminalResult(handle: handle),
-              result.status.state == .completed,
-              let plan = result.answer?.structuredOutput
-        else {
-            throw WorkflowLaunchError.planGenerationFailed("The coordinator did not return an executable plan.")
-        }
-        return try await assembly.dynamicWorkflows.prepareCandidate(
-            source: CoordinatedWorkflow.source,
-            scriptID: WorkflowScriptID(),
-            version: 1,
-            scope: scope,
-            args: try CanonicalJSON(.object([
-                "goal": .string(goal), "plan": plan,
-                "runDate": .string(runDate),
-                "availableTools": .array(try assembly.availableWorkflowTools(snapshot: snapshot).map(JSONValue.string)),
-            ])),
-            initiatingRunID: coordinator.runID,
-            runID: WorkflowRunID(rawValue: workflowID)
+        return try await assembly.prepareCoordinatedWorkflow(
+            snapshot: snapshot, runID: WorkflowRunID(rawValue: workflowID), scope: scope
         )
     }
 
@@ -462,6 +437,48 @@ final class WorkflowLauncher {
         }
     }
 
+
+
+}
+
+/// One production launch path shared by chat and opt-in runtime evaluations.
+@MainActor
+extension AgentRuntimeAssembly {
+    func prepareCoordinatedWorkflow(
+        snapshot: AgentRunRequestSnapshot,
+        runID: WorkflowRunID,
+        scope: WorkflowScriptScopeV1 = .conversation
+    ) async throws -> AppDynamicWorkflowCandidatePreview {
+        if !AppFrozenInputBuilder.isOnline(snapshot: snapshot) {
+            try await requestBuilder.localModels.register(
+                frozenBuilder.registration(snapshot: snapshot)
+            )
+        }
+        let runDate = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
+        let coordinator = try makeWorkflowCoordinator(snapshot: snapshot, runDate: runDate)
+        let handleID = try await executor.submit(coordinator, commandID: AgentCommandID())
+        let handle = try await executor.attach(to: handleID)
+        guard let result = try await waitForTerminalResult(handle: handle),
+              result.status.state == .completed,
+              let plan = result.answer?.structuredOutput
+        else {
+            throw WorkflowLaunchError.planGenerationFailed("The coordinator did not return an executable plan.")
+        }
+        return try await dynamicWorkflows.prepareCandidate(
+            source: CoordinatedWorkflow.source,
+            scriptID: WorkflowScriptID(),
+            version: 1,
+            scope: scope,
+            args: try CanonicalJSON(.object([
+                "goal": .string(snapshot.text), "plan": plan,
+                "runDate": .string(runDate),
+                "availableTools": .array(try availableWorkflowTools(snapshot: snapshot).map(JSONValue.string)),
+            ])),
+            initiatingRunID: coordinator.runID,
+            runID: runID
+        )
+    }
+
     private func waitForTerminalResult(
         handle: any AgentExecutionHandle
     ) async throws -> AgentResult? {
@@ -473,7 +490,6 @@ final class WorkflowLauncher {
         }
         return try await handle.result()
     }
-
 
 }
 
