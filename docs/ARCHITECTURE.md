@@ -131,15 +131,14 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   never races the durable ledger.
 - **Dynamic workflows** (`/workflow <goal>`, spec §34): the primary orchestration path since 2026-08-09.
   The `/workflow` marker may appear anywhere in the message; the remaining text is the goal. `WorkflowLauncher`
-  (App) first submits an ordinary durable *generator* run — tools disabled — whose answer is a small
-  JavaScript orchestration script beginning with a literal `export const meta = {...}`.
-  The generator's `suppressModelTools` flag hides tools from its own model passes while preserving the
-  initiating conversation's full catalog and policy in the durable snapshot. Research children inherit
-  those original tools and the pinned web-service account; they do not inherit the generator-only
-  suppression. Recovery uses the same persisted catalog rather than rereading current settings.
-  `DynamicWorkflowScriptAnalyzer` rejects anything outside the closed vocabulary (no `eval`, classes, `this`,
-  regex literals, `Date`, `Symbol`, `Proxy`, template-literal tricks, or agent options other than
-  `label/phase/schema/model/agentType/isolation/stallMs/maxToolCalls`); one analyzer-guided repair pass is allowed. The
+  (App) first submits a durable, schema-constrained *coordinator* call. It extracts acceptance criteria
+  and proposes only the next work wave. The app then saves the exact `CoordinatedWorkflow` program with
+  the original goal, criteria, first decision and enabled tool IDs in immutable args. Models choose
+  tasks as data; they do not write the default scheduler or its completion gate.
+  The coordinator's `suppressModelTools` flag hides its own tools while retaining the conversation's
+  catalog, policy and selected web-service account for children. Recovery uses that frozen catalog.
+  `DynamicWorkflowScriptAnalyzer` still validates the program and accepts archived authored scripts
+  under the same V1 vocabulary. The
   accepted script is content-addressed, journaled, and digest-bound to a launch approval (`/workflow` itself
   is the launch intent, so no extra Once/Always/Deny prompt), then `DynamicWorkflowEngine` runs it in
   `JavaScriptCoreWorkflowRuntime`: the script sees only `agent(prompt, options)`, `parallel(thunks)`,
@@ -162,11 +161,24 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   design — is retained for `WorkflowLauncher.resume` of legacy summaries that carry a `WorkflowPlan`, and
   for `MultiAgentWorkflowIntegrationTests`. New launches never use it.
 
-Generated research/review workflows prefer Markdown briefs and pass complete upstream results and
-source URLs explicitly. A schema is recommended when the script needs fields for computation or
-branching. These prompt instructions do not guarantee useful answers or compliance with the user's
-requested parallel plan. The [2026-10-22 research evaluation](evaluations/2026-10-22-dynamic-research.md)
-distinguishes actual handoff evidence from task-quality failures.
+`CoordinatedWorkflow` executes independent workers in parallel and provides selected prior artifacts
+by stable IDs to dependent workers. Initial criteria remain fixed. Subsequent coordinator decisions
+cannot remove criteria, reuse task IDs, refer to future artifacts or overspend the declared allocation.
+The program allows up to 12 workers, 24 allocated tool calls, six subsequent coordination decisions and
+two draft/review cycles, all within the existing runtime budgets. These bounds need not all fit in one
+run. Exhaustion is a failure, not permission to increase the budget.
+
+Workers return bounded structured results. A failed worker is retained as a failed record while
+successful siblings remain available. The coordinator can commission follow-up work, request delivery,
+or explain a blocking condition. The writer receives the actual artifacts. The reviewer receives the
+original goal, fixed criteria, draft, artifact index and recorded web evidence, avoiding duplication of
+every intermediate body. Approval must cover every criterion exactly once, with evidence, no unmet or
+unknown checks and no material issues. Rejection returns to coordination. The runtime prevents a
+caught reconciliation error from dispatching more children or committing a successful workflow.
+
+This gate enforces the review process; the reviewer remains a fallible model. External task oracles
+and source audits measure outcome quality. Earlier supervised research reports are historical debugging
+evidence, not proof of autonomous coverage. See [STATUS.md](STATUS.md) for actual run outcomes.
 
 The JavaScript bridge trims only outer prompt whitespace before host dispatch, prefix hashing and
 child construction. Interior newlines and indentation remain intact. Safe host errors are recorded even
@@ -174,15 +186,14 @@ when a script catches them and returns a generic message.
 
 `unique(strings)` performs bounded, checkpointed whole-string deduplication in first-occurrence order.
 It rejects non-string entries, getters, and oversized collections without invoking a user iterator.
-`webEvidence()` reads settled children from the current workflow and returns journal-derived web
+`webEvidence()` reads settled children reached by the current execution prefix and returns journal-derived web
 observations, bounded verbatim excerpts, and observed source URLs. It performs no site requests, cannot
 select another workflow, excludes non-web and remote tool namespaces, and keeps failed reads distinct
 from retrieved pages. Search summaries never become page reads because a model calls them verified.
 The packet has exact top-level keys `observations`, `sources`, and `truncated`. Observations contain
 per-excerpt truncation flags and content digests; the external content itself remains untrusted.
-Generated scripts pass the complete packet with `serialize(packet)` to avoid reconstructing optional fields.
-The session caches a packet only while its durable workflow sequence remains unchanged. Fact-checking
-stages consume this evidence, while final narrative synthesis should not regenerate verified rows.
+The program passes the packet with `serialize(packet)`. Its cache also invalidates when replay reaches
+another settled child. Later journaled evidence cannot leak backward into an earlier replayed prompt.
 
 The app's workflow envelope admits 32 model attempts and 24 tool calls by default. Cumulative input
 and output capacities cover the admitted model passes while per-attempt ceilings stay unchanged.
@@ -191,8 +202,7 @@ Capacity calculation, exact request construction and reservation occur without a
 point, so simultaneous admissions cannot spend the same remainder. Settled and reserved cumulative
 usage is subtracted; per-operation ceilings remain reusable. Recovery fences admission until submitted
 children settle. A final child can be admitted with zero remaining tool calls without increasing the
-workflow envelope. The optional `maxToolCalls` cap narrows each child before reservation. Generated candidates must
-declare it, so a four-researcher/two-verifier workflow can reserve four calls per researcher and
+workflow envelope. The optional `maxToolCalls` cap narrows each child before reservation. The coordination program declares it on every call, so a four-researcher/two-verifier wave can reserve four calls per researcher and
 three per verifier instead of the first verifier hoarding a full six-call share. Zero remaining
 tool capacity suppresses advertisement and results in an explicit `tool_choice: none`. Missing
 caps retain legacy policy, and changing a cap invalidates the affected replay prefix.

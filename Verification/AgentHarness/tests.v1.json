@@ -1954,6 +1954,34 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testAgentPromptCanonicalizesOuterWhitespaceBeforeHostDispatch"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testParallelWorkDependentHandoffAndRejectedDeliveryAreCorrectedInsideOneRun"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testMissingDependencyIsRejectedBeforeDispatchAndIncompleteReviewCannotApprove"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testFailedWorkerPreservesSiblingArtifactAndCannotBecomeSuccessfulEvidence"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testFrozenProgramAndSchemasPassTheSameAnalyzerAndSchemaEnforcement"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.CoordinatedWorkflowTests/testStructuredRepairDiagnosticLocatesTheConstraintWithoutEchoingOutput"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testRecoveredEvidenceContainsOnlyCallsReachedByTheReplayedPrefix"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowAdversarialTests/testUncertainChildStopsForReconciliationWithoutSettlingOrRetrying"
         }
       ],
       "platforms": [
@@ -2089,6 +2117,22 @@
         {
           "kind": "ui-test",
           "value": "DynamicWorkflowExplorationUITests/test99AdHocGoalFromEnvironment"
+        },
+        {
+          "kind": "ui-test",
+          "value": "DynamicWorkflowExplorationUITests/test06ClosedCorpusCoverageAndAliases"
+        },
+        {
+          "kind": "ui-test",
+          "value": "DynamicWorkflowExplorationUITests/test07ConstrainedProcurementOptimality"
+        },
+        {
+          "kind": "ui-test",
+          "value": "DynamicWorkflowExplorationUITests/test08DependencyScheduleFeasibilityAndLowerBound"
+        },
+        {
+          "kind": "ui-test",
+          "value": "DynamicWorkflowExplorationUITests/test09SearchServiceComparisonFromPrimarySources"
         }
       ],
       "platforms": [
@@ -2100,8 +2144,9 @@
         "release-candidate"
       ],
       "requiredEvidence": [
-        "Exact generated JavaScript, durable child-call projection, terminal state, actual final assistant answer, semantic-oracle failures, and screenshot retained in xcresult",
-        "Feasibility, constrained planning, architecture, incident, injection-boundary, prefix/suffix command, and parameterized future-goal scenarios"
+        "Exact versioned JavaScript and model-created decisions, durable child-call projection, terminal state, actual final assistant answer, semantic-oracle failures, and screenshot retained in xcresult",
+        "Feasibility, constrained planning, architecture, incident, injection-boundary, prefix/suffix command, and parameterized future-goal scenarios",
+        "Closed-corpus recall/alias oracle, exhaustive feasible-pair optimum, dependency/resource schedule checks, and primary-source comparison; no maintainer-supplied intermediate answers"
       ],
       "determinism": {
         "fixedSeedRequired": false,

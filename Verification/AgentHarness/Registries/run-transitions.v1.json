@@ -7,10 +7,11 @@
   "completeness": "complete",
   "sourceSpecification": {
     "path": "spec.md",
-    "sha256": "9fae843d17caa198c01b3dc2b37cc3a60c7e8a0616ccd1e22a71df618eb729ac",
+    "sha256": "f46a1213c95f72a01ef31ce62e6ebce87fdc6769feb09f13ab5bab9859f66870",
     "section": "8, 9.3, and 22",
     "lineStart": 222,
-    "lineEnd": 1153
+    "lineEnd": 1153,
+    "capturedAtUTC": "2026-10-23T08:19:10Z"
   },
   "evaluationSemantics": {
     "version": 1,

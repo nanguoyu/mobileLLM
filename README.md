@@ -71,11 +71,13 @@ and release-validation work. See [Current status](docs/STATUS.md) for known gaps
 - 🧩 **Subagents + parallel tool batches + dynamic workflows.** The runtime can spawn bounded
   subagents with attenuated ceilings, run tool batches in parallel inside one run, and orchestrate a
   message-anchored **workflow** (`/workflow <goal>`, the marker may sit anywhere in the message): the
-  model writes a small orchestration script (`agent` / `parallel` / `pipeline` / `phase` / `log`), a static
-  analyzer rejects anything outside that vocabulary, the script is journaled and digest-bound, then it runs
-  in a JavaScriptCore realm with no filesystem, network, tool, or model access of its own — every child is an
-  ordinary attenuated subagent run. Runs are event-sourced (pause / resume / stop / restart-agent, prefix
-  reuse after relaunch) and the message row shows live progress, tokens, and tool-call counts.
+  model proposes acceptance criteria and the next independent work wave. A versioned coordination
+  program validates dependencies and allocations, runs the wave in parallel, preserves its artifacts,
+  and asks the coordinator what to do next. A separate reviewer checks the final draft against the
+  original goal and every criterion. Rejected drafts return to coordination; exhausted or blocked work
+  fails visibly. The same analyzed JavaScript runtime, frozen tool policy, durable journal, approval
+  boundaries, pause/resume and prefix replay execute every child. Broad task reliability is measured
+  separately from the application's own review verdict in [STATUS.md](docs/STATUS.md).
 - 🌐 **Online models (OpenAI-compatible Responses API).** Add any number of services (base URL, model
   id, API key stored in the device Keychain); one active service routes the conversation to the provider.
   Per-conversation: approval (see below), reasoning on/off + effort (low/medium/high), context length,

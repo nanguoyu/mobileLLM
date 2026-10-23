@@ -1743,7 +1743,8 @@ Primary references inspected for these constraints:
 ### 34.2 Compatibility target and script contract
 
 The public authoring model follows Claude Code Dynamic Workflows rather than exposing a graph editor or a serialized
-DAG. A model writes one plain JavaScript script; the script owns loops, branches, intermediate variables, and fan-out.
+DAG. The runtime accepts a plain JavaScript script that owns loops, branches, intermediate variables, and fan-out.
+Default app launches use the versioned coordination program described below; archived authored scripts remain replayable.
 The trusted host owns subagent execution, policy, persistence, limits, and side effects. The first statement must be a
 statically extractable pure-literal `export const meta = { ... }` with `name`, `description`, optional `whenToUse`, and
 optional phase descriptors. The remaining body supports top-level `await` and `return`.
@@ -1760,8 +1761,8 @@ The injected V1 surface is deliberately small:
   non-preemptible amplification APIs remain unavailable;
 - `unique(strings)` returns distinct string values in first-occurrence order using bounded, checkpointed traversal;
   getters, non-string entries and oversized collections are rejected without invoking user iterators;
-- `webEvidence()` reads bounded excerpts and source URLs from this workflow's settled children's recorded built-in
-  web operations. It cannot read another workflow or perform new network requests. Source content stays untrusted;
+- `webEvidence()` reads bounded excerpts and source URLs from settled children reached by the current execution
+  prefix. Later journaled calls cannot leak into earlier prompts during replay. It reads recorded built-in web operations. It cannot read another workflow or perform new network requests. Source content stays untrusted;
   tool status and retrieval kind come from the journal, and failed reads never count as retrieved page evidence;
 - `args` is the immutable JSON input supplied at launch;
 - `budget.total`, `budget.spent()`, and `budget.remaining()` expose read-only run accounting;
@@ -1796,10 +1797,24 @@ explicit `/workflow` command is converted into a non-reusable, digest-bound appr
 app starts it immediately; it does not expose redundant Once / Always / Deny launch choices. A crash-recovered candidate
 that never reached launch remains inert until Run or Cancel. Script approval never pre-approves agents' external operations.
 
-If the first generated candidate alone fails static analysis, the app may request exactly one size-bounded repair from
-the same frozen model/policy context. The rejected source is quoted as untrusted data, the replacement crosses the
-entire analyzer and immutable digest-bound launch boundary again, and a second rejection ends candidate preparation.
-Repair never executes either source, never manufactures approval, and never widens authority or budgets.
+Default `/workflow` launches use model decisions as data inside a reviewed, versioned coordination program.
+The initial coordinator extracts acceptance criteria and proposes one independent work wave. The host freezes that
+plan, the original goal and enabled tool IDs in immutable arguments. Each subsequent decision can propose work,
+request delivery or report a blocking condition. Task IDs are unique, dependencies refer only to settled artifacts,
+and every task names the original criteria it addresses. Model decisions cannot weaken those criteria or expand authority.
+Independent workers execute behind a full barrier. Their results and failures remain inspectable, and later tasks
+receive explicitly selected artifacts rather than an assumed shared context. Failed workers do not erase useful siblings.
+
+Before returning a final draft, an independently executing reviewer checks the original goal and all frozen criteria.
+The program requires one evidence-bearing satisfied check per criterion and no material issues. A boolean approval alone
+cannot complete the workflow. Rejected delivery returns to coordination for correction. Limits on worker tasks, decisions,
+allocated tool calls and review cycles are fixed at launch; they never replace or enlarge the runtime budget. Exhausted
+or blocked work must not commit a successful result. A caught child reconciliation error cannot permit additional dispatch
+or completion. The exact program, decisions and child outcomes remain bound to the existing replay/journal contract.
+
+This process gate does not certify factual or semantic correctness. Independent task oracles remain necessary. Schema
+repair must retain the provider's actual usage when available and provide a bounded schema diagnostic without echoing
+private output values or reasoning. Repeating a generic instruction without the observed constraint is insufficient.
 
 ### 34.3 Runtime isolation and replaceable sandbox provider
 
@@ -1899,7 +1914,10 @@ durable engine, child executor, selected-tool policy, approvals, and final chat 
 matrix covers at least five materially different problem shapes: current-fact feasibility research with a strict local-vs-
 cloud distinction, multi-constraint planning with fallbacks, architecture and security tradeoffs, crash-boundary incident
 analysis, and an untrusted-goal/prompt-injection boundary. `/workflow` is exercised at both the beginning and end of the
-message. A parameterized ad-hoc probe must accept newly reported complex goals without requiring a new test harness.
+message. The matrix also includes closed-corpus coverage and alias resolution, constrained optimization with exact
+arithmetic, dependency scheduling with a feasibility/optimality oracle, and primary-source API comparisons. Expected
+answers belong only to the evaluator. Each autonomous run receives one original goal with no external corrective prompts
+or transfer of intermediate answers. A parameterized ad-hoc probe accepts future goals without a separate harness.
 
 An exploratory run passes only when the candidate reaches execution, independent work is genuinely decomposed (and uses
 parallel fan-out when requested), the durable projection exposes the expected child calls, the run completes, and the
