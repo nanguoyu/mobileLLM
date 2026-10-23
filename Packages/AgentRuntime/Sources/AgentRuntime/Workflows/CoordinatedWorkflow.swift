@@ -15,6 +15,9 @@ public enum CoordinatedWorkflow {
     IDs stable. Do not replace broad coverage with an arbitrary small item count.
     Propose only the NEXT wave of 1–4 independent tasks. Different expertise or search strategies
     should cover different gaps. Dependent work belongs in a later wave after its inputs exist.
+    Use the smallest useful team, not all four slots by default. Do not commission a final writer
+    or final acceptance reviewer as a worker; the delivery action already supplies both. Avoid
+    summary-only tasks unless they resolve a real information-size or contradiction problem.
     Each task has a unique id, a concrete instruction, relevant criterion IDs, input artifact IDs,
     and a maximum tool-call allowance from 0 to 6. Initial input artifact IDs must be empty.
     Use 0 for reasoning from supplied material. Tools are limited to the user's enabled capabilities.
@@ -35,6 +38,7 @@ public enum CoordinatedWorkflow {
     Return the decision JSON. Work is a new wave of 1–4 independent tasks; inputs may name ONLY
     existing artifact IDs. Give each task a NEW id. Criteria cannot be removed or weakened.
     Choose complementary roles based on the remaining problem, not a fixed team size or phase list.
+    Do not duplicate delivery's writer/reviewer with a worker that merely drafts the final format.
     Preserve useful prior work. To inspect a full artifact, assign a task with that input ID.
     After a rejected delivery, address every material review issue before requesting delivery again.
     Delivery produces a draft and an independent acceptance review, not automatic success.

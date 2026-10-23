@@ -4,6 +4,8 @@ import AgentContracts
 @testable import AgentRuntime
 import XCTest
 
+// TEST-ID: AHT-DYNAMIC-001
+
 /// Exercises the shipped program with controlled child outcomes. These are scheduler/control-flow
 /// regressions, not evidence that a live model can solve the corresponding user tasks.
 final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
