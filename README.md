@@ -69,6 +69,13 @@ The supervisor assigns work, passes results to dependent agents, and returns the
 Open the workflow card to follow tasks and their source results, review requests, or pause and resume
 work. Completed workflows remain available from the conversation menu.
 
+Open a task and choose **Message this agent** to update it while it works, or continue its
+conversation after the workflow finishes. The agent keeps its earlier context across app restarts.
+
+<p align="center">
+  <a href="assets/demo/agent-conversation.png"><img src="assets/demo/agent-conversation.png" width="360" alt="A saved agent conversation recalls the updated seven-day retention decision after an app restart." /></a>
+</p>
+
 The task shown in the demo was started with:
 
 ```text

@@ -1,6 +1,6 @@
 # Current implementation and validation status
 
-Updated **2026-10-24** for the task workspace redesign on `main`. The dated model evaluations below
+Updated **2026-10-24** for persistent task conversations on `main`. The dated model evaluations below
 retain their original tested versions and outcomes; interface changes do not rerun or recertify them.
 [spec.md](../spec.md) defines requirements, [ARCHITECTURE.md](ARCHITECTURE.md) describes the code,
 and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
@@ -40,6 +40,36 @@ No full repository suite or paid task matrix was rerun for the UI changes.
 
 ## Autonomous collaboration: current assessment
 
+### Persistent task conversations
+
+Task details now open a continuing agent conversation. Human updates are committed before acknowledgement,
+included atomically with their model-request context, and retained through pause, cancellation and restart.
+An update arriving during generation prevents the old answer from completing the run without incorporating
+it. Later human turns use the shared executor with the task's frozen model and capability scope. The original
+workflow result and its dependency links remain historical. Follow-up usage belongs to its own turns.
+
+At `f2ef16d`, the production Simulator app made three real `deepseek-v4-flash` follow-ups to a saved storage
+agent. It retained SQLite, accepted a project name and a 14-day retention requirement, then changed retention
+to seven days. After app termination and relaunch, a question that omitted those values returned all three
+correctly. The journal contains four activations including the earlier seed, three accepted inputs and three
+request inclusions. [Public evidence](evaluations/evidence/2026-10-24-agent-sessions.json) preserves the original
+inputs, outputs, model identities and usage. This is an interactive continuation case.
+
+Focused checks cover commit interruption, stale writers, schema migration, steering, repeated turns,
+cancelled-input retention and background quiescence. The existing Simulator workflow UI scenario now also
+sends a follow-up, handles its approval, checks the visible reply and verifies that the original result is
+unchanged. It passed at `c4b4597`; its controlled transport is UI integration evidence. The actual Simulator
+interaction separately found and fixed missing automatic scrolling to new replies. Relevant runtime and
+UI-store checks, iOS and macOS builds, and the static specification verifier passed. Evidence is retained under
+`/tmp/mobilellm-harness-session-20261024/`, including `TaskSessionUI.xcresult`.
+
+The coordinator still uses the v4 program and its batch barriers. Model-authored session messaging,
+automatic reuse of these persistent sessions, dynamic dependency dispatch, goal continuation and context
+compaction remain in the [implementation plan](AGENT_HARNESS_PLAN.md). The separate iOS sandbox remains
+optional. No autonomous task matrix was rerun or promoted by the conversation work.
+
+### Earlier autonomous engineering tasks
+
 The general supervisor now completes independently checked multi-stage engineering tasks. Real online
 runs on the iPhone 17 / iOS 27 Simulator passed three different task types:
 
@@ -66,8 +96,8 @@ was repeated for prose.
 
 The earlier [research evaluation](evaluations/2026-10-23-autonomous-coordination.md) remains historical:
 its API comparison passed core checks, while the Europe answer missed ELSS. No ELSS-specific runtime rule
-was added. Research coverage and broad repeated-run reliability remain open measurements. Native persistent
-worker conversations, asynchronous peer messaging and production code-execution tools remain separate gaps.
+was added. Research coverage and broad repeated-run reliability remain open measurements. Autonomous session
+reuse, asynchronous peer messaging and production code-execution tools remain separate gaps.
 
 The [agent harness implementation plan](AGENT_HARNESS_PLAN.md) sequences persistent child sessions,
 durable messaging, dynamic task dependencies, goal continuation and long-context work. The near-term

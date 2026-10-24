@@ -7,9 +7,11 @@ continue individual agents, exchange messages, revise dependencies, and recover 
 DeepSeek Harness supplies the main architectural reference. OpenMinis supplies useful mobile
 interaction and continuation examples. Quality will be assessed through actual task outcomes.
 
-This is the implementation roadmap. Stage 1 now has durable session storage and execution APIs for
-steering, successive turns and restart recovery. Task-detail conversation controls are integrated;
-Simulator interaction acceptance remains in progress. [STATUS.md](STATUS.md) records observed results.
+This is the implementation roadmap. The first Stage 1 slice provides persistent human follow-ups,
+steering, successive activations and restart recovery through the shared executor. Task-detail controls
+passed focused Simulator interaction checks, and real online follow-ups retained changed requirements
+after relaunch. Model-authored messaging and autonomous session reuse remain to be integrated with
+workflow authority and budgets. [STATUS.md](STATUS.md) records the scope and observed results.
 The owner's separate iOS agent sandbox is unavailable for near-term integration. The harness
 milestone therefore has no dependency on that project's delivery.
 
@@ -287,8 +289,11 @@ remain contract evidence only.
 
 ## First implementation slice
 
-Start Stage 1 with one child session, durable input admission and repeated activation through the
-existing executor. Deliver a single real interaction: delegate a task, append a requirement while
-it runs, inspect its result, relaunch, and continue the same child with its recorded context.
-Prove acceptance and recovery boundaries before expanding to a task board. This first slice
-delivers a missing collaboration capability without waiting for or replacing the sandbox project.
+The first slice now supports one continuing child conversation through the existing executor.
+Deterministic execution checks cover updates during generation and interruption boundaries. Real
+Simulator interactions cover subsequent requirements and recall after app relaunch.
+
+Next, bind parent and child messages to the actual sending agent and the workflow's existing budget,
+then let the coordinator reuse sessions automatically. Automatic agents must not use the human-turn
+API to obtain fresh budgets. Task dependencies and per-result dispatch follow those authority and
+ownership rules. This work continues without a dependency on the separate sandbox project.

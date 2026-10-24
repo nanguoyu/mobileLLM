@@ -1,0 +1,360 @@
+{
+  "sessionID": "0395985b-8c51-5d11-b646-e5598e1a56a6",
+  "schemaVersion": 6,
+  "fixtureTransport": false,
+  "scenario": "Real online child follow-ups, changed requirement, application restart, and recall without repeating the values",
+  "inputs": [
+    {
+      "id": "38e7a7dd-590c-4e0b-b7d3-a1f92a442d08",
+      "mode": "nextTurn",
+      "text": "The project is named Cedar. Keep the database choice from your earlier answer and set deleted-recipe retention to 14 days. Reply under 60 words, naming the project, database and retention period. Do not use tools.",
+      "acceptedAt": 1792867660020
+    },
+    {
+      "id": "4db68623-5a45-4740-bcf8-d0c262287723",
+      "mode": "nextTurn",
+      "text": "Change retention to 7 days; keep the other decisions. One sentence.",
+      "acceptedAt": 1792867865285
+    },
+    {
+      "id": "e1c0a706-84f3-451a-8b36-f0f1732daefe",
+      "mode": "nextTurn",
+      "text": "Which project, database and current retention did we settle on? Reply in one sentence.",
+      "acceptedAt": 1792867977853
+    }
+  ],
+  "activations": [
+    {
+      "runID": "0395985b-8c51-5d11-b646-e5598e1a56a6",
+      "inputIDs": [],
+      "state": "completed",
+      "createdAt": 1792845371784,
+      "settledAt": 1792845371795,
+      "model": "deepseek-v4-flash",
+      "answer": "Data model: `recipes(id,title,instructions,servings,minutes,tags)`, `ingredients(recipe_id,name,qty,unit)`, `steps(recipe_id,ordinal,text)`. Use SQLite (Room/SQLDelight); FTS5 indexes title, tags, ingredients. Store downscaled WebP images as app-private files; DB holds paths. Backup/export: zip with SQLite dump plus images. Risks: migrations, image bloat, corrupt exports; validate restore.",
+      "usage": {
+        "quantities": [
+          {
+            "dimension": "activeMilliseconds",
+            "value": 3341
+          },
+          {
+            "dimension": "consecutiveNoProgressActions",
+            "value": 0
+          },
+          {
+            "dimension": "contextTokensPerAttempt",
+            "value": 855
+          },
+          {
+            "dimension": "generatedArtifactBytes",
+            "value": 0
+          },
+          {
+            "dimension": "inputTokens",
+            "value": 855
+          },
+          {
+            "dimension": "modelAttempts",
+            "value": 1
+          },
+          {
+            "dimension": "networkRequestBytes",
+            "value": 0
+          },
+          {
+            "dimension": "networkResponseBytesPerOperation",
+            "value": 0
+          },
+          {
+            "dimension": "networkResponseBytesTotal",
+            "value": 0
+          },
+          {
+            "dimension": "outputTokens",
+            "value": 439
+          },
+          {
+            "dimension": "peakMemoryBytes",
+            "value": 0
+          },
+          {
+            "dimension": "persistedOutputBytes",
+            "value": 0
+          },
+          {
+            "dimension": "repeatedCallsPerFingerprint",
+            "value": 0
+          },
+          {
+            "dimension": "structuredRepairs",
+            "value": 0
+          },
+          {
+            "dimension": "toolInvocations",
+            "value": 0
+          }
+        ]
+      },
+      "isSeed": true
+    },
+    {
+      "runID": "38e7a7dd-590c-4e0b-b7d3-a1f92a442d08",
+      "inputIDs": [
+        "38e7a7dd-590c-4e0b-b7d3-a1f92a442d08"
+      ],
+      "state": "completed",
+      "createdAt": 1792867660113,
+      "settledAt": 1792867660124,
+      "model": "deepseek-v4-flash",
+      "answer": "Cedar keeps SQLite (Room/SQLDelight) as its local database, with FTS5 for search. Soft-deleted recipes are retained for 14 days before permanent purge, giving undo and sync reconciliation room; exports exclude expired rows.",
+      "usage": {
+        "quantities": [
+          {
+            "dimension": "activeMilliseconds",
+            "value": 1375
+          },
+          {
+            "dimension": "consecutiveNoProgressActions",
+            "value": 0
+          },
+          {
+            "dimension": "contextTokensPerAttempt",
+            "value": 1010
+          },
+          {
+            "dimension": "generatedArtifactBytes",
+            "value": 0
+          },
+          {
+            "dimension": "inputTokens",
+            "value": 1010
+          },
+          {
+            "dimension": "modelAttempts",
+            "value": 1
+          },
+          {
+            "dimension": "networkRequestBytes",
+            "value": 0
+          },
+          {
+            "dimension": "networkResponseBytesPerOperation",
+            "value": 0
+          },
+          {
+            "dimension": "networkResponseBytesTotal",
+            "value": 0
+          },
+          {
+            "dimension": "outputTokens",
+            "value": 77
+          },
+          {
+            "dimension": "peakMemoryBytes",
+            "value": 0
+          },
+          {
+            "dimension": "persistedOutputBytes",
+            "value": 0
+          },
+          {
+            "dimension": "repeatedCallsPerFingerprint",
+            "value": 0
+          },
+          {
+            "dimension": "structuredRepairs",
+            "value": 0
+          },
+          {
+            "dimension": "toolInvocations",
+            "value": 0
+          }
+        ]
+      },
+      "isSeed": false
+    },
+    {
+      "runID": "4db68623-5a45-4740-bcf8-d0c262287723",
+      "inputIDs": [
+        "4db68623-5a45-4740-bcf8-d0c262287723"
+      ],
+      "state": "completed",
+      "createdAt": 1792867865338,
+      "settledAt": 1792867865349,
+      "model": "deepseek-v4-flash",
+      "answer": "Cedar keeps SQLite (Room/SQLDelight) with FTS5 search, and soft-deleted recipes are now retained for 7 days before permanent purge.",
+      "usage": {
+        "quantities": [
+          {
+            "dimension": "activeMilliseconds",
+            "value": 957
+          },
+          {
+            "dimension": "consecutiveNoProgressActions",
+            "value": 0
+          },
+          {
+            "dimension": "contextTokensPerAttempt",
+            "value": 1079
+          },
+          {
+            "dimension": "generatedArtifactBytes",
+            "value": 0
+          },
+          {
+            "dimension": "inputTokens",
+            "value": 1079
+          },
+          {
+            "dimension": "modelAttempts",
+            "value": 1
+          },
+          {
+            "dimension": "networkRequestBytes",
+            "value": 0
+          },
+          {
+            "dimension": "networkResponseBytesPerOperation",
+            "value": 0
+          },
+          {
+            "dimension": "networkResponseBytesTotal",
+            "value": 0
+          },
+          {
+            "dimension": "outputTokens",
+            "value": 35
+          },
+          {
+            "dimension": "peakMemoryBytes",
+            "value": 0
+          },
+          {
+            "dimension": "persistedOutputBytes",
+            "value": 0
+          },
+          {
+            "dimension": "repeatedCallsPerFingerprint",
+            "value": 0
+          },
+          {
+            "dimension": "structuredRepairs",
+            "value": 0
+          },
+          {
+            "dimension": "toolInvocations",
+            "value": 0
+          }
+        ]
+      },
+      "isSeed": false
+    },
+    {
+      "runID": "e1c0a706-84f3-451a-8b36-f0f1732daefe",
+      "inputIDs": [
+        "e1c0a706-84f3-451a-8b36-f0f1732daefe"
+      ],
+      "state": "completed",
+      "createdAt": 1792867977955,
+      "settledAt": 1792867977966,
+      "model": "deepseek-v4-flash",
+      "answer": "Cedar uses SQLite (Room/SQLDelight) with FTS5 search, and soft-deleted recipes are retained for 7 days.",
+      "usage": {
+        "quantities": [
+          {
+            "dimension": "activeMilliseconds",
+            "value": 1053
+          },
+          {
+            "dimension": "consecutiveNoProgressActions",
+            "value": 0
+          },
+          {
+            "dimension": "contextTokensPerAttempt",
+            "value": 1134
+          },
+          {
+            "dimension": "generatedArtifactBytes",
+            "value": 0
+          },
+          {
+            "dimension": "inputTokens",
+            "value": 1134
+          },
+          {
+            "dimension": "modelAttempts",
+            "value": 1
+          },
+          {
+            "dimension": "networkRequestBytes",
+            "value": 0
+          },
+          {
+            "dimension": "networkResponseBytesPerOperation",
+            "value": 0
+          },
+          {
+            "dimension": "networkResponseBytesTotal",
+            "value": 0
+          },
+          {
+            "dimension": "outputTokens",
+            "value": 31
+          },
+          {
+            "dimension": "peakMemoryBytes",
+            "value": 0
+          },
+          {
+            "dimension": "persistedOutputBytes",
+            "value": 0
+          },
+          {
+            "dimension": "repeatedCallsPerFingerprint",
+            "value": 0
+          },
+          {
+            "dimension": "structuredRepairs",
+            "value": 0
+          },
+          {
+            "dimension": "toolInvocations",
+            "value": 0
+          }
+        ]
+      },
+      "isSeed": false
+    }
+  ],
+  "inclusions": [
+    {
+      "messageID": "38e7a7dd-590c-4e0b-b7d3-a1f92a442d08",
+      "runID": "38e7a7dd-590c-4e0b-b7d3-a1f92a442d08",
+      "stepID": "b702f2c7-e438-51c7-a55e-536402a5c4c0"
+    },
+    {
+      "messageID": "4db68623-5a45-4740-bcf8-d0c262287723",
+      "runID": "4db68623-5a45-4740-bcf8-d0c262287723",
+      "stepID": "b7dcf4ea-149f-573e-ae62-693f2db18634"
+    },
+    {
+      "messageID": "e1c0a706-84f3-451a-8b36-f0f1732daefe",
+      "runID": "e1c0a706-84f3-451a-8b36-f0f1732daefe",
+      "stepID": "8bfb8a16-ec38-5caa-bfce-89fbbdcccc1f"
+    }
+  ],
+  "followupCodeRevision": "f2ef16dbafcac7febba85d7515fac055dc5c3cc1",
+  "uiCaptureRevision": "c4b4597",
+  "seedReusedFromEarlierEvaluation": true,
+  "restartBetween": {
+    "afterRunID": "4db68623-5a45-4740-bcf8-d0c262287723",
+    "beforeRunID": "e1c0a706-84f3-451a-8b36-f0f1732daefe"
+  },
+  "checks": {
+    "sameSession": true,
+    "initialDatabaseRetained": true,
+    "changedRequirementApplied": true,
+    "postRestartRecall": true
+  }
+}
