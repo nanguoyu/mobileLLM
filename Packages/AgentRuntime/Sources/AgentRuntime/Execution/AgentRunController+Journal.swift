@@ -19,12 +19,14 @@ extension AgentRunController {
         runID: AgentRunID,
         identity: RunJournalMutationIdentity,
         budgetOperations: [BudgetLedgerOperation] = [],
+        sessionInputInclusions: [AgentSessionInputInclusion] = [],
         build: (inout ExecutionEventBuilder) throws -> [AgentEventEnvelope]
     ) async throws -> CommittedEventBatch {
         try await commitEventsInner(
             runID: runID,
             identity: identity,
             budgetOperations: budgetOperations,
+            sessionInputInclusions: sessionInputInclusions,
             build: build
         )
     }
@@ -141,6 +143,7 @@ extension AgentRunController {
         runID: AgentRunID,
         identity: RunJournalMutationIdentity,
         budgetOperations: [BudgetLedgerOperation] = [],
+        sessionInputInclusions: [AgentSessionInputInclusion] = [],
         build: (inout ExecutionEventBuilder) throws -> [AgentEventEnvelope]
     ) async throws -> CommittedEventBatch {
         guard let facts = try await repository.loadRunFacts(for: runID) else {
@@ -155,7 +158,8 @@ extension AgentRunController {
             events: events
         )
         let receipt = try await repository.commit(
-            RuntimeJournalMutation(append: request, budgetOperations: budgetOperations)
+            RuntimeJournalMutation(append: request, budgetOperations: budgetOperations,
+                                   sessionInputInclusions: sessionInputInclusions)
         )
         switch receipt.appendReceipt.disposition {
         case .appended:

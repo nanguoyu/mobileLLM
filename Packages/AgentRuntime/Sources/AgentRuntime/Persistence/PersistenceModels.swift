@@ -266,13 +266,16 @@ public enum BudgetLedgerOperation: Hashable, Codable, Sendable {
 public struct RuntimeJournalMutation: Sendable {
     public let append: RunJournalAppendRequest
     public let budgetOperations: [BudgetLedgerOperation]
+    public let sessionInputInclusions: [AgentSessionInputInclusion]
 
     public init(
         append: RunJournalAppendRequest,
-        budgetOperations: some Sequence<BudgetLedgerOperation> = []
+        budgetOperations: some Sequence<BudgetLedgerOperation> = [],
+        sessionInputInclusions: [AgentSessionInputInclusion] = []
     ) {
         self.append = append
         self.budgetOperations = Array(budgetOperations)
+        self.sessionInputInclusions = sessionInputInclusions
     }
 }
 

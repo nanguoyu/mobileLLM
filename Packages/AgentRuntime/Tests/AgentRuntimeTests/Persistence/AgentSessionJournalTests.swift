@@ -4,6 +4,7 @@ import AgentContracts
 @testable import AgentRuntime
 import XCTest
 
+// TEST-ID: AHT-SESSION-001
 final class AgentSessionJournalTests: XCTestCase {
     private func seeded(_ offset: Int) async throws -> (ExecutorTestHarness, AgentSessionSnapshot) {
         let model = try ExecutorTestModelDefinition(offset: offset)
@@ -76,6 +77,10 @@ final class AgentSessionJournalTests: XCTestCase {
         try old.execute("PRAGMA user_version = 5")
         old.close()
         let migrated = SQLiteRunJournal(databaseURL: harness.databaseURL)
+        let oldHistory = try await migrated.loadRunSnapshot(for: initial.seedRunID)
+        XCTAssertEqual(oldHistory?.events, before?.events)
+        let absent = try await migrated.session(for: initial.seedRunID)
+        XCTAssertNil(absent)
         let report = try await migrated.openForWrite()
         XCTAssertEqual(report.currentVersion, 6)
         XCTAssertNotNil(report.migrationBackupURL)
@@ -108,5 +113,29 @@ final class AgentSessionJournalTests: XCTestCase {
         } catch { XCTAssertEqual(error as? AgentSessionError, .invalidHistory) }
         let saved = try await harness.repository.session(initial.id)
         XCTAssertEqual(saved, accepted)
+    }
+
+    func testInterruptedAcknowledgementIsAtomicAndCanBeReplayed() async throws {
+        for point in [SQLiteJournalFaultPoint.beforeCommit, .afterCommit] {
+            let (harness, initial) = try await seeded(point == .beforeCommit ? 814 : 815)
+            var accepted = initial
+            accepted.revision += 1
+            accepted.inputs.append(try await input(harness, id: 81_007))
+            await harness.repository.close()
+            let failing = SQLiteRunJournal(databaseURL: harness.databaseURL, faultInjector: {
+                if $0 == point { throw AgentSessionError.unavailable }
+            })
+            do {
+                try await failing.appendSession(accepted, expectedRevision: initial.revision)
+                XCTFail("Expected injected commit interruption")
+            } catch { XCTAssertEqual(error as? SQLiteStoreError, .injected(point)) }
+            await failing.close()
+            let reopened = SQLiteRunJournal(databaseURL: harness.databaseURL)
+            let saved = try await reopened.session(initial.id)
+            XCTAssertEqual(saved, point == .beforeCommit ? initial : accepted)
+            try await reopened.appendSession(accepted, expectedRevision: initial.revision)
+            let replayed = try await reopened.session(initial.id)
+            XCTAssertEqual(replayed?.inputs.count, 1)
+        }
     }
 }

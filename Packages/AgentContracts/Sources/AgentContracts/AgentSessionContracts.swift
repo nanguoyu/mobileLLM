@@ -19,14 +19,17 @@ public struct AgentSessionInput: Hashable, Codable, Sendable {
     public let acceptedAt: AgentTimestamp
     /// A steering message addresses an exact activation. Queued input is bound at activation.
     public let targetRunID: AgentRunID?
+    /// Retains the caller's intent when a late steer was accepted as a subsequent turn.
+    public let requestedMode: AgentSessionInputMode?
 
     public init(id: MessageID, mode: AgentSessionInputMode, body: ArtifactReference,
-                acceptedAt: AgentTimestamp, targetRunID: AgentRunID?) {
+                acceptedAt: AgentTimestamp, targetRunID: AgentRunID?, requestedMode: AgentSessionInputMode? = nil) {
         self.id = id
         self.mode = mode
         self.body = body
         self.acceptedAt = acceptedAt
         self.targetRunID = targetRunID
+        self.requestedMode = requestedMode
     }
 }
 
@@ -91,15 +94,18 @@ public struct AgentSessionSnapshot: Hashable, Codable, Sendable {
               Set(activations.map(\.commandID)).count == activations.count,
               Set(inclusions.map(\.messageID)).count == inclusions.count
         else { throw AgentContractError.invalidName("agent session facts") }
-        var assigned = Set<MessageID>()
         let runs = Set(activations.map(\.runID))
-        for activation in activations.dropFirst() {
-            guard activation.material != nil, !activation.inputIDs.isEmpty else {
+        for (index, activation) in activations.enumerated().dropFirst() {
+            guard activation.material != nil, !activation.inputIDs.isEmpty,
+                  Set(activation.inputIDs).count == activation.inputIDs.count else {
                 throw AgentContractError.invalidName("agent session activation")
             }
             for id in activation.inputIDs {
-                guard assigned.insert(id).inserted,
-                      inputs.contains(where: { $0.id == id && $0.mode == .nextTurn && $0.targetRunID == nil })
+                guard let input = inputs.first(where: { $0.id == id }),
+                      input.targetRunID == nil || activations.prefix(index).contains(where: { $0.runID == input.targetRunID }),
+                      !inclusions.contains(where: { inclusion in
+                          inclusion.messageID == id && activations.prefix(index).contains(where: { $0.runID == inclusion.runID })
+                      })
                 else { throw AgentContractError.invalidName("agent session activation input") }
             }
         }
@@ -123,9 +129,9 @@ public struct AgentSessionSnapshot: Hashable, Codable, Sendable {
         return inputs.filter { $0.targetRunID == runID || assigned.contains($0.id) }
     }
 
-    public func pendingSteeringInputs(for runID: AgentRunID) -> [AgentSessionInput] {
+    public func pendingInputs(for runID: AgentRunID) -> [AgentSessionInput] {
         let included = Set(inclusions.map(\.messageID))
-        return inputs.filter { $0.targetRunID == runID && !included.contains($0.id) }
+        return inputs(for: runID).filter { !included.contains($0.id) }
     }
 
     public var pendingTurns: [AgentSessionInput] {

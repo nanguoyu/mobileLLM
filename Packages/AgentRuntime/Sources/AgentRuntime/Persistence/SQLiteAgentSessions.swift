@@ -28,26 +28,28 @@ extension SQLiteRunJournal: AgentSessionJournaling {
     }
 
     public func session(for runID: AgentRunID) async throws -> AgentSessionSnapshot? {
-        guard let db = try existingConnection(),
-              let id = try db.scalarText("SELECT session_id FROM agent_session_runs WHERE run_id = ?",
-                                        [.text(runID.description)]).flatMap(AgentSessionID.init)
-        else { return nil }
-        return try session(id, db: db)
+        guard let db = try existingConnection() else { return nil }
+        return try session(for: runID, db: db)
     }
 
     public func appendSession(_ value: AgentSessionSnapshot, expectedRevision: UInt64) async throws {
         let db = try writableConnection()
         try db.execute("BEGIN IMMEDIATE")
+        var committed = false
         do {
             try appendSession(value, expectedRevision: expectedRevision, db: db)
+            try inject(.beforeCommit)
             try db.execute("COMMIT")
+            committed = true
+            try inject(.afterCommit)
         } catch {
-            try? db.execute("ROLLBACK")
+            if !committed { try? db.execute("ROLLBACK") }
             throw error
         }
     }
 
     func session(_ id: AgentSessionID, db: SQLiteConnection) throws -> AgentSessionSnapshot? {
+        guard try db.scalarInt("PRAGMA user_version") != 5 else { return nil }
         guard let row = try db.rows(
             "SELECT payload, digest FROM agent_session_events WHERE session_id = ? ORDER BY revision DESC LIMIT 1",
             [.text(id.description)]
@@ -62,6 +64,7 @@ extension SQLiteRunJournal: AgentSessionJournaling {
     }
 
     func session(for runID: AgentRunID, db: SQLiteConnection) throws -> AgentSessionSnapshot? {
+        guard try db.scalarInt("PRAGMA user_version") != 5 else { return nil }
         guard let id = try db.scalarText("SELECT session_id FROM agent_session_runs WHERE run_id = ?",
                                         [.text(runID.description)]).flatMap(AgentSessionID.init)
         else { return nil }
@@ -80,6 +83,21 @@ extension SQLiteRunJournal: AgentSessionJournaling {
                   value.activations.starts(with: previous.activations),
                   value.inclusions.starts(with: previous.inclusions)
             else { throw AgentSessionError.invalidHistory }
+            for input in value.inputs.dropFirst(previous.inputs.count) {
+                if let runID = input.targetRunID {
+                    guard runID == previous.activations.last?.runID,
+                          let raw = try db.scalarText("SELECT state FROM runs WHERE run_id = ?", [.text(runID.description)]),
+                          let state = AgentRunState(rawValue: raw), !state.isTerminal
+                    else { throw AgentSessionError.requiresResume }
+                }
+            }
+            if value.activations.count > previous.activations.count {
+                guard value.activations.count == previous.activations.count + 1,
+                      let last = previous.activations.last,
+                      let raw = try db.scalarText("SELECT state FROM runs WHERE run_id = ?", [.text(last.runID.description)]),
+                      AgentRunState(rawValue: raw)?.isTerminal == true
+                else { throw AgentSessionError.requiresResume }
+            }
         } else {
             guard value.activations.count == 1, value.inputs.isEmpty, value.inclusions.isEmpty,
                   try db.scalarText("SELECT conversation_id FROM runs WHERE run_id = ? AND deletion_blocked = 0",

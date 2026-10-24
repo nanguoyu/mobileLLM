@@ -3,6 +3,20 @@
 import AgentContracts
 import Foundation
 
+extension FrozenAgentRunInputs {
+    func replacingConversation(_ conversation: [ConversationTurnContextSource],
+                               currentUser: CurrentUserContextSource) throws -> FrozenAgentRunInputs {
+        try FrozenAgentRunInputs(modelSelection: modelSelection, generationParameters: generationParameters,
+            contextBudget: contextBudget, baseSystem: baseSystem, skills: skills, memories: memories,
+            conversation: conversation, currentUser: currentUser, artifactExcerpts: artifactExcerpts,
+            toolCatalog: toolCatalog, toolPolicy: toolPolicy, availableToolCapabilities: availableToolCapabilities,
+            activeSkillToolHints: activeSkillToolHints, explicitlyRequestedToolIDs: explicitlyRequestedToolIDs,
+            recentSuccessfulToolChain: recentSuccessfulToolChain, maximumAdvertisedTools: maximumAdvertisedTools,
+            contextPolicyVersion: contextPolicyVersion, approvalPolicyVersion: approvalPolicyVersion,
+            suppressModelTools: suppressModelTools ?? false)
+    }
+}
+
 /// Complete execution-defining input frozen before the first model pass.
 ///
 /// It deliberately contains exact model/tool revisions and already-frozen context bodies. Recovery

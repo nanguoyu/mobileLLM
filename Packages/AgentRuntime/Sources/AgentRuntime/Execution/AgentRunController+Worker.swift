@@ -348,10 +348,11 @@ extension AgentRunController {
         transitionToWaiting: Bool
     ) async throws -> CompiledContext {
         let frozen = try await frozenInputs(facts)
+        let sessionInput = try await sessionCurrentUser(frozen: frozen, runID: facts.projection.runID, includedOnly: false)
         let attempt = UInt64(history.modelOutcomes.count + 1)
         let stepID = ExecutionStableID.step(runID: facts.projection.runID, attempt: attempt)
         let selected = try frozen.selectedTools(
-            latestUserRequest: frozen.currentUser.frozen.content
+            latestUserRequest: sessionInput.source.frozen.content
         )
         let toolCapacity = facts.budgetLedger?.availableCapacity[.toolInvocations] ?? 0
         let descriptors = toolFree || toolCapacity == 0 ? [] : selected.descriptors
@@ -537,7 +538,7 @@ extension AgentRunController {
             skills: frozen.skills,
             memories: frozen.memories,
             conversation: conversation,
-            currentUser: frozen.currentUser,
+            currentUser: sessionInput.source,
             runState: runState,
             artifactExcerpts: frozen.artifactExcerpts,
             untrustedToolResults: toolResults,
@@ -568,7 +569,10 @@ extension AgentRunController {
         )
         _ = try await commitEvents(
             runID: facts.projection.runID,
-            identity: .outcome(eventID)
+            identity: .outcome(eventID),
+            sessionInputInclusions: sessionInput.unclaimed.map {
+                AgentSessionInputInclusion(messageID: $0, runID: facts.projection.runID, stepID: stepID)
+            }
         ) { builder in
             var events = [try builder.append(
                 id: eventID,
@@ -643,8 +647,9 @@ extension AgentRunController {
     ) async throws {
         let frozen = try await frozenInputs(facts)
         let compiled = try await compiledContext(facts: facts, history: history, toolFree: toolFree)
+        let sessionInput = try await sessionCurrentUser(frozen: frozen, runID: facts.projection.runID, includedOnly: true)
         let selected = try frozen.selectedTools(
-            latestUserRequest: frozen.currentUser.frozen.content
+            latestUserRequest: sessionInput.source.frozen.content
         )
         let includedIDs = Set(compiled.advertisedTools.map(\.id))
         let selectorSnapshot = try AgentToolSelectionSnapshot(
@@ -1354,7 +1359,12 @@ extension AgentRunController {
         let action = try await loadPayload(AgentAction.self, reference: reference)
         switch action {
         case .finalAnswer(let answer):
-            try await finalize(runID: facts.projection.runID, answer: answer)
+            do {
+                try await finalize(runID: facts.projection.runID, answer: answer)
+            } catch AgentSessionError.pendingInput {
+                let (current, latest) = try await loadRun(facts.projection.runID)
+                _ = try await compileContext(facts: current, history: latest, toolFree: false, transitionToWaiting: true)
+            }
         case .requestUserInput(let proposed):
             let request = try UserInputRequest(
                 id: proposed.id,

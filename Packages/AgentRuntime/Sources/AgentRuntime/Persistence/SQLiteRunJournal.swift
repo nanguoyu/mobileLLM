@@ -163,6 +163,7 @@ public actor SQLiteRunJournal: RuntimeRepository {
             request: mutation.append,
             projectionCommit: nil,
             budgetOperations: mutation.budgetOperations,
+            sessionInputInclusions: mutation.sessionInputInclusions,
             requiresExistingLedger: true
         )
         let ledger = if let committed = result.ledger {
@@ -181,6 +182,9 @@ public actor SQLiteRunJournal: RuntimeRepository {
     public func commitFinalization(
         _ finalization: RuntimeFinalizationCommit
     ) async throws -> RuntimeJournalMutationReceipt {
+        guard finalization.mutation.sessionInputInclusions.isEmpty else {
+            throw RuntimeRepositoryError.invalidSubmission("input inclusion requires a compiled request")
+        }
         let message = finalization.message
         let outbox = finalization.outbox
         let mutation = finalization.mutation
@@ -972,6 +976,7 @@ public actor SQLiteRunJournal: RuntimeRepository {
         request: RunJournalAppendRequest,
         projectionCommit: MessageProjectionCommit?,
         budgetOperations: [BudgetLedgerOperation] = [],
+        sessionInputInclusions: [AgentSessionInputInclusion] = [],
         initialLedger: BudgetLedgerSnapshot? = nil,
         submission: RuntimeSubmissionCommit? = nil,
         requiresExistingLedger: Bool = false
@@ -980,12 +985,16 @@ public actor SQLiteRunJournal: RuntimeRepository {
             throw SQLiteStoreError.invariantViolation("initial ledger cannot also be mutated")
         }
         let db = try writableConnection()
-        let fingerprint = try mutationFingerprint(
+        let baseFingerprint = try mutationFingerprint(
             request,
             projectionCommit: projectionCommit,
             budgetOperations: budgetOperations,
             initialLedger: initialLedger,
             submission: submission
+        )
+        let fingerprint = sessionInputInclusions.isEmpty ? baseFingerprint : StableDigest.fingerprint(
+            domain: "sqlite-run-journal-session-inclusion.v1",
+            components: [Data(baseFingerprint.rawValue.utf8), try encoder.encode(sessionInputInclusions)]
         )
         let identity = mutationKey(request.mutationIdentity)
         try inject(.beforeTransaction)
@@ -1073,6 +1082,11 @@ public actor SQLiteRunJournal: RuntimeRepository {
             throw SQLiteStoreError.invariantViolation("new run must begin at state version one")
         }
 
+        if request.events.contains(where: { $0.payload.event.isRunTerminal && $0.payload.runState == .completed }),
+           let session = try session(for: request.runID, db: db),
+           !session.pendingInputs(for: request.runID).isEmpty {
+            throw AgentSessionError.pendingInput
+        }
         let projected: AgentRunProjection
         if let prior { projected = try prior.applying(request.events) }
         else {
@@ -1092,6 +1106,19 @@ public actor SQLiteRunJournal: RuntimeRepository {
         if hasStableBoundary { try inject(.beforeStableBoundaryProjection) }
         for envelope in request.events { try insert(envelope, db: db) }
         if hasStableBoundary { try inject(.afterStableBoundaryProjection) }
+        if !sessionInputInclusions.isEmpty {
+            let steps = Set(request.events.compactMap { envelope -> AgentStepID? in
+                if case .compiledManifestCommitted(let step, _) = envelope.payload.event { return step }
+                return nil
+            })
+            guard sessionInputInclusions.allSatisfy({ $0.runID == request.runID && steps.contains($0.stepID) }),
+                  var session = try session(for: request.runID, db: db)
+            else { throw AgentSessionError.invalidHistory }
+            let revision = session.revision
+            session.revision += 1
+            session.inclusions.append(contentsOf: sessionInputInclusions)
+            try appendSession(session, expectedRevision: revision, db: db)
+        }
         try inject(.afterEventInsert)
 
         var resultingLedger = requiredLedger
@@ -2079,7 +2106,9 @@ public actor SQLiteRunJournal: RuntimeRepository {
             throw SQLiteStoreError.corrupt
         }
         let version = Int32(rawVersion)
-        guard version == Self.schemaVersion else { throw SQLiteStoreError.unsupportedSchema(version) }
+        // Version 6 adds session tables only. Existing v5 runs remain readable without creating
+        // files or migrating during observation; the next explicit write performs the upgrade.
+        guard version == 5 || version == Self.schemaVersion else { throw SQLiteStoreError.unsupportedSchema(version) }
     }
 
     private func migrate(_ db: SQLiteConnection, from version: Int32) throws {
@@ -2230,7 +2259,7 @@ public actor SQLiteRunJournal: RuntimeRepository {
         }
     }
 
-    private func inject(_ point: SQLiteJournalFaultPoint) throws {
+    func inject(_ point: SQLiteJournalFaultPoint) throws {
         do { try faultInjector?(point) }
         catch let error as SQLiteStoreError { throw error }
         catch { throw SQLiteStoreError.injected(point) }

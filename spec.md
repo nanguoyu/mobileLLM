@@ -1967,3 +1967,38 @@ Live-model results are intentionally nondeterministic evidence and never replace
 handled with repeated evidence or an explicit time-bounded quarantine, not by weakening semantic assertions. Simulator
 coverage is the fast path for online workflows; physical-device evidence remains required for release claims involving
 local models, device resources, suspension, or hardware-specific behavior.
+
+
+## 35. Persistent agent sessions
+
+A session identifies one agent conversation across distinct immutable runs. Versioned session snapshots,
+accepted inputs, activation reservations and input inclusions live in the same SQLite database as the
+run journal. Session facts append with revision comparison; a stale writer cannot replace accepted input.
+Bodies and prepared activation material use protected artifacts owned by the conversation. Conversation
+removal cascades session records through their seed run. Schema 6 adds session tables; schema 5 run history
+remains readable without a write or migration, and the next explicit write upgrades it with a backup.
+
+The initial session API admits explicit human messages through the trusted host. A steering message targets
+a current activation. A queued message starts a later activation. Acceptance is committed before the host
+acknowledges it. The model context and its exact included-message identities commit atomically. Inclusion
+means the immutable request contains the input, not that the model processed it successfully. A pending
+input prevents a completed terminal commit. A final answer racing accepted steering therefore triggers
+another bounded model pass through the existing executor. Neither a model request already in flight nor
+its authority is mutated.
+
+Completed, failed and cancelled runs remain immutable. A subsequent explicitly requested human turn
+reserves one new activation and its exact input material before submission, then uses the ordinary
+idempotent executor. Unconsumed input from an interrupted activation carries into that next turn ahead
+of the newer user instruction. A session has one current activation. Queued inputs in explicit follow-up
+activations advance after normal completion, while pause and cancellation require explicit resume. The
+seed activation remains owned by its original workflow controller; queuing a follow-up never bypasses
+that controller's dispatch authority. Observation and application startup do not resume work.
+
+Follow-up activations retain the session's frozen model, tool policy and attenuated capability ceiling.
+Each explicitly requested human turn receives the existing bounded per-turn budget. These human turns
+are separate from the original workflow's closed usage report; automatic agents cannot use this host API
+to obtain fresh budgets. Autonomous team messaging, shared goal budgets and dynamic task scheduling
+remain later stages of the harness plan. The sandbox provider remains optional.
+
+Focused acceptance covers message idempotency, commit interruption, stale writers, unchanged historical
+runs, steering during generation, pending input after pause/restart, and repeated turns in one session.

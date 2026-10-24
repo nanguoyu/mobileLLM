@@ -2868,6 +2868,88 @@
         "fixedSeedRequired": false,
         "rotatingSeedRequired": false
       }
+    },
+    {
+      "id": "AHT-SESSION-001",
+      "title": "Retain accepted session inputs across commit interruption",
+      "status": "active",
+      "kind": "fault-injection",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-SESSION-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionJournalTests/testInterruptedAcknowledgementIsAtomicAndCanBeReplayed"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionJournalTests/testStaleWriterCannotLoseAnAcceptedMessage"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionJournalTests/testVersionFiveMigrationPreservesRunHistory"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-simulator"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Real journal and executor assertions with controlled model boundary"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
+    },
+    {
+      "id": "AHT-SESSION-002",
+      "title": "Continue and steer durable agent sessions",
+      "status": "active",
+      "kind": "integration",
+      "riskTier": "P0",
+      "requirementIDs": [
+        "AH-SESSION-001"
+      ],
+      "selectors": [
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionExecutionTests/testSteeringDuringGenerationCannotBeLostByFinalAnswerAndRetryDoesNotDuplicate"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionExecutionTests/testThreeTurnsKeepSessionAndHistoryAcrossExecutorRecreation"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionExecutionTests/testPausedSteerRemainsPendingAfterRecreationUntilExplicitResume"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionExecutionTests/testUnconsumedInputSurvivesCancellationAndIsCarriedIntoNextExplicitTurn"
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios-simulator"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "requiredEvidence": [
+        "Real journal and executor assertions with controlled model boundary"
+      ],
+      "determinism": {
+        "fixedSeedRequired": true,
+        "rotatingSeedRequired": false
+      }
     }
   ]
 }

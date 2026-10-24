@@ -131,6 +131,7 @@ public actor AgentRunController {
     /// Per-run serialization for budget-settling tool commits only. Commands and other plain
     /// commits stay ungated so pause/cancel can always interrupt a parallel batch.
     var toolCommitGates: [AgentRunID: ToolCommitGate] = [:]
+    var sessionGates: [AgentSessionID: ToolCommitGate] = [:]
 
     public init(
         repository: any RuntimeRepository,
@@ -165,6 +166,11 @@ public actor AgentRunController {
         _ request: AgentRequest,
         commandID: AgentCommandID
     ) async throws -> AgentExecutionHandleID {
+        try await submit(request, commandID: commandID, frozenInputs: nil)
+    }
+
+    func submit(_ request: AgentRequest, commandID: AgentCommandID,
+                frozenInputs suppliedInputs: FrozenAgentRunInputs?) async throws -> AgentExecutionHandleID {
         try beginPublicMutation()
         defer { endPublicMutation() }
         if let existing = try await repository.loadRunFacts(for: request.runID),
@@ -181,7 +187,9 @@ public actor AgentRunController {
             return submission.executionHandleID
         }
 
-        let frozen = try await inputFreezer.freeze(request)
+        let frozen: FrozenAgentRunInputs
+        if let suppliedInputs { frozen = suppliedInputs }
+        else { frozen = try await inputFreezer.freeze(request) }
         let frozenData = try ExecutionEncoding.encode(frozen)
         let inputArtifact = try await payloadStore.commit(
             data: frozenData,
@@ -499,8 +507,9 @@ public actor AgentRunController {
         }
     }
 
-    private func workerFinished(runID: AgentRunID) {
+    private func workerFinished(runID: AgentRunID) async {
         workers[runID] = nil
+        await advanceSessionAfterCompletion(runID)
     }
 
     func registerToolCancellation(

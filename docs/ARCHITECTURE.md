@@ -277,6 +277,25 @@ Workflows inherit the initiating conversation's exact tool policy without force-
 requirement, and child ceilings remain strictly attenuated (spec §33 gap 1, closed 2026-08-08). Interrupted
 workflows stay visible after relaunch but remain inert until the user acts on them.
 
+## Persistent agent sessions
+
+`AgentSessionSnapshot` separates an agent conversation from its individual runs. `SQLiteRunJournal`
+schema 6 stores append-only session revisions, accepted input references, reserved activations and
+the messages included in each model request. Schema 5 run history remains readable before an explicit
+write performs migration. Session data shares the conversation deletion boundary.
+
+The session APIs on `AgentRunController` accept human steering and queued follow-ups. Request-context
+commit includes message identities in the same transaction. Completion checks for pending input in
+that transaction too, so a final answer cannot discard a message accepted while generation was active.
+New turns reuse `DurableAgentExecutor`, frozen capability and model policy, and prior conversation
+content. Prepared activation material is durable before idempotent submission. A failed or cancelled
+activation retains unconsumed input for the next explicitly requested turn. Reads never resume work.
+
+Human follow-up turns use the existing per-turn limits and keep their usage separate from the original
+workflow report. The original workflow owns its seed activation. Autonomous model messaging and
+shared goal accounting are later stages; the v4 coordination program still uses its recorded artifact
+continuation. Session APIs currently supply the runtime foundation for the task-detail interaction.
+
 ## iOS lifecycle and continued processing
 
 `LifecycleBridge` aggregates every connected `UIWindowScene` activation state (iPadOS Split View

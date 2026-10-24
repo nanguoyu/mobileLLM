@@ -7,7 +7,9 @@ continue individual agents, exchange messages, revise dependencies, and recover 
 DeepSeek Harness supplies the main architectural reference. OpenMinis supplies useful mobile
 interaction and continuation examples. Quality will be assessed through actual task outcomes.
 
-This is planned work. [STATUS.md](STATUS.md) records implemented behavior and observed results.
+This is the implementation roadmap. Stage 1 now has durable session storage and execution APIs for
+steering, successive turns and restart recovery. Task-detail integration and Simulator acceptance
+remain in progress. [STATUS.md](STATUS.md) records implemented behavior and observed results.
 The owner's separate iOS agent sandbox is unavailable for near-term integration. The harness
 milestone therefore has no dependency on that project's delivery.
 
