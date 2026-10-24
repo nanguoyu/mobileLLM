@@ -198,6 +198,7 @@ final class ChatStoreWorkflowTests: XCTestCase {
         XCTAssertEqual(assistantMessages.count, 1, "the final answer must be projected exactly once")
         XCTAssertTrue(assistantMessages[0].answer.contains("llama.cpp"))
         XCTAssertEqual(assistantMessages[0].workflowResultID, workflowID)
+        XCTAssertEqual(assistantMessages[0].createdAt, completed.endTime)
 
         // TEST-ID: AHT-DYNAMIC-UI-002
         // Two cold projections emulate consecutive relaunches. The persisted workflow provenance,
@@ -221,7 +222,12 @@ final class ChatStoreWorkflowTests: XCTestCase {
             )
             await reloaded.load()
             reloadedWorkflowStore.load()
-            try await reloadedWorkflowStore.save(completed)
+            let activityTime = try XCTUnwrap(reloaded.conversations.first?.updatedAt)
+            var refreshed = completed
+            refreshed.aggregated.outputTokens += Int64(relaunch)
+            try await reloadedWorkflowStore.save(refreshed)
+            XCTAssertEqual(reloaded.conversations.first?.updatedAt, activityTime,
+                           "A real metadata refresh must not make an old answer look newly delivered")
 
             let projected = reloaded.conversations.flatMap(\.messages).filter {
                 $0.workflowResultID == workflowID

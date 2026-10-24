@@ -1342,9 +1342,8 @@ public final class ChatStore {
             guard let mi = conversations[ci].messages.firstIndex(where: {
                 $0.workflowRecord?.workflowID == workflowID
             }) else { continue }
-            conversations[ci].messages[mi].workflowRecord = record
-            conversations[ci].updatedAt = Date()
-            persist(conversations[ci])
+            var changed = conversations[ci].messages[mi].workflowRecord != record
+            if changed { conversations[ci].messages[mi].workflowRecord = record }
             // Project the workflow's final result into the chat exactly once (spec §20: the record
             // is the live row; the committed answer lands as a normal assistant message).
             if record.status == .completed,
@@ -1354,13 +1353,17 @@ public final class ChatStore {
             {
                 let assistant = Message(
                     role: .assistant,
+                    createdAt: record.endTime ?? Date(),
                     answer: answer,
                     workflowResultID: workflowID
                 )
-                conversations[ci].messages.append(assistant)
-                conversations[ci].updatedAt = Date()
-                persist(conversations[ci])
+                let index = conversations[ci].messages.firstIndex { $0.createdAt > assistant.createdAt }
+                    ?? conversations[ci].messages.endIndex
+                conversations[ci].messages.insert(assistant, at: index)
+                conversations[ci].updatedAt = max(conversations[ci].updatedAt, assistant.createdAt)
+                changed = true
             }
+            if changed { persist(conversations[ci]) }
             return
         }
     }
