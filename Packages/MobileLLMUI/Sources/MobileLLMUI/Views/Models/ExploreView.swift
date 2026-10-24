@@ -14,6 +14,7 @@ struct ExploreView: View {
     var onUse: (LLMModel, LLMVariant) -> Void
 
     @State private var query = ""
+    @FocusState private var searchFocused: Bool
     @State private var source: RemoteCatalog.Source = .mlx
     @State private var results: [RemoteModel] = []
     @State private var phase: Phase = .loading
@@ -47,6 +48,7 @@ struct ExploreView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Theme.bg)
+        .scrollDismissesKeyboard(.interactively)
         .task(id: Reload(query: query, source: source)) { await runSearch() }
         .sheet(item: $detail) { model in detailSheet(model) }
     }
@@ -61,8 +63,11 @@ struct ExploreView: View {
             Image(systemName: "magnifyingglass").font(.subheadline).foregroundStyle(Theme.textTertiary)
             TextField("Search Hugging Face — Qwen, Gemma, Llama…", text: $query)
                 .textFieldStyle(.plain).font(.subheadline)
+                .focused($searchFocused)
+                .onSubmit { searchFocused = false }
                 #if os(iOS)
                 .autocorrectionDisabled().textInputAutocapitalization(.never)
+                .submitLabel(.search)
                 #endif
             if !query.isEmpty {
                 Button { query = "" } label: {
