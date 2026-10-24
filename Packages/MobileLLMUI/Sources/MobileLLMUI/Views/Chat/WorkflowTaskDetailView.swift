@@ -77,6 +77,7 @@ struct WorkflowTaskDetailView: View {
             .frame(maxWidth: Theme.Layout.readingColumn, alignment: .leading)
             .padding(Theme.Space.lg).frame(maxWidth: .infinity)
         }
+        .accessibilityIdentifier("workflow.task.detail")
         .background(Theme.bg).foregroundStyle(Theme.textPrimary)
         .safeAreaInset(edge: .bottom) {
             if let dynamic, dynamic.reconciliationCallID == callID {
@@ -101,7 +102,6 @@ struct WorkflowTaskDetailView: View {
         .task(id: call?.hasResult == true) { await loadResult() }
         .task(id: observationKey) { await observe() }
         .onDisappear(perform: detach)
-        .accessibilityIdentifier("workflow.task.detail")
     }
 
     private func summary(_ call: DynamicWorkflowChildPresentation) -> some View {

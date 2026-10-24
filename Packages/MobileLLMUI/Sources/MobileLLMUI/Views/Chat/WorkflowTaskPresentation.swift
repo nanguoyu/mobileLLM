@@ -39,7 +39,8 @@ enum WorkflowDisplay {
         let groups = tasks(calls)
         let completed = groups.filter { $0.latest.status == .completed }.count
         let failed = groups.filter { [.failed, .unavailable].contains($0.latest.status) }.count
-        return "\(groups.count) tasks · \(completed) completed" + (failed > 0 ? " · \(failed) failed" : "")
+        let noun = groups.count == 1 ? "task" : "tasks"
+        return "\(groups.count) \(noun) · \(completed) completed" + (failed > 0 ? " · \(failed) failed" : "")
     }
 
     static func name(_ value: String) -> String {

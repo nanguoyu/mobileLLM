@@ -187,7 +187,8 @@ struct AgentApprovalDecisionBar: View {
 
     private func buttonTitle(approved: Bool) -> String {
         guard approved else { return "Deny" }
-        return approval.isExternalWrite || approval.isConversationScoped ? "Approve once" : "Approve"
+        if approval.isConversationScoped { return "Allow model" }
+        return approval.isExternalWrite ? "Approve once" : "Approve"
     }
 }
 

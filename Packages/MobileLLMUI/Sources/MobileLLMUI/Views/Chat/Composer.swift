@@ -57,14 +57,16 @@ struct Composer: View {
         VStack(spacing: Theme.Space.xs) {
             if chat.isWorkflowDraft {
                 HStack {
-                    Label("Work with agents", systemImage: "person.3").font(.callout.weight(.medium))
+                    Image(systemName: "person.3").accessibilityHidden(true)
+                    Text("Work with agents").font(.callout.weight(.medium))
+                        .accessibilityIdentifier("composer.workflow.mode")
                     Spacer()
                     Button("Use regular chat", systemImage: "xmark.circle.fill") { chat.useRegularChatDraft() }
                         .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                        .accessibilityIdentifier("composer.workflow.cancel")
                 }
                 .foregroundStyle(Theme.accent).padding(.horizontal, Theme.Space.md)
                 .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: Theme.Radius.field))
-                .accessibilityIdentifier("composer.workflow.mode")
             }
             contextMeter
             if let skill = chat.activeSkill { activeSkillChip(skill) }

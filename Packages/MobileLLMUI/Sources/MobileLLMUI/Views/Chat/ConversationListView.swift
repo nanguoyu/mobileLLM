@@ -32,7 +32,7 @@ struct ConversationListView: View {
             if chat.conversations.isEmpty {
                 ChatPlaceholder(icon: "bubble.left.and.text.bubble.right",
                                 title: "No conversations yet",
-                                message: "Start a new chat — everything stays on your device.",
+                                message: "Your conversations and agent tasks will appear here.",
                                 actionTitle: "New chat", action: { startNew() })
             } else {
                 VStack(spacing: 0) {

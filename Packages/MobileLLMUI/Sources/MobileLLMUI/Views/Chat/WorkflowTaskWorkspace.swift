@@ -175,8 +175,8 @@ private struct WorkflowTaskCard: View {
                 }
                 WorkflowTaskStateLabel(call: call, state: state, attached: attached)
                 if let instruction = call.task?.instruction {
-                    Text(ConversationText.title(instruction, limit: 180)).font(.callout).foregroundStyle(Theme.textSecondary)
-                        .lineLimit(2).multilineTextAlignment(.leading)
+                    Text(instruction).font(.callout).foregroundStyle(Theme.textSecondary)
+                        .lineLimit(3).multilineTextAlignment(.leading)
                 }
                 if let task = call.task, !task.inputArtifactIDs.isEmpty {
                     let inputs = WorkflowDisplay.inputs(for: call, in: calls)
