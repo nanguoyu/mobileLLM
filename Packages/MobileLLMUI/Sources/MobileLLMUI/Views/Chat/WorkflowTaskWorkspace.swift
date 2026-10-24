@@ -251,7 +251,7 @@ private struct WorkflowDiagnostics: View {
                 let calls = dynamic.childCalls ?? []
                 Text("\(calls.count) calls · \(calls.filter(\.isCoordinator).count) coordination calls")
                     .font(.callout).foregroundStyle(Theme.textSecondary)
-                DisclosureGroup("Call history") {
+                DisclosureGroup {
                     VStack(alignment: .leading, spacing: Theme.Space.md) {
                         ForEach(calls) { call in
                             Text("\(call.ordinal). \(call.isCoordinator ? "Coordinator" : call.taskTitle) · attempt \(call.attempt) · \(call.status.label)")
@@ -259,9 +259,11 @@ private struct WorkflowDiagnostics: View {
                                 .accessibilityIdentifier("workflow.agent.call")
                         }
                     }.padding(.top, Theme.Space.sm)
+                } label: {
+                    Text("Call history")
+                        .accessibilityValue("\(calls.count) calls")
+                        .accessibilityIdentifier("workflow.call.history")
                 }
-                .accessibilityValue("\(calls.count) calls")
-                .accessibilityIdentifier("workflow.call.history")
                 if !dynamic.logs.isEmpty {
                     DisclosureGroup("Activity log") {
                         Text(dynamic.logs.suffix(20).joined(separator: "\n"))
