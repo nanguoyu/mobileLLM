@@ -31,9 +31,9 @@ struct WorkflowTaskDetailView: View {
             VStack(alignment: .leading, spacing: Theme.Space.lg) {
                 if let call {
                     summary(call)
-                    assignment(call)
-                    inputs(call)
                     output(call)
+                    inputs(call)
+                    assignment(call)
                     if history.count > 1 {
                         VStack(alignment: .leading, spacing: Theme.Space.sm) {
                             Text("Task history").font(.headline)
@@ -88,11 +88,11 @@ struct WorkflowTaskDetailView: View {
     }
 
     private func assignment(_ call: DynamicWorkflowChildPresentation) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            Text("Assignment").font(.headline)
+        DisclosureGroup("Assignment") {
             Text(call.task?.instruction ?? "This older run did not record a separate task brief.")
                 .font(.body).foregroundStyle(Theme.textSecondary).textSelection(.enabled)
-        }.frame(maxWidth: .infinity, alignment: .leading).studioCard()
+                .padding(.top, Theme.Space.sm)
+        }.font(.callout.weight(.medium)).studioCard()
     }
 
     private func inputs(_ call: DynamicWorkflowChildPresentation) -> some View {

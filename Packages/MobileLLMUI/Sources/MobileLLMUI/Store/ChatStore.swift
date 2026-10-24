@@ -544,6 +544,21 @@ public final class ChatStore {
         return activeModel?.subtitle ?? "No model"
     }
 
+    public var activeModelTitle: String {
+        if let model = settings.onlineActiveService?.modelID, !model.isEmpty { return model }
+        return activeModelLabel
+    }
+
+    public var isWorkflowDraft: Bool { Self.workflowGoal(in: draft) != nil }
+
+    public func prepareWorkflowDraft() {
+        if !isWorkflowDraft { draft = "/workflow " + draft }
+    }
+
+    public func useRegularChatDraft() {
+        if let goal = Self.workflowGoal(in: draft) { draft = goal }
+    }
+
     /// The durable generation identity for the current selection: online when active, else the local
     /// model. Also used to stamp conversations so a thread remembers its model across relaunch.
     private func currentGenerationModel() -> GenerationModel? {
@@ -1261,6 +1276,9 @@ public final class ChatStore {
         materializeToolPolicyIfNeeded(at: idx)
         let workflowID = UUID()
         let user = Message(role: .user, answer: goal)
+        if conversations[idx].title == "New Chat" {
+            conversations[idx].title = ConversationText.title(goal)
+        }
         conversations[idx].messages.append(user)
         conversations[idx].updatedAt = Date()
         persist(conversations[idx])
@@ -1300,8 +1318,8 @@ public final class ChatStore {
         }),
         let mi = conversations[ci].messages.firstIndex(where: { $0.id == messageID })
         else { return }
+        guard conversations[ci].messages[mi].workflowRecord != record else { return }
         conversations[ci].messages[mi].workflowRecord = record
-        conversations[ci].updatedAt = Date()
         persist(conversations[ci])
     }
 

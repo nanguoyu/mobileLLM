@@ -55,6 +55,17 @@ struct Composer: View {
 
     var body: some View {
         VStack(spacing: Theme.Space.xs) {
+            if chat.isWorkflowDraft {
+                HStack {
+                    Label("Work with agents", systemImage: "person.3").font(.callout.weight(.medium))
+                    Spacer()
+                    Button("Use regular chat", systemImage: "xmark.circle.fill") { chat.useRegularChatDraft() }
+                        .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                }
+                .foregroundStyle(Theme.accent).padding(.horizontal, Theme.Space.md)
+                .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: Theme.Radius.field))
+                .accessibilityIdentifier("composer.workflow.mode")
+            }
             contextMeter
             if let skill = chat.activeSkill { activeSkillChip(skill) }
             if !chat.pendingImages.isEmpty { pendingImageChips }
@@ -352,6 +363,12 @@ struct Composer: View {
     /// see and change the exact capabilities exposed to the model without leaving the conversation.
     private var plusMenu: some View {
         Menu {
+            Button("Work with agents", systemImage: "person.3") {
+                chat.prepareWorkflowDraft()
+                focused = true
+            }
+            .accessibilityIdentifier("composer.workflow.start")
+            Divider()
             if thinkingCapable {
                 Toggle(isOn: Binding(get: { chat.composerThinkingEnabled },
                                      set: { chat.composerThinkingEnabled = $0 })) {
@@ -397,7 +414,7 @@ struct Composer: View {
         }
         .menuIndicator(.hidden)
         .accessibilityLabel("Chat options")
-        .accessibilityHint("Thinking, tools and image attachments")
+        .accessibilityHint("Agent tasks, thinking, tools and image attachments")
     }
 
     // MARK: Tool selection

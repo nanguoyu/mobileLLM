@@ -27,8 +27,8 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
-                behaviorSection
                 onlineSection
+                behaviorSection
                 samplingSection
                 appearanceSection
                 privacySection
@@ -155,9 +155,7 @@ struct SettingsView: View {
             Toggle(isOn: $settings.toolsEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Allow selected tools").font(.subheadline).foregroundStyle(Theme.textPrimary)
-                    Text("Only tools selected below are exposed to the model. The model decides whether "
-                         + "to call one; every call adds another model pass, and network tools such as web "
-                         + "search, Wikipedia, and remote MCP also wait for the network.")
+                    Text("Choose which tools the model may use. Calls follow the conversation’s approval mode.")
                         .font(.caption).foregroundStyle(Theme.textTertiary)
                 }
             }
@@ -178,10 +176,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Continue work in background (iOS 26)")
                         .font(.subheadline).foregroundStyle(Theme.textPrimary)
-                    Text("When available, an active finite run may keep processing after you leave "
-                         + "the app, with progress shown by the system. Ordinary chat is never "
-                         + "submitted unless you turn this on, and a rejected submission pauses "
-                         + "the run until you resume it in the foreground.")
+                    Text("Continue supported tasks after leaving the app. iOS may pause work until you return.")
                         .font(.caption).foregroundStyle(Theme.textTertiary)
                 }
             }

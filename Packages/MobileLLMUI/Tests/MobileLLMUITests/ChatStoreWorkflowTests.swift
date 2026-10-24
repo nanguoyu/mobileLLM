@@ -74,6 +74,18 @@ final class ChatStoreWorkflowTests: XCTestCase {
         XCTAssertEqual(message.workflowRecord?.workflowID, launched?.workflowID)
         XCTAssertEqual(message.workflowRecord?.status, .running)
         XCTAssertTrue(chat.hasRunningWorkflow)
+        XCTAssertEqual(conversation.title, "research the topic")
+        let activityTime = conversation.updatedAt
+        let completed = WorkflowSummary(id: try XCTUnwrap(launched?.workflowID), title: "research the topic",
+                                        conversationID: conversation.id, status: .completed)
+        chat.attachWorkflowRecord(WorkflowMessageRecord(summary: completed), to: message.id)
+        XCTAssertEqual(chat.activeConversation?.updatedAt, activityTime, "Reading a projection must not reorder chat history")
+
+        var legacy = conversation
+        legacy.title = "New Chat"
+        XCTAssertEqual(legacy.displayTitle, "research the topic")
+        legacy.title = "My chosen title"
+        XCTAssertEqual(legacy.displayTitle, "My chosen title")
     }
 
     func testWorkflowCommandWithoutGoalShowsWarningAndSendsNothing() async throws {

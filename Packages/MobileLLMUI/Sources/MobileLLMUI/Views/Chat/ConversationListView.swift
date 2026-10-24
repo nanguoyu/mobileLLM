@@ -152,7 +152,7 @@ struct ConversationListView: View {
                         if convo.pinned {
                             Image(systemName: "pin.fill").font(.caption2).foregroundStyle(Theme.accent)
                         }
-                        Text(convo.title)
+                        Text(convo.displayTitle)
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(Theme.textPrimary)
                             .lineLimit(1)
@@ -208,7 +208,7 @@ struct ConversationListView: View {
             Button { beginRename(convo) } label: { Label("Rename", systemImage: "pencil") }
             Button(role: .destructive) { chat.delete(convo.id) } label: { Label("Delete", systemImage: "trash") }
         }
-        .accessibilityLabel(convo.title)
+        .accessibilityLabel(convo.displayTitle)
         .accessibilityValue(convo.preview)
     }
 
@@ -219,7 +219,7 @@ struct ConversationListView: View {
     }
 
     private func beginRename(_ convo: Conversation) {
-        renameText = convo.title
+        renameText = convo.displayTitle
         renaming = convo
     }
 
@@ -235,7 +235,7 @@ struct ConversationListView: View {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !needle.isEmpty else { return result }
         return result.filter { convo in
-            convo.title.lowercased().contains(needle)
+            convo.displayTitle.lowercased().contains(needle)
                 || convo.messages.contains { $0.answer.lowercased().contains(needle) }
         }
     }

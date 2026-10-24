@@ -47,7 +47,7 @@ final class WorkflowLauncher {
         guard let container else {
             throw WorkflowLaunchError.snapshotUnavailable("container deallocated")
         }
-        let title = goal.count <= 48 ? goal : String(goal.prefix(48)) + "…"
+        let title = ConversationText.title(goal, limit: 100)
         let dynamicRunID = WorkflowRunID(rawValue: workflowID)
         var summary = WorkflowSummary(
             id: workflowID,
@@ -316,11 +316,11 @@ final class WorkflowLauncher {
             failure: projection.failure
         )
         summary.status = summary.dynamic!.state.workflowStatus
-        if projection.state.isTerminal, summary.endTime == nil { summary.endTime = Date() }
+        if projection.state.isTerminal { summary.endTime = projection.updatedAt.date }
         summary.aggregated = WorkflowAggregatedStats(
             subagentCount: Set(projection.childCalls.filter { $0.agentType != "workflow-supervisor" }
                 .map { $0.task?.taskID ?? "call-\($0.ordinal)" }).count,
-            elapsedMilliseconds: Int64(max(0, (summary.endTime ?? Date()).timeIntervalSince(summary.startTime) * 1000)),
+            elapsedMilliseconds: Int64(max(0, (summary.endTime ?? projection.updatedAt.date).timeIntervalSince(summary.startTime) * 1000)),
             inputTokens: Int64(clamping: projection.usage.quantities[.inputTokens]),
             outputTokens: Int64(clamping: projection.usage.quantities[.outputTokens]),
             toolInvocationCount: Int64(clamping: projection.usage.quantities[.toolInvocations])
@@ -509,6 +509,7 @@ public struct AppDynamicWorkflowRecoveredCandidate: Hashable, Sendable {
 /// and inspectable child activity without introducing a second navigation or orchestration UI.
 public struct AppDynamicWorkflowProjection: Hashable, Sendable {
     public let runID: WorkflowRunID
+    public let updatedAt: AgentTimestamp
     public let state: WorkflowRunStateV1
     public let currentPhase: String?
     public let logs: [String]
@@ -523,6 +524,7 @@ public struct AppDynamicWorkflowProjection: Hashable, Sendable {
     init(_ projection: WorkflowRunProjectionV1, preparationUsage: AgentUsage = .zero,
          childStates: [AgentRunID: AgentRunState] = [:]) throws {
         runID = projection.runID
+        updatedAt = projection.lastTimestamp
         state = projection.state
         currentPhase = projection.currentPhase
         logs = projection.logs

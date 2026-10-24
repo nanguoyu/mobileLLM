@@ -8,21 +8,28 @@ import AgentRuntime
 /// The persistent bottom control bar (spec §20): the conversation's approval mode and reasoning effort
 /// are always visible and switchable in place, without opening a menu tree.
 struct ConversationModeBar: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     let chat: ChatStore
 
+    private var layout: AnyLayout {
+        typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 12))
+    }
+
     var body: some View {
-        HStack(spacing: Theme.Space.md) {
+        layout {
             Menu {
                 approvalOption("Ask", mode: .ask)
                 approvalOption("Safe preset", mode: .safePreset)
                 approvalOption("Full access", mode: .fullAccess)
             } label: {
-                Label(approvalLabel, systemImage: "lock.shield")
-                    .font(.caption.weight(.medium))
+                Label(approvalLabel.replacingOccurrences(of: "Approval: ", with: ""), systemImage: "lock.shield")
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
             }
-
-            Spacer()
+            .accessibilityLabel(approvalLabel)
+            .accessibilityHint("Applies to the next message")
 
             Menu {
                 ForEach(ReasoningEffort.allCases, id: \.self) { effort in
@@ -37,14 +44,18 @@ struct ConversationModeBar: View {
                     }
                 }
             } label: {
-                Label("Effort: \(chat.effectiveReasoningEffort.rawValue.capitalized)",
+                Label(chat.effectiveReasoningEffort.rawValue.capitalized,
                       systemImage: "brain")
-                    .font(.caption.weight(.medium))
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("Effort: \(chat.effectiveReasoningEffort.rawValue.capitalized)")
+            .accessibilityHint("Applies to the next message")
         }
         .padding(.horizontal, Theme.Space.md)
-        .padding(.vertical, Theme.Space.xs)
+        .padding(.vertical, 2)
         .background(Theme.surface2)
         .accessibilityElement(children: .contain)
     }
@@ -57,7 +68,6 @@ struct ConversationModeBar: View {
         }
     }
 
-    @ViewBuilder
     private func approvalOption(_ title: String, mode: AgentApprovalMode?) -> some View {
         let isSelected = mode.map { chat.effectiveApprovalMode == $0 } ?? false
         return Button {

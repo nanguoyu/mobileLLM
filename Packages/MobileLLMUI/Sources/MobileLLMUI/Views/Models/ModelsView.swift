@@ -68,7 +68,7 @@ struct ModelsView: View {
     private var featuredScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.md) {
-                if hasNoDownloadedModel { firstRunHeader }
+                if hasNoDownloadedModel && !settings.openAIOnlineEnabled && query.isEmpty && filter == .all { firstRunHeader }
                 activeSection
                 storageHeader
                 searchField
@@ -339,22 +339,21 @@ struct ModelCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
             header
-            Text("\(model.publisher) · \(model.summary)")
-                .font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(3)
-            HStack(spacing: Theme.Space.xs) {
-                Text(model.family.displayName)
-                Text("·").foregroundStyle(Theme.textTertiary)
-                Text(model.license.displayName)
-            }
-            .font(.caption2)
-            .foregroundStyle(model.license == .unknown ? Theme.fitAmber : Theme.textTertiary)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Family \(model.family.displayName), license \(model.license.displayName)")
             if !model.architecture.extraModalities.isEmpty { modalityRow }
-            engineAndQuant
+            if !variant.isSystemProvided {
+                DisclosureGroup("Options · \(variant.quant.displayName)") {
+                    VStack(alignment: .leading, spacing: Theme.Space.md) {
+                        engineAndQuant
+                        Text("Publisher: \(model.publisher)")
+                        Text("License: \(model.license.displayName)")
+                    }
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+                    .padding(.top, Theme.Space.sm)
+                }
+                .font(.callout).padding(.vertical, 4)
+            }
             if hasElevatedMemoryRisk && !isActive {
-                Text("This model is above the usual memory budget on this device. Use will still attempt "
-                     + "to load it, but the system may interrupt the app.")
+                Text("May exceed this device’s memory budget. Loading could be interrupted.")
                     .font(.caption2).foregroundStyle(Theme.fitAmber).lineLimit(3)
             }
             actionArea
@@ -368,38 +367,20 @@ struct ModelCard: View {
     /// image input for real (llama.cpp mtmd); everything else stays honestly text-only, so the note never
     /// over-promises.
     private var modalityRow: some View {
-        HStack(spacing: Theme.Space.xs) {
-            ForEach(model.architecture.extraModalities, id: \.self) { m in
-                Label(m.label, systemImage: m.icon)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, Theme.Space.xs).padding(.vertical, 3)
-                    .background(Theme.surface2, in: Capsule())
-                    .overlay(Capsule().strokeBorder(Theme.hairline))
-                    .accessibilityLabel("Model supports \(m.label) input")
-            }
-            Text(modalityFootnote)
-                .font(.caption2).foregroundStyle(Theme.textTertiary)
-                .lineLimit(1).minimumScaleFactor(0.8)
-            Spacer(minLength: 0)
-        }
-    }
-
-    /// Honest modality status: a GGUF vision variant that ships an mmproj projector takes image input now
-    /// (llama.cpp mtmd), so say so; MLX vision + audio aren't wired, so they stay "text-only".
-    private var modalityFootnote: String {
-        let visionReady = model.variants(for: .llamaCpp).contains { $0.supportsVisionInput }
-        return visionReady ? "· image input works (llama.cpp)" : "· text-only here for now"
+        Label(variant.supportsVisionInput ? "Text and images" : "Text input",
+              systemImage: variant.supportsVisionInput ? "photo" : "text.alignleft")
+            .font(.caption).foregroundStyle(Theme.textSecondary)
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
             Text(model.displayName)
                 .font(.headline).foregroundStyle(Theme.textPrimary)
-                .lineLimit(1).minimumScaleFactor(0.7).layoutPriority(1)
-            if isRecommended { Chip(text: "Recommended", filled: true) }
-            Spacer()
-            if !systemModelBlocked { LLMFitBadge(presentation: presentation) }
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Theme.Space.sm) {
+                if isRecommended { Chip(text: "Recommended", filled: true) }
+                if !systemModelBlocked { LLMFitBadge(presentation: presentation) }
+            }
         }
     }
 

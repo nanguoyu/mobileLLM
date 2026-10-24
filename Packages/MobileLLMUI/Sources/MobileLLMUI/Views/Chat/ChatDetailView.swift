@@ -104,7 +104,7 @@ struct ChatDetailView: View {
                 Menu {
                     Section("Conversation") {
                         Button {
-                            renameText = chat.activeConversation?.title ?? ""
+                            renameText = chat.activeConversation?.displayTitle ?? ""
                             showRename = true
                         } label: {
                             Label("Rename", systemImage: "pencil")
@@ -126,9 +126,6 @@ struct ChatDetailView: View {
                         } label: {
                             Label("Workflow", systemImage: "point.3.connected.trianglepath.dotted")
                         }
-                        // Spec §20: the Workflow entry shows only the LIVE summary and is disabled while
-                        // nothing is running in this conversation.
-                        .disabled(!chat.hasRunningWorkflow)
                         Button {
                             showBackgroundTasks = true
                         } label: {
@@ -230,14 +227,15 @@ struct ChatDetailView: View {
         Button { showSwitcher = true } label: {
             HStack(spacing: 4) {
                 Circle().fill(chat.hasModel ? Theme.fitGreen : Theme.fitGray).frame(width: 6, height: 6)
-                Text(chat.activeModelLabel)
-                    .font(.caption.weight(.medium)).foregroundStyle(Theme.textSecondary)
+                Text(chat.activeModelTitle)
+                    .font(.subheadline.weight(.medium)).foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1).truncationMode(.middle)
                 Image(systemName: "chevron.down").font(.caption2).foregroundStyle(Theme.textTertiary)
             }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Active model")
-        .accessibilityValue(chat.isOnlineActive ? chat.activeModelLabel : chat.activeModel?.subtitle ?? "No model loaded")
+        .accessibilityValue(chat.activeModelTitle)
         .accessibilityHint("Switch model")
     }
 }

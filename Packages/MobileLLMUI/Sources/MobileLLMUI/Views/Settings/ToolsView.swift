@@ -73,9 +73,7 @@ struct ToolsView: View {
                 }
             }
             .tint(Theme.accent)
-            Text("The model decides whether to call an allowed tool. Each call adds another model pass; "
-                 + "network tools such as web search, Wikipedia, and remote MCP also wait for the network, "
-                 + "so they can make a reply noticeably slower.")
+            Text("Each call follows the conversation’s approval mode. Network tools contact external services.")
                 .font(.caption).foregroundStyle(Theme.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }

@@ -219,10 +219,19 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
     /// The conversation's project tags (empty when none are stored).
     public var projectTagList: [String] { projectTags ?? [] }
 
+    /// Older workflow sends left the placeholder title untouched. Derive a readable label without
+    /// overwriting an explicitly named conversation or its stored original messages.
+    public var displayTitle: String {
+        if title == "New Chat", let goal = messages.first(where: { $0.workflowRecord != nil })?.answer {
+            return ConversationText.title(goal)
+        }
+        return title
+    }
+
     /// A one-line preview for the conversation list (last user or assistant text).
     public var preview: String {
         for message in messages.reversed() where message.role != .system && !message.answer.isEmpty {
-            return message.answer
+            return ConversationText.preview(message.answer)
         }
         return "No messages yet"
     }

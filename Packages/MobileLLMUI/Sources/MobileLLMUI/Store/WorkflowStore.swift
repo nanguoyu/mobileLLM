@@ -176,6 +176,7 @@ public final class WorkflowStore: WorkflowRecording {
     }
 
     public func save(_ summary: WorkflowSummary) async throws {
+        guard workflows[summary.id] != summary else { return }
         workflows[summary.id] = summary
         if summary.dynamic == nil, summary.status == .running {
             executingWorkflowIDs.insert(summary.id)
