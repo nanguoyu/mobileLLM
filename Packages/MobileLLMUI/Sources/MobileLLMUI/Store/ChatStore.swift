@@ -566,7 +566,7 @@ public final class ChatStore {
             return GenerationModel(
                 modelID: OnlineModelIdentity.conversationModelID(service.id, model: service.modelID ?? ""),
                 variantID: OnlineModelIdentity.variantID,
-                displayName: OnlineModelIdentity.displayLabel(service.name),
+                displayName: OnlineModelIdentity.displayLabel(service.modelID ?? service.name),
                 engine: .online
             )
         }

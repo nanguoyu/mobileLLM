@@ -156,14 +156,16 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   restart-agent / reconcile. Hard ceilings include 1 000 agent calls and 4 096 items per collection.
   The wall-clock default is 30 minutes; the contract permits a configured limit up to 24 hours. One
   workflow root can be active per engine. The UI is message-anchored: a live record row under the
-  `/workflow` message shows progress, tokens, and tool calls, and the summary page shows the exact accepted
-  source, every child call, and the terminal result. App bootstrap only re-projects persisted workflows —
+  `/workflow` message shows task progress, and the workspace groups logical tasks by actual stage.
+  Task details expose stored public results, exact source-result links, assignments, elapsed time and
+  usage. Coordinator calls and source live under Execution details. App bootstrap only re-projects persisted workflows —
   it never starts one or loads a model.
 - **Staged orchestrator (archived)**: `WorkflowOrchestrator` — the earlier fixed-phase planner/handoff
   design — is retained for `WorkflowLauncher.resume` of legacy summaries that carry a `WorkflowPlan`, and
   for `MultiAgentWorkflowIntegrationTests`. New launches never use it.
 
-`CoordinatedWorkflow` v3 sends actual worker results to the supervisor. Long outputs have bounded
+`CoordinatedWorkflow` v4 sends actual worker results to the supervisor and records bounded task
+descriptors alongside each invocation. Long outputs have bounded
 UTF-8 previews with explicit offsets; `read` returns original ranges without another worker or network
 request. Exact `inputRanges` can pass an original middle or tail section to a dependent worker.
 Previously delivered pages stay in the supervisor context alongside its working notes; newest
@@ -175,6 +177,21 @@ receipts. Each invocation remains an ordinary durable child run. This is explici
 not a persistent provider session or a claim of KV-cache reuse. Other tasks receive selected settled
 artifacts. Full outputs stay available even when a preview is truncated. Failures remain labeled and
 successful siblings survive. Three identical actions without progress stop the run.
+
+The UI's `WorkflowDisplay` groups continuations by recorded task ID and excludes supervisor calls from
+worker counts. `DynamicWorkflowProjection` derives preparation, submission and settlement times, plus
+event sequence numbers, from the journal. Dependency links resolve as of consumer preparation, so a
+later upstream retry cannot silently change an earlier task's source. The app reads actual child run
+states while work is pending. Successful outcomes, failed calls and uncertain effects remain distinct.
+
+`WorkflowTaskDetailView` reads public worker output on demand through the verified value store.
+Coordinator notes and provider reasoning are excluded. An observer-only `AgentRunStore` reuses the
+existing approval/question controls and commands without a request builder or callbacks into the main
+conversation. Parent pause and reconciliation still use workflow controls. The initial planner has its
+own recorded run/handle/state and inspector, so a model approval cannot remain hidden behind Planning.
+Closing an inspector detaches its subscriptions without stopping work. Rejected receipts expose their
+safe failure. Completed history remains accessible, and unchanged projections do not rewrite snapshots
+or bump conversation activity times.
 
 The program permits at most 12 worker invocations, 24 actual tool calls and 12 supervisor continuations,
 within the unchanged execution budgets. `await budget.snapshot()` reports actual usage only from settled

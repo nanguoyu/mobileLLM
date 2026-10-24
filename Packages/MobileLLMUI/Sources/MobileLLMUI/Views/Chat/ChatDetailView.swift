@@ -227,7 +227,7 @@ struct ChatDetailView: View {
         Button { showSwitcher = true } label: {
             HStack(spacing: 4) {
                 Circle().fill(chat.hasModel ? Theme.fitGreen : Theme.fitGray).frame(width: 6, height: 6)
-                Text(chat.activeModelTitle)
+                Text(chat.isOnlineActive ? "Online · \(chat.activeModelTitle)" : chat.activeModelTitle)
                     .font(.subheadline.weight(.medium)).foregroundStyle(Theme.textPrimary)
                     .lineLimit(1).truncationMode(.middle)
                 Image(systemName: "chevron.down").font(.caption2).foregroundStyle(Theme.textTertiary)
@@ -235,7 +235,7 @@ struct ChatDetailView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Active model")
-        .accessibilityValue(chat.activeModelTitle)
+        .accessibilityValue(chat.isOnlineActive ? "Online model: \(chat.activeModelTitle)" : "On-device model: \(chat.activeModelTitle)")
         .accessibilityHint("Switch model")
     }
 }
