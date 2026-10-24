@@ -1,10 +1,10 @@
 # Current implementation and validation status
 
-Updated **2026-10-23** for the DeepSeek web integration and dynamic research evaluation on
-`codex/deepseek-search`, based on `main`
-after [PR #7](https://github.com/nanguoyu/mobileLLM/pull/7)
-merged as [`fa68377`](https://github.com/nanguoyu/mobileLLM/commit/fa68377078a69222dd016d87579a16fa53dba701).
-The earlier merged audit branch was deleted locally and remotely.
+Updated **2026-10-24** after integrating the DeepSeek web service and multi-stage agent work into `main`.
+The integrated implementation ends at
+[`8ff6f70`](https://github.com/nanguoyu/mobileLLM/commit/8ff6f702580b83aabc607292e04128c5c8de619b),
+whose hosted CI passed. The evaluation results below retain their original tested versions and dates;
+the fast-forward integration does not change the code or rerun those evaluations.
 [spec.md](../spec.md) defines requirements, [ARCHITECTURE.md](ARCHITECTURE.md) describes the code,
 and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
 

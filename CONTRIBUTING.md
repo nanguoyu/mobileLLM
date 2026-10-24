@@ -1,7 +1,7 @@
 # Contributing to mobileLLM
 
 mobileLLM is a local-first agent chat app for macOS + iOS, written in Swift, with optional online models.
-This guide covers the development setup, the package layout, how to run the tests, and what a PR needs.
+This guide covers the development setup, the package layout, how to run the tests, and how to deliver changes.
 
 ## Development setup
 
@@ -199,7 +199,7 @@ four semantic registries must match the checked-in `spec.md`. The separate `port
 `AgentHarnessVerification`, then runs the semantic/architecture verifier. Apple platforms keep CryptoKit;
 Linux uses Apple's pinned Swift Crypto 4.5.2 implementation. Pull requests and pushes to `main`
 run these gates; feature-branch pushes do not launch a duplicate run for an open pull request.
-Use manual dispatch when branch validation is needed before opening a pull request.
+Use manual dispatch when validation is needed for an explicitly requested feature branch.
 
 Paid macOS runners remain disabled. A maintainer can enable the `macos-behavior` job by registering a
 trusted self-hosted macOS runner and setting `MOBILELLM_SELF_HOSTED_MAC=true` in repository variables.
@@ -282,7 +282,15 @@ become active, so it is expected to reject the currently incomplete release matr
 `docs/DESIGN.md` is an archived design. Update its navigation/status preface when needed, while
 preserving the dated body. Regenerate the ignored Xcode project after any `project.yml` change.
 
-## Pull requests
+## Delivering changes
+
+For work requested by the repository owner, commit and push directly to `main` by default.
+Open a pull request only when explicitly requested; completed work must not wait on PR review.
+Inspect the change scope before committing, preserve unrelated work, and commit intentional changes
+before reporting their progress or results. Push promptly and report any push failure. When integrating
+an already tested branch, preserve its history and reuse its validation unless conflicts or further
+code changes require new checks. Remove fully merged task branches and leave the checkout on `main`.
+These agent instructions are also recorded in [AGENTS.md](AGENTS.md).
 
 - **Tests stay green.** Add or update tests for the behavior you change; existing tests are pinned behavior
   — don't weaken or delete one unless the behavior changed by design, and say so if it did.
@@ -304,7 +312,7 @@ preserving the dated body. Regenerate the ignored Xcode project after any `proje
 - **Changing downloads or web access?** Pin every Hub request to the variant revision, preserve LFS
   integrity checks across fresh and resumed writes, validate every redirect target and resolved address,
   and enforce response limits while streaming. Add hostile-path tests, not only happy-path fixtures.
-- Keep PRs focused, describe the *why*, and confirm the MLX-free suites pass before requesting review.
+- Keep changes focused, explain why they are needed, and record the relevant checks, failures, and skips.
 
 By contributing you agree your contributions are licensed under the [MIT License](LICENSE). Please also
 follow our [Code of Conduct](CODE_OF_CONDUCT.md).
