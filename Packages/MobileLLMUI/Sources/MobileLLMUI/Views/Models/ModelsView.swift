@@ -21,6 +21,7 @@ struct ModelsView: View {
     @State private var filter: ModelFilter = .all
     @State private var query = ""
     @State private var tier: Tier = .featured
+    @FocusState private var searchFocused: Bool
 
     /// The two-tier library: curated (verified + adapted) vs live Hugging Face browse.
     private enum Tier: String, CaseIterable {
@@ -82,6 +83,7 @@ struct ModelsView: View {
             .frame(maxWidth: 720)
             .frame(maxWidth: .infinity)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     /// The selected model, pinned above everything (only when no search/filter narrows the list — a
@@ -211,8 +213,11 @@ struct ModelsView: View {
             Image(systemName: "magnifyingglass").font(.subheadline).foregroundStyle(Theme.textTertiary)
             TextField("Search models — name, publisher…", text: $query)
                 .textFieldStyle(.plain).font(.subheadline)
+                .focused($searchFocused)
+                .onSubmit { searchFocused = false }
                 #if os(iOS)
                 .autocorrectionDisabled().textInputAutocapitalization(.never)
+                .submitLabel(.search)
                 #endif
             if !query.isEmpty {
                 Button { query = "" } label: {
