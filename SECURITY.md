@@ -112,8 +112,8 @@ build phase copies it into the test bundle. macOS DEBUG launches prefer the home
 can fall back to the embedded configuration, with launch-environment overrides taking precedence.
 A complete configuration seeds Keychain and automatically enables the developer's online service.
 Release app builds do not embed the file. Do not publish a DEBUG app, test bundle, or build artifact
-that contains it. The ordinary AgentRuntime test suite also makes real online requests when this
-file is present unless `LiveOnlineProviderSmokeTests` is explicitly skipped.
+that contains it. Live provider checks require `MOBILELLM_RUN_LIVE_ONLINE_TESTS=1` as well as this
+configuration file. Ordinary package and coverage runners exclude `LiveOnlineProviderSmokeTests`.
 
 ## Data deletion and current integration limits
 
