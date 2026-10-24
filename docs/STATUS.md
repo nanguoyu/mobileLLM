@@ -69,6 +69,11 @@ its API comparison passed core checks, while the Europe answer missed ELSS. No E
 was added. Research coverage and broad repeated-run reliability remain open measurements. Native persistent
 worker conversations, asynchronous peer messaging and production code-execution tools remain separate gaps.
 
+The [agent harness implementation plan](AGENT_HARNESS_PLAN.md) sequences persistent child sessions,
+durable messaging, dynamic task dependencies, goal continuation and long-context work. The near-term
+milestone uses available tools and does not depend on the owner's separate iOS sandbox project.
+Production code execution and workspace qualification remain a later provider integration.
+
 ## DeepSeek Search and Fetch integration
 
 The optional web service uses DeepSeek's independent JSON APIs. Select the configured account in
