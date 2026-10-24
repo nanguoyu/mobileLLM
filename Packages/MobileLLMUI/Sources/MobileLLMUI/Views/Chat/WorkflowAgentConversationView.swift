@@ -18,6 +18,8 @@ struct WorkflowAgentConversationView: View {
     @State private var pendingMessageID: MessageID?
     @State private var error: String?
     @State private var refreshGeneration = 0
+    @State private var copiedRunID: AgentRunID?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var inputFocused: Bool
 
     private var workflow: DynamicWorkflowPresentation? { store.summary(workflowID: workflowID)?.dynamic }
@@ -40,6 +42,7 @@ struct WorkflowAgentConversationView: View {
     private var refreshKey: String { "\(refreshGeneration)-\(workflow?.state.rawValue ?? "none")" }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.Space.lg) {
                 if let brief = call.task?.instruction {
@@ -84,9 +87,13 @@ struct WorkflowAgentConversationView: View {
                     Text(message).font(.callout).foregroundStyle(Theme.danger).textSelection(.enabled)
                         .accessibilityIdentifier("workflow.session.error")
                 }
+                Color.clear.frame(height: 1).id("session.latest")
             }
             .frame(maxWidth: Theme.Layout.readingColumn, alignment: .leading)
             .padding(Theme.Space.lg).frame(maxWidth: .infinity)
+        }
+        .onChange(of: session?.messages.count ?? 0) { _, _ in scrollToLatest(proxy) }
+        .onChange(of: current?.answer) { _, _ in scrollToLatest(proxy) }
         }
         .scrollDismissesKeyboard(.interactively)
         .accessibilityIdentifier("workflow.session.conversation")
@@ -167,12 +174,24 @@ struct WorkflowAgentConversationView: View {
             HStack {
                 Text(title).font(.callout.weight(.semibold))
                 Spacer()
-                Button("Copy", systemImage: "doc.on.doc") { Clipboard.copy(text) }
+                Button(copiedRunID == id ? "Copied" : "Copy", systemImage: copiedRunID == id ? "checkmark" : "doc.on.doc") {
+                    Clipboard.copy(text)
+                    copiedRunID = id
+                }
                     .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
             }
             MarkdownMessage(text: text).textSelection(.enabled)
                 .accessibilityIdentifier("workflow.session.answer.\(id)")
         }.frame(maxWidth: .infinity, alignment: .leading).studioCard()
+    }
+
+    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                proxy.scrollTo("session.latest", anchor: .bottom)
+            }
+        }
     }
 
     private func send() {

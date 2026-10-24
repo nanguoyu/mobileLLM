@@ -116,6 +116,28 @@ final class WorkflowUITests: XCTestCase {
         XCTAssertTrue(taskResult.label.contains("Under the fixture assumptions"))
         app.buttons["Copy result"].tap()
         XCTAssertTrue(app.buttons["Copied"].exists, "copy must acknowledge the action")
+        let messageAgent = app.buttons["workflow.task.conversation"]
+        for _ in 0..<4 where !messageAgent.isHittable { app.swipeDown() }
+        XCTAssertTrue(messageAgent.isHittable)
+        messageAgent.tap()
+        let sessionInput = app.descendants(matching: .any).matching(identifier: "workflow.session.input").firstMatch
+        XCTAssertTrue(sessionInput.waitForExistence(timeout: 8))
+        sessionInput.tap()
+        sessionInput.typeText("SESSION_UI_CONTINUATION: continue the saved task in this agent conversation.")
+        app.buttons["workflow.session.send"].tap()
+        let sessionAnswer = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "workflow.session.answer.", "SESSION_UI_ACK"
+        )).firstMatch
+        let continuationDeadline = Date().addingTimeInterval(30)
+        while Date() < continuationDeadline, !sessionAnswer.exists {
+            let approval = app.buttons["approval.approve"]
+            if approval.exists && approval.isHittable { approval.tap() }
+            else { RunLoop.current.run(until: Date().addingTimeInterval(0.2)) }
+        }
+        XCTAssertTrue(sessionAnswer.exists, "the same agent must return the follow-up through its actual executor")
+        XCTAssertTrue(sessionAnswer.isHittable, "the new reply must scroll into view")
+        app.navigationBars.buttons["Model"].tap()
+        XCTAssertTrue(taskResult.label.contains("Under the fixture assumptions"), "follow-ups must preserve the saved workflow result")
         app.buttons["Done"].tap()
 
         let executionDetails = app.buttons["Execution details"]

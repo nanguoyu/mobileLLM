@@ -25,7 +25,9 @@ private final class DynamicWorkflowUITestResponsesProtocol: URLProtocol, @unchec
         }
         let body = Self.requestBodyString(request)
         let text: String
-        if body.contains("MOBILELLM_COORDINATOR_V3") && body.contains("ARTIFACT CATALOG:") {
+        if body.contains("SESSION_UI_CONTINUATION") {
+            text = "SESSION_UI_ACK: This follow-up was received in the existing agent conversation. The original workflow result remains available."
+        } else if body.contains("MOBILELLM_COORDINATOR_V3") && body.contains("ARTIFACT CATALOG:") {
             text = #"{"action":"deliver","stage":"Deliver","reason":"The fixture investigations are available.","tasks":[],"reads":[],"query":"","notes":"","answer":"EVAL_KIMI_LOCAL: The complete Kimi K3 model as local weights on an iPhone 16 Pro is not feasible under this fixture's assumed memory and storage constraints. Use a smaller local model or a remote API."}"#
         } else if body.contains("MOBILELLM_COORDINATOR_V3") {
             text = #"{"action":"work","stage":"Investigate","reason":"Independent constraint tracks.","notes":"","answer":"","reads":[],"query":"","tasks":[{"id":"model","instruction":"Assess model memory constraints.","inputs":[],"inputRanges":[],"maxToolCalls":0},{"id":"device","instruction":"Assess phone constraints.","inputs":[],"inputRanges":[],"maxToolCalls":0},{"id":"alternatives","instruction":"Assess smaller local and remote alternatives.","inputs":[],"inputRanges":[],"maxToolCalls":0}]}"#
