@@ -573,6 +573,7 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
     public let stallMilliseconds: UInt64?
     /// Optional per-child tool-call ceiling. It can only narrow the host's available budget.
     public let maximumToolCalls: UInt64?
+    public let task: WorkflowTaskDescriptorV1?
 
     public init(
         label: String? = nil,
@@ -582,7 +583,8 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
         requestedAgentType: String? = nil,
         requiresIsolatedWorkspace: Bool = false,
         stallMilliseconds: UInt64? = nil,
-        maximumToolCalls: UInt64? = nil
+        maximumToolCalls: UInt64? = nil,
+        task: WorkflowTaskDescriptorV1? = nil
     ) throws {
         guard label.map({
                   AgentWireValidation.isNonblankControlFree($0, maximumLength: 256)
@@ -608,6 +610,7 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
         self.requiresIsolatedWorkspace = requiresIsolatedWorkspace
         self.stallMilliseconds = stallMilliseconds
         self.maximumToolCalls = maximumToolCalls
+        self.task = task
     }
 
     public init(from decoder: Decoder) throws {
@@ -621,7 +624,8 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
                 requestedAgentType: values.decodeIfPresent(String.self, forKey: .requestedAgentType),
                 requiresIsolatedWorkspace: values.decode(Bool.self, forKey: .requiresIsolatedWorkspace),
                 stallMilliseconds: values.decodeIfPresent(UInt64.self, forKey: .stallMilliseconds),
-                maximumToolCalls: values.decodeIfPresent(UInt64.self, forKey: .maximumToolCalls)
+                maximumToolCalls: values.decodeIfPresent(UInt64.self, forKey: .maximumToolCalls),
+                task: values.decodeIfPresent(WorkflowTaskDescriptorV1.self, forKey: .task)
             )
         } catch {
             throw DecodingError.dataCorrupted(.init(

@@ -206,8 +206,8 @@ public enum DynamicWorkflowChildStatus: String, Hashable, Codable, Sendable {
     case uncertain
 }
 
-/// Inspectable, non-secret child-call projection. Prompts remain digest-only; labels, attempts and
-/// durable identities are sufficient for status inspection and explicit recovery controls.
+/// Public task assignment and durable execution facts. Provider prompts and private reasoning
+/// are never copied into this display snapshot; recorded result bodies are loaded separately.
 public struct DynamicWorkflowChildPresentation: Hashable, Codable, Sendable, Identifiable {
     public var id: WorkflowAgentCallID { callID }
     public let callID: WorkflowAgentCallID
@@ -219,6 +219,14 @@ public struct DynamicWorkflowChildPresentation: Hashable, Codable, Sendable, Ide
     public let handleID: AgentExecutionHandleID?
     public let status: DynamicWorkflowChildStatus
     public let detail: String?
+    public var task: WorkflowTaskDescriptorV1?
+    public var agentType: String?
+    public var executionState: AgentRunState?
+    public var preparedAt: AgentTimestamp?
+    public var submittedAt: AgentTimestamp?
+    public var settledAt: AgentTimestamp?
+    public var usage: AgentUsage?
+    public var hasResult: Bool?
 
     public init(
         callID: WorkflowAgentCallID,
@@ -229,7 +237,15 @@ public struct DynamicWorkflowChildPresentation: Hashable, Codable, Sendable, Ide
         childRunID: AgentRunID,
         handleID: AgentExecutionHandleID? = nil,
         status: DynamicWorkflowChildStatus,
-        detail: String? = nil
+        detail: String? = nil,
+        task: WorkflowTaskDescriptorV1? = nil,
+        agentType: String? = nil,
+        executionState: AgentRunState? = nil,
+        preparedAt: AgentTimestamp? = nil,
+        submittedAt: AgentTimestamp? = nil,
+        settledAt: AgentTimestamp? = nil,
+        usage: AgentUsage? = nil,
+        hasResult: Bool? = nil
     ) {
         self.callID = callID
         self.ordinal = ordinal
@@ -240,6 +256,14 @@ public struct DynamicWorkflowChildPresentation: Hashable, Codable, Sendable, Ide
         self.handleID = handleID
         self.status = status
         self.detail = detail
+        self.task = task
+        self.agentType = agentType
+        self.executionState = executionState
+        self.preparedAt = preparedAt
+        self.submittedAt = submittedAt
+        self.settledAt = settledAt
+        self.usage = usage
+        self.hasResult = hasResult
     }
 }
 

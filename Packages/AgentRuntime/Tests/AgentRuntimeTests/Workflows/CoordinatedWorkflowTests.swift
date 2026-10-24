@@ -45,6 +45,8 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
                 }
                 return .value(decision("deliver", answer: "Verified original tail"))
             case "verify":
+                XCTAssertEqual(call.options.task?.inputArtifactIDs, ["source:1"])
+                XCTAssertEqual(call.options.task?.outputArtifactID, "verify:2")
                 XCTAssertTrue(call.prompt.contains("NEEDED-TAIL-EVIDENCE"))
                 XCTAssertFalse(call.prompt.contains(String(repeating: "x", count: 100)))
                 return .value(.string("Evidence confirmed"))
@@ -69,6 +71,9 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
                 XCTAssertTrue(call.prompt.contains("ORIGINAL-RECORDED-PAGE-FACT"))
                 XCTAssertTrue(call.prompt.contains("Investigate cost"), "Continuation retains prior assignment")
                 XCTAssertNil(call.options.schema, "Worker returns its artifact without a redundant JSON wrapper")
+                XCTAssertEqual(call.options.task?.taskID, "cost")
+                XCTAssertEqual(call.options.task?.inputArtifactIDs, ["cost:1", "constraints:2"])
+                XCTAssertEqual(call.options.task?.outputArtifactID, "cost:3")
                 return .value(.string("Corrected total: 43"))
             case "constraints": return .value(.string("CONSTRAINT-COUNTEREXAMPLE: one additional unit"))
             case "coordinator":

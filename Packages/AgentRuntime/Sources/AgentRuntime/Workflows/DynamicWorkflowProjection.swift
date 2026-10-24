@@ -33,6 +33,9 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
     public private(set) var calls: [WorkflowAgentCallV1]
     public private(set) var submittedHandles: [WorkflowAgentCallID: AgentExecutionHandleID]
     public private(set) var outcomes: [WorkflowAgentCallID: WorkflowAgentOutcomeV1]
+    public private(set) var preparedAt: [WorkflowAgentCallID: AgentTimestamp]
+    public private(set) var submittedAt: [WorkflowAgentCallID: AgentTimestamp]
+    public private(set) var settledAt: [WorkflowAgentCallID: AgentTimestamp]
     public private(set) var restartRequests: [WorkflowAgentCallID]
     public private(set) var reconciliationCallID: WorkflowAgentCallID?
     public private(set) var reconciliationDecision: AgentReconciliationDecision?
@@ -64,6 +67,9 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
             calls: [],
             submittedHandles: [:],
             outcomes: [:],
+            preparedAt: [:],
+            submittedAt: [:],
+            settledAt: [:],
             restartRequests: [],
             reconciliationCallID: nil,
             reconciliationDecision: nil,
@@ -149,17 +155,20 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
                   call.ordinal <= maximumOrdinal || call.attempt == 1
             else { throw WorkflowProjectionError.noncontiguousAgentOrdinal }
             calls.append(call)
+            preparedAt[call.callID] = event.timestamp
         case .agentChildSubmitted(let callID, let handleID):
             guard Self.acceptsRuntimeActivity(state), calls.contains(where: { $0.callID == callID }),
                   submittedHandles[callID] == nil, outcomes[callID] == nil
             else { throw WorkflowProjectionError.unknownAgentCall }
             submittedHandles[callID] = handleID
+            submittedAt[callID] = event.timestamp
         case .agentCallSettled(let callID, let outcome):
             guard Self.acceptsRuntimeActivity(state), calls.contains(where: { $0.callID == callID }) else {
                 throw WorkflowProjectionError.unknownAgentCall
             }
             guard outcomes[callID] == nil else { throw WorkflowProjectionError.duplicateAgentSettlement }
             outcomes[callID] = outcome
+            settledAt[callID] = event.timestamp
         case .agentRestartRequested(let callID):
             guard !state.isTerminal, calls.contains(where: { $0.callID == callID }) else {
                 throw WorkflowProjectionError.unknownAgentCall

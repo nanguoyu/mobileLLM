@@ -834,6 +834,9 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         default: throw WorkflowScriptRuntimeError.invalidAgentOptions("maxToolCalls must be a nonnegative integer")
         }
         do {
+            let task = try object["task"].map {
+                try JSONDecoder().decode(WorkflowTaskDescriptorV1.self, from: CanonicalJSON($0).data)
+            }
             return try WorkflowAgentOptionsV1(
                 label: try optionalString(object["label"], field: "label"),
                 phase: try optionalString(object["phase"], field: "phase"),
@@ -842,7 +845,8 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
                 requestedAgentType: try optionalString(object["agentType"], field: "agentType"),
                 requiresIsolatedWorkspace: isolation != nil,
                 stallMilliseconds: stall,
-                maximumToolCalls: maximumToolCalls
+                maximumToolCalls: maximumToolCalls,
+                task: task
             )
         } catch {
             throw WorkflowScriptRuntimeError.invalidAgentOptions(Self.sanitize(String(describing: error)))

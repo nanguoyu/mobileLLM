@@ -30,6 +30,14 @@ public final class WorkflowStore: WorkflowRecording {
     public var dynamicReconcileHandler: (@MainActor (UUID, AgentReconciliationDecision) async throws -> Void)?
     public var dynamicStopHandler: (@MainActor (UUID) async throws -> Void)?
     public var dynamicRestartHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> Void)?
+    public var dynamicResultHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> String?)?
+
+    public func result(workflowID: UUID, callID: WorkflowAgentCallID) async throws -> String? {
+        guard workflows[workflowID] != nil, let dynamicResultHandler else {
+            throw WorkflowStoreActionError.unavailable
+        }
+        return try await dynamicResultHandler(workflowID, callID)
+    }
 
     private let fileURL: URL
     private let encoder: JSONEncoder

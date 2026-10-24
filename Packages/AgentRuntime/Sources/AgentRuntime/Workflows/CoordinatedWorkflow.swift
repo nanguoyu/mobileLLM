@@ -91,7 +91,7 @@ public enum CoordinatedWorkflow {
     public static var source: String {
         #"""
         export const meta = {
-          name: 'coordinated-workflow-v3',
+          name: 'coordinated-workflow-v4',
           description: 'A supervisor delegates, reads actual results, continues tasks and delivers.',
           whenToUse: 'Tasks benefiting from complementary work and dependent stages.',
           phases: [{title:'Work',detail:'Independent tasks execute in parallel.'},{title:'Coordinate'}]
@@ -217,7 +217,8 @@ public enum CoordinatedWorkflow {
                   range.offset,range.length,windowBytes/Math.max(1,ranges.length)));
                 const priorInstructions = history.filter(r => r.taskID === task.id).map(r => r.instruction);
                 const recorded = hasWeb && history.length > 0 ? await webEvidence(task.instruction.slice(0,2000)) : null;
-                prepared.push({task:task,inputs:inputs,priorInstructions:priorInstructions,recorded:recorded});
+                const outputID = task.id + ':' + (records.length+prepared.length+1);
+                prepared.push({task:task,inputs:inputs,priorInstructions:priorInstructions,recorded:recorded,outputID:outputID});
               }
               const results = await parallel(prepared.map(item => async () => {
                 const task = item.task;
@@ -226,7 +227,9 @@ public enum CoordinatedWorkflow {
                     + '\nLOGICAL TASK ID: ' + task.id + '\nPRIOR INSTRUCTIONS:\n' + serialize(item.priorInstructions)
                     + '\n<input-artifacts>\n' + serialize(item.inputs) + '\n</input-artifacts>'
                     + '\n<recorded-web-evidence>\n' + serialize(item.recorded) + '\n</recorded-web-evidence>',
-                    {label:task.id,agentType:'workflow-worker',maxToolCalls:task.maxToolCalls});
+                    {label:task.id,agentType:'workflow-worker',maxToolCalls:task.maxToolCalls,
+                     task:{taskID:task.id,instruction:task.instruction,
+                       inputArtifactIDs:unique(item.inputs.map(input => input.id)),outputArtifactID:item.outputID}});
                   return {taskID:task.id,instruction:task.instruction,status:typeof result === 'string' && result.trim().length > 0 ? 'completed' : 'failed',
                     content:typeof result === 'string' ? result : 'No worker result was returned.'};
                 } catch (error) {

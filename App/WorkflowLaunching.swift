@@ -277,6 +277,10 @@ final class WorkflowLauncher {
         return runID
     }
 
+    func result(workflowID: UUID, callID: WorkflowAgentCallID) async throws -> String? {
+        try await assembly.dynamicWorkflows.result(runID: dynamicRunID(workflowID), callID: callID)
+    }
+
     private func refreshDynamicSummary(workflowID: UUID) async throws {
         guard let container,
               var summary = container.workflowStore.summary(workflowID: workflowID),
@@ -515,7 +519,8 @@ public struct AppDynamicWorkflowProjection: Hashable, Sendable {
     public let reconciliationCallID: WorkflowAgentCallID?
     public let failure: String?
 
-    init(_ projection: WorkflowRunProjectionV1, preparationUsage: AgentUsage = .zero) throws {
+    init(_ projection: WorkflowRunProjectionV1, preparationUsage: AgentUsage = .zero,
+         childStates: [AgentRunID: AgentRunState] = [:]) throws {
         runID = projection.runID
         state = projection.state
         currentPhase = projection.currentPhase
@@ -525,6 +530,12 @@ public struct AppDynamicWorkflowProjection: Hashable, Sendable {
             let outcome = projection.outcomes[call.callID]
             let status: DynamicWorkflowChildStatus
             let detail: String?
+            let usage: AgentUsage?
+            switch outcome {
+            case .completed(_, let value), .failed(_, let value), .unavailable(_, let value), .stopped(let value):
+                usage = value
+            case nil: usage = nil
+            }
             if projection.reconciliationCallID == call.callID {
                 status = .uncertain
                 detail = "Outcome requires reconciliation"
@@ -559,10 +570,20 @@ public struct AppDynamicWorkflowProjection: Hashable, Sendable {
                 childRunID: call.childRunID,
                 handleID: projection.submittedHandles[call.callID],
                 status: status,
-                detail: detail
+                detail: detail,
+                task: call.options.task,
+                agentType: call.options.requestedAgentType,
+                executionState: childStates[call.childRunID],
+                preparedAt: projection.preparedAt[call.callID],
+                submittedAt: projection.submittedAt[call.callID],
+                settledAt: projection.settledAt[call.callID],
+                usage: usage,
+                hasResult: status == .completed && call.options.requestedAgentType != "workflow-supervisor"
             )
         }
-        completedCallCount = projection.outcomes.count
+        completedCallCount = projection.outcomes.values.filter {
+            if case .completed = $0 { return true }; return false
+        }.count
         usage = try projection.usage.aggregating(preparationUsage)
         output = projection.output
         reconciliationCallID = projection.reconciliationCallID
@@ -804,7 +825,25 @@ public actor AppDynamicWorkflowService {
         let role = parent?.submission?.request.payload.role
         let preparation = role == "workflow-coordinator" || role == "workflow-generator"
             ? parent?.projection.cumulativeUsage ?? .zero : .zero
-        return try AppDynamicWorkflowProjection(projection, preparationUsage: preparation)
+        var childStates: [AgentRunID: AgentRunState] = [:]
+        for call in projection.calls where projection.outcomes[call.callID] == nil {
+            if let facts = try await repository.loadRunFacts(for: call.childRunID) {
+                childStates[call.childRunID] = facts.projection.state
+            }
+        }
+        return try AppDynamicWorkflowProjection(projection, preparationUsage: preparation, childStates: childStates)
+    }
+
+    /// Reads the committed public result for a call in this workflow. Opening a detail never dispatches work.
+    public func result(runID: WorkflowRunID, callID: WorkflowAgentCallID) async throws -> String? {
+        guard let projection = try await engine.projection(runID: runID),
+              let call = projection.calls.first(where: { $0.callID == callID }),
+              call.options.requestedAgentType != "workflow-supervisor",
+              case .completed(let reference, _) = projection.outcomes[callID]
+        else { return nil }
+        let value = try await valueStore.load(reference)
+        if case .string(let text) = try JSONDecoder().decode(JSONValue.self, from: value.data) { return text }
+        return value.string
     }
 
     public func resolvedOutput(runID: WorkflowRunID) async throws -> CanonicalJSON? {
