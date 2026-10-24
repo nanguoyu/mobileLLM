@@ -2248,7 +2248,7 @@ final class RuntimeRepositorySQLiteTests: XCTestCase {
 
         let migrated = SQLiteRunJournal(databaseURL: url)
         let report = try await migrated.openForWrite()
-        XCTAssertEqual(report.currentVersion, 5)
+        XCTAssertEqual(report.currentVersion, SQLiteRunJournal.schemaVersion)
         XCTAssertNotNil(report.migrationBackupURL)
         let loadedFacts = try await migrated.loadRunFacts(for: fixture.stream.runID)
         let facts = try XCTUnwrap(loadedFacts)
@@ -2317,7 +2317,7 @@ final class RuntimeRepositorySQLiteTests: XCTestCase {
 
         let store = SQLiteRunJournal(databaseURL: url)
         let report = try await store.openForWrite()
-        XCTAssertEqual(report.currentVersion, 5)
+        XCTAssertEqual(report.currentVersion, SQLiteRunJournal.schemaVersion)
         let backup = try XCTUnwrap(report.migrationBackupURL)
         XCTAssertTrue(FileManager.default.fileExists(atPath: backup.path))
         let manifests = try await store.loadCompiledManifests(for: fixture.stream.runID)

@@ -7,7 +7,7 @@ import SQLite3
 /// Single-actor, single-connection canonical journal. Construction is side-effect free; the file is
 /// created only by `openForWrite` or a mutation.
 public actor SQLiteRunJournal: RuntimeRepository {
-    public static let schemaVersion: Int32 = 5
+    public static let schemaVersion: Int32 = 6
     public static let maximumCommandPayloadBytes = 256 * 1_024
 
     private let databaseURL: URL
@@ -1975,7 +1975,7 @@ public actor SQLiteRunJournal: RuntimeRepository {
         }
     }
 
-    private func existingConnection() throws -> SQLiteConnection? {
+    func existingConnection() throws -> SQLiteConnection? {
         if let connection { return connection }
         guard FileManager.default.fileExists(atPath: databaseURL.path) else { return nil }
         let walExists = FileManager.default.fileExists(atPath: databaseURL.path + "-wal")
@@ -1991,7 +1991,7 @@ public actor SQLiteRunJournal: RuntimeRepository {
         return db
     }
 
-    private func writableConnection() throws -> SQLiteConnection {
+    func writableConnection() throws -> SQLiteConnection {
         if let connection, connectionIsWritable { return connection }
         if let connection {
             connection.close()
@@ -2257,10 +2257,13 @@ public actor SQLiteRunJournal: RuntimeRepository {
         "budget_reservations", "usage_ledger", "external_claims", "external_intents",
         "external_outcomes", "artifact_metadata", "artifact_refs", "artifact_deletion_intents",
         "deletion_intents", "run_submissions", "run_input_snapshots", "budget_ledgers",
-        "run_admissions", "agent_commands",
+        "run_admissions", "agent_commands", "agent_sessions", "agent_session_events", "agent_session_runs",
     ]
 
     private static let schemaStatements: [String] = [
+        "CREATE TABLE IF NOT EXISTS agent_sessions(session_id TEXT PRIMARY KEY, seed_run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE, conversation_id TEXT NOT NULL) STRICT",
+        "CREATE TABLE IF NOT EXISTS agent_session_events(session_id TEXT NOT NULL REFERENCES agent_sessions(session_id) ON DELETE CASCADE, revision INTEGER NOT NULL CHECK(revision > 0), payload BLOB NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(session_id, revision)) STRICT",
+        "CREATE TABLE IF NOT EXISTS agent_session_runs(run_id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES agent_sessions(session_id) ON DELETE CASCADE) STRICT",
         "CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, conversation_id TEXT, request_id TEXT NOT NULL UNIQUE, execution_handle_id TEXT NOT NULL UNIQUE, state TEXT NOT NULL, state_version INTEGER NOT NULL CHECK(state_version > 0), next_sequence INTEGER NOT NULL CHECK(next_sequence > 0), terminal_event_id TEXT UNIQUE, last_digest TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deletion_blocked INTEGER NOT NULL DEFAULT 0 CHECK(deletion_blocked IN (0,1))) STRICT",
         "CREATE TABLE IF NOT EXISTS events(event_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, sequence INTEGER NOT NULL CHECK(sequence > 0), state_version INTEGER NOT NULL CHECK(state_version > 0), timestamp INTEGER NOT NULL, record_digest TEXT NOT NULL UNIQUE, previous_digest TEXT, payload_version INTEGER NOT NULL CHECK(payload_version > 0), payload BLOB NOT NULL, is_terminal INTEGER NOT NULL CHECK(is_terminal IN (0,1)), UNIQUE(run_id, sequence)) STRICT",
         "CREATE UNIQUE INDEX IF NOT EXISTS one_terminal_event_per_run ON events(run_id) WHERE is_terminal = 1",
