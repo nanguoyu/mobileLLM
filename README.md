@@ -17,7 +17,7 @@ there is no mobileLLM account or telemetry.
 
 <p align="center">
   <a href="assets/demo/chat.png"><img src="assets/demo/chat.png" width="260" alt="Chat and tools: a dinner bill split using two real Calculator calls." /></a>
-  <a href="assets/demo/models.png"><img src="assets/demo/models.png" width="260" alt="Model catalog: Qwen models with download sizes, precision, vision support, and memory estimates." /></a>
+  <a href="assets/demo/models.png"><img src="assets/demo/models.png" width="260" alt="Model catalog: Qwen download sizes, memory estimates, image support, and expandable options." /></a>
   <a href="assets/demo/tools.png"><img src="assets/demo/tools.png" width="260" alt="Tool settings: individual switches for search, webpage reading, calculator, memory, and calendar access." /></a>
 </p>
 
@@ -26,16 +26,18 @@ there is no mobileLLM account or telemetry.
 ## See it in use
 
 <p align="center">
-  <a href="assets/demo/models.png"><img src="assets/demo/models.gif" width="360" alt="Searching the model catalog for Qwen and scrolling through the available models." /></a>
-  <a href="assets/demo/workflow.png"><img src="assets/demo/workflow.gif" width="360" alt="Submitting a reading-list app task, opening its workflow, and expanding the completed agent calls." /></a>
+  <a href="assets/demo/models.png"><img src="assets/demo/models.gif" width="360" alt="Finishing a model search, inspecting precision options, and comparing models." /></a>
+  <a href="assets/demo/task-inputs.png"><img src="assets/demo/workflow.gif" width="360" alt="Reading a completed task, scrolling to its input results, and opening an upstream result." /></a>
 </p>
 
 Search the catalog to compare models before downloading. For a larger task, follow the agents as
 they work: in this demo, two investigate storage and sync, and a third uses their findings to make
-a plan. [View the completed agent list](assets/demo/workflow.png).
+a release checklist. [Task workspace](assets/demo/workflow.png) · [Result and inputs](assets/demo/task-inputs.png)
+· [Dark mode](assets/demo/workflow-dark.png).
 
 Captured from the iPhone Simulator. Chat and workflow demos use the real DeepSeek `deepseek-v4-flash`
-service. The workflow recording is sped up 3×. [Capture details](assets/demo/README.md).
+service. Both clips play at 2× speed; the workflow clip inspects saved results from an actual run.
+[Capture details](assets/demo/README.md).
 
 ## Use it
 
@@ -61,18 +63,19 @@ Choose **Ask**, **Safe preset**, or **Full access** in the conversation's approv
 Web search works with public search engines by default. To use DeepSeek's paid Search and Fetch
 APIs, select your configured DeepSeek account under **Choose tools → Web service**.
 
-**Multi-agent work.** Start a message with `/workflow` and describe the goal and constraints.
+**Multi-agent work.** Choose **+ → Work with agents**, or start a message with `/workflow`,
+and describe the goal and constraints.
 The supervisor assigns work, passes results to dependent agents, and returns the final answer.
-Open the workflow card to follow its status and agent calls, or pause and resume it.
+Open the workflow card to follow tasks and their source results, review requests, or pause and resume
+work. Completed workflows remain available from the conversation menu.
 
-For example, the recorded demo starts with:
+The task shown in the demo was started with:
 
 ```text
-/workflow Plan an offline reading-list app. Have one agent design local
-storage and another examine sync conflicts. Then have a third agent use
-both findings to propose an implementation plan. Keep each contribution
-under 100 words and the final answer under 160 words. No web research
-is needed.
+/workflow Plan an offline recipe app. Have one agent propose local
+storage, another examine sync conflicts, and a third use both results
+to write a release checklist. Keep each worker under 80 words and the
+final answer under 140 words. No web research.
 ```
 
 You can also attach images to supported local vision models, dictate a message, use a reusable

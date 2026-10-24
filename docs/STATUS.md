@@ -1,12 +1,42 @@
 # Current implementation and validation status
 
-Updated **2026-10-24** after integrating the DeepSeek web service and multi-stage agent work into `main`.
-The integrated implementation ends at
-[`8ff6f70`](https://github.com/nanguoyu/mobileLLM/commit/8ff6f702580b83aabc607292e04128c5c8de619b),
-whose hosted CI passed. The evaluation results below retain their original tested versions and dates;
-the fast-forward integration does not change the code or rerun those evaluations.
+Updated **2026-10-24** for the task workspace redesign on `main`. The dated model evaluations below
+retain their original tested versions and outcomes; interface changes do not rerun or recertify them.
 [spec.md](../spec.md) defines requirements, [ARCHITECTURE.md](ARCHITECTURE.md) describes the code,
 and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
+
+## Task workspaces and interface
+
+Workflows now show stage-grouped worker tasks, their actual execution state, and public results read
+from the verified value store. Coordination calls and source inspection live under Execution details.
+Continuations share a logical task history; input links resolve by journal sequence so a later retry
+cannot replace an earlier consumer's source. Missing metadata in older records remains explicit.
+
+The initial planner and pending child tasks expose approval and question controls through isolated,
+observer-only run stores. Opening a detail cannot submit another run or overwrite the main chat.
+Workflow pause and reconciliation retain their existing command boundaries. Rejected commands show
+their safe error. Completed history stays available, and final-answer replay uses the recorded end time
+without bumping conversation activity on reads.
+
+The composer has a Work with agents entry. Model options use progressive disclosure, settings explain
+choices more briefly, and the chat header identifies the actual online model. Workflow cards use the
+shared light/dark palette and support large text. Model searches dismiss their keyboard on submission
+and interactive scrolling. [Current screenshots and clips](../assets/demo/README.md) show these surfaces.
+
+Validation used focused contract, coordination, presentation, observer-command, title, and history
+checks, plus one Simulator UI scenario. That scenario passed through the composer entry, Ask-mode
+planning and child approvals, saved-output reading, copy feedback, exact call history, source inspection,
+and final-answer projection. Early UI attempts found inherited accessibility identifiers; the view
+scopes were fixed while retaining the invocation-count assertions. A later cold-relaunch check caught
+the second history timestamp writer and now exercises a changed metadata snapshot, not a no-op save.
+
+Two real `deepseek-v4-flash` tasks exercised the production Simulator app: a three-worker recipe-app plan
+with source-result navigation, and an offline-note task whose initial planner, worker and subsequent
+coordinator were approved through the actual UI. The latter includes manual waiting and is not a
+latency measurement. Dark Mode, accessibility-extra-large text, completed-history access, model options,
+tool settings and the search keyboard were inspected directly. iOS and macOS app builds and the static
+verifier passed. The Mac desktop was locked, so native Mac visual inspection could not be completed.
+No full repository suite or paid task matrix was rerun for the UI changes.
 
 ## Autonomous collaboration: current assessment
 
