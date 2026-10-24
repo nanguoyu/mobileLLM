@@ -16,7 +16,7 @@ struct WorkflowMessageRow: View {
                 .foregroundStyle(statusColor)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(record.title.isEmpty ? "Workflow" : "workflow: \(record.title)")
+                Text(record.title.isEmpty ? "Workflow" : record.title)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(2)
@@ -66,9 +66,9 @@ struct WorkflowMessageRow: View {
             var parts = [dynamic.state.displayLabel(
                 attached: record.isAttachedInCurrentProcess == true
             )]
-            if let phase = dynamic.currentPhase { parts.append(phase) }
-            if dynamic.totalCallCount > 0 {
-                parts.append("\(dynamic.completedCallCount)/\(dynamic.totalCallCount) agents")
+            let tasks = WorkflowDisplay.tasks(dynamic.childCalls ?? [])
+            if !tasks.isEmpty {
+                parts.append(WorkflowDisplay.summary(dynamic.childCalls ?? []))
             }
             return parts.joined(separator: " · ")
         }
@@ -124,51 +124,40 @@ struct WorkflowSummaryPage: View {
             if workflows.isEmpty {
                 CapabilityEmptyState(
                     icon: "point.3.connected.trianglepath.dotted",
-                    title: "No workflow is running",
-                    message: "Workflow candidates and running workflows appear here with their "
-                        + "source, status, activity, and controls. The Workflow menu entry enables "
-                        + "itself only while a workflow is active in this conversation."
+                    title: "Your agent tasks",
+                    message: "In a chat, choose Work with agents from the + menu and describe your goal. Completed tasks remain available here."
                 )
             } else {
-                List {
-                    if let error = store?.lastError {
-                        Section {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: Theme.Space.xxl) {
+                        if let error = store?.lastError {
                             Label(error, systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(Theme.danger)
+                                .foregroundStyle(Theme.danger).studioCard()
                                 .accessibilityIdentifier("workflow.error")
                         }
-                    }
-                    ForEach(workflows) { workflow in
-                        Section {
-                            workflowHeader(workflow)
+                        ForEach(workflows) { workflow in
                             if let dynamic = workflow.dynamic {
-                                dynamicPreview(dynamic, workflowID: workflow.id)
+                                WorkflowTaskWorkspace(workflow: workflow, dynamic: dynamic, store: store)
                             } else {
-                                ForEach(workflow.phases) { phase in
-                                    WorkflowPhaseRow(
-                                        phase: phase,
-                                        totalChildren: workflow.plan?.phases
-                                            .first(where: { $0.sequence == phase.sequence })?
-                                            .childInstructions.count
-                                            ?? phase.childRunIDs.count,
-                                        childInstructions: workflow.plan?.phases
-                                            .first(where: { $0.sequence == phase.sequence })?
-                                            .childInstructions ?? []
-                                    )
-                                }
+                                VStack(alignment: .leading, spacing: Theme.Space.md) {
+                                    workflowHeader(workflow)
+                                    ForEach(workflow.phases) { phase in
+                                        WorkflowPhaseRow(
+                                            phase: phase,
+                                            totalChildren: workflow.plan?.phases.first(where: { $0.sequence == phase.sequence })?.childInstructions.count ?? phase.childRunIDs.count,
+                                            childInstructions: workflow.plan?.phases.first(where: { $0.sequence == phase.sequence })?.childInstructions ?? []
+                                        )
+                                    }
+                                }.studioCard()
                             }
                         }
                     }
+                    .frame(maxWidth: Theme.Layout.readingColumn, alignment: .leading)
+                    .padding(Theme.Space.lg).frame(maxWidth: .infinity)
                 }
-                #if os(iOS)
-                .listStyle(.insetGrouped)
-                #else
-                .listStyle(.inset)
-                #endif
-                .scrollContentBackground(.hidden)
-                .background(Theme.bg)
             }
         }
+        .background(Theme.bg)
         .navigationTitle("Workflow")
     }
 
@@ -210,234 +199,6 @@ struct WorkflowSummaryPage: View {
         .padding(.vertical, 2)
     }
 
-    @ViewBuilder
-    private func dynamicPreview(_ dynamic: DynamicWorkflowPresentation, workflowID: UUID) -> some View {
-        if let metadata = dynamic.metadata {
-            VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                Text(metadata.description)
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.textSecondary)
-                if !metadata.phases.isEmpty {
-                    Text("Phases")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.textTertiary)
-                    ForEach(Array(metadata.phases.enumerated()), id: \.offset) { index, phase in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(index + 1). \(phase.title)")
-                                .font(.subheadline.weight(.medium))
-                            if let detail = phase.detail, !detail.isEmpty {
-                                Text(detail).font(.caption).foregroundStyle(Theme.textSecondary)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if let source = dynamic.source {
-            DisclosureGroup("JavaScript source") {
-                ScrollView(.horizontal) {
-                    Text(source)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                        .padding(.vertical, Theme.Space.xs)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Workflow JavaScript source")
-                .accessibilityValue(source)
-                .accessibilityIdentifier("workflow.source")
-            }
-        }
-        if dynamic.currentPhase != nil || dynamic.totalCallCount > 0 || !dynamic.logs.isEmpty {
-            DisclosureGroup("Runtime activity") {
-                VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                    if let phase = dynamic.currentPhase {
-                        Label(phase, systemImage: "flag.fill")
-                            .font(.caption.weight(.medium))
-                    }
-                    if dynamic.totalCallCount > 0 {
-                        Text("\(dynamic.completedCallCount) of \(dynamic.totalCallCount) agents completed")
-                            .font(.caption)
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                    ForEach(Array(dynamic.logs.suffix(20).enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(Theme.textSecondary)
-                            .textSelection(.enabled)
-                    }
-                }
-                .accessibilityIdentifier("workflow.activity")
-            }
-        }
-        if let childCalls = dynamic.childCalls, !childCalls.isEmpty {
-            DisclosureGroup("Agent calls") {
-                VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    ForEach(childCalls) { call in
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack {
-                                Image(systemName: call.status.symbol)
-                                    .foregroundStyle(call.status.color)
-                                Text(call.label ?? "Agent \(call.ordinal)")
-                                    .font(.caption.weight(.semibold))
-                                Spacer()
-                                Text("Attempt \(call.attempt) · \(call.status.label)")
-                                    .font(.caption2)
-                                    .foregroundStyle(Theme.textTertiary)
-                            }
-                            if let phase = call.phase {
-                                Text(phase).font(.caption2).foregroundStyle(Theme.textSecondary)
-                            }
-                            if let detail = call.detail {
-                                Text(detail).font(.caption2).foregroundStyle(Theme.textSecondary)
-                            }
-                            if canRestart(call, in: dynamic.state) {
-                                Button("Restart agent", systemImage: "arrow.clockwise") {
-                                    Task {
-                                        await store?.restartDynamic(
-                                            workflowID: workflowID,
-                                            callID: call.callID
-                                        )
-                                    }
-                                }
-                                .font(.caption)
-                                .disabled(store?.actioningWorkflowIDs.contains(workflowID) == true)
-                                .accessibilityIdentifier("workflow.agent.restart")
-                            }
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("workflow.agent.call")
-                    }
-                }
-            }
-            .accessibilityValue(
-                (["\(childCalls.count) calls"] + childCalls.map { call in
-                    let name = call.label ?? "Agent \(call.ordinal)"
-                    let phase = call.phase.map { " · \($0)" } ?? ""
-                    let detail = call.detail.map { " · \($0)" } ?? ""
-                    return "\(call.ordinal). \(name) · attempt \(call.attempt) · "
-                        + "\(call.status.label)\(phase)\(detail)"
-                }).joined(separator: "\n")
-            )
-            .accessibilityIdentifier("workflow.agent.calls")
-        }
-        if let failure = dynamic.failure {
-            Label(failure, systemImage: "exclamationmark.triangle.fill")
-                .font(.caption)
-                .foregroundStyle(Theme.danger)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(failure)
-                .accessibilityIdentifier("workflow.failure")
-        }
-        dynamicActions(
-            dynamic.state,
-            workflowID: workflowID,
-            attached: store?.executingWorkflowIDs.contains(workflowID) == true
-        )
-    }
-
-    @ViewBuilder
-    private func dynamicActions(
-        _ state: DynamicWorkflowPresentationState,
-        workflowID: UUID,
-        attached: Bool
-    ) -> some View {
-        let busy = store?.actioningWorkflowIDs.contains(workflowID) == true
-        switch state {
-        case .waitingForLaunchApproval:
-            HStack {
-                Button("Run workflow", systemImage: "play.fill") {
-                    Task { await store?.runDynamic(workflowID: workflowID) }
-                }
-                .buttonStyle(.borderedProminent)
-                Button("Cancel", role: .destructive) {
-                    Task { await store?.denyDynamic(workflowID: workflowID) }
-                }
-            }
-            .disabled(busy)
-            .accessibilityIdentifier("workflow.run")
-        case .queued:
-            Button("Start", systemImage: "play.fill") {
-                Task { await store?.startDynamic(workflowID: workflowID) }
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(busy)
-            .accessibilityIdentifier("workflow.start")
-        case .running where !attached:
-            HStack {
-                Button("Resume", systemImage: "play.fill") {
-                    Task { await store?.resumeDynamic(workflowID: workflowID) }
-                }
-                .buttonStyle(.borderedProminent)
-                Button("Stop", role: .destructive) {
-                    Task { await store?.stopDynamic(workflowID: workflowID) }
-                }
-            }
-            .disabled(busy)
-            .accessibilityIdentifier("workflow.interrupted")
-        case .running, .pausing:
-            HStack {
-                Button("Pause", systemImage: "pause.fill") {
-                    Task { await store?.pauseDynamic(workflowID: workflowID) }
-                }
-                Button("Stop", role: .destructive) {
-                    Task { await store?.stopDynamic(workflowID: workflowID) }
-                }
-            }.disabled(busy || state == .pausing)
-        case .paused, .waitingForForeground:
-            HStack {
-                Button("Resume", systemImage: "play.fill") {
-                    Task { await store?.resumeDynamic(workflowID: workflowID) }
-                }
-                Button("Stop", role: .destructive) {
-                    Task { await store?.stopDynamic(workflowID: workflowID) }
-                }
-            }.disabled(busy)
-        case .waitingForReconciliation:
-            VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                Text("Confirm what happened to the uncertain external action before continuing.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
-                HStack {
-                    Button("Succeeded") {
-                        Task {
-                            await store?.reconcileDynamic(
-                                workflowID: workflowID,
-                                decision: .succeeded
-                            )
-                        }
-                    }
-                    Button("Did not happen") {
-                        Task {
-                            await store?.reconcileDynamic(
-                                workflowID: workflowID,
-                                decision: .failed
-                            )
-                        }
-                    }
-                    Button("Abandon", role: .destructive) {
-                        Task {
-                            await store?.reconcileDynamic(
-                                workflowID: workflowID,
-                                decision: .abandoned
-                            )
-                        }
-                    }
-                }
-            }
-            .disabled(busy)
-            .accessibilityIdentifier("workflow.reconciliation")
-        default:
-            EmptyView()
-        }
-    }
-
-    private func canRestart(
-        _ call: DynamicWorkflowChildPresentation,
-        in state: DynamicWorkflowPresentationState
-    ) -> Bool {
-        guard state == .paused || state == .waitingForReconciliation else { return false }
-        return [.failed, .unavailable, .stopped, .uncertain].contains(call.status)
-    }
 }
 
 /// One phase node in the workflow tree.
@@ -553,19 +314,19 @@ private extension WorkflowPhaseStatus {
     }
 }
 
-private extension DynamicWorkflowPresentationState {
+extension DynamicWorkflowPresentationState {
     var label: String { displayLabel(attached: true) }
 
     func displayLabel(attached: Bool) -> String {
         switch self {
-        case .generatingCandidate: "Generating candidate"
+        case .generatingCandidate: "Planning"
         case .waitingForLaunchApproval: "Ready to run"
         case .queued: "Approved — ready to start"
         case .running: attached ? "Running" : "Interrupted — Resume to continue"
         case .pausing: "Pausing"
         case .paused: "Paused"
         case .waitingForForeground: "Waiting for foreground"
-        case .waitingForReconciliation: "Needs reconciliation"
+        case .waitingForReconciliation: "Needs your review"
         case .completed: "Completed"
         case .failed: "Failed"
         case .cancelled: "Denied or stopped"
@@ -573,11 +334,11 @@ private extension DynamicWorkflowPresentationState {
     }
 }
 
-private extension DynamicWorkflowChildStatus {
+extension DynamicWorkflowChildStatus {
     var label: String {
         switch self {
         case .prepared: "Prepared"
-        case .submitted: "Running"
+        case .submitted: "Submitted"
         case .completed: "Completed"
         case .failed: "Failed"
         case .unavailable: "Unavailable"

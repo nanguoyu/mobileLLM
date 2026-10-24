@@ -318,7 +318,8 @@ final class WorkflowLauncher {
         summary.status = summary.dynamic!.state.workflowStatus
         if projection.state.isTerminal, summary.endTime == nil { summary.endTime = Date() }
         summary.aggregated = WorkflowAggregatedStats(
-            subagentCount: projection.childCalls.filter { $0.handleID != nil }.count,
+            subagentCount: Set(projection.childCalls.filter { $0.agentType != "workflow-supervisor" }
+                .map { $0.task?.taskID ?? "call-\($0.ordinal)" }).count,
             elapsedMilliseconds: Int64(max(0, (summary.endTime ?? Date()).timeIntervalSince(summary.startTime) * 1000)),
             inputTokens: Int64(clamping: projection.usage.quantities[.inputTokens]),
             outputTokens: Int64(clamping: projection.usage.quantities[.outputTokens]),
