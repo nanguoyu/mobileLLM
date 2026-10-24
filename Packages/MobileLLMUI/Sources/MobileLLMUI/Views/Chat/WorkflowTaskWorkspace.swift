@@ -97,10 +97,12 @@ struct WorkflowTaskWorkspace: View {
         VStack(alignment: .leading, spacing: Theme.Space.md) {
             Text(workflow.title).font(.title2.weight(.semibold)).foregroundStyle(Theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
-            Label(stateText, systemImage: stateSymbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(dynamic.state == .completed ? Theme.fitGreen : Theme.accent)
-                .accessibilityIdentifier("workflow.state")
+            HStack(spacing: 8) {
+                Image(systemName: stateSymbol).accessibilityHidden(true)
+                Text(stateText).accessibilityIdentifier("workflow.state")
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(dynamic.state == .completed ? Theme.fitGreen : Theme.accent)
             if !tasks.isEmpty {
                 Text(WorkflowDisplay.summary(calls))
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
@@ -199,7 +201,6 @@ private struct WorkflowTaskCard: View {
             .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(task.title). \(status)")
         .accessibilityValue(String((call.task?.instruction ?? "").prefix(160)))
         .accessibilityHint("View task inputs and result")
