@@ -476,6 +476,12 @@ struct MobileLLMApp: App {
                 container.workflowStore.dynamicResultHandler = { [launcher] workflowID, callID in
                     try await launcher.result(workflowID: workflowID, callID: callID)
                 }
+                container.workflowStore.dynamicObserverHandler = { [launcher] workflowID, callID in
+                    try await launcher.observeTask(workflowID: workflowID, callID: callID)
+                }
+                container.workflowStore.planningObserverHandler = { [launcher] workflowID in
+                    try await launcher.observePlanning(workflowID: workflowID)
+                }
                 // Journal reconciliation is projection-only. Opening the app never starts or
                 // resumes a workflow and never loads a model.
                 Task { await launcher.reconcileDynamicWorkflows() }

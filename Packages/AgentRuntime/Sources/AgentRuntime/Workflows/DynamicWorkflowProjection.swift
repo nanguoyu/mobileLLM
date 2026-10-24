@@ -36,6 +36,8 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
     public private(set) var preparedAt: [WorkflowAgentCallID: AgentTimestamp]
     public private(set) var submittedAt: [WorkflowAgentCallID: AgentTimestamp]
     public private(set) var settledAt: [WorkflowAgentCallID: AgentTimestamp]
+    public private(set) var preparedSequences: [WorkflowAgentCallID: UInt64]
+    public private(set) var settledSequences: [WorkflowAgentCallID: UInt64]
     public private(set) var restartRequests: [WorkflowAgentCallID]
     public private(set) var reconciliationCallID: WorkflowAgentCallID?
     public private(set) var reconciliationDecision: AgentReconciliationDecision?
@@ -70,6 +72,8 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
             preparedAt: [:],
             submittedAt: [:],
             settledAt: [:],
+            preparedSequences: [:],
+            settledSequences: [:],
             restartRequests: [],
             reconciliationCallID: nil,
             reconciliationDecision: nil,
@@ -156,6 +160,7 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
             else { throw WorkflowProjectionError.noncontiguousAgentOrdinal }
             calls.append(call)
             preparedAt[call.callID] = event.timestamp
+            preparedSequences[call.callID] = event.sequence
         case .agentChildSubmitted(let callID, let handleID):
             guard Self.acceptsRuntimeActivity(state), calls.contains(where: { $0.callID == callID }),
                   submittedHandles[callID] == nil, outcomes[callID] == nil
@@ -169,6 +174,7 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
             guard outcomes[callID] == nil else { throw WorkflowProjectionError.duplicateAgentSettlement }
             outcomes[callID] = outcome
             settledAt[callID] = event.timestamp
+            settledSequences[callID] = event.sequence
         case .agentRestartRequested(let callID):
             guard !state.isTerminal, calls.contains(where: { $0.callID == callID }) else {
                 throw WorkflowProjectionError.unknownAgentCall

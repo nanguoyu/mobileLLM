@@ -383,7 +383,14 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
         guard workflowBar.exists else {
             throw DeviceE2EHarnessError.precondition("Workflow page missing for \(scenario.id)")
         }
-        let sourceDisclosure = app.buttons["JavaScript source"]
+        let executionDetails = app.buttons["Execution details"]
+        for _ in 0..<8 where !executionDetails.isHittable { app.swipeUp() }
+        guard executionDetails.waitForExistence(timeout: 10) else {
+            throw DeviceE2EHarnessError.precondition("Workflow execution details are missing")
+        }
+        executionDetails.tap()
+        let sourceDisclosure = app.buttons["Workflow source"]
+        for _ in 0..<4 where !sourceDisclosure.isHittable { app.swipeUp() }
         guard sourceDisclosure.waitForExistence(timeout: 15) else {
             throw DeviceE2EHarnessError.precondition("Source disclosure missing for \(scenario.id)")
         }
@@ -400,7 +407,7 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
             approvePendingAgentApprovalIfNeeded(in: app)
             finalState = state.label
             if finalState == "Completed" || finalState == "Failed"
-                || finalState == "Denied or stopped" || finalState == "Needs reconciliation"
+                || finalState == "Denied or stopped" || finalState == "Needs your review"
             {
                 break
             }
@@ -413,23 +420,20 @@ final class DynamicWorkflowExplorationUITests: DeviceE2ETestCase {
         }
 
         var childCalls: [String] = []
-        let callsDisclosure = app.buttons["Agent calls"]
+        let callsDisclosure = app.buttons["workflow.call.history"]
         if callsDisclosure.exists || (scenario.minimumAgentCalls > 0 && callsDisclosure.waitForExistence(timeout: 10)) {
             let callEvidence = (callsDisclosure.value as? String) ?? ""
             let callCount = Int(callEvidence.split(separator: " ").first ?? "0") ?? 0
+            for _ in 0..<5 where !callsDisclosure.isHittable { app.swipeUp() }
             callsDisclosure.tap()
-            let callElements = app.descendants(matching: .any)
-                .matching(identifier: "workflow.agent.call")
+            let callElements = app.staticTexts.matching(identifier: "workflow.agent.call")
             let callDeadline = Date().addingTimeInterval(10)
             while Date() < callDeadline, callElements.count < scenario.minimumAgentCalls {
                 app.swipeUp()
                 Thread.sleep(forTimeInterval: 0.25)
             }
-            childCalls = callElements.allElementsBoundByIndex.map(elementText)
-            if childCalls.count < callCount {
-                let projected = callEvidence.split(separator: "\n").dropFirst().map(String.init)
-                childCalls.append(contentsOf: projected.dropFirst(childCalls.count))
-            }
+            childCalls = callElements.allElementsBoundByIndex.map(\.label)
+            XCTAssertEqual(childCalls.count, callCount, "the UI must expose every recorded call")
 
         }
 

@@ -227,6 +227,8 @@ public struct DynamicWorkflowChildPresentation: Hashable, Codable, Sendable, Ide
     public var settledAt: AgentTimestamp?
     public var usage: AgentUsage?
     public var hasResult: Bool?
+    public var preparedSequence: UInt64?
+    public var settledSequence: UInt64?
 
     public init(
         callID: WorkflowAgentCallID,
@@ -245,7 +247,9 @@ public struct DynamicWorkflowChildPresentation: Hashable, Codable, Sendable, Ide
         submittedAt: AgentTimestamp? = nil,
         settledAt: AgentTimestamp? = nil,
         usage: AgentUsage? = nil,
-        hasResult: Bool? = nil
+        hasResult: Bool? = nil,
+        preparedSequence: UInt64? = nil,
+        settledSequence: UInt64? = nil
     ) {
         self.callID = callID
         self.ordinal = ordinal
@@ -264,6 +268,23 @@ public struct DynamicWorkflowChildPresentation: Hashable, Codable, Sendable, Ide
         self.settledAt = settledAt
         self.usage = usage
         self.hasResult = hasResult
+        self.preparedSequence = preparedSequence
+        self.settledSequence = settledSequence
+    }
+}
+
+/// The initial coordinator is a real run before a workflow script has been prepared.
+public struct WorkflowPlanningPresentation: Hashable, Codable, Sendable {
+    public let runID: AgentRunID
+    public let handleID: AgentExecutionHandleID
+    public let state: AgentRunState
+    public let updatedAt: AgentTimestamp
+
+    public init(runID: AgentRunID, handleID: AgentExecutionHandleID, state: AgentRunState, updatedAt: AgentTimestamp) {
+        self.runID = runID
+        self.handleID = handleID
+        self.state = state
+        self.updatedAt = updatedAt
     }
 }
 
@@ -284,6 +305,7 @@ public struct DynamicWorkflowPresentation: Hashable, Codable, Sendable {
     public var childCalls: [DynamicWorkflowChildPresentation]?
     public var reconciliationCallID: WorkflowAgentCallID?
     public var failure: String?
+    public var planning: WorkflowPlanningPresentation?
 
     public init(
         runID: WorkflowRunID,
@@ -297,7 +319,8 @@ public struct DynamicWorkflowPresentation: Hashable, Codable, Sendable {
         totalCallCount: Int = 0,
         childCalls: [DynamicWorkflowChildPresentation] = [],
         reconciliationCallID: WorkflowAgentCallID? = nil,
-        failure: String? = nil
+        failure: String? = nil,
+        planning: WorkflowPlanningPresentation? = nil
     ) {
         self.runID = runID
         self.scriptReference = scriptReference
@@ -311,6 +334,7 @@ public struct DynamicWorkflowPresentation: Hashable, Codable, Sendable {
         self.childCalls = childCalls
         self.reconciliationCallID = reconciliationCallID
         self.failure = failure
+        self.planning = planning
     }
 }
 

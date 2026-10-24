@@ -1683,7 +1683,14 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
         guard app.navigationBars["Workflow"].waitForExistence(timeout: 10) else {
             throw DeviceE2EHarnessError.precondition("Workflow candidate page did not open")
         }
-        let sourceDisclosure = app.buttons["JavaScript source"]
+        let executionDetails = app.buttons["Execution details"]
+        for _ in 0..<8 where !executionDetails.isHittable { app.swipeUp() }
+        guard executionDetails.waitForExistence(timeout: 10) else {
+            throw DeviceE2EHarnessError.precondition("Workflow execution details are missing")
+        }
+        executionDetails.tap()
+        let sourceDisclosure = app.buttons["Workflow source"]
+        for _ in 0..<4 where !sourceDisclosure.isHittable { app.swipeUp() }
         guard sourceDisclosure.waitForExistence(timeout: 10) else {
             throw DeviceE2EHarnessError.precondition("Exact JavaScript source disclosure is missing")
         }
@@ -1705,7 +1712,7 @@ final class PhysicalDeviceFullStackUITests: DeviceE2ETestCase {
                 sawCompleted = true
                 break
             }
-            if ["Failed", "Denied or stopped", "Needs reconciliation"].contains(lastState) { break }
+            if ["Failed", "Denied or stopped", "Needs your review"].contains(lastState) { break }
             if app.state != .runningForeground {
                 attachDiagnostics(app, name: "workflow-left-foreground")
                 throw DeviceE2EHarnessError.precondition("App left foreground during workflow execution")

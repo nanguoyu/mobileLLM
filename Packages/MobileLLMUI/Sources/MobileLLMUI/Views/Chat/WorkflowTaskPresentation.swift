@@ -12,6 +12,29 @@ struct WorkflowTaskGroup: Identifiable {
 }
 
 enum WorkflowDisplay {
+    static func planningStatus(_ state: AgentRunState) -> String {
+        switch state {
+        case .created, .preparing: "Preparing plan"
+        case .waitingForModel: "Waiting for model"
+        case .generating, .synthesizing: "Planning"
+        case .validatingAction, .executingTools: "Checking plan"
+        case .waitingForApproval: "Needs approval"
+        case .waitingForUser: "Needs your input"
+        case .pausing: "Pausing"
+        case .paused: "Paused"
+        case .waitingForForeground: "Waiting for foreground"
+        case .waitingForReconciliation: "Needs your review"
+        case .completed: "Preparing tasks"
+        case .failed: "Planning failed"
+        case .cancelled: "Planning stopped"
+        }
+    }
+
+    static func needsAttention(_ call: DynamicWorkflowChildPresentation) -> Bool {
+        call.status == .uncertain || (call.status == .submitted &&
+            [.waitingForApproval, .waitingForUser, .waitingForReconciliation].contains(call.executionState))
+    }
+
     static func summary(_ calls: [DynamicWorkflowChildPresentation]) -> String {
         let groups = tasks(calls)
         let completed = groups.filter { $0.latest.status == .completed }.count
@@ -41,8 +64,21 @@ enum WorkflowDisplay {
     static func inputs(for call: DynamicWorkflowChildPresentation,
                        in calls: [DynamicWorkflowChildPresentation]) -> [DynamicWorkflowChildPresentation] {
         (call.task?.inputArtifactIDs ?? []).compactMap { id in
-            calls.filter { $0.task?.outputArtifactID == id }
-                .max { $0.attempt < $1.attempt }
+            let sources = calls.filter { source in
+                guard source.task?.outputArtifactID == id else { return false }
+                if let prepared = call.preparedSequence, let settled = source.settledSequence {
+                    return settled < prepared
+                }
+                return true
+            }
+            // A later retry can reuse the same logical artifact name. Resolve as of the consumer's
+            // preparation, never replace the result it actually consumed with a newer attempt.
+            if call.preparedSequence != nil {
+                return sources.filter { $0.settledSequence != nil }.max {
+                    ($0.settledSequence ?? 0) < ($1.settledSequence ?? 0)
+                }
+            }
+            return sources.count == 1 ? sources.first : nil
         }
     }
 }

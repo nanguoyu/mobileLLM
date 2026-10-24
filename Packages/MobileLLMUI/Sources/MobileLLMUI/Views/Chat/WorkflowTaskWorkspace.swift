@@ -8,14 +8,26 @@ struct WorkflowTaskWorkspace: View {
     let workflow: WorkflowSummary
     let dynamic: DynamicWorkflowPresentation
     let store: WorkflowStore?
-    @State private var selectedCall: DynamicWorkflowChildPresentation?
-    @State private var showsResult = false
+    @State private var destination: Destination?
+
+    private enum Destination: Identifiable {
+        case task(WorkflowAgentCallID), result, planning
+        var id: String {
+            switch self {
+            case .task(let id): id.rawValue.uuidString
+            case .result: "result"
+            case .planning: "planning"
+            }
+        }
+    }
 
     private var calls: [DynamicWorkflowChildPresentation] { dynamic.childCalls ?? [] }
     private var tasks: [WorkflowTaskGroup] { WorkflowDisplay.tasks(calls) }
+    private var attention: [DynamicWorkflowChildPresentation] { calls.filter(WorkflowDisplay.needsAttention) }
+    private var stageTasks: [WorkflowTaskGroup] { tasks.filter { !WorkflowDisplay.needsAttention($0.latest) } }
     private var attached: Bool { store?.executingWorkflowIDs.contains(workflow.id) == true }
     private var phases: [String] {
-        tasks.reduce(into: []) { values, task in
+        stageTasks.reduce(into: []) { values, task in
             let phase = task.latest.phase ?? "Tasks"
             if !values.contains(phase) { values.append(phase) }
         }
@@ -30,6 +42,15 @@ struct WorkflowTaskWorkspace: View {
                     .accessibilityIdentifier("workflow.failure")
             }
             WorkflowActionBar(store: store, workflowID: workflow.id, state: dynamic.state, attached: attached)
+            if !attention.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    Text("Needs your attention").font(.headline)
+                    ForEach(attention) { call in
+                        WorkflowTaskCard(task: WorkflowTaskGroup(id: call.callID.rawValue.uuidString, calls: [call]),
+                                         calls: calls, state: dynamic.state, attached: attached) { destination = .task(call.callID) }
+                    }
+                }
+            }
             if tasks.isEmpty {
                 Label(emptyTaskMessage,
                       systemImage: "point.3.connected.trianglepath.dotted")
@@ -38,35 +59,33 @@ struct WorkflowTaskWorkspace: View {
             ForEach(phases, id: \.self) { phase in
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text(WorkflowDisplay.name(phase)).font(.headline).foregroundStyle(Theme.textPrimary)
-                    ForEach(tasks.filter { ($0.latest.phase ?? "Tasks") == phase }) { task in
+                    ForEach(stageTasks.filter { ($0.latest.phase ?? "Tasks") == phase }) { task in
                         WorkflowTaskCard(task: task, calls: calls, state: dynamic.state, attached: attached) {
-                            selectedCall = task.latest
+                            destination = .task(task.latest.callID)
                         }
                     }
                 }
             }
             WorkflowDiagnostics(dynamic: dynamic)
         }
-        .sheet(item: $selectedCall) { call in
+        .sheet(item: $destination) { target in
             NavigationStack {
-                WorkflowTaskDetailView(store: store, workflowID: workflow.id, callID: call.callID)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedCall = nil } } }
-            }
-            #if os(macOS)
-            .frame(minWidth: 540, minHeight: 600)
-            #endif
-        }
-        .sheet(isPresented: $showsResult) {
-            NavigationStack {
-                ScrollView {
-                    MarkdownMessage(text: workflow.finalAnswer ?? "No result was recorded.")
-                        .textSelection(.enabled)
-                        .frame(maxWidth: Theme.Layout.readingColumn, alignment: .leading)
-                        .padding(Theme.Space.lg)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                Group {
+                    switch target {
+                    case .task(let id):
+                        WorkflowTaskDetailView(store: store, workflowID: workflow.id, callID: id)
+                    case .planning:
+                        WorkflowPlanningInspector(store: store, workflowID: workflow.id)
+                    case .result:
+                        ScrollView {
+                            MarkdownMessage(text: workflow.finalAnswer ?? "No result was recorded.")
+                                .textSelection(.enabled)
+                                .frame(maxWidth: Theme.Layout.readingColumn, alignment: .leading)
+                                .padding(Theme.Space.lg).frame(maxWidth: .infinity)
+                        }.background(Theme.bg).navigationTitle("Final result")
+                    }
                 }
-                .background(Theme.bg).navigationTitle("Final result")
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showsResult = false } } }
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { destination = nil } } }
             }
             #if os(macOS)
             .frame(minWidth: 540, minHeight: 600)
@@ -78,7 +97,7 @@ struct WorkflowTaskWorkspace: View {
         VStack(alignment: .leading, spacing: Theme.Space.md) {
             Text(workflow.title).font(.title2.weight(.semibold)).foregroundStyle(Theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
-            Label(dynamic.state.displayLabel(attached: attached), systemImage: stateSymbol)
+            Label(stateText, systemImage: stateSymbol)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(dynamic.state == .completed ? Theme.fitGreen : Theme.accent)
                 .accessibilityIdentifier("workflow.state")
@@ -88,8 +107,13 @@ struct WorkflowTaskWorkspace: View {
                     .accessibilityIdentifier("workflow.task.count")
             }
             WorkflowElapsedLabel(start: workflow.startTime, end: workflow.endTime)
+            if dynamic.state == .generatingCandidate, dynamic.planning != nil {
+                Button("Review planning", systemImage: "person.crop.circle.badge.questionmark") { destination = .planning }
+                    .buttonStyle(.bordered).controlSize(.large)
+                    .accessibilityIdentifier("workflow.planning.review")
+            }
             if workflow.finalAnswer != nil {
-                Button("View final result", systemImage: "doc.text") { showsResult = true }
+                Button("View final result", systemImage: "doc.text") { destination = .result }
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .accessibilityIdentifier("workflow.final.result")
             }
@@ -107,8 +131,19 @@ struct WorkflowTaskWorkspace: View {
         }
     }
 
+    private var stateText: String {
+        if dynamic.state == .generatingCandidate, let planning = dynamic.planning {
+            return WorkflowDisplay.planningStatus(planning.state)
+        }
+        return dynamic.state.displayLabel(attached: attached)
+    }
+
     private var emptyTaskMessage: String {
-        switch dynamic.state {
+        if let planning = dynamic.planning,
+           [.waitingForApproval, .waitingForUser, .waitingForReconciliation].contains(planning.state) {
+            return "Review the planning request to continue."
+        }
+        return switch dynamic.state {
         case .completed: "This task finished without delegated work."
         case .failed, .cancelled: "No delegated tasks were recorded."
         case .paused, .waitingForForeground: "The workflow paused before delegating work."
@@ -138,8 +173,8 @@ private struct WorkflowTaskCard: View {
                 }
                 WorkflowTaskStateLabel(call: call, state: state, attached: attached)
                 if let instruction = call.task?.instruction {
-                    Text(instruction).font(.callout).foregroundStyle(Theme.textSecondary)
-                        .lineLimit(3).multilineTextAlignment(.leading)
+                    Text(ConversationText.title(instruction, limit: 180)).font(.callout).foregroundStyle(Theme.textSecondary)
+                        .lineLimit(2).multilineTextAlignment(.leading)
                 }
                 if let task = call.task, !task.inputArtifactIDs.isEmpty {
                     let inputs = WorkflowDisplay.inputs(for: call, in: calls)
@@ -215,10 +250,17 @@ private struct WorkflowDiagnostics: View {
                 let calls = dynamic.childCalls ?? []
                 Text("\(calls.count) calls · \(calls.filter(\.isCoordinator).count) coordination calls")
                     .font(.callout).foregroundStyle(Theme.textSecondary)
-                ForEach(calls.filter(\.isCoordinator)) { call in
-                    Label("Coordination \(call.ordinal) · \(call.status.label)", systemImage: call.status.symbol)
-                        .font(.callout).foregroundStyle(Theme.textSecondary)
+                DisclosureGroup("Call history") {
+                    VStack(alignment: .leading, spacing: Theme.Space.md) {
+                        ForEach(calls) { call in
+                            Text("\(call.ordinal). \(call.isCoordinator ? "Coordinator" : call.taskTitle) · attempt \(call.attempt) · \(call.status.label)")
+                                .font(.callout).foregroundStyle(Theme.textSecondary)
+                                .accessibilityIdentifier("workflow.agent.call")
+                        }
+                    }.padding(.top, Theme.Space.sm)
                 }
+                .accessibilityValue("\(calls.count) calls")
+                .accessibilityIdentifier("workflow.call.history")
                 if !dynamic.logs.isEmpty {
                     DisclosureGroup("Activity log") {
                         Text(dynamic.logs.suffix(20).joined(separator: "\n"))
@@ -227,9 +269,14 @@ private struct WorkflowDiagnostics: View {
                 }
                 if let source = dynamic.source {
                     DisclosureGroup("Workflow source") {
-                        ScrollView(.horizontal) {
+                        ScrollView([.horizontal, .vertical]) {
                             Text(source).font(.caption.monospaced()).textSelection(.enabled)
                         }
+                        .frame(height: 300)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Workflow source")
+                        .accessibilityValue(source)
+                        .accessibilityIdentifier("workflow.source")
                     }
                 }
             }.padding(.top, Theme.Space.sm)

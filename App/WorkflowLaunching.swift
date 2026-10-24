@@ -70,10 +70,12 @@ final class WorkflowLauncher {
                 workflowID: workflowID
             )
         } catch {
-            summary.status = .failed
+            monitors.removeValue(forKey: workflowID)?.cancel()
+            summary = container.workflowStore.summary(workflowID: workflowID) ?? summary
+            summary.status = error is CancellationError ? .cancelled : .failed
             summary.endTime = Date()
-            summary.dynamic?.state = .failed
-            summary.dynamic?.failure = error.localizedDescription
+            summary.dynamic?.state = error is CancellationError ? .cancelled : .failed
+            summary.dynamic?.failure = error is CancellationError ? nil : error.localizedDescription
             try? await container.workflowStore.save(summary)
             throw error
         }
@@ -281,6 +283,57 @@ final class WorkflowLauncher {
         try await assembly.dynamicWorkflows.result(runID: dynamicRunID(workflowID), callID: callID)
     }
 
+    func observeTask(workflowID: UUID, callID: WorkflowAgentCallID) async throws -> AgentRunStore? {
+        guard let conversationID = container?.workflowStore.summary(workflowID: workflowID)?.conversationID,
+              let projection = try await assembly.dynamicWorkflows.projection(runID: dynamicRunID(workflowID)),
+              let call = projection.childCalls.first(where: { $0.callID == callID }),
+              let handleID = call.handleID
+        else { return nil }
+        return try await makeObserver(runID: call.childRunID, handleID: handleID, conversationID: conversationID)
+    }
+
+    func observePlanning(workflowID: UUID) async throws -> AgentRunStore? {
+        guard let summary = container?.workflowStore.summary(workflowID: workflowID),
+              summary.dynamic?.state == .generatingCandidate,
+              monitors[workflowID] != nil,
+              let planning = summary.dynamic?.planning, let conversationID = summary.conversationID
+        else { return nil }
+        return try await makeObserver(runID: planning.runID, handleID: planning.handleID, conversationID: conversationID)
+    }
+
+    private func makeObserver(runID: AgentRunID, handleID: AgentExecutionHandleID,
+                              conversationID: UUID) async throws -> AgentRunStore? {
+        guard let facts = try await assembly.repository.loadRunFacts(for: runID),
+              facts.projection.executionHandleID == handleID,
+              facts.conversationID?.rawValue == conversationID, !facts.projection.isTerminal
+        else { return nil }
+        let observer = AgentRunStore(observing: assembly.executor)
+        try await observer.reopen(recoverable: RecoverableAgentRun(
+            conversationID: conversationID, runID: runID, handleID: handleID,
+            state: facts.projection.state, updatedAt: facts.projection.cursor.timestamp.date
+        ), assistantMessageID: nil)
+        return observer
+    }
+
+    private func monitorPlanning(workflowID: UUID, runID: AgentRunID, handleID: AgentExecutionHandleID) {
+        monitors[workflowID]?.cancel()
+        monitors[workflowID] = Task { [weak self] in
+            for _ in 0 ..< 1_200 {
+                guard !Task.isCancelled, let self, let container = self.container,
+                      var summary = container.workflowStore.summary(workflowID: workflowID),
+                      summary.dynamic?.state == .generatingCandidate
+                else { return }
+                if let facts = try? await self.assembly.repository.loadRunFacts(for: runID) {
+                    summary.dynamic?.planning = WorkflowPlanningPresentation(runID: runID, handleID: handleID,
+                        state: facts.projection.state, updatedAt: facts.projection.cursor.timestamp)
+                    try? await container.workflowStore.save(summary)
+                    if facts.projection.isTerminal { return }
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
+    }
+
     private func refreshDynamicSummary(workflowID: UUID) async throws {
         guard let container,
               var summary = container.workflowStore.summary(workflowID: workflowID),
@@ -399,7 +452,10 @@ final class WorkflowLauncher {
             throw WorkflowLaunchError.snapshotUnavailable("dynamic workflow snapshot unavailable")
         }
         return try await assembly.prepareCoordinatedWorkflow(
-            snapshot: snapshot, runID: WorkflowRunID(rawValue: workflowID), scope: scope
+            snapshot: snapshot, runID: WorkflowRunID(rawValue: workflowID), scope: scope,
+            onCoordinatorPrepared: { [weak self] runID, handleID in
+                self?.monitorPlanning(workflowID: workflowID, runID: runID, handleID: handleID)
+            }
         )
     }
 
@@ -449,7 +505,8 @@ extension AgentRuntimeAssembly {
     func prepareCoordinatedWorkflow(
         snapshot: AgentRunRequestSnapshot,
         runID: WorkflowRunID,
-        scope: WorkflowScriptScopeV1 = .conversation
+        scope: WorkflowScriptScopeV1 = .conversation,
+        onCoordinatorPrepared: (@MainActor (AgentRunID, AgentExecutionHandleID) -> Void)? = nil
     ) async throws -> AppDynamicWorkflowCandidatePreview {
         if !AppFrozenInputBuilder.isOnline(snapshot: snapshot) {
             try await requestBuilder.localModels.register(
@@ -460,7 +517,10 @@ extension AgentRuntimeAssembly {
         let coordinator = try makeWorkflowCoordinator(snapshot: snapshot, runDate: runDate)
         let handleID = try await executor.submit(coordinator, commandID: AgentCommandID())
         let handle = try await executor.attach(to: handleID)
-        guard let result = try await waitForTerminalResult(handle: handle),
+        onCoordinatorPrepared?(coordinator.runID, handleID)
+        let result = try await waitForTerminalResult(handle: handle)
+        if result?.status.state == .cancelled { throw CancellationError() }
+        guard let result,
               result.status.state == .completed,
               let plan = result.answer?.structuredOutput
         else {
@@ -581,7 +641,9 @@ public struct AppDynamicWorkflowProjection: Hashable, Sendable {
                 submittedAt: projection.submittedAt[call.callID],
                 settledAt: projection.settledAt[call.callID],
                 usage: usage,
-                hasResult: status == .completed && call.options.requestedAgentType != "workflow-supervisor"
+                hasResult: status == .completed && call.options.requestedAgentType != "workflow-supervisor",
+                preparedSequence: projection.preparedSequences[call.callID],
+                settledSequence: projection.settledSequences[call.callID]
             )
         }
         completedCallCount = projection.outcomes.values.filter {

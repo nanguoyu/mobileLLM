@@ -9,6 +9,47 @@ import AgentRuntime
 // TEST-ID: AHT-UI-001
 // TEST-ID: AHT-LIFECYCLE-001
 final class AgentRunStoreTests: XCTestCase {
+    func testTaskObserverCannotSubmitAndApprovalTargetsOnlyItsAttachedRun() async throws {
+        let executor = MockAgentExecutor()
+        let observer = AgentRunStore(observing: executor)
+        let conversationID = UUID()
+        let childID = AgentRunID()
+        XCTAssertThrowsError(try observer.prepareStart(conversationID: conversationID, userMessageID: UUID(),
+            assistantMessageID: UUID(), text: "must not dispatch", imageRefs: []))
+        let approvalID = ApprovalID()
+        executor.handle.currentStatus = try AgentRunStatus(state: .waitingForApproval, stateVersion: 7,
+            blockingReason: .approval(approvalID: approvalID))
+        try await observer.reopen(recoverable: RecoverableAgentRun(conversationID: conversationID,
+            runID: childID, handleID: executor.handle.id, state: .waitingForApproval, updatedAt: Date()),
+            assistantMessageID: nil)
+        XCTAssertEqual(executor.submitCount, 0)
+        XCTAssertTrue(executor.handle.receivedCommands.isEmpty, "Attaching must not resume or approve")
+        await observer.decideApproval(conversationID: conversationID, approvalID: approvalID, approved: true)
+        XCTAssertEqual(executor.handle.receivedCommands.count, 1)
+        XCTAssertEqual(executor.handle.receivedCommands.first?.payload.runID, childID)
+        XCTAssertEqual(executor.handle.receivedCommands.first?.payload.expectedRunStateVersion, 7)
+        observer.discard(conversationID: conversationID)
+        XCTAssertNil(observer.presentation(for: conversationID))
+        XCTAssertEqual(executor.handle.receivedCommands.count, 1, "Closing an inspector only detaches")
+    }
+
+    func testRejectedTaskActionReportsTheReceiptWithoutPretendingToAdvance() async throws {
+        let executor = MockAgentExecutor()
+        let observer = AgentRunStore(observing: executor)
+        let conversationID = UUID()
+        executor.handle.currentStatus = try AgentRunStatus(state: .generating, stateVersion: 3)
+        executor.handle.commandFailure = try AgentFailure(code: "command.stale", classification: .transient,
+            safeMessage: "The task changed. Review it before retrying.", retryAdvice: .never,
+            externalEffect: .confirmedNone, requiredUserAction: .none,
+            redaction: RedactionMetadata(classification: .publicMetadata, policyVersion: 1))
+        try await observer.reopen(recoverable: RecoverableAgentRun(conversationID: conversationID,
+            runID: AgentRunID(), handleID: executor.handle.id, state: .generating, updatedAt: Date()), assistantMessageID: nil)
+        await observer.pause(conversationID: conversationID)
+        XCTAssertEqual(observer.recoveryError, executor.handle.commandFailure?.safeMessage)
+        XCTAssertEqual(observer.presentation(for: conversationID)?.state, .generating)
+        observer.discard(conversationID: conversationID)
+    }
+
     func testPreparedSendFromBeforeEraseNeverReachesExecutor() async throws {
         let executor = MockAgentExecutor()
         let store = AgentRunStore(executor: executor,
@@ -386,6 +427,7 @@ private final class MockAgentExecutionHandle: AgentExecutionHandle, @unchecked S
         AsyncThrowingStream<AgentEphemeralEventEnvelope, Error>.Continuation
     ] = []
     private(set) var receivedCommands: [AgentCommandEnvelope] = []
+    var commandFailure: AgentFailure?
 
     func events(
         after cursor: AgentEventCursor?
@@ -412,8 +454,9 @@ private final class MockAgentExecutionHandle: AgentExecutionHandle, @unchecked S
         return try AgentCommandReceipt(
             commandID: command.payload.commandID,
             runID: command.payload.runID,
-            disposition: .accepted,
-            currentStatus: currentStatus
+            disposition: commandFailure == nil ? .accepted : .stale,
+            currentStatus: currentStatus,
+            failure: commandFailure
         )
     }
 

@@ -63,9 +63,10 @@ struct WorkflowMessageRow: View {
 
     private var statusText: String {
         if let dynamic = record.dynamic {
-            var parts = [dynamic.state.displayLabel(
-                attached: record.isAttachedInCurrentProcess == true
-            )]
+            let state = dynamic.state == .generatingCandidate
+                ? dynamic.planning.map { WorkflowDisplay.planningStatus($0.state) } ?? "Planning"
+                : dynamic.state.displayLabel(attached: record.isAttachedInCurrentProcess == true)
+            var parts = [state]
             let tasks = WorkflowDisplay.tasks(dynamic.childCalls ?? [])
             if !tasks.isEmpty {
                 parts.append(WorkflowDisplay.summary(dynamic.childCalls ?? []))

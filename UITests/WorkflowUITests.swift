@@ -53,7 +53,7 @@ final class WorkflowUITests: XCTestCase {
         }
         let value = readValue(row) ?? ""
         XCTAssertTrue(
-            value.contains("Generating candidate") || value.contains("Running")
+            value.contains("Planning") || value.contains("Running")
                 || value.contains("Completed"),
             "the workflow must begin generating or running, got '\(value)'"
         )
@@ -76,38 +76,50 @@ final class WorkflowUITests: XCTestCase {
         let workflowBar = app.navigationBars["Workflow"]
         for _ in 0 ..< 5 where !workflowBar.exists {
             if row.exists, row.isHittable { row.tap() }
+            else { app.swipeDown() }
             if workflowBar.waitForExistence(timeout: 2) { break }
         }
         XCTAssertTrue(workflowBar.exists, "workflow row did not open its summary page")
-        let sourceDisclosure = app.buttons["JavaScript source"]
-        XCTAssertTrue(sourceDisclosure.waitForExistence(timeout: 20), "source disclosure is missing")
-        sourceDisclosure.tap()
-        let source = app.descendants(matching: .any)["workflow.source"]
-        XCTAssertTrue(source.waitForExistence(timeout: 5), "exact JavaScript source is not inspectable")
-        XCTAssertFalse(app.buttons["Once"].exists)
-        XCTAssertFalse(app.buttons["Always"].exists)
-        XCTAssertFalse(app.buttons["Deny"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["workflow.approval"].exists)
-
-        let sourceText = (source.value as? String) ?? source.label
-        XCTAssertTrue(sourceText.contains("parallel("), "complex fixture must exercise parallel fan-out")
-        XCTAssertTrue(sourceText.contains("MOBILELLM_COORDINATOR_V3"), "the shipped supervisor program must be inspectable")
-        sourceDisclosure.tap()
-
         let state = app.descendants(matching: .any)["workflow.state"]
         let deadline = Date().addingTimeInterval(180)
         while Date() < deadline, state.label != "Completed", state.label != "Failed" {
             Thread.sleep(forTimeInterval: 0.5)
         }
         XCTAssertEqual(state.label, "Completed", "complex workflow did not complete")
+        XCTAssertEqual(app.staticTexts["workflow.task.count"].label, "3 tasks · 3 completed",
+                       "coordination calls must not be counted as worker tasks")
+        let task = app.buttons["workflow.task.model"]
+        for _ in 0..<6 where !task.isHittable { app.swipeUp() }
+        XCTAssertTrue(task.exists, "task card must expose a stable accessible action")
+        task.tap()
+        let taskResult = app.descendants(matching: .any).matching(identifier: "workflow.task.result").firstMatch
+        XCTAssertTrue(taskResult.waitForExistence(timeout: 10), "saved worker output must load without regenerating it")
+        XCTAssertTrue(taskResult.label.contains("Under the fixture assumptions"))
+        app.buttons["Copy result"].tap()
+        XCTAssertTrue(app.buttons["Copied"].exists, "copy must acknowledge the action")
+        app.buttons["Done"].tap()
 
-        let callsDisclosure = app.buttons["Agent calls"]
-        XCTAssertTrue(callsDisclosure.waitForExistence(timeout: 10), "agent-call evidence is missing")
-        XCTAssertTrue(
-            ((callsDisclosure.value as? String) ?? "").hasPrefix("4 calls"),
-            "three workers and their supervisor must be durably projected without extra delivery roles"
-        )
+        let executionDetails = app.buttons["Execution details"]
+        for _ in 0..<8 where !executionDetails.isHittable { app.swipeUp() }
+        XCTAssertTrue(executionDetails.exists)
+        executionDetails.tap()
+        let callsDisclosure = app.buttons["workflow.call.history"]
+        for _ in 0..<4 where !callsDisclosure.isHittable { app.swipeUp() }
+        XCTAssertEqual(callsDisclosure.value as? String, "4 calls", "all actual invocations remain inspectable")
         callsDisclosure.tap()
+        XCTAssertEqual(app.staticTexts.matching(identifier: "workflow.agent.call").count, 4)
+        callsDisclosure.tap()
+        let sourceDisclosure = app.buttons["Workflow source"]
+        for _ in 0..<4 where !sourceDisclosure.isHittable { app.swipeUp() }
+        XCTAssertTrue(sourceDisclosure.exists, "exact source must remain available under execution details")
+        sourceDisclosure.tap()
+        let source = app.descendants(matching: .any)["workflow.source"]
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        let sourceText = (source.value as? String) ?? source.label
+        XCTAssertTrue(sourceText.contains("parallel("))
+        XCTAssertTrue(sourceText.contains("MOBILELLM_COORDINATOR_V3"))
+        XCTAssertFalse(app.descendants(matching: .any)["workflow.approval"].exists)
+        sourceDisclosure.tap()
 
         workflowBar.buttons.firstMatch.tap()
         let answers = app.descendants(matching: .any).matching(identifier: "assistant.answer")

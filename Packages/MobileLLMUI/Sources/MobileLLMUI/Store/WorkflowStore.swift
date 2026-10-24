@@ -31,6 +31,20 @@ public final class WorkflowStore: WorkflowRecording {
     public var dynamicStopHandler: (@MainActor (UUID) async throws -> Void)?
     public var dynamicRestartHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> Void)?
     public var dynamicResultHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> String?)?
+    public var dynamicObserverHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> AgentRunStore?)?
+    public var planningObserverHandler: (@MainActor (UUID) async throws -> AgentRunStore?)?
+
+    public func observePlanning(workflowID: UUID) async throws -> AgentRunStore? {
+        guard workflows[workflowID] != nil, let planningObserverHandler else { throw WorkflowStoreActionError.unavailable }
+        return try await planningObserverHandler(workflowID)
+    }
+
+    public func observeTask(workflowID: UUID, callID: WorkflowAgentCallID) async throws -> AgentRunStore? {
+        guard workflows[workflowID] != nil, let dynamicObserverHandler else {
+            throw WorkflowStoreActionError.unavailable
+        }
+        return try await dynamicObserverHandler(workflowID, callID)
+    }
 
     public func result(workflowID: UUID, callID: WorkflowAgentCallID) async throws -> String? {
         guard workflows[workflowID] != nil, let dynamicResultHandler else {

@@ -32,13 +32,28 @@ final class WorkflowTaskPresentationTests: XCTestCase {
         XCTAssertEqual(WorkflowDisplay.inputs(for: recovery, in: [failed, recovery]).first?.status, .failed)
     }
 
+    func testHistoricalConsumerKeepsTheOriginalResultAfterAnUpstreamRetry() throws {
+        var original = try call(1, taskID: "source", output: "source:1")
+        original.preparedSequence = 1; original.settledSequence = 2
+        var firstConsumer = try call(2, taskID: "plan", output: "plan:2", inputs: ["source:1"])
+        firstConsumer.preparedSequence = 3; firstConsumer.settledSequence = 4
+        var retried = try call(1, taskID: "source", output: "source:1", attempt: 2)
+        retried.preparedSequence = 5; retried.settledSequence = 6
+        var secondConsumer = try call(2, taskID: "plan", output: "plan:2", inputs: ["source:1"], attempt: 2)
+        secondConsumer.preparedSequence = 7
+        let history = [original, firstConsumer, retried, secondConsumer]
+        XCTAssertEqual(WorkflowDisplay.inputs(for: firstConsumer, in: history).map(\.callID), [original.callID])
+        XCTAssertEqual(WorkflowDisplay.inputs(for: secondConsumer, in: history).map(\.callID), [retried.callID])
+    }
+
     private func call(_ ordinal: UInt32, taskID: String?, output: String?, inputs: [String] = [],
-                      type: String = "workflow-worker", status: DynamicWorkflowChildStatus = .completed) throws -> DynamicWorkflowChildPresentation {
+                      type: String = "workflow-worker", status: DynamicWorkflowChildStatus = .completed,
+                      attempt: UInt16 = 1) throws -> DynamicWorkflowChildPresentation {
         let task: WorkflowTaskDescriptorV1? = try taskID.flatMap { id in
             guard let output else { return nil }
             return try WorkflowTaskDescriptorV1(taskID: id, instruction: "Work on \(id)", inputArtifactIDs: inputs, outputArtifactID: output)
         }
-        return DynamicWorkflowChildPresentation(callID: WorkflowAgentCallID(), ordinal: ordinal, attempt: 1,
+        return DynamicWorkflowChildPresentation(callID: WorkflowAgentCallID(), ordinal: ordinal, attempt: attempt,
             childRunID: AgentRunID(), status: status, task: task, agentType: type)
     }
 }
