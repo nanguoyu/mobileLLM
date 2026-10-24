@@ -15,6 +15,7 @@ public struct AgentSessionTurnView: Identifiable, Sendable {
     public let runID: AgentRunID
     public let handleID: AgentExecutionHandleID?
     public let status: AgentRunStatus?
+    public let isRunningInThisProcess: Bool
     public let answer: String?
     public let inputIDs: [MessageID]
 }
@@ -48,10 +49,11 @@ extension AgentRunController {
                 let history = try ExecutionHistory(events: snapshot.events, projection: snapshot.facts.projection)
                 turns.append(AgentSessionTurnView(runID: activation.runID,
                     handleID: snapshot.facts.projection.executionHandleID, status: history.status,
+                    isRunningInThisProcess: workers[activation.runID] != nil,
                     answer: history.result?.answer?.text, inputIDs: activation.inputIDs))
             } else {
                 turns.append(AgentSessionTurnView(runID: activation.runID, handleID: nil,
-                    status: nil, answer: nil, inputIDs: activation.inputIDs))
+                    status: nil, isRunningInThisProcess: false, answer: nil, inputIDs: activation.inputIDs))
             }
         }
         return AgentSessionView(snapshot: session, messages: messages, turns: turns)
@@ -69,6 +71,7 @@ extension AgentRunController {
         let id = AgentSessionID(rawValue: seedRunID.rawValue)
         await acquireSessionGate(id)
         defer { releaseSessionGate(id) }
+        if startNextTurn { sessionContinuationPermission.insert(id) }
         guard let journal = sessionJournal else { throw AgentSessionError.unavailable }
         var session = try await sessionSnapshot(seedRunID: seedRunID, conversationID: conversationID)
         if let prior = session.inputs.first(where: { $0.id == messageID }) {
@@ -118,6 +121,7 @@ extension AgentRunController {
         let id = AgentSessionID(rawValue: seedRunID.rawValue)
         await acquireSessionGate(id)
         defer { releaseSessionGate(id) }
+        sessionContinuationPermission.insert(id)
         let session = try await sessionSnapshot(seedRunID: seedRunID, conversationID: conversationID)
         return try await activateSession(session, resumeExisting: true)
     }
@@ -146,6 +150,7 @@ extension AgentRunController {
         let last = session.activations.last!
         if let facts = try await repository.loadRunFacts(for: last.runID) {
             if !facts.projection.isTerminal {
+                if session.activations.count > 1 { sessionActivationOwners[last.runID] = session.id }
                 if resumeExisting, workers[last.runID] == nil {
                     let command = try AgentCommand(commandID: AgentCommandID(rawValue: UUID()), runID: last.runID,
                         expectedRunStateVersion: facts.projection.stateVersion, action: .resume, issuedAt: try await clock.now())
@@ -183,6 +188,9 @@ extension AgentRunController {
         let bytes = try await payloadStore.load(material, maximumBytes: 4 * 1_024 * 1_024)
         let prepared = try ExecutionEncoding.decode(PreparedAgentSessionActivation.self, from: bytes)
         guard prepared.request.runID == activation.runID else { throw AgentSessionError.invalidHistory }
+        guard let session = try await sessionJournal?.session(for: activation.runID),
+              sessionContinuationPermission.contains(session.id) else { throw AgentSessionError.requiresResume }
+        sessionActivationOwners[activation.runID] = session.id
         return try await submit(prepared.request, commandID: activation.commandID, frozenInputs: prepared.inputs)
     }
 
@@ -257,6 +265,7 @@ extension AgentRunController {
             try beginPublicMutation()
             defer { endPublicMutation() }
             guard let session = try await sessionJournal?.session(for: runID),
+                  sessionContinuationPermission.contains(session.id),
                   session.activations.count > 1, session.activations.last?.runID == runID,
                   !session.pendingTurns.isEmpty,
                   try await repository.loadRunFacts(for: runID)?.projection.state == .completed
@@ -267,6 +276,27 @@ extension AgentRunController {
             _ = try await activateSession(session)
         } catch {
             await logger.record(code: "execution.session-continuation-pending", metadata: ["run": runID.description])
+        }
+    }
+
+    /// Covers follow-ups even after their inspector is closed. Existing workflow lifecycle code
+    /// continues to own seed runs; this only quiesces independent session activations.
+    public func quiesceSessionsForBackground(excluding conversationID: ConversationID? = nil) async throws {
+        for id in Array(sessionContinuationPermission) {
+            if try await sessionJournal?.session(id)?.conversationID != conversationID {
+                sessionContinuationPermission.remove(id)
+            }
+        }
+        for runID in Array(workers.keys) {
+            guard let session = try await sessionJournal?.session(for: runID),
+                  session.activations.first?.runID != runID, session.conversationID != conversationID,
+                  let facts = try await repository.loadRunFacts(for: runID), !facts.projection.isTerminal
+            else { continue }
+            sessionActivationOwners[runID] = session.id
+            let command = try AgentCommand(commandID: AgentCommandID(rawValue: UUID()), runID: runID,
+                expectedRunStateVersion: facts.projection.stateVersion, action: .pause(reason: .foregroundLost),
+                issuedAt: try await clock.now())
+            _ = try await send(AgentCommandEnvelope(payload: command), through: facts.projection.executionHandleID)
         }
     }
 

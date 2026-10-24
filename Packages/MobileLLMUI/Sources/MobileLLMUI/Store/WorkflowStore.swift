@@ -33,6 +33,24 @@ public final class WorkflowStore: WorkflowRecording {
     public var dynamicResultHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> String?)?
     public var dynamicObserverHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> AgentRunStore?)?
     public var planningObserverHandler: (@MainActor (UUID) async throws -> AgentRunStore?)?
+    public var taskSessionHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> AgentSessionView)?
+    public var taskMessageHandler: (@MainActor (UUID, WorkflowAgentCallID, MessageID, String) async throws -> Void)?
+    public var taskSessionResumeHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> Void)?
+
+    public func taskSession(workflowID: UUID, callID: WorkflowAgentCallID) async throws -> AgentSessionView {
+        guard workflows[workflowID] != nil, let taskSessionHandler else { throw WorkflowStoreActionError.unavailable }
+        return try await taskSessionHandler(workflowID, callID)
+    }
+
+    public func sendTaskMessage(workflowID: UUID, callID: WorkflowAgentCallID, id: MessageID, text: String) async throws {
+        guard workflows[workflowID] != nil, let taskMessageHandler else { throw WorkflowStoreActionError.unavailable }
+        try await taskMessageHandler(workflowID, callID, id, text)
+    }
+
+    public func resumeTaskSession(workflowID: UUID, callID: WorkflowAgentCallID) async throws {
+        guard workflows[workflowID] != nil, let taskSessionResumeHandler else { throw WorkflowStoreActionError.unavailable }
+        try await taskSessionResumeHandler(workflowID, callID)
+    }
 
     public func observePlanning(workflowID: UUID) async throws -> AgentRunStore? {
         guard workflows[workflowID] != nil, let planningObserverHandler else { throw WorkflowStoreActionError.unavailable }

@@ -155,6 +155,44 @@ final class AgentSessionExecutionTests: XCTestCase {
         XCTAssertEqual(completed.turns.last?.status?.state, .completed)
     }
 
+    func testBackgroundQuiescenceCoversUnobservedFollowupsAndKeepsQueuedInput() async throws {
+        let model = try ExecutorTestModelDefinition(offset: 834)
+        let script = SessionRequestProbe()
+        let gate = BlockingModelGate()
+        let provider = try SessionProbeProvider(model: model, script: script, firstGate: gate, gateAt: 2)
+        let harness = try ExecutorTestHarness(offset: 834, provider: provider, model: model)
+        let seed = try await harness.executor.submit(harness.request, commandID: ExecutorTestID.command(834))
+        _ = try await collectTerminalEvents(from: harness.executor.attach(to: seed))
+        try await harness.executor.controller.sendSessionInput(seedRunID: harness.request.runID,
+            conversationID: harness.request.conversationID, messageID: MessageID(rawValue: ExecutorTestID.uuid(83_007)),
+            text: "Add a retention decision.", mode: .nextTurn, startNextTurn: true)
+        try await waitForExecutorCondition { await gate.hasEntered() }
+        try await harness.executor.controller.sendSessionInput(seedRunID: harness.request.runID,
+            conversationID: harness.request.conversationID, messageID: MessageID(rawValue: ExecutorTestID.uuid(83_008)),
+            text: "Then summarize the decision.", mode: .nextTurn, startNextTurn: true)
+        try await harness.executor.controller.quiesceSessionsForBackground()
+        await gate.release()
+        let view = try await harness.executor.controller.sessionView(seedRunID: harness.request.runID,
+            conversationID: harness.request.conversationID)
+        let current = try XCTUnwrap(view.turns.last?.handleID)
+        _ = try await waitForStatus(.paused, handle: harness.executor.attach(to: current))
+        try await waitForWorkerToStop(view.turns.last!.runID, controller: harness.executor.controller)
+        let pending = try await harness.executor.controller.sessionView(seedRunID: harness.request.runID,
+            conversationID: harness.request.conversationID)
+        XCTAssertEqual(pending.turns.count, 2)
+        XCTAssertEqual(pending.snapshot.pendingTurns.count, 1)
+        _ = try await harness.executor.controller.resumeSession(seedRunID: harness.request.runID,
+            conversationID: harness.request.conversationID)
+        try await waitForExecutorCondition {
+            guard let latest = try? await harness.executor.controller.sessionView(seedRunID: harness.request.runID,
+                conversationID: harness.request.conversationID) else { return false }
+            return latest.turns.count == 3 && latest.turns.last?.status?.state == .completed
+        }
+        let requests = await script.values()
+        XCTAssertEqual(requests.count, 4)
+        XCTAssertTrue(requests.last!.messages.contains { $0.content.contains("Then summarize the decision") })
+    }
+
     private func makeRestored(_ harness: ExecutorTestHarness, provider: any AgentModelProvider) -> DurableAgentExecutor {
         DurableAgentExecutor(repository: SQLiteRunJournal(databaseURL: harness.databaseURL), payloadStore: harness.payloadStore,
             inputFreezer: StaticAgentRunInputFreezer(inputs: harness.frozenInputs),
@@ -174,11 +212,13 @@ private struct SessionProbeProvider: AgentModelProvider, Sendable {
     let wrapped: FixedCompletionModelProvider
     let script: SessionRequestProbe
     let firstGate: BlockingModelGate?
+    let gateAt: Int
     var descriptor: AgentModelProviderDescriptor { wrapped.descriptor }
-    init(model: ExecutorTestModelDefinition, script: SessionRequestProbe, firstGate: BlockingModelGate? = nil) throws {
+    init(model: ExecutorTestModelDefinition, script: SessionRequestProbe, firstGate: BlockingModelGate? = nil, gateAt: Int = 1) throws {
         wrapped = try FixedCompletionModelProvider(model: model, answer: "unused")
         self.script = script
         self.firstGate = firstGate
+        self.gateAt = gateAt
     }
     func capabilities(for selection: AgentModelSelection) async throws -> AgentModelCapabilities {
         try await wrapped.capabilities(for: selection)
@@ -188,7 +228,7 @@ private struct SessionProbeProvider: AgentModelProvider, Sendable {
     }
     func generate(_ request: AgentModelRequest, emitter: AgentModelBoundaryEmitter) async throws -> AgentModelBoundaryCompletion {
         let index = await script.record(request)
-        if index == 1 { await firstGate?.suspendUntilReleased() }
+        if index == gateAt { await firstGate?.suspendUntilReleased() }
         let completion = try AgentModelCompletion(action: .finalAnswer(AgentAnswer(text: "Recorded response \(index), project Cedar")),
             usage: modelUsage(input: 12, output: 8, milliseconds: 2, memory: 128))
         try await emitter.emit(.completed(completion), responseBytes: 64)

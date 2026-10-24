@@ -2933,6 +2933,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.AgentSessionExecutionTests/testUnconsumedInputSurvivesCancellationAndIsCarriedIntoNextExplicitTurn"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionExecutionTests/testBackgroundQuiescenceCoversUnobservedFollowupsAndKeepsQueuedInput"
         }
       ],
       "platforms": [

@@ -14,6 +14,21 @@ public enum AgentSessionError: Error, Equatable, Sendable {
     case requiresResume
 }
 
+extension AgentSessionError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .unavailable: "This agent conversation is unavailable."
+        case .staleRevision: "The conversation changed. Try again."
+        case .invalidHistory: "The saved agent conversation could not be verified."
+        case .inputConflict: "This message was already submitted with different content."
+        case .inputTooLarge: "This message is empty or too long. Shorten it and try again."
+        case .capacityReached: "This agent conversation has reached its message or turn limit."
+        case .pendingInput: "The agent has pending instructions."
+        case .requiresResume: "Your message is saved. Resume the agent to continue."
+        }
+    }
+}
+
 /// Session facts share the run journal's database and conversation deletion boundary.
 public protocol AgentSessionJournaling: Sendable {
     func session(_ id: AgentSessionID) async throws -> AgentSessionSnapshot?

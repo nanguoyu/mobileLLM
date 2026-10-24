@@ -35,6 +35,16 @@ struct WorkflowTaskDetailView: View {
             VStack(alignment: .leading, spacing: Theme.Space.lg) {
                 if let call {
                     summary(call)
+                    if !call.isCoordinator, call.handleID != nil, let store,
+                       store.taskSessionHandler != nil, let conversationID = workflow?.conversationID {
+                        NavigationLink {
+                            WorkflowAgentConversationView(store: store, workflowID: workflowID,
+                                                          call: call, conversationID: conversationID)
+                        } label: {
+                            Label("Message this agent", systemImage: "bubble.left.and.bubble.right")
+                                .font(.callout.weight(.medium)).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }.studioCard().accessibilityIdentifier("workflow.task.conversation")
+                    }
                     if let error = observationError ?? observer?.recoveryError {
                         Text(error).font(.callout).foregroundStyle(Theme.danger)
                     }

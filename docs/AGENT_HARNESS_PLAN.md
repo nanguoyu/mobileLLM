@@ -8,8 +8,8 @@ DeepSeek Harness supplies the main architectural reference. OpenMinis supplies u
 interaction and continuation examples. Quality will be assessed through actual task outcomes.
 
 This is the implementation roadmap. Stage 1 now has durable session storage and execution APIs for
-steering, successive turns and restart recovery. Task-detail integration and Simulator acceptance
-remain in progress. [STATUS.md](STATUS.md) records implemented behavior and observed results.
+steering, successive turns and restart recovery. Task-detail conversation controls are integrated;
+Simulator interaction acceptance remains in progress. [STATUS.md](STATUS.md) records observed results.
 The owner's separate iOS agent sandbox is unavailable for near-term integration. The harness
 milestone therefore has no dependency on that project's delivery.
 

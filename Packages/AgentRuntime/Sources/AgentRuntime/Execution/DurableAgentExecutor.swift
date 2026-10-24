@@ -132,6 +132,8 @@ public actor AgentRunController {
     /// commits stay ungated so pause/cancel can always interrupt a parallel batch.
     var toolCommitGates: [AgentRunID: ToolCommitGate] = [:]
     var sessionGates: [AgentSessionID: ToolCommitGate] = [:]
+    var sessionContinuationPermission: Set<AgentSessionID> = []
+    var sessionActivationOwners: [AgentRunID: AgentSessionID] = [:]
 
     public init(
         repository: any RuntimeRepository,
@@ -500,6 +502,7 @@ public actor AgentRunController {
 
     func schedule(runID: AgentRunID) {
         guard !dataEraseSuspended, workers[runID] == nil else { return }
+        if let sessionID = sessionActivationOwners[runID], !sessionContinuationPermission.contains(sessionID) { return }
         workers[runID] = Task { [weak self] in
             guard let self else { return }
             await self.drive(runID: runID)

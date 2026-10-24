@@ -479,6 +479,15 @@ struct MobileLLMApp: App {
                 container.workflowStore.dynamicObserverHandler = { [launcher] workflowID, callID in
                     try await launcher.observeTask(workflowID: workflowID, callID: callID)
                 }
+                container.workflowStore.taskSessionHandler = { [launcher] workflowID, callID in
+                    try await launcher.taskSession(workflowID: workflowID, callID: callID)
+                }
+                container.workflowStore.taskMessageHandler = { [launcher] workflowID, callID, id, text in
+                    try await launcher.sendTaskMessage(workflowID: workflowID, callID: callID, id: id, text: text)
+                }
+                container.workflowStore.taskSessionResumeHandler = { [launcher] workflowID, callID in
+                    try await launcher.resumeTaskSession(workflowID: workflowID, callID: callID)
+                }
                 container.workflowStore.planningObserverHandler = { [launcher] workflowID in
                     try await launcher.observePlanning(workflowID: workflowID)
                 }

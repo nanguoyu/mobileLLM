@@ -289,7 +289,50 @@ final class WorkflowLauncher {
               let call = projection.childCalls.first(where: { $0.callID == callID }),
               let handleID = call.handleID
         else { return nil }
+        if call.agentType != "workflow-supervisor",
+           let session = try? await taskSession(workflowID: workflowID, callID: callID),
+           let current = session.turns.last, let currentHandle = current.handleID {
+            return try await makeObserver(runID: current.runID, handleID: currentHandle, conversationID: conversationID)
+        }
         return try await makeObserver(runID: call.childRunID, handleID: handleID, conversationID: conversationID)
+    }
+
+    private func taskSessionContext(workflowID: UUID, callID: WorkflowAgentCallID) async throws
+        -> (call: WorkflowAgentCallV1, conversationID: ConversationID, workflow: WorkflowRunProjectionV1) {
+        guard let summary = container?.workflowStore.summary(workflowID: workflowID),
+              let conversationID = summary.conversationID,
+              let workflow = try await assembly.dynamicWorkflowJournal.loadProjection(for: dynamicRunID(workflowID)),
+              workflow.launch.conversationID.rawValue == conversationID,
+              let call = workflow.calls.first(where: { $0.callID == callID }),
+              call.options.requestedAgentType != "workflow-supervisor",
+              workflow.submittedHandles[callID] != nil
+        else { throw WorkflowLaunchError.snapshotUnavailable("This task has no available conversation record.") }
+        return (call, workflow.launch.conversationID, workflow)
+    }
+
+    func taskSession(workflowID: UUID, callID: WorkflowAgentCallID) async throws -> AgentSessionView {
+        let context = try await taskSessionContext(workflowID: workflowID, callID: callID)
+        return try await assembly.executor.controller.sessionView(seedRunID: context.call.childRunID,
+            conversationID: context.conversationID)
+    }
+
+    func sendTaskMessage(workflowID: UUID, callID: WorkflowAgentCallID, id: MessageID, text: String) async throws {
+        let context = try await taskSessionContext(workflowID: workflowID, callID: callID)
+        guard context.workflow.isTerminal || (context.workflow.state == .running
+            && container?.workflowStore.executingWorkflowIDs.contains(workflowID) == true)
+        else { throw WorkflowLaunchError.snapshotUnavailable("Resume the workflow before sending a task update.") }
+        try await assembly.executor.controller.sendSessionInput(seedRunID: context.call.childRunID,
+            conversationID: context.conversationID, messageID: id, text: text, mode: .steer,
+            startNextTurn: context.workflow.isTerminal)
+    }
+
+    func resumeTaskSession(workflowID: UUID, callID: WorkflowAgentCallID) async throws {
+        let context = try await taskSessionContext(workflowID: workflowID, callID: callID)
+        guard context.workflow.isTerminal else {
+            throw WorkflowLaunchError.snapshotUnavailable("Resume the workflow to continue its active tasks.")
+        }
+        _ = try await assembly.executor.controller.resumeSession(seedRunID: context.call.childRunID,
+            conversationID: context.conversationID)
     }
 
     func observePlanning(workflowID: UUID) async throws -> AgentRunStore? {
@@ -400,12 +443,25 @@ final class WorkflowLauncher {
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 guard !Task.isCancelled else { return }
                 try? await self.refreshDynamicSummary(workflowID: workflowID)
+                if self.container?.workflowStore.summary(workflowID: workflowID)?.dynamic?.state == .completed {
+                    await self.startQueuedTaskSessions(workflowID: workflowID)
+                }
                 guard let state = self.container?.workflowStore
                     .summary(workflowID: workflowID)?.dynamic?.state,
                     ![.completed, .failed, .cancelled, .paused, .waitingForForeground,
                       .waitingForReconciliation].contains(state)
                 else { return }
             }
+        }
+    }
+
+    private func startQueuedTaskSessions(workflowID: UUID) async {
+        guard let dynamic = container?.workflowStore.summary(workflowID: workflowID)?.dynamic else { return }
+        for call in dynamic.childCalls ?? [] where call.agentType != "workflow-supervisor" {
+            guard let session = try? await taskSession(workflowID: workflowID, callID: call.callID),
+                  !session.snapshot.pendingTurns.isEmpty,
+                  session.turns.last?.status?.state == .completed else { continue }
+            try? await resumeTaskSession(workflowID: workflowID, callID: call.callID)
         }
     }
 
@@ -423,6 +479,8 @@ final class WorkflowLauncher {
             .filter { conversationID != nil && $0.conversationID == conversationID }
             .map { WorkflowRunID(rawValue: $0.id) })
         try await assembly.dynamicWorkflows.quiesceForBackground(excluding: protected)
+        try await assembly.executor.controller.quiesceSessionsForBackground(
+            excluding: conversationID.map { ConversationID(rawValue: $0) })
         for id in container?.workflowStore.workflows.keys.map({ $0 }) ?? [] {
             try? await refreshDynamicSummary(workflowID: id)
         }

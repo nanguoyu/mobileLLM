@@ -294,7 +294,10 @@ activation retains unconsumed input for the next explicitly requested turn. Read
 Human follow-up turns use the existing per-turn limits and keep their usage separate from the original
 workflow report. The original workflow owns its seed activation. Autonomous model messaging and
 shared goal accounting are later stages; the v4 coordination program still uses its recorded artifact
-continuation. Session APIs currently supply the runtime foundation for the task-detail interaction.
+continuation. Task details open a separate agent conversation with stored replies, pending/included
+message state and the existing approval controls. The workflow retains control of its seed task;
+queued follow-ups can start after it completes. Independent follow-ups participate in background
+quiescence even when their inspector has closed, and cold sessions require explicit resume.
 
 ## iOS lifecycle and continued processing
 
