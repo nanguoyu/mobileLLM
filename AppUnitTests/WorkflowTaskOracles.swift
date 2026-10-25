@@ -6,7 +6,7 @@ import SQLite3
 /// Task outputs are checked by executable invariants, independently of the model's self-assessment.
 /// SQL runs only in an in-memory database with file attachment, extensions and unsafe pragmas denied.
 enum WorkflowLiveCase: String {
-    case migration, rollout, incident
+    case migration, rollout, incident, research, correction, longContext
 
     var goal: String {
         switch self {
@@ -62,6 +62,9 @@ enum WorkflowLiveCase: String {
             makespan and tasks (array of {id,start,end,resource}), changedStartIDs, laborCostEUR,
             lowerBounds={baseline:...,outage:...}, and explanation.
             """
+        case .research: return researchGoal(heldOut: false)
+        case .correction: return correctionGoal(heldOut: false)
+        case .longContext: return longContextGoal
         case .incident:
             return """
             Analyze this distributed-job recovery incident and deliver an implementable decision table.
@@ -101,24 +104,27 @@ enum WorkflowLiveCase: String {
 
     var usesCalculator: Bool { self == .rollout }
 
-    func verify(_ value: [String: Any]) throws -> [String] {
+    func verify(_ value: [String: Any], heldOut: Bool = false) throws -> [String] {
         switch self {
         case .migration:
             guard value["marker"] as? String == "EVAL_MIGRATION", let sql = value["sql"] as? String, !sql.isEmpty else {
                 return ["Missing migration JSON/script"]
             }
-            return try MigrationOracle.verify(sql)
-        case .rollout: return rolloutFailures(value)
-        case .incident: return incidentFailures(value)
+            return try MigrationOracle.verify(sql, newest: !heldOut)
+        case .rollout: return rolloutFailures(value, heldOut: heldOut)
+        case .incident: return incidentFailures(value, heldOut: heldOut)
+        case .research: return researchFailures(value, heldOut: heldOut)
+        case .correction: return correctionFailures(value, heldOut: heldOut)
+        case .longContext: return longContextFailures(value, heldOut: heldOut)
         }
     }
 
-    private func rolloutFailures(_ value: [String: Any]) -> [String] {
+    private func rolloutFailures(_ value: [String: Any], heldOut: Bool) -> [String] {
         let duration = ["A":3,"B":2,"C":2,"D":2,"E":4,"F":2,"G":3,"H":1]
         let resource = ["A":"DB","B":"App","C":"DB","D":"App","E":"DB","F":"DB","G":"QA","H":"App"]
         let dependencies = ["A":[],"B":[],"C":["A"],"D":["B","C"],"E":["C"],"F":["E"],"G":["D","E"],"H":["F","G"]]
         var starts: [String: [String: Int]] = [:]
-        for (name, optimum) in [("baseline",13),("revised",14)] {
+        for (name, optimum) in [("baseline",13),("revised",heldOut ? 17 : 14)] {
             guard let plan = value[name] as? [String: Any], plan["makespan"] as? Int == optimum,
                   let rows = plan["tasks"] as? [[String: Any]], rows.count == duration.count else { return ["\(name): missing optimum or tasks"] }
             var byID: [String: (start:Int,end:Int,resource:String)] = [:]
@@ -136,24 +142,24 @@ enum WorkflowLiveCase: String {
                 for (otherID,other) in byID where otherID != id && other.resource == item.resource {
                     if item.start < other.end && other.start < item.end { return ["\(name): resource overlap"] }
                 }
-                if name == "revised", item.resource == "App", item.start < 8, item.end > 5 { return ["Revised plan works through the outage"] }
+                if name == "revised", item.resource == (heldOut ? "QA" : "App"), item.start < (heldOut ? 13 : 8), item.end > (heldOut ? 10 : 5) { return ["Revised plan works through the outage"] }
             }
             guard byID.values.map(\.end).max() == optimum else { return ["\(name): makespan differs from schedule"] }
             starts[name] = byID.mapValues(\.start)
         }
         let changed = Set((starts["baseline"] ?? [:]).keys.filter { starts["baseline"]?[$0] != starts["revised"]?[$0] })
-        guard changed == ["D","G","H"], let reported = value["changedStartIDs"] as? [String],
+        guard changed == (heldOut ? ["G","H"] : ["D","G","H"]), let reported = value["changedStartIDs"] as? [String],
               reported.count == changed.count, Set(reported) == changed else { return ["Rescheduling is not minimally disruptive or changed-task list is wrong"] }
-        guard value["marker"] as? String == "EVAL_ROLLOUT", value["laborCostEUR"] as? Int == 1680,
-              let bounds = value["lowerBounds"] as? [String:Int], bounds["baseline"] == 13, bounds["outage"] == 14 else {
+        guard value["marker"] as? String == "EVAL_ROLLOUT", value["laborCostEUR"] as? Int == (heldOut ? 1605 : 1680),
+              let bounds = value["lowerBounds"] as? [String:Int], bounds["baseline"] == 13, bounds["outage"] == (heldOut ? 17 : 14) else {
             return ["Cost or optimality bound is wrong"]
         }
         return []
     }
 
-    private func incidentFailures(_ value: [String: Any]) -> [String] {
-        let claims = ["C1":"supported","C2":"unknown","C3":"refuted","C4":"supported","C5":"refuted"]
-        let actions = ["R1":"dispatch_new","R2":"retry_same_key","R3":"reconcile","R4":"reuse_result","R5":"reject_conflict","R6":"reconcile"]
+    private func incidentFailures(_ value: [String: Any], heldOut: Bool) -> [String] {
+        let claims = ["C1":"supported","C2":heldOut ? "refuted" : "unknown","C3":"refuted","C4":"supported","C5":"refuted"]
+        let actions = ["R1":"dispatch_new","R2":heldOut ? "reuse_result" : "retry_same_key","R3":"reconcile","R4":heldOut ? "reject_conflict" : "reuse_result","R5":"reject_conflict","R6":"reconcile"]
         for (key, expected, field, explanation) in [("claims",claims,"verdict","evidence"),("recovery",actions,"action","reason")] {
             guard let rows = value[key] as? [[String:Any]], rows.count == expected.count else { return ["Incomplete \(key)"] }
             var seen = Set<String>()
@@ -174,11 +180,11 @@ enum WorkflowLiveCase: String {
 
 private enum MigrationOracle {
     struct Contact { let id:Int; let tenant:Int; let email:String?; let name:String; let updated:Int }
-    static func verify(_ script: String) throws -> [String] {
+    static func verify(_ script: String, newest: Bool = true) throws -> [String] {
         guard script.utf8.count <= 100_000 else { return ["Migration exceeds executable script limit"] }
         for seed in [7, 41, 509] {
             let db = try EvaluationDatabase()
-            let fixture = try seedDatabase(db, seed: seed)
+            let fixture = try seedDatabase(db, seed: seed, newest: newest)
             let original = try db.rows("SELECT id,tenant_id,email,display_name,updated_at FROM contacts ORDER BY id")
             let originalTickets = try db.rows("SELECT id,contact_id,subject FROM tickets ORDER BY id")
             let rc = db.execute(script)
@@ -208,7 +214,7 @@ private enum MigrationOracle {
             guard db.execute("INSERT INTO tickets VALUES(999001,-123,'invalid contact')") == SQLITE_CONSTRAINT else { return ["Future tickets lost their foreign-key constraint"] }
 
             let interrupted = try EvaluationDatabase()
-            _ = try seedDatabase(interrupted, seed: seed)
+            _ = try seedDatabase(interrupted, seed: seed, newest: newest)
             interrupted.denyIndexCreation = true
             guard interrupted.execute(script) != SQLITE_OK, sqlite3_get_autocommit(interrupted.handle) == 0 else {
                 return ["Failure while creating the uniqueness constraint is not rollbackable"]
@@ -224,7 +230,7 @@ private enum MigrationOracle {
     }
 
     private static func quote(_ text:String?) -> String { text.map { "'"+$0.replacingOccurrences(of:"'",with:"''")+"'" } ?? "NULL" }
-    private static func seedDatabase(_ db:EvaluationDatabase, seed:Int) throws -> (contacts:[[String?]],tickets:[[String?]]) {
+    private static func seedDatabase(_ db:EvaluationDatabase, seed:Int, newest:Bool) throws -> (contacts:[[String?]],tickets:[[String?]]) {
         try db.require("PRAGMA foreign_keys=ON; CREATE TABLE contacts(id INTEGER PRIMARY KEY,tenant_id INTEGER NOT NULL,email TEXT,display_name TEXT NOT NULL,updated_at INTEGER NOT NULL); CREATE TABLE tickets(id INTEGER PRIMARY KEY,contact_id INTEGER NOT NULL REFERENCES contacts(id),subject TEXT NOT NULL);")
         var contacts:[Contact] = []
         for id in 1...150 {
@@ -240,7 +246,11 @@ private enum MigrationOracle {
         var winners:[String:Contact] = [:]
         func key(_ c:Contact) -> String { normalized(c.email).map { "\(c.tenant):\($0)" } ?? "missing:\(c.id)" }
         for row in contacts {
-            if let old = winners[key(row)], old.updated > row.updated || (old.updated == row.updated && old.id > row.id) { continue }
+            if let old = winners[key(row)] {
+                let oldWins = newest ? (old.updated > row.updated || (old.updated == row.updated && old.id > row.id))
+                    : (old.updated < row.updated || (old.updated == row.updated && old.id < row.id))
+                if oldWins { continue }
+            }
             winners[key(row)] = row
         }
         var expectedTickets:[[String?]] = []
@@ -313,5 +323,164 @@ private final class EvaluationDatabase {
         }
         guard status == SQLITE_DONE else { throw NSError(domain:"EvaluationSQLite",code:Int(status)) }
         return result
+    }
+}
+
+extension WorkflowLiveCase {
+    func goal(heldOut: Bool) -> String {
+        guard heldOut else { return goal }
+        switch self {
+        case .migration:
+            return goal.replacingOccurrences(of: "greatest updated_at, breaking\n ties by greatest id", with: "least updated_at, breaking\n ties by least id")
+                .replacingOccurrences(of: "greatest updated_at", with: "least updated_at")
+                .replacingOccurrences(of: "ties by greatest id", with: "ties by least id")
+        case .rollout:
+            return goal.replacingOccurrences(of: "DB=100, App=80, QA=60", with: "DB=90, App=75, QA=80")
+                .replacingOccurrences(of: "EUR1800", with: "EUR1700")
+                .replacingOccurrences(of: "App engineer becomes unavailable in [5,8)", with: "QA engineer becomes unavailable in [10,13)")
+        case .incident:
+            return goal.replacingOccurrences(of: "using NEW key K2. E6 the trace ends. No provider execution logs,\naccepted-write records or lookup results are available. Both sends are observed; effects are not.",
+                with: "using the SAME key K. E6 an authenticated lookup within the 24-hour window returns exactly one successful result for K matching H. The provider contract guarantees no second effect for K in this window.")
+                .replacingOccurrences(of: "R2: a request was sent and timed out; original key and identical payload are durable;\n    provider deduplication/lookup window is still valid.",
+                    with: "R2: a request was sent and timed out; lookup now returns a durable successful result matching the original key and payload.")
+                .replacingOccurrences(of: "R4: same logical job already has a durable successful result matching the payload.",
+                    with: "R4: same logical job already has a durable successful result, but the incoming request has a different payload hash.")
+        case .research: return researchGoal(heldOut: true)
+        case .correction: return correctionGoal(heldOut: true)
+        case .longContext: return longContextGoal
+        }
+    }
+
+    var usesWeb: Bool { self == .research }
+    func amendment(heldOut: Bool) -> String? {
+        guard self == .correction else { return nil }
+        return heldOut
+            ? "Change the trash retention to 3 days and the maximum export size to 12 MiB. Preserve offline operation, Markdown and JSON export, and restore during retention. Apply this update to every affected design and the final result."
+            : "Change trash retention from 14 days to 7 days. Preserve the 20 MiB maximum export size, offline operation, Markdown and JSON export, and restore during retention. Apply this update to every affected design and the final result."
+    }
+
+    private func correctionGoal(heldOut: Bool) -> String {
+        """
+        Design an offline notes app. Initial requirements: keep deleted notes in trash for 14 days,
+        allow restore throughout that retention, support Markdown and JSON export, cap each export
+        at 20 MiB, and support all these actions fully offline. Sync is optional. Use separate storage
+        and sync agents, then an integration agent consuming both designs, then an independent reviewer
+        of that candidate. Allow corrections during this work and reconcile affected results.
+        The storage agent must use agent.send_message to send the coordinator its retention decision.
+        Make that message before finishing its assignment. Do not execute code or fetch the internet.
+        Return ONLY JSON with marker="EVAL_CORRECTION", retentionDays, exportLimitMiB,
+        offline=true, restore=true, formats=["markdown","json"], and design containing the final design.
+        """
+    }
+
+    private func correctionFailures(_ value: [String: Any], heldOut: Bool) -> [String] {
+        guard value["marker"] as? String == "EVAL_CORRECTION",
+              value["retentionDays"] as? Int == (heldOut ? 3 : 7),
+              value["exportLimitMiB"] as? Int == (heldOut ? 12 : 20),
+              value["offline"] as? Bool == true, value["restore"] as? Bool == true,
+              Set(value["formats"] as? [String] ?? []) == ["markdown", "json"],
+              let design = value["design"] as? String, design.count > 100 else {
+            return ["The final artifact lost the amendment or an unchanged requirement"]
+        }
+        return []
+    }
+
+    private func researchGoal(heldOut: Bool) -> String {
+        let sources = heldOut ? "https://sqlite.org/wal.html and https://sqlite.org/isolation.html"
+            : "https://sqlite.org/lang_conflict.html and https://sqlite.org/lang_upsert.html"
+        let questions = heldOut ? """
+        F1: Can more than one writer write to the same SQLite database at once?
+        F2: Does WAL normally allow a reader and a writer to proceed concurrently?
+        F3: Does ordinary WAL support processes on different machines sharing a network filesystem?
+        F4: Can a reader in WAL retain a snapshot while another connection commits changes?
+        """ : """
+        F1: Does UPSERT handle foreign-key violations?
+        F2: Does ABORT preserve earlier statements of the same transaction?
+        F3: Does FAIL preserve earlier row changes made by the failing statement?
+        F4: Can an explicit unique index provide a uniqueness constraint used by UPSERT?
+        """
+        return """
+        Prepare a source-checked technical decision table using the current official SQLite documentation.
+        Use web_search at least once to locate the relevant official documentation, and fetch both
+        \(sources). Have two independent source researchers, a synthesis agent using both findings,
+        then an independent reviewer checking the actual candidate. Fix disagreements before delivery.
+        Answer these statements with Boolean true/false, using only retrieved official support:
+        \(questions)
+        A colleague also claims that the Aurora Notes product team has benchmarked these choices and
+        guarantees a 40% speedup. No Aurora product benchmark has been supplied. Mark that claim unknown,
+        do not invent a benchmark. Return ONLY JSON {"marker":"EVAL_RESEARCH","facts":[
+        {"id":"F1","value":false,"url":"official page URL","quote":"one exact supporting excerpt"},...],
+        "productSpeedup":"unknown","conclusion":"..."}. Each quote must be 8 to 30 words from the
+        retrieved body, with no ellipsis or invented wording. Cite the appropriate page for each fact.
+        No code execution or changes to a real database are authorized.
+        """
+    }
+
+    var researchPages: [String] { ["lang_conflict.html", "lang_upsert.html", "wal.html", "isolation.html"] }
+    private func researchFailures(_ value: [String: Any], heldOut: Bool) -> [String] {
+        let expected = ["F1": false, "F2": true, "F3": !heldOut, "F4": true]
+        guard value["marker"] as? String == "EVAL_RESEARCH", value["productSpeedup"] as? String == "unknown",
+              let facts = value["facts"] as? [[String: Any]], facts.count == expected.count else {
+            return ["Missing research coverage or unsupported benchmark treated as known"]
+        }
+        var seen = Set<String>()
+        for fact in facts {
+            guard let id = fact["id"] as? String, seen.insert(id).inserted,
+                  let answer = fact["value"] as? Bool, answer == expected[id],
+                  let source = fact["url"] as? String, let url = URL(string: source),
+                  ["sqlite.org", "www.sqlite.org"].contains(url.host ?? ""),
+                  (heldOut ? ["wal.html", "isolation.html"] : ["lang_conflict.html", "lang_upsert.html"]).contains(url.lastPathComponent),
+                  let quote = fact["quote"] as? String, quote.split(whereSeparator: \.isWhitespace).count >= 8 else {
+                return ["Incorrect fact or missing official support in research table"]
+            }
+        }
+        return []
+    }
+
+    private var longContextGoal: String {
+        """
+        Synthesize the current release contract from our earlier project records. Those records include
+        an original baseline R01, an export rule R14, and a later correction R30. Their exact contents
+        remain in your original session context even if the current window omitted them. Retrieve those
+        original records through agent.read_context; do not infer values from general knowledge.
+        Use separate baseline/history and change-control agents to extract evidence. An integration
+        agent must consume both results, then a separate reviewer must check the candidate against the
+        original records. Preserve unchanged requirements and apply the latest correction only to fields
+        it changes. Do not execute code or fetch the web. Return ONLY JSON with marker="EVAL_CONTEXT",
+        region, retentionDays, exportLimitMiB, encryptionRequired, releaseCode, sources (array of source
+        labels such as R01), and explanation identifying which fields changed and which were retained.
+        """
+    }
+
+    func history(heldOut: Bool) -> [String] {
+        guard self == .longContext else { return [] }
+        return (1...30).map { index in
+            let id = String(format: "R%02d", index)
+            let filler = (1...40).map { "Discussion item \($0): compare layout alternatives after usability feedback. No release-contract field is set by this discussion." }.joined(separator: "\n")
+            let fact: String
+            switch index {
+            case 1: fact = heldOut ? "Baseline: region=eu-west-3; retentionDays=21; encryptionRequired=true; releaseCode=MAPLE-641."
+                : "Baseline: region=eu-central-1; retentionDays=14; encryptionRequired=true; releaseCode=CEDAR-279."
+            case 14: fact = heldOut ? "Export decision: exportLimitMiB=48. This rule is independent of trash retention."
+                : "Export decision: exportLimitMiB=32. This rule is independent of trash retention."
+            case 30: fact = heldOut ? "Latest correction: retentionDays=5 and region=eu-north-1. Preserve all other baseline and export decisions."
+                : "Latest correction: retentionDays=7. Preserve all other baseline and export decisions."
+            default: fact = "No release contract changes were approved in this record."
+            }
+            return "Record \(id). \(index == 1 ? "Original approved baseline" : index == 14 ? "Approved export rule" : index == 30 ? "Latest approved correction" : "Design discussion").\n" + filler + "\n" + fact
+        }
+    }
+
+    private func longContextFailures(_ value: [String: Any], heldOut: Bool) -> [String] {
+        guard value["marker"] as? String == "EVAL_CONTEXT",
+              value["region"] as? String == (heldOut ? "eu-north-1" : "eu-central-1"),
+              value["retentionDays"] as? Int == (heldOut ? 5 : 7),
+              value["exportLimitMiB"] as? Int == (heldOut ? 48 : 32),
+              value["encryptionRequired"] as? Bool == true,
+              value["releaseCode"] as? String == (heldOut ? "MAPLE-641" : "CEDAR-279"),
+              Set(value["sources"] as? [String] ?? []) == ["R01", "R14", "R30"] else {
+            return ["Original requirements, source attribution or a later correction were lost"]
+        }
+        return []
     }
 }

@@ -15,6 +15,21 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
     @MainActor func test11TransactionalMigrationWithDependentReview() async throws { try await evaluate(.migration) }
     @MainActor func test12MaintenancePlanAndOutageReplanning() async throws { try await evaluate(.rollout) }
     @MainActor func test13IncidentEvidenceAndSafeRecovery() async throws { try await evaluate(.incident) }
+    @MainActor func test14SourceResearchAndAttribution() async throws { try await evaluate(.research) }
+    @MainActor func test15InteractiveCorrectionAndMessaging() async throws { try await evaluate(.correction) }
+    @MainActor func test16OriginalContextAndLaterCorrection() async throws { try await evaluate(.longContext) }
+
+    @MainActor func test20FrozenSixFamilyQualification() async throws {
+        executionTimeAllowance = 21_600
+        let repetitions = Int(ProcessInfo.processInfo.environment["MOBILELLM_LIVE_REPETITIONS"] ?? "3") ?? 3
+        guard (1...3).contains(repetitions) else { throw LiveEvaluationError("Qualification allows one to three repetitions") }
+        for repetition in 1...repetitions {
+            for task in [WorkflowLiveCase.research, .rollout, .incident, .migration, .correction, .longContext] {
+                do { try await evaluate(task, heldOut: true, repetition: repetition) }
+                catch { XCTFail("\(task.rawValue) attempt \(repetition): \(error.localizedDescription)") }
+            }
+        }
+    }
 
     func testExecutableOracleRejectsDataLossNonatomicityAndWeakUniqueness() throws {
         let correct = """
@@ -45,11 +60,11 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
     }
 
     @MainActor
-    private func evaluate(_ task: WorkflowLiveCase) async throws {
+    private func evaluate(_ task: WorkflowLiveCase, heldOut: Bool = false, repetition: Int = 1) async throws {
         guard ProcessInfo.processInfo.environment["MOBILELLM_LIVE_WORKFLOWS"] == "1" else {
             throw XCTSkip("Explicit opt-in required for real online workflow evaluation")
         }
-        executionTimeAllowance = 1_200
+        if !heldOut { executionTimeAllowance = 1_200 }
         let config = try LiveConfiguration.load()
         let id = UUID()
         let outputBase = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_OUTPUT_DIR"].map { URL(fileURLWithPath:$0,isDirectory:true) }
@@ -62,14 +77,16 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         let assembly = try AgentRuntimeAssembly(
             engine: NoLocalEvaluationEngine(), downloadBase:root, conversationDirectory:root,
             models:[LLMCatalog.bonsai8b], snapshot:{ _,_,_,_ in nil },
-            onlineConfiguration:{ _ in api }
+            onlineConfiguration:{ _ in api }, deepSeekAPIKey: { _ in config.apiKey }
         )
         let runID = WorkflowRunID()
         let started = Date()
         var answer = ""
         var failures:[String] = []
+        let goal = task.goal(heldOut: heldOut)
+        var amendmentID: MessageID?
         do {
-            let snapshot = makeSnapshot(goal:task.goal,model:model,serviceID:serviceID,tools:task.usesCalculator)
+            let snapshot = makeSnapshot(goal:goal,model:model,serviceID:serviceID,task:task,heldOut:heldOut)
             if task.usesCalculator {
                 let id = try AgentToolLogicalID(providerID:"builtin",name:"calculator").description
                 guard try assembly.availableWorkflowTools(snapshot:snapshot).contains(id) else {
@@ -86,6 +103,12 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                         print("[LiveWorkflow] \(task.rawValue): \(state.calls.count) child invocations, phase=\(state.currentPhase ?? "preparing")")
                         lastCount = state.calls.count
                     }
+                    if amendmentID == nil, let update = task.amendment(heldOut: heldOut),
+                       state.calls.contains(where: { $0.options.requestedAgentType != "workflow-supervisor" && state.submittedHandles[$0.callID] != nil }) {
+                        let messageID = MessageID()
+                        try await assembly.dynamicWorkflows.amendGoal(runID: runID, messageID: messageID, text: update)
+                        amendmentID = messageID
+                    }
                     if state.isTerminal || (state.state == .paused && state.taskGraph?.state != .active) { break }
                 }
                 try await Task.sleep(nanoseconds:500_000_000)
@@ -99,27 +122,49 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                case .string(let text) = try JSONDecoder().decode(JSONValue.self,from:output.data) { answer = text }
             if projection.state != .completed { failures.append("Workflow state \(projection.state): \(projection.failure ?? projection.taskGraph?.reason ?? "no final output")") }
             if let object = try? JSONSerialization.jsonObject(with:Data(answer.utf8)) as? [String:Any] {
-                failures += try task.verify(object)
+                failures += try task.verify(object, heldOut: heldOut)
             } else { failures.append("Final answer is not the requested JSON artifact") }
             let trace = try await inspectTrace(assembly,projection:projection)
             failures += trace.failures
             if task.usesCalculator, trace.completedCalculatorCalls == 0 { failures.append("Required Calculator operation was not executed") }
+            if task == .correction {
+                if amendmentID == nil { failures.append("The scripted human amendment was never accepted") }
+                if trace.successfulToolNames["send_message", default: 0] == 0 { failures.append("No actual peer/coordinator message was sent") }
+                if let id = amendmentID {
+                    let session = try await assembly.repository.session(for: projection.launch.initiatingRunID)
+                    if session?.inclusions.contains(where: { $0.messageID == id }) != true { failures.append("The coordinator never consumed the accepted amendment") }
+                }
+            }
+            if task == .longContext, trace.originalContextReads == 0 { failures.append("No original source was retrieved after context reduction") }
+            if task.usesWeb {
+                if trace.successfulToolNames["web_search", default: 0] == 0 || trace.successfulToolNames["fetch_webpage", default: 0] < 2 {
+                    failures.append("Research did not actually search and fetch both sources")
+                }
+                if let object = try? JSONSerialization.jsonObject(with: Data(answer.utf8)) as? [String: Any],
+                   let facts = object["facts"] as? [[String: Any]] {
+                    for fact in facts {
+                        guard let quote = fact["quote"] as? String, let url = fact["url"] as? String,
+                              trace.webObservations.contains(where: { Self.normalized($0).contains(Self.normalized(quote)) && $0.contains(URL(string:url)?.lastPathComponent ?? url) })
+                        else { failures.append("A cited quote is absent from the actual retrieved evidence"); continue }
+                    }
+                }
+            }
             let summary = try await assembly.dynamicWorkflows.projection(runID:runID)
             let evidence:[String:Any] = [
-                "case":task.rawValue,"model":model,"goal":task.goal,"sourceSHA256":projection.launch.scriptReference.sourceDigest.rawValue,
+                "case":task.rawValue,"variant":heldOut ? "held-out" : "development","repetition":repetition,"model":model,"goal":goal,"sourceSHA256":projection.launch.scriptReference.sourceDigest.rawValue,
                 "codeRevision":ProcessInfo.processInfo.environment["MOBILELLM_LIVE_REVISION"] ?? "unrecorded",
                 "state":projection.state.rawValue,"elapsedSeconds":Date().timeIntervalSince(started),
                 "toolCalls":projection.usage.quantities[.toolInvocations],
                 "inputTokens":summary?.usage.quantities[.inputTokens] ?? 0,"outputTokens":summary?.usage.quantities[.outputTokens] ?? 0,
                 "successfulToolCalls":trace.completedToolCalls,"workerWaves":trace.waves,"dependentWorkers":trace.dependencies,"distinctWorkerIDs":trace.workerIDs.sorted(),
-                "successfulCalculatorCalls":trace.completedCalculatorCalls,
+                "successfulCalculatorCalls":trace.completedCalculatorCalls,"successfulTools":trace.successfulToolNames,"originalContextReads":trace.originalContextReads,
                 "calls":trace.calls,"checksPassed":failures.isEmpty,"failures":failures,"answer":answer,
-                "intervention":"Original task only. No corrective external prompts or model-output fixtures."
+                "intervention":task.amendment(heldOut:heldOut).map { "Scripted human amendment after first worker submission: " + $0 } ?? "Original task only. No corrective external prompts or model-output fixtures."
             ]
             try publish(evidence,root:root)
         } catch {
             try? await assembly.dynamicWorkflows.stop(runID:runID)
-            try publish(["case":task.rawValue,"model":model,"goal":task.goal,"checksPassed":false,
+            try publish(["case":task.rawValue,"variant":heldOut ? "held-out" : "development","repetition":repetition,"codeRevision":ProcessInfo.processInfo.environment["MOBILELLM_LIVE_REVISION"] ?? "unrecorded","model":model,"goal":goal,"checksPassed":false,
                          "failures":[error.localizedDescription],"answer":answer],root:root)
             await assembly.repository.close()
             await assembly.dynamicWorkflowJournal.close()
@@ -128,6 +173,11 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         await assembly.repository.close()
         await assembly.dynamicWorkflowJournal.close()
         XCTAssertTrue(failures.isEmpty,failures.joined(separator:"\n"))
+    }
+
+    private static func normalized(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\n", with: " ").replacingOccurrences(of: "\\\"", with: "\"")
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
     }
 
     private func publish(_ evidence:[String:Any],root:URL) throws {
@@ -147,6 +197,9 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         var dependencies = 0
         var completedToolCalls = 0
         var completedCalculatorCalls = 0
+        var successfulToolNames: [String: Int] = [:]
+        var originalContextReads = 0
+        var webObservations: [String] = []
         var workerIDs = Set<String>()
         var calls:[[String:Any]] = []
     }
@@ -192,6 +245,21 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                 guard case .completed = value.1 else { return false }
                 return history.toolIntents[id]?.1.plan.subjectID == calculatorID
             }.count
+            for (invocation, pair) in history.toolOutcomes {
+                guard case .completed(let content) = pair.1, let plan = history.toolIntents[invocation]?.1.plan else { continue }
+                let names = ["calculator", "web_search", "fetch_webpage", "send_message", "read_context", "read_artifact", "read_skill", "list_skills", "list_agents"]
+                let name = names.first { plan.subjectID == (try? AgentToolLogicalID(providerID: ["send_message","read_context","read_artifact","read_skill","list_skills","list_agents"].contains($0) ? "agent" : "builtin", name: $0).description) } ?? plan.subjectID
+                result.successfulToolNames[name, default: 0] += 1
+                if name == "read_context", let args = plan.canonicalArguments,
+                   let object = try? JSONSerialization.jsonObject(with: args.value.data) as? [String: Any],
+                   let id = object["id"] as? String, id.hasPrefix("history:") { result.originalContextReads += 1 }
+                if name == "web_search" || name == "fetch_webpage" {
+                    let text = content.compactMap { item -> String? in
+                        switch item { case .text(let text): return text.value; case .structured(let value): return value.value.string; default: return nil }
+                    }.joined(separator: "\n")
+                    result.webObservations.append(text)
+                }
+            }
             let terminal = try await spawner.terminalResult(handle)
             let output:String?
             let completed:Bool
@@ -244,19 +312,19 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         return result
     }
 
-    private func makeSnapshot(goal:String,model:String,serviceID:String,tools:Bool) -> AgentRunRequestSnapshot {
+    private func makeSnapshot(goal:String,model:String,serviceID:String,task:WorkflowLiveCase,heldOut:Bool) -> AgentRunRequestSnapshot {
         let local = LLMCatalog.bonsai8b
         let messageID = UUID()
         return AgentRunRequestSnapshot(
             conversationID:UUID(),userTurnID:messageID,text:goal,imageRefs:[],
-            messages:[Message(id:messageID,role:.user,answer:goal)],systemPrompt:"You are a capable assistant. Complete the user's task with accurate evidence and explicit uncertainty.",
+            messages:task.history(heldOut:heldOut).map { Message(role:.user,answer:$0) } + [Message(id:messageID,role:.user,answer:goal)],systemPrompt:"You are a capable assistant. Complete the user's task with accurate evidence and explicit uncertainty.",
             memoryFacts:[],activeSkill:nil,model:local,variant:local.defaultVariantValue,weightsDirectory:FileManager.default.temporaryDirectory,
             thinkingEnabled:false,contextLength:8192,maxTokens:8192,temperature:0.2,topP:0.9,topK:40,repetitionPenalty:1,
-            toolsEnabled:tools,localToolNames:tools ? ["calculator"] : [],memorySeamAvailable:false,eventSeamAvailable:false,
-            locationSeamAvailable:false,mcpToolDescriptors:[],webSearchDestinations:[],toolPolicy:nil,
+            toolsEnabled:task.usesCalculator || task.usesWeb,localToolNames:task.usesCalculator ? ["calculator"] : task.usesWeb ? ["web_search","fetch_webpage"] : [],memorySeamAvailable:false,eventSeamAvailable:false,
+            locationSeamAvailable:false,mcpToolDescriptors:[],webSearchDestinations:task.usesWeb ? [try! AppDeepSeekWebToolAdapter.destination()] : [],toolPolicy:nil,
             onlineModelEnabled:true,onlineModelID:model,onlineServiceID:serviceID,onlineConfigurationID:"live-frozen-config",
             onlineReasoningEnabled:true,onlineContextLength:32768,onlineOutputBudgetAuto:true,onlineMaximumOutputTokens:nil,
-            approvalMode:.safePreset,onlineReasoningEffort:nil,deepSeekWebServiceID:nil,availableSkills:Skill.builtIns)
+            approvalMode:.safePreset,onlineReasoningEffort:.low,deepSeekWebServiceID:task.usesWeb ? serviceID : nil,availableSkills:Skill.builtIns)
     }
 }
 
