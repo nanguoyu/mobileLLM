@@ -16,6 +16,22 @@ public enum AgentSessionInputSender: Hashable, Codable, Sendable {
     case agent(AgentRunID)
 }
 
+public struct AgentSessionPendingMessage: Hashable, Codable, Sendable {
+    public let id: MessageID
+    public let seedRunID: AgentRunID
+    public let sender: AgentSessionInputSender?
+    public let preview: String
+    public init(id: MessageID, seedRunID: AgentRunID, sender: AgentSessionInputSender?, preview: String) {
+        self.id = id; self.seedRunID = seedRunID; self.sender = sender; self.preview = preview
+    }
+}
+
+public struct AgentSessionPendingInputs: Hashable, Codable, Sendable {
+    public let count: Int
+    public let messages: [AgentSessionPendingMessage]
+    public init(count: Int = 0, messages: [AgentSessionPendingMessage] = []) { self.count = count; self.messages = messages }
+}
+
 /// Accepted input. The protected artifact contains its UTF-8 body.
 public struct AgentSessionInput: Hashable, Codable, Sendable {
     public let id: MessageID

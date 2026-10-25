@@ -2050,3 +2050,20 @@ work at a durable pause. Large source outputs retain original artifacts; a depen
 select a later range instead of receiving only a truncated prefix. The frozen v4 program remains
 unchanged for historical replay. Deterministic tests establish control flow and source handoff, not
 real-model task quality.
+
+
+Team messaging and original-artifact reads also use ordinary Tool V2 adapters. `agent.send_message`,
+`agent.read_artifact` and `agent.list_agents` derive membership from the executing run and durable
+workflow records. Models cannot supply sender identities, conversation IDs or filesystem paths.
+Preparation binds the exact conversation-local destination and data category. Message writes use an
+invocation-bound idempotency key and the normal authorization boundary. Accepted peer messages use the
+same session inbox as human input, retain their actual sender, and cannot create a fresh-budget turn.
+A terminal recipient queues input for a later workflow-budgeted activation. The coordinator itself is a
+persistent session anchored on its initial planning run. Human and agent input remain distinguishable.
+
+These tools are added only to explicit collaboration launches. Disabled external tools remain disabled;
+coordinator activations may expose only team-local tools. All actual tool calls consume the shared tool
+budget. A zero-tool activation advertises none. Goal delivery snapshots pending inboxes and serializes its
+completion cut against message acceptance, including lazily registered sessions. An earlier acknowledged
+input blocks completion until included. A later accepted human follow-up remains a separate pending turn.
+Task conversations show the actual sender and keep full automatic assignment details collapsed.

@@ -124,6 +124,7 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
         for change in changes {
             guard AgentWireValidation.isNonblankControlFree(change.id, maximumLength: 48),
                   AgentWireValidation.isNonblankControlFree(change.agent, maximumLength: 48),
+                  change.agent != "coordinator",
                   !change.instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   change.instruction.utf8.count <= 16_384, change.maximumToolCalls <= 6,
                   change.dependencies.count <= 32, Set(change.dependencies).count == change.dependencies.count,
@@ -272,11 +273,14 @@ public struct WorkflowCollaborationReceipt: Hashable, Codable, Sendable {
     public let graph: WorkflowTaskGraph
     public let feedback: String?
     public let observation: JSONValue?
+    public let pendingInputs: AgentSessionPendingInputs?
 
     public init(index: UInt32, commandDigest: StableDigest, senderRunID: AgentRunID,
-                graph: WorkflowTaskGraph, feedback: String? = nil, observation: JSONValue? = nil) {
+                graph: WorkflowTaskGraph, feedback: String? = nil, observation: JSONValue? = nil,
+                pendingInputs: AgentSessionPendingInputs? = nil) {
         self.index = index; self.commandDigest = commandDigest; self.senderRunID = senderRunID
         self.graph = graph; self.feedback = feedback
         self.observation = observation
+        self.pendingInputs = pendingInputs
     }
 }

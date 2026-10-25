@@ -4,6 +4,28 @@ import AgentContracts
 import Foundation
 
 extension FrozenAgentRunInputs {
+    /// Called only when the user starts a collaboration workflow. External tool selection remains
+    /// unchanged; disabled external tools are not re-enabled by adding team-local operations.
+    public func addingWorkflowTools() throws -> FrozenAgentRunInputs {
+        let additions = try WorkflowAgentToolOperation.allCases.map(WorkflowAgentTool.descriptor)
+        let ids = additions.map(\.id.logicalID)
+        let catalog = try ToolCatalogSnapshot(revision: toolCatalog.revision,
+            descriptors: toolCatalog.descriptors.filter { !ids.contains($0.id.logicalID) } + additions,
+            unavailable: toolCatalog.unavailable.filter { !ids.contains($0.logicalID) })
+        let allowed = (toolPolicy.masterEnabled ? toolPolicy.allowedToolIDs : []) + ids
+        let pinned = (toolPolicy.masterEnabled ? toolPolicy.pinnedToolIDs : []) + ids
+        let policy = try ConversationToolPolicy(masterEnabled: true, allowedToolIDs: allowed, pinnedToolIDs: pinned,
+            selectionPolicyVersion: toolPolicy.selectionPolicyVersion, materializedFromGlobalTemplate: false)
+        return try FrozenAgentRunInputs(modelSelection: modelSelection, generationParameters: generationParameters,
+            contextBudget: contextBudget, baseSystem: baseSystem, skills: skills, memories: memories,
+            conversation: conversation, currentUser: currentUser, artifactExcerpts: artifactExcerpts,
+            toolCatalog: catalog, toolPolicy: policy, availableToolCapabilities: availableToolCapabilities,
+            activeSkillToolHints: activeSkillToolHints, explicitlyRequestedToolIDs: explicitlyRequestedToolIDs,
+            recentSuccessfulToolChain: recentSuccessfulToolChain, maximumAdvertisedTools: maximumAdvertisedTools,
+            contextPolicyVersion: contextPolicyVersion, approvalPolicyVersion: approvalPolicyVersion,
+            suppressModelTools: suppressModelTools ?? false)
+    }
+
     func replacingConversation(_ conversation: [ConversationTurnContextSource],
                                currentUser: CurrentUserContextSource) throws -> FrozenAgentRunInputs {
         try FrozenAgentRunInputs(modelSelection: modelSelection, generationParameters: generationParameters,

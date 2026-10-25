@@ -6,6 +6,37 @@ import XCTest
 
 // TEST-ID: AHT-SESSION-002
 final class AgentSessionExecutionTests: XCTestCase {
+    func testGoalCompletionBarrierOrdersConcurrentMessageAcceptance() async throws {
+        let model = try ExecutorTestModelDefinition(offset: 843)
+        let provider = try SessionProbeProvider(model: model, script: SessionRequestProbe())
+        let harness = try ExecutorTestHarness(offset: 843, provider: provider, model: model)
+        let root = harness.request
+        let handle = try await harness.executor.submit(root, commandID: ExecutorTestID.command(843))
+        _ = try await collectTerminalEvents(from: harness.executor.attach(to: handle))
+        let controller = harness.executor.controller
+        let gate = BlockingModelGate()
+        let cut = Task {
+            try await controller.withSessionInputBarrier(runIDs: [root.runID]) {
+                await gate.suspendUntilReleased()
+                return .integer(Int64(try await controller.pendingSessionInputs(runIDs: [root.runID]).count))
+            }
+        }
+        try await waitForExecutorCondition { await gate.hasEntered() }
+        let acceptance = Task {
+            try await controller.sendSessionInput(seedRunID: root.runID, conversationID: root.conversationID,
+                messageID: MessageID(), text: "A later request", mode: .nextTurn, startNextTurn: false)
+        }
+        let sessionID = AgentSessionID(rawValue: root.runID.rawValue)
+        try await waitForExecutorCondition { await controller.sessionGates[sessionID]?.waiters.count == 1 }
+        await gate.release()
+        let atCut = try await cut.value
+        XCTAssertEqual(atCut, .integer(0))
+        try await acceptance.value
+        let after = try await controller.pendingSessionInputs(runIDs: [root.runID])
+        XCTAssertEqual(after.count, 1)
+        XCTAssertEqual(after.messages.first?.preview, "A later request")
+    }
+
     func testAutomaticContinuationKeepsReservedBudgetSenderAndSessionWithoutHumanTurnAdmission() async throws {
         let model = try ExecutorTestModelDefinition(offset: 836)
         let probe = SessionRequestProbe()
@@ -30,6 +61,21 @@ final class AgentSessionExecutionTests: XCTestCase {
         let seedHandle = try await harness.executor.submit(seed, commandID: ExecutorTestID.command(8361))
         _ = try await collectTerminalEvents(from: harness.executor.attach(to: seedHandle))
         for number in [8362, 8363] {
+            if number == 8363 {
+                let messageID = MessageID(rawValue: ExecutorTestID.uuid(83629))
+                for _ in 0..<2 {
+                    try await harness.executor.controller.sendAgentSessionInput(seedRunID: seed.runID,
+                        senderRunID: ExecutorTestID.run(8362), messageID: messageID,
+                        text: "Peer evidence: retain the original source URL.", mode: .nextTurn)
+                }
+                let beforeAdmission = await probe.values().count
+                XCTAssertEqual(beforeAdmission, 3, "Peer acceptance cannot mint an activation or a new budget")
+                do {
+                    try await harness.executor.controller.sendSessionInput(seedRunID: seed.runID, conversationID: root.conversationID,
+                        messageID: messageID, text: "Peer evidence: retain the original source URL.", mode: .nextTurn, startNextTurn: false)
+                    XCTFail("An agent message must not be replayed as a human instruction")
+                } catch AgentSessionError.inputConflict {}
+            }
             let request = try child(number, number == 8362 ? "Retain Cedar for 7 days." : "Recall the previous decision.")
             let handle = try await harness.executor.controller.submitWorkflowActivation(request,
                 commandID: ExecutorTestID.command(number), seedRunID: seed.runID, senderRunID: root.runID)
@@ -43,12 +89,14 @@ final class AgentSessionExecutionTests: XCTestCase {
         let recordedSession = try await harness.repository.session(for: ExecutorTestID.run(8363))
         let session = try XCTUnwrap(recordedSession)
         XCTAssertEqual(session.activations.count, 3)
-        XCTAssertEqual(session.inputs.map(\.sender), [.agent(root.runID), .agent(root.runID)])
-        XCTAssertEqual(session.inclusions.count, 2)
+        XCTAssertEqual(session.inputs.map(\.sender), [.agent(root.runID), .agent(ExecutorTestID.run(8362)), .agent(root.runID)])
+        XCTAssertEqual(session.inclusions.count, 3)
         XCTAssertEqual(session.activations.last?.workflowManaged, true)
         let captured = await probe.values()
         XCTAssertEqual(captured.count, 4)
         XCTAssertTrue(captured.last!.messages.contains { $0.content.contains("Retain Cedar for 7 days") })
+        XCTAssertTrue(captured.last!.messages.contains { $0.content.contains("Peer evidence: retain the original source URL.") })
+        XCTAssertTrue(captured.last!.messages.contains { $0.content.contains("Agent run " + ExecutorTestID.run(8362).description) })
         let view = try await harness.executor.controller.sessionView(seedRunID: ExecutorTestID.run(8363), conversationID: root.conversationID)
         XCTAssertEqual(view.snapshot.id.rawValue, seed.runID.rawValue)
         do {

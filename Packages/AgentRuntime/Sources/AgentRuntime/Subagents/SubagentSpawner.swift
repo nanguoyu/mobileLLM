@@ -18,6 +18,9 @@ public enum SubagentSpawnError: Error, Hashable, Sendable {
 /// parent ceiling, carry independent budgets, return structured results and artifacts, and can never
 /// approve their own external access.
 public protocol SubagentSpawning: Sendable {
+    func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs
+    func withSessionInputBarrier(runIDs: [AgentRunID],
+                                 operation: @Sendable () async throws -> JSONValue) async throws -> JSONValue
     func webObservations(_ handleID: AgentExecutionHandleID) async throws -> [WorkflowWebObservation]
     /// Read a committed terminal result without starting or resuming a child.
     func terminalResult(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult?
@@ -50,6 +53,9 @@ public protocol SubagentSpawning: Sendable {
 }
 
 public extension SubagentSpawning {
+    func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs { AgentSessionPendingInputs() }
+    func withSessionInputBarrier(runIDs: [AgentRunID],
+                                 operation: @Sendable () async throws -> JSONValue) async throws -> JSONValue { try await operation() }
     func spawn(_ request: SubagentSpawnRequest, continuing seedRunID: AgentRunID,
                senderRunID: AgentRunID) async throws -> AgentExecutionHandleID {
         throw AgentSessionError.unavailable
@@ -109,6 +115,17 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
     ) {
         self.executor = executor
         self.repository = repository
+    }
+
+    public func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs {
+        guard let executor = executor as? DurableAgentExecutor else { throw AgentSessionError.unavailable }
+        return try await executor.controller.pendingSessionInputs(runIDs: runIDs)
+    }
+
+    public func withSessionInputBarrier(runIDs: [AgentRunID],
+                                        operation: @Sendable () async throws -> JSONValue) async throws -> JSONValue {
+        guard let executor = executor as? DurableAgentExecutor else { throw AgentSessionError.unavailable }
+        return try await executor.controller.withSessionInputBarrier(runIDs: runIDs, operation: operation)
     }
 
     public func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID {

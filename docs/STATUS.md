@@ -75,8 +75,10 @@ case starts a dependent worker before an unrelated slow worker ends and hands of
 range. The app cutover then passed the existing Simulator interaction scenario with controlled transport:
 planning and child approvals, three worker results, six actual workflow calls, saved follow-up and source
 inspection. Its xcresult is `/tmp/mobilellm-harness-20261025/V5Cutover.xcresult`. These checks establish
-runtime and interaction behavior. Peer messaging, long-context capability work, goal/task graph UI and
-new real-model qualification remain in progress under the [implementation plan](AGENT_HARNESS_PLAN.md).
+runtime and interaction behavior. Peer messages and artifact reads now cross the ordinary Tool V2 authorization boundary and use actual
+sender identities. The coordinator continues a durable session under shared reservations. Focused tests
+cover model-authored message acceptance, later inclusion and the message/goal-completion race. The iOS
+build passes. Long-context capability work, goal/task graph UI and new real-model qualification remain in progress under the [implementation plan](AGENT_HARNESS_PLAN.md).
 The separate iOS sandbox remains optional; earlier autonomous outcome evidence retains its tested version.
 
 ### Earlier autonomous engineering tasks

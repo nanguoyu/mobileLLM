@@ -859,7 +859,19 @@ private actor DynamicWorkflowSession {
                 try await awaitJournalChange()
             }
         }
-        return try await appendMutex.run { [weak self] in
+        if decoded.action == "deliver" {
+            let runIDs = [projection.launch.initiatingRunID] + projection.calls.map(\.childRunID)
+            return try await spawner.withSessionInputBarrier(runIDs: runIDs) { [weak self] in
+                guard let self else { throw CancellationError() }
+                return try await self.commitCollaboration(index: index, command: command, decoded: decoded)
+            }
+        }
+        return try await commitCollaboration(index: index, command: command, decoded: decoded)
+    }
+
+    private func commitCollaboration(index: UInt32, command: CanonicalJSON,
+                                     decoded: WorkflowCollaborationCommand) async throws -> JSONValue {
+        try await appendMutex.run { [weak self] in
             guard let self else { throw CancellationError() }
             return try await self.performCollaboration(index: index, command: command, decoded: decoded)
         }
@@ -878,6 +890,7 @@ private actor DynamicWorkflowSession {
         }
         var feedback: String?
         var observation: JSONValue?
+        let pendingInputs = try await spawner.pendingSessionInputs(runIDs: [projection.launch.initiatingRunID] + projection.calls.map(\.childRunID))
         do {
             switch decoded.action {
             case "snapshot", "admitted": break
@@ -905,6 +918,7 @@ private actor DynamicWorkflowSession {
                     "content": .string(String(decoding: source[offset..<end], as: UTF16.self)), "truncated": .bool(end < source.count)])
             case "deliver":
                 guard decoded.expectedRevision == graph.revision else { throw WorkflowTaskGraphError.stale }
+                guard pendingInputs.count == 0 else { throw AgentSessionError.pendingInput }
                 guard projection.submittedHandles.keys.allSatisfy({ projection.outcomes[$0] != nil }),
                       projection.reconciliationCallID == nil else { throw WorkflowTaskGraphError.incomplete }
                 try graph.setGoalState(.completed, reason: decoded.reason)
@@ -918,12 +932,14 @@ private actor DynamicWorkflowSession {
             feedback = error.localizedDescription
             // Graph methods are transactional; an invalid model command is feedback, not a
             // partial state change or an exception that discards successful sibling results.
+        } catch AgentSessionError.pendingInput {
+            feedback = "Accepted agent messages remain unincluded. Continue their addressed agents within the shared budget before delivering."
         }
         let sender = projection.calls.last(where: {
             $0.options.requestedAgentType == "workflow-supervisor" && evidenceVisibleCalls.contains($0.callID)
         })?.childRunID ?? projection.launch.initiatingRunID
         let receipt = WorkflowCollaborationReceipt(index: index, commandDigest: command.fingerprint,
-            senderRunID: sender, graph: graph, feedback: feedback, observation: observation)
+            senderRunID: sender, graph: graph, feedback: feedback, observation: observation, pendingInputs: pendingInputs)
         _ = try await performAppendAndInstall([.collaborationRecorded(receipt)])
         return try collaborationPacket(receipt)
     }
@@ -941,7 +957,14 @@ private actor DynamicWorkflowSession {
                 return .object(item)
             })
         }
+        let pending = receipt.pendingInputs ?? AgentSessionPendingInputs()
+        let messages = pending.messages.map { item -> JSONValue in
+            let recipient = item.seedRunID == projection.launch.initiatingRunID ? "coordinator"
+                : projection.calls.first(where: { $0.childRunID == item.seedRunID })?.options.sessionKey ?? "unknown"
+            return .object(["id": .string(item.id.description), "recipient": .string(recipient), "preview": .string(item.preview)])
+        }
         return .object(["graph": .object(value), "ready": .array(graph.readyTasks.map { .string($0.id) }),
+            "pendingInputs": .object(["count": .integer(Int64(pending.count)), "messages": .array(messages)]),
             "feedback": receipt.feedback.map(JSONValue.string) ?? .null, "observation": receipt.observation ?? .null])
     }
 
@@ -1239,15 +1262,18 @@ private actor DynamicWorkflowSession {
             let request = admitted.request
             admission = admitted.admission
             do {
-                if let key = call.options.sessionKey,
-                   let seed = projection.calls.first(where: { $0.ordinal < call.ordinal && $0.options.sessionKey == key }) {
+                let seed = call.options.sessionKey.flatMap { key in
+                    projection.calls.first(where: { $0.ordinal < call.ordinal && $0.options.sessionKey == key })?.childRunID
+                        ?? (key == "coordinator" && call.options.requestedAgentType == "workflow-supervisor" ? launch.initiatingRunID : nil)
+                }
+                if let seed {
                     // Identity is selected by the host from committed coordinator calls, never
                     // accepted as a sender name from model-produced options.
                     let sender = projection.calls.last(where: {
                         $0.ordinal < call.ordinal && $0.options.requestedAgentType == "workflow-supervisor"
                             && projection.outcomes[$0.callID] != nil
                     })?.childRunID ?? launch.initiatingRunID
-                    handleID = try await spawner.spawn(request, continuing: seed.childRunID, senderRunID: sender)
+                    handleID = try await spawner.spawn(request, continuing: seed, senderRunID: sender)
                 } else {
                     handleID = try await spawner.spawn(request)
                 }

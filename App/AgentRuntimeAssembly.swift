@@ -369,6 +369,13 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
             parent: launch.defaultModelPolicy
         )
         let role = call.options.requestedAgentType ?? "workflow-agent"
+        let childToolPolicy: ConversationToolPolicy
+        if role == "workflow-supervisor" {
+            let teamTools = parent.frozen.toolPolicy.allowedToolIDs.filter { $0.providerID == "agent" }
+            childToolPolicy = try ConversationToolPolicy(masterEnabled: parent.frozen.toolPolicy.masterEnabled,
+                allowedToolIDs: teamTools, pinnedToolIDs: teamTools,
+                selectionPolicyVersion: parent.frozen.toolPolicy.selectionPolicyVersion, materializedFromGlobalTemplate: false)
+        } else { childToolPolicy = parent.frozen.toolPolicy }
         let outputRequirement: AgentOutputRequirement = if let schema = call.options.schema {
             .structured(schema)
         } else {
@@ -383,12 +390,13 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         } else {
             nil
         }
-        let labels = try [
+        var labels = try [
             AgentRequestLabel(key: "workflow.run", value: launch.runID.description),
             AgentRequestLabel(key: "workflow.call", value: call.callID.description),
             AgentRequestLabel(key: "workflow.ordinal", value: String(call.ordinal)),
             AgentRequestLabel(key: "workflow.attempt", value: String(call.attempt)),
         ]
+        if let agent = call.options.sessionKey { labels.append(try AgentRequestLabel(key: "workflow.agent", value: agent)) }
         let spawn = try SubagentSpawnRequest(
             parentRunID: launch.initiatingRunID,
             parentRequestID: launch.initiatingRequestID,
@@ -447,14 +455,15 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
             ),
             artifactExcerpts: parent.frozen.artifactExcerpts,
             toolCatalog: parent.frozen.toolCatalog,
-            toolPolicy: parent.frozen.toolPolicy,
+            toolPolicy: childToolPolicy,
             availableToolCapabilities: parent.frozen.availableToolCapabilities,
             activeSkillToolHints: parent.frozen.activeSkillToolHints,
             explicitlyRequestedToolIDs: parent.frozen.explicitlyRequestedToolIDs,
             recentSuccessfulToolChain: parent.frozen.recentSuccessfulToolChain,
             maximumAdvertisedTools: parent.frozen.maximumAdvertisedTools,
             contextPolicyVersion: parent.frozen.contextPolicyVersion,
-            approvalPolicyVersion: parent.frozen.approvalPolicyVersion
+            approvalPolicyVersion: parent.frozen.approvalPolicyVersion,
+            suppressModelTools: childBudget.limits[.toolInvocations] == 0
         )
         pendingSubmissions.storeWorkflow(spawn, parent: parent.request, frozenInputs: frozen)
         return spawn
@@ -792,6 +801,8 @@ public final class AgentRuntimeAssembly {
             capabilityVersion: capabilityVersion
         ))
         let providerCatalog = try StaticAgentModelProviderCatalog(providers: providers)
+        let dynamicValueStore = try ContentAddressedWorkflowValueStore(store: artifactStore)
+        let workflowAgents = WorkflowAgentToolService(repository: repository, journal: dynamicWorkflowJournal, values: dynamicValueStore)
         let toolCatalog = try AppToolCatalog(
             enabledToolNames: AppToolCatalog.adaptedToolNames,
             memoryStore: memoryStore,
@@ -799,7 +810,8 @@ public final class AgentRuntimeAssembly {
             locationProvider: locationProvider,
             mcpCache: mcpDiscovery,
             session: session,
-            deepSeekAPIKey: deepSeekAPIKey
+            deepSeekAPIKey: deepSeekAPIKey,
+            workflowAgents: workflowAgents
         )
         frozenBuilder = AppFrozenInputBuilder(
             capabilityVersion: capabilityVersion
@@ -843,7 +855,7 @@ public final class AgentRuntimeAssembly {
             residencyDriver: residencyDriver,
             logger: diagnosticLogger
         )
-        let dynamicValueStore = try ContentAddressedWorkflowValueStore(store: artifactStore)
+        workflowAgents.bind(executor.controller)
         let dynamicEngine = DynamicWorkflowEngine(
             journal: dynamicWorkflowJournal,
             runtime: JavaScriptCoreWorkflowRuntime(),
@@ -900,6 +912,13 @@ public final class AgentRuntimeAssembly {
         let generatorOutputTokens = dynamicWorkflowOutputTokens(for: snapshot)
         let workflowBudget = try dynamicWorkflowBudget(from: source.budget,
             maximumOutputTokensPerAttempt: UInt64(generatorOutputTokens))
+        let parentAuthority = source.capabilityCeiling.authority
+        let teamAuthority = try AgentAuthorityScope(capabilities: parentAuthority.capabilities,
+            destinations: parentAuthority.destinations + [WorkflowAgentTool.destination(source.conversationID)],
+            dataCategories: parentAuthority.dataCategories + [WorkflowAgentTool.dataCategory],
+            artifactIDs: parentAuthority.artifactIDs, secretReferenceIDs: parentAuthority.secretReferenceIDs,
+            workspaceIDs: parentAuthority.workspaceIDs, checkpointIDs: parentAuthority.checkpointIDs,
+            constraints: parentAuthority.constraints)
         let request = try AgentRequest(
             id: AgentRequestID(),
             runID: AgentRunID(),
@@ -909,7 +928,7 @@ public final class AgentRuntimeAssembly {
             instruction: instruction,
             outputRequirement: .structured(CollaborativeWorkflow.decisionSchema),
             modelPolicy: source.modelPolicy,
-            capabilityCeiling: source.capabilityCeiling,
+            capabilityCeiling: RunCapabilityCeiling(authority: teamAuthority),
             budget: workflowBudget,
             contextReferences: source.contextReferences,
             artifactReferences: source.artifactReferences,
@@ -936,13 +955,14 @@ public final class AgentRuntimeAssembly {
             // conversation's exact catalog/policy for research children and recovery.
             suppressModelTools: true
         )
-        pendingSubmissions.store(AgentRunSubmission(request: request, frozenInputs: frozen))
+        pendingSubmissions.store(AgentRunSubmission(request: request, frozenInputs: try frozen.addingWorkflowTools()))
         return request
     }
 
     public func availableWorkflowTools(snapshot: AgentRunRequestSnapshot) throws -> [String] {
         let frozen = try frozenBuilder.frozenInputs(snapshot: snapshot, artifactReferences: [])
-        return frozen.toolPolicy.masterEnabled ? frozen.toolPolicy.allowedToolIDs.map(\.description) : []
+        return (frozen.toolPolicy.masterEnabled ? frozen.toolPolicy.allowedToolIDs.map(\.description) : [])
+            + (try WorkflowAgentToolOperation.allCases.map { try WorkflowAgentTool.descriptor($0).id.logicalID.description })
     }
 
     private func dynamicWorkflowOutputTokens(

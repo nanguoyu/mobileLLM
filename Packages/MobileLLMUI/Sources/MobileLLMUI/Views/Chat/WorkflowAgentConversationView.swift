@@ -57,13 +57,20 @@ struct WorkflowAgentConversationView: View {
                     ForEach(session.messages) { message in
                         VStack(alignment: .leading, spacing: Theme.Space.sm) {
                             HStack {
-                                Text(message.sender == nil ? "You" : "Coordinating agent").font(.callout.weight(.semibold))
+                                Text(message.senderName ?? "You").font(.callout.weight(.semibold))
                                 Spacer()
                                 Text(message.included ? "Included in a request" : "Saved · Pending")
                                     .font(.caption).foregroundStyle(Theme.textSecondary)
                             }
-                            Text(message.text).textSelection(.enabled)
-                                .accessibilityIdentifier("workflow.session.message.\(message.id)")
+                            if message.isAssignment {
+                                DisclosureGroup("Assignment details") {
+                                    Text(message.text).textSelection(.enabled)
+                                        .accessibilityIdentifier("workflow.session.message.\(message.id)")
+                                }
+                            } else {
+                                Text(message.text).textSelection(.enabled)
+                                    .accessibilityIdentifier("workflow.session.message.\(message.id)")
+                            }
                         }.frame(maxWidth: .infinity, alignment: .leading).studioCard()
                         if let turn = session.turns.dropFirst().first(where: { $0.inputIDs.last == message.id }) {
                             if let answer = turn.answer {

@@ -8,6 +8,27 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowDurabilityTests: XCTestCase {
+    func testGoalDeliveryCannotHideAcceptedPendingAgentInput() async throws {
+        let fixture = try makeFixture(body: """
+        let view = await collaborate({action:'snapshot'});
+        view = await collaborate({action:'deliver',expectedRevision:view.graph.revision});
+        if (!view.feedback || view.pendingInputs.count !== 1) throw new Error('Pending input was hidden');
+        await collaborate({action:'pause',reason:'Address the accepted message'});
+        throw new Error('Awaiting continuation');
+        """, args: CanonicalJSON(.object(["goal": .string("Incorporate accepted messages.")])))
+        let pending = AgentSessionPendingInputs(count: 1, messages: [AgentSessionPendingMessage(
+            id: MessageID(), seedRunID: fixture.launch.initiatingRunID, sender: nil, preview: "A revised constraint")])
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: WorkflowFakeSpawner(pending: pending), requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        do { _ = try await engine.runAndWait(runID: fixture.launch.runID); XCTFail("Delivery must not succeed") } catch {}
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(projection?.state, .paused)
+        XCTAssertNil(projection?.output)
+        XCTAssertEqual(projection?.collaborationReceipts[1].pendingInputs?.count, 1)
+    }
+
     func testOversizedArgumentsFailWithoutAccessingADisposedJavaScriptRealm() async throws {
         let fixture = try makeFixture(body: "return 'not executed';", args: CanonicalJSON(.array(Array(repeating: .string("x"), count: 33))))
         let spawner = WorkflowFakeSpawner()
@@ -644,12 +665,16 @@ private actor WorkflowFakeSpawner: SubagentSpawning {
     private(set) var spawnCount = 0
     private(set) var collectCount = 0
     private let observations: [AgentExecutionHandleID: [WorkflowWebObservation]]
+    private let pending: AgentSessionPendingInputs
 
     init(preexisting: [AgentExecutionHandleID: (AgentRunID, String)] = [:],
-         observations: [AgentExecutionHandleID: [WorkflowWebObservation]] = [:]) {
+         observations: [AgentExecutionHandleID: [WorkflowWebObservation]] = [:], pending: AgentSessionPendingInputs = .init()) {
         promptsByHandle = preexisting
         self.observations = observations
+        self.pending = pending
     }
+
+    func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs { pending }
 
     func webObservations(_ handleID: AgentExecutionHandleID) async throws -> [WorkflowWebObservation] {
         observations[handleID, default: []]
@@ -799,6 +824,11 @@ private actor V5WorkflowSpawner: SubagentSpawning {
     private(set) var starts: [String] = []
     private(set) var dependentPrompt = ""
 
+    func spawn(_ request: SubagentSpawnRequest, continuing seedRunID: AgentRunID,
+               senderRunID: AgentRunID) async throws -> AgentExecutionHandleID {
+        try await spawn(request)
+    }
+
     func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID {
         let handle = AgentExecutionHandleID()
         requests[handle] = request
@@ -816,7 +846,7 @@ private actor V5WorkflowSpawner: SubagentSpawning {
         let request = requests[handleID]!
         let answer: AgentAnswer
         if request.role == "workflow-supervisor" {
-            let text = request.instruction.components(separatedBy: "\nTASK GRAPH:\n")[1].components(separatedBy: "\nARTIFACT CATALOG:")[0]
+            let text = request.instruction.components(separatedBy: "\nTASK GRAPH:\n")[1].components(separatedBy: "\n")[0]
             let graph = try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [[String: Any]]
             let done = graph.allSatisfy { $0["state"] as? String == "completed" }
             let decision = v5Decision(done ? "deliver" : "wait", answer: done ? "All required outputs are available." : "")

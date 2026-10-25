@@ -10,8 +10,8 @@ interaction and continuation examples. Quality will be assessed through actual t
 This roadmap remains active. Human steering and durable follow-ups are implemented. New app launches now
 use the v5 coordinator with shared-budget session reuse, recorded result selection, versioned dependencies,
 source invalidation and explicit goal continuation. Focused runtime tests and the existing Simulator
-interaction case pass. Peer messaging, context/capability work, graph presentation and six-family real-model
-qualification remain to be completed. [STATUS.md](STATUS.md) records the observed results.
+interaction case pass. Peer messaging uses the ordinary tool pipeline and durable inbox. Context/capability work, graph presentation
+and six-family real-model qualification remain to be completed. [STATUS.md](STATUS.md) records the observed results.
 The owner's separate iOS agent sandbox is unavailable for near-term integration. The harness
 milestone therefore has no dependency on that project's delivery.
 
@@ -293,6 +293,6 @@ The shared-budget session path, asynchronous result delivery, versioned task gra
 continuation are implemented. New app launches use the v5 program; archived v4 records keep their original
 semantics. The Simulator interaction regression passes on the new launch path.
 
-Continue with authorized peer messaging and parent inbox delivery, context reduction and on-demand
-capabilities, the task/goal interface, then the planned diverse real-model qualification. Small commits
+Authorized peer messaging and parent inbox delivery now use the same durable input mechanism. Continue
+with context reduction and on-demand capabilities, the task/goal interface, then diverse real-model qualification. Small commits
 are delivery checkpoints, not reasons to stop before the owner's requested milestone is complete.

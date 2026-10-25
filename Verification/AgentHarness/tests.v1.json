@@ -2941,6 +2941,14 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.AgentSessionExecutionTests/testAutomaticContinuationKeepsReservedBudgetSenderAndSessionWithoutHumanTurnAdmission"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionExecutionTests/testGoalCompletionBarrierOrdersConcurrentMessageAcceptance"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.WorkflowAgentToolExecutionTests/testModelMessageUsesAuthorizedBoundaryAndWaitsForBudgetedCoordinatorActivation"
         }
       ],
       "platforms": [

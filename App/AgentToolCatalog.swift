@@ -171,7 +171,8 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
         locationProvider: (any LocationProviding)?,
         mcpCache: MCPDiscoveryCache,
         session: URLSession = .shared,
-        deepSeekAPIKey: @escaping DeepSeekAPIKeyResolver = { _ in nil }
+        deepSeekAPIKey: @escaping DeepSeekAPIKeyResolver = { _ in nil },
+        workflowAgents: WorkflowAgentToolService? = nil
     ) throws {
         self.session = session
         self.deepSeekAPIKey = deepSeekAPIKey
@@ -270,12 +271,20 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
                 trustRevision: "builtin.v1"
             ))
         }
-        self.snapshot = try Self.catalog(
+        if let workflowAgents {
+            for operation in WorkflowAgentToolOperation.allCases {
+                try register(WorkflowAgentTool(operation: operation, service: workflowAgents))
+            }
+        }
+        let builtins = try Self.catalog(
             enabledToolNames: enabledToolNames,
             memoryAvailable: memoryStore != nil,
             eventSeamAvailable: eventStore != nil,
             locationSeamAvailable: locationProvider != nil
         )
+        self.snapshot = try ToolCatalogSnapshot(revision: builtins.revision,
+            descriptors: builtins.descriptors + adapters.values.filter { $0.descriptor.id.logicalID.providerID == "agent" }.map(\.descriptor),
+            unavailable: builtins.unavailable)
         self.adapters = adapters
         self.mcpCache = mcpCache
     }
