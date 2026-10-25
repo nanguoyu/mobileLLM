@@ -1997,8 +1997,12 @@ that controller's dispatch authority. Observation and application startup do not
 Follow-up activations retain the session's frozen model, tool policy and attenuated capability ceiling.
 Each explicitly requested human turn receives the existing bounded per-turn budget. These human turns
 are separate from the original workflow's closed usage report; automatic agents cannot use this host API
-to obtain fresh budgets. Autonomous team messaging, shared goal budgets and dynamic task scheduling
-remain later stages of the harness plan. The sandbox provider remains optional.
+to obtain fresh budgets. Workflow calls may now carry a stable session key. A later call continues that
+session only after its previous activation settles, and uses the exact attenuated request reserved by
+WorkflowBudgetCoordinator. The runtime records the actual sending coordinator run, validates common
+parent and conversation membership, and retains immutable activation material for submission replay.
+An automatic activation never triggers the human queue's fresh-budget continuation. The sandbox
+provider remains optional. General peer messaging and task scheduling remain separate work.
 
 Focused acceptance covers message idempotency, commit interruption, stale writers, unchanged historical
 runs, steering during generation, pending input after pause/restart, and repeated turns in one session.

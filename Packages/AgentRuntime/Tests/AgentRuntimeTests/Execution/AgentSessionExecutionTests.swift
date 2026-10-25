@@ -6,6 +6,58 @@ import XCTest
 
 // TEST-ID: AHT-SESSION-002
 final class AgentSessionExecutionTests: XCTestCase {
+    func testAutomaticContinuationKeepsReservedBudgetSenderAndSessionWithoutHumanTurnAdmission() async throws {
+        let model = try ExecutorTestModelDefinition(offset: 836)
+        let probe = SessionRequestProbe()
+        let provider = try SessionProbeProvider(model: model, script: probe)
+        let harness = try ExecutorTestHarness(offset: 836, provider: provider, model: model)
+        let root = harness.request
+        let parentHandle = try await harness.executor.submit(root, commandID: ExecutorTestID.command(836))
+        _ = try await collectTerminalEvents(from: harness.executor.attach(to: parentHandle))
+        func child(_ number: Int, _ instruction: String) throws -> AgentRequest {
+            var quantities = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map { ($0, root.budget.limits[$0]) })
+            quantities[.modelAttempts] = 2
+            let budget = try AgentBudget(limits: BudgetQuantities(quantities),
+                maximumThermalState: root.budget.maximumThermalState, memoryPressureResponse: root.budget.memoryPressureResponse)
+            return try AgentRequest(id: ExecutorTestID.request(number), runID: ExecutorTestID.run(number),
+                conversationID: root.conversationID, userTurnID: root.userTurnID,
+                parent: ParentAgentContext(runID: root.runID, requestingStepID: AgentStepID(), capabilityCeiling: root.capabilityCeiling),
+                role: "worker", instruction: instruction, outputRequirement: .text, modelPolicy: root.modelPolicy,
+                capabilityCeiling: root.capabilityCeiling, budget: budget,
+                provenance: AgentRequestProvenance(source: .workflow, parentRequestID: root.id))
+        }
+        let seed = try child(8361, "Remember Cedar.")
+        let seedHandle = try await harness.executor.submit(seed, commandID: ExecutorTestID.command(8361))
+        _ = try await collectTerminalEvents(from: harness.executor.attach(to: seedHandle))
+        for number in [8362, 8363] {
+            let request = try child(number, number == 8362 ? "Retain Cedar for 7 days." : "Recall the previous decision.")
+            let handle = try await harness.executor.controller.submitWorkflowActivation(request,
+                commandID: ExecutorTestID.command(number), seedRunID: seed.runID, senderRunID: root.runID)
+            _ = try await collectTerminalEvents(from: harness.executor.attach(to: handle))
+            let saved = try await harness.repository.loadRunFacts(for: request.runID)
+            XCTAssertEqual(saved?.submission?.request.payload.budget, request.budget)
+            let duplicate = try await harness.executor.controller.submitWorkflowActivation(request,
+                commandID: ExecutorTestID.command(number), seedRunID: seed.runID, senderRunID: root.runID)
+            XCTAssertEqual(duplicate, handle)
+        }
+        let recordedSession = try await harness.repository.session(for: ExecutorTestID.run(8363))
+        let session = try XCTUnwrap(recordedSession)
+        XCTAssertEqual(session.activations.count, 3)
+        XCTAssertEqual(session.inputs.map(\.sender), [.agent(root.runID), .agent(root.runID)])
+        XCTAssertEqual(session.inclusions.count, 2)
+        XCTAssertEqual(session.activations.last?.workflowManaged, true)
+        let captured = await probe.values()
+        XCTAssertEqual(captured.count, 4)
+        XCTAssertTrue(captured.last!.messages.contains { $0.content.contains("Retain Cedar for 7 days") })
+        let view = try await harness.executor.controller.sessionView(seedRunID: ExecutorTestID.run(8363), conversationID: root.conversationID)
+        XCTAssertEqual(view.snapshot.id.rawValue, seed.runID.rawValue)
+        do {
+            _ = try await harness.executor.controller.submitWorkflowActivation(child(8364, "Not admitted"),
+                commandID: ExecutorTestID.command(8364), seedRunID: seed.runID, senderRunID: ExecutorTestID.run(99999))
+            XCTFail("An unbound sender must not write to the session")
+        } catch AgentSessionError.invalidHistory {}
+    }
+
     func testSteeringDuringGenerationCannotBeLostByFinalAnswerAndRetryDoesNotDuplicate() async throws {
         let model = try ExecutorTestModelDefinition(offset: 830)
         let script = SessionRequestProbe()

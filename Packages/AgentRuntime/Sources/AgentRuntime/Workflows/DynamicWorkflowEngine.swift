@@ -1011,7 +1011,18 @@ private actor DynamicWorkflowSession {
             let request = admitted.request
             admission = admitted.admission
             do {
-                handleID = try await spawner.spawn(request)
+                if let key = call.options.sessionKey,
+                   let seed = projection.calls.first(where: { $0.ordinal < call.ordinal && $0.options.sessionKey == key }) {
+                    // Identity is selected by the host from committed coordinator calls, never
+                    // accepted as a sender name from model-produced options.
+                    let sender = projection.calls.last(where: {
+                        $0.ordinal < call.ordinal && $0.options.requestedAgentType == "workflow-supervisor"
+                            && projection.outcomes[$0.callID] != nil
+                    })?.childRunID ?? launch.initiatingRunID
+                    handleID = try await spawner.spawn(request, continuing: seed.childRunID, senderRunID: sender)
+                } else {
+                    handleID = try await spawner.spawn(request)
+                }
             } catch {
                 try? await workflowBudget.releaseUnsubmitted(admission)
                 throw error

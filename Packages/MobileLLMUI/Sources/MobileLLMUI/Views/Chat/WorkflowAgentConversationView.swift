@@ -57,7 +57,7 @@ struct WorkflowAgentConversationView: View {
                     ForEach(session.messages) { message in
                         VStack(alignment: .leading, spacing: Theme.Space.sm) {
                             HStack {
-                                Text("You").font(.callout.weight(.semibold))
+                                Text(message.sender == nil ? "You" : "Coordinating agent").font(.callout.weight(.semibold))
                                 Spacer()
                                 Text(message.included ? "Included in a request" : "Saved · Pending")
                                     .font(.caption).foregroundStyle(Theme.textSecondary)

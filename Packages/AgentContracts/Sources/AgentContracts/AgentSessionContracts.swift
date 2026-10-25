@@ -11,7 +11,12 @@ public enum AgentSessionInputMode: String, Codable, Sendable {
     case nextTurn
 }
 
-/// Accepted human input. The protected artifact contains its UTF-8 body.
+/// Nil on old records means a human. Agent identities are supplied by the trusted runtime.
+public enum AgentSessionInputSender: Hashable, Codable, Sendable {
+    case agent(AgentRunID)
+}
+
+/// Accepted input. The protected artifact contains its UTF-8 body.
 public struct AgentSessionInput: Hashable, Codable, Sendable {
     public let id: MessageID
     public let mode: AgentSessionInputMode
@@ -21,15 +26,18 @@ public struct AgentSessionInput: Hashable, Codable, Sendable {
     public let targetRunID: AgentRunID?
     /// Retains the caller's intent when a late steer was accepted as a subsequent turn.
     public let requestedMode: AgentSessionInputMode?
+    public let sender: AgentSessionInputSender?
 
     public init(id: MessageID, mode: AgentSessionInputMode, body: ArtifactReference,
-                acceptedAt: AgentTimestamp, targetRunID: AgentRunID?, requestedMode: AgentSessionInputMode? = nil) {
+                acceptedAt: AgentTimestamp, targetRunID: AgentRunID?, requestedMode: AgentSessionInputMode? = nil,
+                sender: AgentSessionInputSender? = nil) {
         self.id = id
         self.mode = mode
         self.body = body
         self.acceptedAt = acceptedAt
         self.targetRunID = targetRunID
         self.requestedMode = requestedMode
+        self.sender = sender
     }
 }
 
@@ -40,13 +48,16 @@ public struct AgentSessionActivation: Hashable, Codable, Sendable {
     public let inputIDs: [MessageID]
     /// Nil only for the already submitted seed run.
     public let material: ArtifactReference?
+    /// Automatic activations are advanced only by their workflow's shared-budget admission.
+    public let workflowManaged: Bool?
 
     public init(runID: AgentRunID, commandID: AgentCommandID, inputIDs: [MessageID],
-                material: ArtifactReference? = nil) {
+                material: ArtifactReference? = nil, workflowManaged: Bool? = nil) {
         self.runID = runID
         self.commandID = commandID
         self.inputIDs = inputIDs
         self.material = material
+        self.workflowManaged = workflowManaged
     }
 }
 
@@ -110,7 +121,7 @@ public struct AgentSessionSnapshot: Hashable, Codable, Sendable {
             }
         }
         for input in inputs {
-            guard input.body.byteCount > 0, input.body.byteCount <= 16_384,
+            guard input.body.byteCount > 0, input.body.byteCount <= (input.sender == nil ? 16_384 : 262_144),
                   input.body.semanticType == "agent-session-input.v1",
                   (input.mode == .steer && input.targetRunID.map(runs.contains) == true)
                     || (input.mode == .nextTurn && input.targetRunID == nil)

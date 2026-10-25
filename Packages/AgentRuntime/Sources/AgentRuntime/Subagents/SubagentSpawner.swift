@@ -23,6 +23,9 @@ public protocol SubagentSpawning: Sendable {
     func terminalResult(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult?
     /// Submits one child run under a reserved parent identity and returns its execution handle.
     func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID
+    /// The workflow has already reserved this activation's share of its cumulative budget.
+    func spawn(_ request: SubagentSpawnRequest, continuing seedRunID: AgentRunID,
+               senderRunID: AgentRunID) async throws -> AgentExecutionHandleID
     /// Waits for the child's durable terminal result.
     func collect(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult
     /// Reports durable and streamed activity while collecting, for a caller's inactivity deadline.
@@ -47,6 +50,10 @@ public protocol SubagentSpawning: Sendable {
 }
 
 public extension SubagentSpawning {
+    func spawn(_ request: SubagentSpawnRequest, continuing seedRunID: AgentRunID,
+               senderRunID: AgentRunID) async throws -> AgentExecutionHandleID {
+        throw AgentSessionError.unavailable
+    }
     func webObservations(_: AgentExecutionHandleID) async throws -> [WorkflowWebObservation] { [] }
     func terminalResult(_: AgentExecutionHandleID) async throws -> SubagentResult? { nil }
     func collect(_ handleID: AgentExecutionHandleID,
@@ -105,6 +112,16 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
     }
 
     public func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID {
+        try await spawn(request, continuation: nil)
+    }
+
+    public func spawn(_ request: SubagentSpawnRequest, continuing seedRunID: AgentRunID,
+                      senderRunID: AgentRunID) async throws -> AgentExecutionHandleID {
+        try await spawn(request, continuation: (seedRunID, senderRunID))
+    }
+
+    private func spawn(_ request: SubagentSpawnRequest,
+                       continuation: (AgentRunID, AgentRunID)?) async throws -> AgentExecutionHandleID {
         guard let parentFacts = try await repository.loadRunFacts(for: request.parentRunID) else {
             throw SubagentSpawnError.parentUnavailable
         }
@@ -170,13 +187,15 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
             ),
             approvalMode: request.approvalMode
         )
-        return try await executor.submit(
-            childRequest,
-            commandID: SubagentStableID.command(
-                parentRunID: request.parentRunID,
-                childRunID: request.childRunID
-            )
-        )
+        let command = SubagentStableID.command(parentRunID: request.parentRunID, childRunID: request.childRunID)
+        if let (seed, sender) = continuation {
+            guard request.source == .workflow, let durable = executor as? DurableAgentExecutor else {
+                throw AgentSessionError.unavailable
+            }
+            return try await durable.controller.submitWorkflowActivation(childRequest, commandID: command,
+                                                                         seedRunID: seed, senderRunID: sender)
+        }
+        return try await executor.submit(childRequest, commandID: command)
     }
 
     public func collect(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult {

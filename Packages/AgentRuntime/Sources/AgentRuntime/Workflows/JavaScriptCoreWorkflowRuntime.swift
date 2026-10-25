@@ -846,7 +846,8 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
                 requiresIsolatedWorkspace: isolation != nil,
                 stallMilliseconds: stall,
                 maximumToolCalls: maximumToolCalls,
-                task: task
+                task: task,
+                sessionKey: try optionalString(object["session"], field: "session")
             )
         } catch {
             throw WorkflowScriptRuntimeError.invalidAgentOptions(Self.sanitize(String(describing: error)))

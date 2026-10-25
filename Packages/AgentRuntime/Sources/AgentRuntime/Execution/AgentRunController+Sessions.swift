@@ -8,6 +8,7 @@ public struct AgentSessionMessageView: Identifiable, Sendable {
     public let text: String
     public let mode: AgentSessionInputMode
     public let included: Bool
+    public let sender: AgentSessionInputSender?
 }
 
 public struct AgentSessionTurnView: Identifiable, Sendable {
@@ -41,7 +42,7 @@ extension AgentRunController {
         var messages: [AgentSessionMessageView] = []
         for input in session.inputs {
             messages.append(AgentSessionMessageView(id: input.id, text: try await sessionText(input.body),
-                                                    mode: input.mode, included: included.contains(input.id)))
+                                                    mode: input.mode, included: included.contains(input.id), sender: input.sender))
         }
         var turns: [AgentSessionTurnView] = []
         for activation in session.activations {
@@ -68,14 +69,14 @@ extension AgentRunController {
         defer { endPublicMutation() }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               text.utf8.count <= 16_384 else { throw AgentSessionError.inputTooLarge }
-        let id = AgentSessionID(rawValue: seedRunID.rawValue)
+        let id = try await sessionSnapshot(seedRunID: seedRunID, conversationID: conversationID).id
         await acquireSessionGate(id)
         defer { releaseSessionGate(id) }
         if startNextTurn { sessionContinuationPermission.insert(id) }
         guard let journal = sessionJournal else { throw AgentSessionError.unavailable }
         var session = try await sessionSnapshot(seedRunID: seedRunID, conversationID: conversationID)
         if let prior = session.inputs.first(where: { $0.id == messageID }) {
-            guard try await sessionText(prior.body) == text, (prior.requestedMode ?? prior.mode) == mode
+            guard prior.sender == nil, try await sessionText(prior.body) == text, (prior.requestedMode ?? prior.mode) == mode
             else { throw AgentSessionError.inputConflict }
             if startNextTurn { _ = try await activateSession(session) }
             return
@@ -91,7 +92,7 @@ extension AgentRunController {
         for _ in 0..<8 {
             session = try await sessionSnapshot(seedRunID: seedRunID, conversationID: conversationID)
             if let existing = session.inputs.first(where: { $0.id == messageID }) {
-                guard try await sessionText(existing.body) == text, (existing.requestedMode ?? existing.mode) == mode
+                guard existing.sender == nil, try await sessionText(existing.body) == text, (existing.requestedMode ?? existing.mode) == mode
                 else { throw AgentSessionError.inputConflict }
                 if startNextTurn { _ = try await activateSession(session) }
                 return
@@ -118,7 +119,7 @@ extension AgentRunController {
     public func resumeSession(seedRunID: AgentRunID, conversationID: ConversationID) async throws -> AgentExecutionHandleID? {
         try beginPublicMutation()
         defer { endPublicMutation() }
-        let id = AgentSessionID(rawValue: seedRunID.rawValue)
+        let id = try await sessionSnapshot(seedRunID: seedRunID, conversationID: conversationID).id
         await acquireSessionGate(id)
         defer { releaseSessionGate(id) }
         sessionContinuationPermission.insert(id)
@@ -127,6 +128,10 @@ extension AgentRunController {
     }
 
     private func sessionSnapshot(seedRunID: AgentRunID, conversationID: ConversationID) async throws -> AgentSessionSnapshot {
+        if let existing = try await sessionJournal?.session(for: seedRunID) {
+            guard existing.conversationID == conversationID else { throw AgentSessionError.invalidHistory }
+            return existing
+        }
         guard let journal = sessionJournal,
               let facts = try await repository.loadRunFacts(for: seedRunID),
               let submission = facts.submission,
@@ -142,6 +147,70 @@ extension AgentRunController {
         }
         return AgentSessionSnapshot(id: id, conversationID: conversationID,
             seed: AgentSessionActivation(runID: seedRunID, commandID: submission.commandID, inputIDs: []))
+    }
+
+    /// Internal workflow admission. Unlike human follow-ups this preserves the exact request and
+    /// budget reserved by WorkflowBudgetCoordinator. It never schedules a fresh-budget turn.
+    func submitWorkflowActivation(_ request: AgentRequest, commandID: AgentCommandID,
+                                  seedRunID: AgentRunID, senderRunID: AgentRunID) async throws -> AgentExecutionHandleID {
+        try beginPublicMutation()
+        defer { endPublicMutation() }
+        guard let journal = sessionJournal, request.provenance.source == .workflow,
+              let parent = request.parent?.runID,
+              let seed = try await repository.loadRunFacts(for: seedRunID)?.submission?.request.payload,
+              seed.parent?.runID == parent, seed.conversationID == request.conversationID,
+              let sender = try await repository.loadRunFacts(for: senderRunID)?.submission?.request.payload,
+              sender.conversationID == request.conversationID,
+              sender.runID == parent || sender.parent?.runID == parent
+        else { throw AgentSessionError.invalidHistory }
+        let id = AgentSessionID(rawValue: seedRunID.rawValue)
+        await acquireSessionGate(id)
+        defer { releaseSessionGate(id) }
+        var session = try await sessionSnapshot(seedRunID: seedRunID, conversationID: request.conversationID)
+        if let activation = session.activations.first(where: { $0.runID == request.runID }), let material = activation.material {
+            let saved = try ExecutionEncoding.decode(PreparedAgentSessionActivation.self,
+                from: await payloadStore.load(material, maximumBytes: 4 * 1_024 * 1_024))
+            guard saved.request == request, activation.commandID == commandID else { throw AgentSessionError.inputConflict }
+            return try await submit(request, commandID: commandID, frozenInputs: saved.inputs)
+        }
+        if try await journal.session(session.id) == nil { try await journal.appendSession(session, expectedRevision: 0) }
+        guard session.activations.count < 128, session.inputs.count < 256,
+              request.instruction.utf8.count <= 262_144 else { throw AgentSessionError.capacityReached }
+        let last = session.activations.last!
+        let (facts, history) = try await loadRun(last.runID)
+        guard facts.projection.isTerminal, let prior = facts.submission else { throw AgentSessionError.requiresResume }
+        let previous = try await loadPayload(FrozenAgentRunInputs.self, reference: prior.inputSnapshot)
+        var conversation = previous.conversation
+        let oldInput = try await sessionCurrentUser(frozen: previous, runID: last.runID, includedOnly: true).source
+        conversation.append(try ConversationTurnContextSource(messageID: ExecutionStableID.message(runID: last.runID, role: .user),
+            revision: oldInput.frozen.revision, role: .user, content: oldInput.frozen.content))
+        conversation.append(try ConversationTurnContextSource(messageID: ExecutionStableID.message(runID: last.runID, role: .assistant),
+            revision: facts.projection.cursor.recordDigest.rawValue, role: .assistant,
+            content: history.result?.answer?.text ?? history.status.failure?.safeMessage ?? "The activation ended without an answer."))
+        let fresh = try await inputFreezer.freeze(request)
+        let inputs = try fresh.replacingConversation(conversation, currentUser: CurrentUserContextSource(
+            userTurnID: request.userTurnID, revision: "workflow-session." + request.runID.description,
+            content: request.instruction, attachments: request.artifactReferences))
+        let prepared = PreparedAgentSessionActivation(request: request, inputs: inputs)
+        let body = try await payloadStore.commit(data: Data(request.instruction.utf8), mimeType: "text/plain",
+            semanticType: "agent-session-input.v1", runID: session.seedRunID, stepID: nil, invocationID: nil,
+            owner: .conversation(session.conversationID), sensitivity: .personalData)
+        let material = try await payloadStore.commit(data: ExecutionEncoding.encode(prepared), mimeType: "application/json",
+            semanticType: "agent-session-activation.v1", runID: session.seedRunID, stepID: nil, invocationID: nil,
+            owner: .conversation(session.conversationID), sensitivity: .personalData)
+        // Re-read after artifact writes: model-step inclusion can advance the snapshot concurrently.
+        session = try await journal.session(session.id) ?? session
+        let messageID = MessageID(rawValue: request.runID.rawValue)
+        let claimed = Set(session.inclusions.map(\.messageID))
+        let pending = session.inputs.filter { !claimed.contains($0.id) }.map(\.id)
+        var next = session
+        next.revision += 1
+        next.inputs.append(AgentSessionInput(id: messageID, mode: .nextTurn, body: body,
+            acceptedAt: try await clock.now(), targetRunID: nil, sender: .agent(senderRunID)))
+        next.activations.append(AgentSessionActivation(runID: request.runID, commandID: commandID,
+            inputIDs: pending + [messageID], material: material, workflowManaged: true))
+        try await journal.appendSession(next, expectedRevision: session.revision)
+        return try await submit(request, commandID: commandID, frozenInputs: inputs)
     }
 
     private func activateSession(_ snapshot: AgentSessionSnapshot, resumeExisting: Bool = false) async throws -> AgentExecutionHandleID? {
@@ -230,7 +299,9 @@ extension AgentRunController {
         guard let session = try await sessionJournal?.session(for: runID) else { return (frozen.currentUser, []) }
         let included = Set(session.inclusions.map(\.messageID))
         let inputs = session.inputs(for: runID).filter { !includedOnly || included.contains($0.id) }
-        let steering = inputs.filter { $0.mode == .steer || $0.id.description != frozen.currentUser.frozen.sourceID }
+        let steering = inputs.filter {
+            $0.mode == .steer || ($0.id.description != frozen.currentUser.frozen.sourceID && $0.id.rawValue != runID.rawValue)
+        }
         var content = frozen.currentUser.frozen.content
         let carried = steering.filter { $0.targetRunID != runID }
         if !carried.isEmpty {
@@ -252,7 +323,7 @@ extension AgentRunController {
     }
 
     private func sessionText(_ artifact: ArtifactReference) async throws -> String {
-        let data = try await payloadStore.load(artifact, maximumBytes: 16_384)
+        let data = try await payloadStore.load(artifact, maximumBytes: 262_144)
         guard let text = String(data: data, encoding: .utf8) else { throw AgentSessionError.invalidHistory }
         return text
     }
@@ -267,6 +338,7 @@ extension AgentRunController {
             guard let session = try await sessionJournal?.session(for: runID),
                   sessionContinuationPermission.contains(session.id),
                   session.activations.count > 1, session.activations.last?.runID == runID,
+                  session.activations.last?.workflowManaged != true,
                   !session.pendingTurns.isEmpty,
                   try await repository.loadRunFacts(for: runID)?.projection.state == .completed
             else { return }

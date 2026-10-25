@@ -2937,6 +2937,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.AgentSessionExecutionTests/testBackgroundQuiescenceCoversUnobservedFollowupsAndKeepsQueuedInput"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionExecutionTests/testAutomaticContinuationKeepsReservedBudgetSenderAndSessionWithoutHumanTurnAdmission"
         }
       ],
       "platforms": [
