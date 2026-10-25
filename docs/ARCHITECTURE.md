@@ -180,9 +180,9 @@ Reading evidence does not repeat a model or network call. The v4 source generato
 compatibility test fixture; archived workflows replay their journaled source. The unused fixed six-stage
 fallback generator was removed.
 
-A repeated task ID continues a logical task with its recorded assignments, outputs and selected web
-receipts. Each invocation remains an ordinary durable child run. This is explicit context continuation,
-not a persistent provider session or a claim of KV-cache reuse. Other tasks receive selected settled
+A stable task ID tracks revisions and assignments. Reusing an agent key continues its durable session
+across tasks; reassignment can select another agent. Each activation remains an ordinary durable child
+run. Provider connections and KV-cache retention are separate from this recorded conversation. Other tasks receive selected settled
 artifacts. Full outputs stay available even when a preview is truncated. Failures remain labeled and
 successful siblings survive. Three identical actions without progress stop the run.
 
@@ -201,8 +201,8 @@ Closing an inspector detaches its subscriptions without stopping work. Rejected 
 safe failure. Completed history remains accessible, and unchanged projections do not rewrite snapshots
 or bump conversation activity times.
 
-The program permits at most 12 worker invocations, 24 actual tool calls and 12 supervisor continuations,
-within the unchanged execution budgets. `await budget.snapshot()` reports actual usage only from settled
+The program permits at most 12 worker activations, 24 actual tool calls and 24 coordination decisions.
+All model steps, including preparation and tools-related follow-ups, share the 32-request goal limit. `await budget.snapshot()` reports actual usage only from settled
 calls reached by replay. Unused worker tool allowances become available to later stages, while the durable
 runtime ledger still enforces admission and all real consumption. The supervisor writes the final answer itself. Separate writer,
 reviewer and consolidation roles are no longer mandatory. A model saying “approved” never established
@@ -300,9 +300,9 @@ content. Prepared activation material is durable before idempotent submission. A
 activation retains unconsumed input for the next explicitly requested turn. Reads never resume work.
 
 Human follow-up turns use the existing per-turn limits and keep their usage separate from the original
-workflow report. The original workflow owns its seed activation. Autonomous model messaging and
-shared goal accounting are later stages; the v4 coordination program still uses its recorded artifact
-continuation. Task details open a separate agent conversation with stored replies, pending/included
+workflow report. Autonomous messages and goal amendments use workflow-managed activations under
+the original goal budget. They cannot start standalone turns with fresh allowances. The initial planning
+run seeds the coordinator session; later assignments record the actual sending coordinator identity. Task details open a separate agent conversation with stored replies, pending/included
 message state and the existing approval controls. The workflow retains control of its seed task;
 queued follow-ups can start after it completes. Independent follow-ups participate in background
 quiescence even when their inspector has closed, and cold sessions require explicit resume.

@@ -2099,6 +2099,14 @@
         {
           "kind": "xctest",
           "value": "MobileLLMUITests.WorkflowGoalPresentationTests/testViewingGoalNeverResumesAndExplicitUpdateIsSavedBeforeResume"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testV5LateInboxReopensItsOwnerWithinTheGoalInsteadOfRepeatingDelivery"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testDelegatedMessagingKeepsItsCapabilityWithoutGrantingCanonicalWrites"
         }
       ],
       "platforms": [
@@ -2226,6 +2234,26 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/testExecutableOracleRejectsDataLossNonatomicityAndWeakUniqueness"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/test14SourceResearchAndAttribution"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/test15InteractiveCorrectionAndMessaging"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/test16OriginalContextAndLaterCorrection"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/test20FrozenSixFamilyQualification"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/testSourceQuoteCheckHandlesRenderedEscapesWithoutAcceptingAnotherPageOrParaphrase"
         }
       ],
       "platforms": [
@@ -2238,8 +2266,9 @@
       ],
       "requiredEvidence": [
         "Original goal and final artifact, real online provider identity, exact source digest, actual usage and durable call sequences",
-        "At least three completed worker waves with exact prior-result handoffs and at least three distinct worker task IDs",
-        "Executable SQLite migration invariants including atomic failure and idempotency; optimal baseline/outage schedules and actual Calculator result; evidence-bounded incident decisions"
+        "At least three completed dependency stages, exact original artifact handoffs and at least three distinct agent identities",
+        "Executable SQLite migration invariants including atomic failure and idempotency; optimal baseline/outage schedules and actual Calculator result; evidence-bounded incident decisions",
+        "Original retrieved support, interactive amendment inclusion, original context reads, and all eighteen held-out attempts at one frozen runtime with disclosed evaluator rechecks"
       ],
       "determinism": {
         "fixedSeedRequired": false,
