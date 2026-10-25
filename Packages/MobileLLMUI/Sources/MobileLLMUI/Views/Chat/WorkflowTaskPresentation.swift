@@ -12,6 +12,21 @@ struct WorkflowTaskGroup: Identifiable {
 }
 
 enum WorkflowDisplay {
+    static func issue(_ detail: String) -> String {
+        if detail.contains("capabilityEscalation") || detail.contains("isolationRequirementMismatch") {
+            return "An agent could not use a tool within this task's permissions. Its saved results are available below."
+        }
+        if detail.contains("__MOBILELLM_WORKFLOW_ERROR__") {
+            return "The coordinator could not continue. Review the saved tasks before resuming."
+        }
+        return detail
+    }
+
+    static func taskName(id: String, agent: String) -> String {
+        let compact = id.count < 4 || id.range(of: #"^[Tt][0-9]+$"#, options: .regularExpression) != nil
+        let title = compact ? agent : id.replacingOccurrences(of: #"^[Tt][0-9]+[-_ ]+"#, with: "", options: .regularExpression)
+        return name(title)
+    }
     static func planningStatus(_ state: AgentRunState) -> String {
         switch state {
         case .created, .preparing: "Preparing plan"
@@ -92,8 +107,7 @@ extension DynamicWorkflowChildPresentation {
     var isCoordinator: Bool { agentType == "workflow-supervisor" }
     var taskTitle: String {
         let id = task?.taskID ?? label ?? "Task \(ordinal)"
-        let compact = id.count < 4 || id.range(of: #"^[Tt][0-9]+$"#, options: .regularExpression) != nil
-        return WorkflowDisplay.name(compact ? (sessionKey ?? label ?? id) : id)
+        return WorkflowDisplay.taskName(id: id, agent: sessionKey ?? label ?? id)
     }
 
     func statusText(workflowState: DynamicWorkflowPresentationState, attached: Bool) -> String {

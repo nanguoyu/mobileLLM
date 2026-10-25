@@ -11,8 +11,7 @@ enum WorkflowGoalDisplay {
     }
 
     static func title(_ task: WorkflowTaskNode) -> String {
-        let compact = task.id.count < 4 || task.id.range(of: #"^[Tt][0-9]+$"#, options: .regularExpression) != nil
-        return WorkflowDisplay.name(compact ? task.agent : task.id)
+        WorkflowDisplay.taskName(id: task.id, agent: task.agent)
     }
 
     static func call(_ task: WorkflowTaskNode, in calls: [DynamicWorkflowChildPresentation]) -> DynamicWorkflowChildPresentation? {
@@ -122,7 +121,7 @@ struct WorkflowGoalTasks: View {
                     Label("Includes saved feedback", systemImage: "doc.on.doc")
                         .font(.caption).foregroundStyle(Theme.textSecondary)
                 }
-                if let failure = task.failure { Text(failure).font(.caption).foregroundStyle(Theme.danger).lineLimit(2) }
+                if let failure = task.failure { Text(WorkflowDisplay.issue(failure)).font(.caption).foregroundStyle(Theme.danger).lineLimit(2) }
             }
             .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading).studioCard(Theme.Space.lg)
             .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
@@ -151,8 +150,8 @@ struct WorkflowGoalInfo: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.md) {
-            if let reason = goal.reason, goal.state != .completed {
-                Label(reason, systemImage: goal.state == .budgetExhausted ? "gauge.with.dots.needle.100percent" : "pause.circle")
+            if let reason = goal.reason, goal.state != .completed, goal.state != .active {
+                Label(WorkflowDisplay.issue(reason), systemImage: goal.state == .budgetExhausted ? "gauge.with.dots.needle.100percent" : "pause.circle")
                     .font(.callout).foregroundStyle(Theme.fitAmber).textSelection(.enabled).studioCard()
                     .accessibilityIdentifier("workflow.goal.reason")
             }

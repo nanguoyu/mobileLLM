@@ -39,7 +39,7 @@ struct WorkflowTaskWorkspace: View {
         VStack(alignment: .leading, spacing: Theme.Space.xl) {
             overview
             if let failure = dynamic.failure {
-                Label(failure, systemImage: "exclamationmark.triangle.fill")
+                Label(WorkflowDisplay.issue(failure), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(Theme.danger).font(.callout).studioCard()
                     .accessibilityIdentifier("workflow.failure")
             }
@@ -124,7 +124,12 @@ struct WorkflowTaskWorkspace: View {
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
                     .accessibilityIdentifier("workflow.task.count")
             }
-            WorkflowElapsedLabel(start: workflow.startTime, end: workflow.endTime)
+            if workflow.endTime == nil && !attached {
+                Text("Started \(workflow.startTime.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+            } else {
+                WorkflowElapsedLabel(start: workflow.startTime, end: workflow.endTime)
+            }
             if let latest = dynamic.goal?.amendments.last {
                 Text("Latest update: " + latest.text).font(.callout).foregroundStyle(Theme.textSecondary).lineLimit(2)
                     .accessibilityIdentifier("workflow.goal.latest-update")
@@ -280,6 +285,12 @@ private struct WorkflowDiagnostics: View {
         DisclosureGroup("Execution details") {
             VStack(alignment: .leading, spacing: Theme.Space.md) {
                 let calls = dynamic.childCalls ?? []
+                if let diagnostic = dynamic.failure ?? dynamic.goal?.reason,
+                   WorkflowDisplay.issue(diagnostic) != diagnostic {
+                    DisclosureGroup("Error details") {
+                        Text(diagnostic).font(.caption.monospaced()).textSelection(.enabled)
+                    }
+                }
                 Text("\(calls.count) calls · \(calls.filter(\.isCoordinator).count) coordination calls")
                     .font(.callout).foregroundStyle(Theme.textSecondary)
                 DisclosureGroup {
