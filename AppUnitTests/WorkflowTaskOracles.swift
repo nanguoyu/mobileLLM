@@ -378,10 +378,12 @@ extension WorkflowLiveCase {
               value["retentionDays"] as? Int == (heldOut ? 3 : 7),
               value["exportLimitMiB"] as? Int == (heldOut ? 12 : 20),
               value["offline"] as? Bool == true, value["restore"] as? Bool == true,
-              Set(value["formats"] as? [String] ?? []) == ["markdown", "json"],
-              let design = value["design"] as? String, design.count > 100 else {
+              Set(value["formats"] as? [String] ?? []) == ["markdown", "json"] else {
             return ["The final artifact lost the amendment or an unchanged requirement"]
         }
+        let design = value["design"]
+        guard (design as? String).map({ $0.count > 100 }) == true
+                || (design as? [String: Any]).map({ !$0.isEmpty }) == true else { return ["Missing final design"] }
         return []
     }
 

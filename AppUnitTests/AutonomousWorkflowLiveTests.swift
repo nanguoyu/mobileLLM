@@ -20,11 +20,26 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
     @MainActor func test16OriginalContextAndLaterCorrection() async throws { try await evaluate(.longContext) }
 
     @MainActor func test20FrozenSixFamilyQualification() async throws {
+        guard ProcessInfo.processInfo.environment["MOBILELLM_LIVE_WORKFLOWS"] == "1" else { throw XCTSkip("Explicit real-model opt-in required") }
         executionTimeAllowance = 21_600
         let repetitions = Int(ProcessInfo.processInfo.environment["MOBILELLM_LIVE_REPETITIONS"] ?? "3") ?? 3
         guard (1...3).contains(repetitions) else { throw LiveEvaluationError("Qualification allows one to three repetitions") }
+        let tasks: [WorkflowLiveCase] = [.research, .rollout, .incident, .migration, .correction, .longContext]
+        if let path = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_OUTPUT_DIR"] {
+            let directory = URL(fileURLWithPath: path, isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let inputs: [[String: Any]] = tasks.map { task in
+                ["case": task.rawValue, "variant": "held-out", "goal": task.goal(heldOut: true),
+                 "history": task.history(heldOut: true), "amendment": task.amendment(heldOut: true) ?? "",
+                 "amendmentTrigger": "First worker submission", "model": "deepseek-v4-flash", "reasoningEffort": "low",
+                 "maximumModelRequests": 32, "maximumWorkerActivations": 12, "maximumToolCalls": 24,
+                 "contextTokens": 32_768, "maximumOutputTokens": 24_576, "deadlineSeconds": 900]
+            }
+            try JSONSerialization.data(withJSONObject: inputs, options: [.prettyPrinted, .sortedKeys])
+                .write(to: directory.appending(component: "frozen-inputs.json"), options: .atomic)
+        }
         for repetition in 1...repetitions {
-            for task in [WorkflowLiveCase.research, .rollout, .incident, .migration, .correction, .longContext] {
+            for task in tasks {
                 do { try await evaluate(task, heldOut: true, repetition: repetition) }
                 catch { XCTFail("\(task.rawValue) attempt \(repetition): \(error.localizedDescription)") }
             }
