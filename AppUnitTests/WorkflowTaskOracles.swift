@@ -486,3 +486,32 @@ extension WorkflowLiveCase {
         return []
     }
 }
+
+/// Source text is compared after CommonMark punctuation escapes and whitespace are rendered.
+/// A quote must belong to its cited page, not another source in the same search response.
+struct WorkflowLiveEvidence: Codable {
+    let url: String
+    let text: String
+    static func rendered(_ text: String) -> String {
+        text.replacingOccurrences(of: ##"\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])"##,
+                                  with: "$1", options: .regularExpression)
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+    private static func source(_ value: String) -> String? {
+        guard var url = URLComponents(string: value), let host = url.host else { return nil }
+        url.host = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        url.fragment = nil
+        return url.string
+    }
+    static func verify(facts: [[String: Any]], observations: [WorkflowLiveEvidence]) -> [String] {
+        facts.compactMap { fact in
+            guard let id = fact["id"] as? String, let url = fact["url"] as? String, let quote = fact["quote"] as? String,
+                  let cited = source(url), !rendered(quote).isEmpty,
+                  observations.contains(where: { source($0.url) == cited && rendered($0.text).contains(rendered(quote)) }) else {
+                return "A cited quote is absent from its retrieved page: \(fact["id"] ?? "missing ID")"
+            }
+            _ = id
+            return nil
+        }
+    }
+}

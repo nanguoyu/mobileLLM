@@ -46,6 +46,15 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         }
     }
 
+    func testSourceQuoteCheckHandlesRenderedEscapesWithoutAcceptingAnotherPageOrParaphrase() {
+        let fact: [String: Any] = ["id": "F1", "url": "https://sqlite.org/isolation.html",
+            "quote": "There can only be a single writer at a time to an SQLite database."]
+        let body = "There can only be a single writer at a time to an SQLite database\\."
+        XCTAssertTrue(WorkflowLiveEvidence.verify(facts: [fact], observations: [.init(url: "https://www.sqlite.org/isolation.html", text: body)]).isEmpty)
+        XCTAssertFalse(WorkflowLiveEvidence.verify(facts: [fact], observations: [.init(url: "https://sqlite.org/wal.html", text: body)]).isEmpty)
+        XCTAssertFalse(WorkflowLiveEvidence.verify(facts: [fact], observations: [.init(url: "https://sqlite.org/isolation.html", text: "SQLite serializes database writes.")]).isEmpty)
+    }
+
     func testExecutableOracleRejectsDataLossNonatomicityAndWeakUniqueness() throws {
         let correct = """
         PRAGMA busy_timeout=5000;
@@ -157,12 +166,9 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                 }
                 if let object = try? JSONSerialization.jsonObject(with: Data(answer.utf8)) as? [String: Any],
                    let facts = object["facts"] as? [[String: Any]] {
-                    for fact in facts {
-                        guard let quote = fact["quote"] as? String, let url = fact["url"] as? String,
-                              trace.webObservations.contains(where: { Self.normalized($0).contains(Self.normalized(quote)) && $0.contains(URL(string:url)?.lastPathComponent ?? url) })
-                        else { failures.append("A cited quote is absent from the actual retrieved evidence"); continue }
-                    }
+                    failures += WorkflowLiveEvidence.verify(facts: facts, observations: trace.webObservations)
                 }
+                try JSONEncoder().encode(trace.webObservations).write(to: root.appending(component: "retrieved-sources.json"), options: .atomic)
             }
             let summary = try await assembly.dynamicWorkflows.projection(runID:runID)
             let evidence:[String:Any] = [
@@ -190,11 +196,6 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(failures.isEmpty,failures.joined(separator:"\n"))
     }
 
-    private static func normalized(_ text: String) -> String {
-        text.replacingOccurrences(of: "\\n", with: " ").replacingOccurrences(of: "\\\"", with: "\"")
-            .split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
-    }
-
     private func publish(_ evidence:[String:Any],root:URL) throws {
         let data = try JSONSerialization.data(withJSONObject:evidence,options:[.prettyPrinted,.sortedKeys,.withoutEscapingSlashes])
         let url = root.appending(component:"public-result.json")
@@ -214,7 +215,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         var completedCalculatorCalls = 0
         var successfulToolNames: [String: Int] = [:]
         var originalContextReads = 0
-        var webObservations: [String] = []
+        var webObservations: [WorkflowLiveEvidence] = []
         var workerIDs = Set<String>()
         var calls:[[String:Any]] = []
     }
@@ -261,18 +262,18 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                 return history.toolIntents[id]?.1.plan.subjectID == calculatorID
             }.count
             for (invocation, pair) in history.toolOutcomes {
-                guard case .completed(let content) = pair.1, let plan = history.toolIntents[invocation]?.1.plan else { continue }
+                guard case .completed = pair.1, let plan = history.toolIntents[invocation]?.1.plan else { continue }
                 let names = ["calculator", "web_search", "fetch_webpage", "send_message", "read_context", "read_artifact", "read_skill", "list_skills", "list_agents"]
                 let name = names.first { plan.subjectID == (try? AgentToolLogicalID(providerID: ["send_message","read_context","read_artifact","read_skill","list_skills","list_agents"].contains($0) ? "agent" : "builtin", name: $0).description) } ?? plan.subjectID
                 result.successfulToolNames[name, default: 0] += 1
                 if name == "read_context", let args = plan.canonicalArguments,
                    let object = try? JSONSerialization.jsonObject(with: args.value.data) as? [String: Any],
                    let id = object["id"] as? String, id.hasPrefix("history:") { result.originalContextReads += 1 }
-                if name == "web_search" || name == "fetch_webpage" {
-                    let text = content.compactMap { item -> String? in
-                        switch item { case .text(let text): return text.value; case .structured(let value): return value.value.string; default: return nil }
-                    }.joined(separator: "\n")
-                    result.webObservations.append(text)
+            }
+            for observation in try await spawner.webObservations(handle)
+                where observation.status == "completed" && (observation.toolID.name == "fetch_webpage" || observation.sourceKind == .searchContent) {
+                if let url = observation.sourceURL ?? observation.requestedURL {
+                    result.webObservations.append(WorkflowLiveEvidence(url: url, text: observation.text))
                 }
             }
             let terminal = try await spawner.terminalResult(handle)

@@ -17,6 +17,11 @@ import Foundation
         if let text = evidence["answer"] as? String,
            let answer = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] {
             failures = try task.verify(answer, heldOut: evidence["variant"] as? String == "held-out")
+            if task == .research {
+                let observations = try JSONDecoder().decode([WorkflowLiveEvidence].self,
+                    from: Data(contentsOf: file.deletingLastPathComponent().appending(component: "retrieved-sources.json")))
+                failures += WorkflowLiveEvidence.verify(facts: answer["facts"] as? [[String: Any]] ?? [], observations: observations)
+            }
         } else { failures = ["Final answer is not the requested JSON artifact"] }
         let output: [String: Any] = ["case": name, "outcomeChecksPassed": failures.isEmpty, "failures": failures]
         FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys]))
