@@ -1339,12 +1339,16 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         guard let descriptor = ModelToolNames.bindings(for: request.advertisedTools).first(where: {
             $0.wireName == name
         })?.descriptor, let data = argumentsJSON.data(using: .utf8) else {
-            throw AgentModelProviderFailure(try Self.toolFailure("The online model called unknown tool \(name)."))
+            throw AgentModelProviderFailure(try Self.malformedToolCallFailure("The model selected a tool outside the advertised catalog."))
         }
-        let value = try AgentWireDecoder.decode(JSONValue.self, from: data, limits: .inlineValue)
+        let value: JSONValue
+        do { value = try AgentWireDecoder.decode(JSONValue.self, from: data, limits: .inlineValue) }
+        catch {
+            throw AgentModelProviderFailure(try Self.malformedToolCallFailure("The arguments for \(name) are not valid bounded JSON."))
+        }
         guard try descriptor.inputSchema.validates(instance: value) else {
             throw AgentModelProviderFailure(
-                try Self.toolFailure("The online model called \(name) with invalid arguments.")
+                try Self.malformedToolCallFailure("Invalid arguments for \(name). " + ModelOutputInstructions.mismatch(value, schema: descriptor.inputSchema))
             )
         }
         let arguments = try CanonicalJSON(value)
@@ -1454,6 +1458,15 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             requiredUserAction: .none,
             redaction: RedactionMetadata(classification: .publicMetadata, policyVersion: 1)
         )
+    }
+
+    /// Argument normalization happens before the controller receives ANY call in the batch.
+    /// Use its existing journaled, budgeted action repair; never retry inside the transport.
+    private static func malformedToolCallFailure(_ detail: String) throws -> AgentFailure {
+        try AgentFailure(code: "model.online.malformed-action", classification: .permanent,
+            safeMessage: String(detail.prefix(400)) + " None of this tool batch executed. Correct the call using the advertised schema or continue without it.",
+            retryAdvice: .never, externalEffect: .confirmedNone, requiredUserAction: .none,
+            redaction: RedactionMetadata(classification: .publicMetadata, policyVersion: 1))
     }
 
     private static func toolFailure(_ message: String) throws -> AgentFailure {

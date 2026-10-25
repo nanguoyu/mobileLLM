@@ -899,7 +899,7 @@ extension AgentRunController {
                 stepID: modelRequest.stepID,
                 reservation: reservation,
                 repairAlreadyAttempted: history.pendingRepair?.1.code == "execution.structured-repair",
-                diagnostic: failure.safeMessage,
+                diagnostic: failure.code + ": " + failure.safeMessage,
                 reportedUsage: execution.reportedUsage
             )
             return

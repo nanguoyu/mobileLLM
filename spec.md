@@ -2148,3 +2148,11 @@ The shared artifact reader also resolves `observations:<artifactID>` into the pr
 observation catalog. A returned observation ID reads its exact sanitized arguments, typed outcome and
 record digest. The producer must belong to this goal and an immutable artifact, including historical
 versions. Reads cannot address an arbitrary run, access hidden reasoning, or repeat an external call.
+
+
+Invalid native tool JSON, out-of-schema arguments or an unadvertised tool name reject the entire
+model-proposed batch before any tool dispatch. The online provider returns a confirmed-no-effect
+malformed-action failure with measured usage and bounded schema feedback. The existing run controller
+records the originating failure code and owns at most one constrained repair of that invalid action.
+Repair consumes the original model/repair budget; a second invalid attempt terminates without dispatch.
+The transport does not retry, alter arguments, authorize a new tool, or execute a valid batch prefix.

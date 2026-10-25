@@ -1739,7 +1739,33 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         }
     }
 
-    private func executeTransportFixture(data: Data, type: String, limit: UInt64, status: Int = 200) async throws -> AgentModelExecutionResult {
+    func testInvalidNativeArgumentsRejectTheWholeBatchAndRetainMeteredRepairFeedback() async throws {
+        let tool = try WorkflowAgentTool.descriptor(.sendMessage)
+        for (name, arguments) in [("send_message", "{bad"),
+            ("send_message", "{\"target\":\"peer\",\"text\":\"evidence\",\"mode\":\"interrupt\"}"),
+            ("send_message", "{\"target\":\"peer\",\"text\":\"PRIVATE_VALUE_MUST_NOT_APPEAR\"}"),
+            ("unadvertised_tool", "{}")]
+        {
+            let body: [String: Any] = ["usage": ["input_tokens": 31, "output_tokens": 11], "output": [
+                ["type":"function_call", "call_id":"valid", "name":"send_message",
+                 "arguments":"{\"target\":\"peer\",\"text\":\"valid\",\"mode\":\"steer\"}"],
+                ["type":"function_call", "call_id":"invalid", "name":name, "arguments":arguments]
+            ]]
+            let result = try await executeTransportFixture(data: JSONSerialization.data(withJSONObject: body),
+                type: "application/json", limit: 65_536, tools: [tool])
+            guard case .failed(let failure) = result.outcome else { return XCTFail("No part of an invalid batch can execute") }
+            XCTAssertEqual(failure.code, "model.online.malformed-action")
+            XCTAssertEqual(failure.externalEffect, .confirmedNone)
+            XCTAssertEqual(failure.retryAdvice, .never, "The controller owns repair, not the transport")
+            XCTAssertTrue(failure.safeMessage.contains("None of this tool batch executed"))
+            XCTAssertFalse(failure.safeMessage.contains("PRIVATE_VALUE_MUST_NOT_APPEAR"))
+            XCTAssertEqual(result.reportedUsage?.inputTokens, 31)
+            XCTAssertEqual(result.reportedUsage?.outputTokens, 11)
+        }
+    }
+
+    private func executeTransportFixture(data: Data, type: String, limit: UInt64, status: Int = 200,
+                                         tools: [AgentToolDescriptor] = []) async throws -> AgentModelExecutionResult {
         MockResponsesURLProtocol.handler = { request in
             (HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": type])!, data)
         }
@@ -1750,7 +1776,7 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
             configuration: ResponsesAPIConfiguration(baseURL: "https://fixture.test/v1", apiKey: "fixture-key"),
             session: URLSession(configuration: config)
         )
-        let fixture = try ModelFixture(location: .remote, providerID: ResponsesAPIModelProvider.providerID,
+        let fixture = try ModelFixture(location: .remote, advertisedTools: tools, providerID: ResponsesAPIModelProvider.providerID,
             remoteDestination: "openai.responses:responses-api-key:fixture-model")
         let context = try ModelPreparationContext(conversationID: fixture.context.conversationID,
             modelPolicy: AgentModelPolicy(localOnly: false, allowedSelections: [fixture.request.selection], strategy: .pinned, requiredCapabilities: AgentModelCapabilitySet([])),

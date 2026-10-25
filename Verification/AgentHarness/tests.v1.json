@@ -2107,6 +2107,10 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.ToolV2AdapterTests/testDelegatedMessagingKeepsItsCapabilityWithoutGrantingCanonicalWrites"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ResponsesAPIModelProviderTests/testInvalidNativeArgumentsRejectTheWholeBatchAndRetainMeteredRepairFeedback"
         }
       ],
       "platforms": [
