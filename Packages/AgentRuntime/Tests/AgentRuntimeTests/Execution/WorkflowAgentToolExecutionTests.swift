@@ -90,6 +90,20 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
         XCTAssertTrue(childEvents.contains { if case .toolOutcomeRecorded(_, .completed) = $0.payload.event { return true }; return false })
         let result = try await harness.executor.attach(to: childHandle).result()
         XCTAssertEqual(result?.usage.quantities[.toolInvocations], 1)
+        let recordedBeforeResult = try await journal.loadProjection(for: workflowID)
+        let beforeResult = try XCTUnwrap(recordedBeforeResult)
+        var completedGraph = try XCTUnwrap(beforeResult.taskGraph)
+        let outcome = WorkflowAgentOutcomeV1.completed(value: .inline(try CanonicalJSON(.string("Sent the evidence"))), usage: result?.usage ?? .zero)
+        try completedGraph.settle(call: call, outcome: outcome)
+        var resultEvents: [WorkflowRunEventV1] = []
+        for kind in [WorkflowRunEventKindV1.agentChildSubmitted(callID: call.callID, handleID: childHandle), .agentCallSettled(callID: call.callID, outcome: outcome),
+                     .collaborationRecorded(WorkflowCollaborationReceipt(index: 2, commandDigest: StableDigest.sha256(Data("settled".utf8)), senderRunID: root.runID, graph: completedGraph))] {
+            resultEvents.append(try WorkflowRunEventV1(eventID: WorkflowEventID(), runID: workflowID,
+                sequence: beforeResult.lastSequence + UInt64(resultEvents.count) + 1,
+                timestamp: AgentTimestamp(rawValue: 90), previousDigest: resultEvents.last?.recordDigest ?? beforeResult.lastDigest, kind: kind))
+        }
+        _ = try await journal.append(WorkflowEventAppendRequestV1(runID: workflowID, expectedSequence: beforeResult.lastSequence,
+            expectedDigest: beforeResult.lastDigest, events: resultEvents))
         let accepted = try await harness.repository.session(for: root.runID)
         XCTAssertEqual(accepted?.inputs.count, 1)
         XCTAssertEqual(accepted?.inputs.first?.sender, .agent(childRunID))
@@ -123,6 +137,16 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
         XCTAssertTrue(requests.last!.messages.contains { $0.content.contains("Preserve source URLs and distinguish missing evidence") })
         let consumed = try await harness.repository.session(for: root.runID)
         XCTAssertEqual(consumed?.inclusions.count, 2)
+        let observations = try await service.read(sender: coordinator.runID, artifactID: "observations:evidence:1", offset: 0, length: 12_000)
+        XCTAssertTrue(observations.string.contains(invocationID.description))
+        let originalID = "observation:" + call.callID.description + ":" + invocationID.description
+        let originalMessage = try await service.read(sender: coordinator.runID, artifactID: originalID, offset: 0, length: 12_000)
+        XCTAssertTrue(originalMessage.string.contains("fourteen days"))
+        XCTAssertTrue(originalMessage.string.contains("accepted"))
+        do { _ = try await service.read(sender: coordinator.runID, artifactID: "observation:" + WorkflowAgentCallID().description + ":" + invocationID.description, offset: 0, length: 100); XCTFail("A foreign producer cannot be read") }
+        catch WorkflowTaskGraphError.unavailableInput {}
+        let requestsAfterRead = await provider.script.capturedRequests()
+        XCTAssertEqual(requestsAfterRead.count, requests.count, "Shared evidence reads do not repeat execution")
         do { _ = try await service.list(sender: root.runID); XCTFail("Unbound root IDs do not grant tool membership") }
         catch AgentSessionError.invalidHistory {}
     }

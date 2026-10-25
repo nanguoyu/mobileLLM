@@ -2136,3 +2136,15 @@ for `local.write`. Safe preset treats authorized team admission as an app-owned 
 still binds the actual sender, team destination, payload, idempotency key and shared tool budget.
 The send_message descriptor is version 2. Historical version 1 results remain readable, while fresh
 admissions use version 2. Old frozen tool descriptors are never silently rewritten.
+
+
+Accepted input for a completed workflow agent reopens its latest completed task through the recorded
+CAS graph update before further dispatch. This uses its existing session and the goal's remaining
+activation/model/tool budget, retains its prior result as an exact input, and invalidates downstream
+consumers. It never grants a separate allowance or drops an input to permit delivery. Active, pending
+or failed assignments retain their existing control path.
+
+The shared artifact reader also resolves `observations:<artifactID>` into the producer's settled tool
+observation catalog. A returned observation ID reads its exact sanitized arguments, typed outcome and
+record digest. The producer must belong to this goal and an immutable artifact, including historical
+versions. Reads cannot address an arbitrary run, access hidden reasoning, or repeat an external call.

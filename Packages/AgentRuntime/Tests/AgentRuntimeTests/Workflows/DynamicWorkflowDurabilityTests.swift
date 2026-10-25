@@ -159,6 +159,32 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
         XCTAssertEqual(starts.filter { $0 != "coordinator" }, ["slow", "source", "dependent"])
     }
 
+    func testV5LateInboxReopensItsOwnerWithinTheGoalInsteadOfRepeatingDelivery() async throws {
+        func task(_ id: String, dependencies: [String] = []) -> JSONValue {
+            .object(["id": .string(id), "expectedRevision": .integer(0), "agent": .string(id),
+                "instruction": .string("Complete " + id), "dependencies": .array(dependencies.map(JSONValue.string)),
+                "required": .bool(true), "maxToolCalls": .integer(0), "model": .string(""), "inputRanges": .array([])])
+        }
+        let args = try CanonicalJSON(.object(["goal": .string("Incorporate late team feedback."),
+            "plan": v5Decision("work", tasks: [task("source"), task("dependent", dependencies: ["source"])]),
+            "availableTools": .array([]), "runDate": .string("2026-10-25")]))
+        let fixture = try makeFixture(body: "", args: args, source: CollaborativeWorkflow.source)
+        let spawner = V5WorkflowSpawner(lateMessage: true)
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        _ = try await engine.runAndWait(runID: fixture.launch.runID)
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(projection?.state, .completed)
+        let starts = await spawner.starts
+        XCTAssertEqual(starts.filter { $0 == "source" }.count, 1)
+        XCTAssertEqual(starts.filter { $0 == "dependent" }.count, 2)
+        XCTAssertEqual(projection?.taskGraph?.artifacts.count, 3, "The earlier result remains immutable")
+        let prompt = await spawner.dependentPrompt
+        XCTAssertTrue(prompt.contains("dependent:1"), "The continuation receives its prior result")
+    }
+
     func testTaskGraphPausesWithUnfinishedGoalAndExplicitResumeContinuesWithoutRepeatingWork() async throws {
         let fixture = try makeFixture(body: """
         let view = await collaborate({action:'snapshot'});
@@ -916,10 +942,16 @@ private actor V5WorkflowSpawner: SubagentSpawning {
     private var dependentStarted = false
     private(set) var starts: [String] = []
     private(set) var dependentPrompt = ""
+    private let lateMessage: Bool
+    private var inbox: AgentSessionPendingInputs = .init()
+    private var injected = false
+    init(lateMessage: Bool = false) { self.lateMessage = lateMessage }
+    func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs { inbox }
 
     func spawn(_ request: SubagentSpawnRequest, continuing seedRunID: AgentRunID,
                senderRunID: AgentRunID) async throws -> AgentExecutionHandleID {
-        try await spawn(request)
+        if inbox.messages.contains(where: { $0.seedRunID == seedRunID }) { inbox = .init() }
+        return try await spawn(request)
     }
 
     func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID {
@@ -951,6 +983,11 @@ private actor V5WorkflowSpawner: SubagentSpawning {
             answer = try AgentAnswer(text: String(repeating: "x", count: 40_000) + "EXACT-TAIL-EVIDENCE")
         } else {
             answer = try AgentAnswer(text: "Reviewed original tail")
+            if lateMessage && !injected {
+                injected = true
+                inbox = AgentSessionPendingInputs(count: 1, messages: [AgentSessionPendingMessage(id: MessageID(),
+                    seedRunID: request.childRunID, sender: .agent(request.parentRunID), preview: "Check the new evidence before delivery.")])
+            }
         }
         return SubagentResult(runID: request.childRunID, handleID: handleID, outcome: .completed(answer: answer, usage: .zero))
     }

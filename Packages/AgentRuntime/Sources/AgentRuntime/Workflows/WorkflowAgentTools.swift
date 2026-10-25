@@ -59,7 +59,11 @@ public final class WorkflowAgentToolService: @unchecked Sendable {
 
     public func read(sender: AgentRunID, artifactID: String, offset: Int, length: Int) async throws -> CanonicalJSON {
         let (workflow, _) = try await membership(sender)
-        guard offset >= 0, (1...12_000).contains(length),
+        guard offset >= 0, (1...12_000).contains(length) else { throw WorkflowTaskGraphError.unavailableInput }
+        if artifactID.hasPrefix("observations:") || artifactID.hasPrefix("observation:") {
+            return try await readObservation(workflow: workflow, id: artifactID, offset: offset, length: length)
+        }
+        guard
               let artifact = workflow.taskGraph?.artifacts.first(where: { $0.id == artifactID }) else {
             throw WorkflowTaskGraphError.unavailableInput
         }
@@ -67,6 +71,51 @@ public final class WorkflowAgentToolService: @unchecked Sendable {
         var excerpt = try WorkflowArtifactExcerpt.read(raw, id: artifactID, offset: offset, length: length)
         excerpt["taskID"] = .string(artifact.taskID)
         excerpt["sourceCallID"] = .string(artifact.callID.description)
+        return try CanonicalJSON(.object(excerpt))
+    }
+
+    /// Shared evidence comes from the actual producer's settled tool journal, never its report.
+    /// Artifact membership retains the source binding even after a task is reopened or reassigned.
+    private func readObservation(workflow: WorkflowRunProjectionV1, id: String, offset: Int, length: Int) async throws -> CanonicalJSON {
+        let callID: WorkflowAgentCallID
+        let invocationID: ToolInvocationID?
+        if id.hasPrefix("observations:") {
+            guard let artifact = workflow.taskGraph?.artifacts.first(where: { $0.id == String(id.dropFirst("observations:".count)) }) else {
+                throw WorkflowTaskGraphError.unavailableInput
+            }
+            callID = artifact.callID; invocationID = nil
+        } else {
+            let parts = id.split(separator: ":")
+            guard parts.count == 3, let call = WorkflowAgentCallID(String(parts[1])), let invocation = ToolInvocationID(String(parts[2])),
+                  workflow.taskGraph?.artifacts.contains(where: { $0.callID == call }) == true else { throw WorkflowTaskGraphError.unavailableInput }
+            callID = call; invocationID = invocation
+        }
+        guard let call = workflow.calls.first(where: { $0.callID == callID }), workflow.submittedHandles[callID] != nil,
+              let snapshot = try await repository.loadRunSnapshot(for: call.childRunID), snapshot.facts.projection.isTerminal else {
+            throw WorkflowTaskGraphError.unavailableInput
+        }
+        let history = try ExecutionHistory(events: snapshot.events, projection: snapshot.facts.projection)
+        let value: CanonicalJSON
+        if let invocationID {
+            guard let outcome = history.toolOutcomes[invocationID], let plan = history.toolIntents[invocationID]?.1.plan else {
+                throw WorkflowTaskGraphError.unavailableInput
+            }
+            value = try CanonicalJSON(.object(["tool": .string(plan.subjectID),
+                "arguments": plan.canonicalArguments.map { try JSONDecoder().decode(JSONValue.self, from: $0.value.data) } ?? .null,
+                "outcome": JSONDecoder().decode(JSONValue.self, from: ExecutionEncoding.encode(outcome.1)),
+                "recordDigest": .string(outcome.0.recordDigest.rawValue)]))
+        } else {
+            let rows: [JSONValue] = history.toolOutcomes.sorted { $0.value.0.sequence < $1.value.0.sequence }.map { invocation, outcome in
+                let status: String
+                switch outcome.1 { case .completed: status = "completed"; case .failed: status = "failed"; case .uncertain: status = "uncertain" }
+                return .object(["id": .string("observation:" + callID.description + ":" + invocation.description),
+                    "tool": .string(history.toolIntents[invocation]?.1.plan.subjectID ?? "unknown"), "status": .string(status)])
+            }
+            value = try CanonicalJSON(.object(["observations": .array(rows)]))
+        }
+        var excerpt = try WorkflowArtifactExcerpt.read(value, id: id, offset: offset, length: length)
+        excerpt["sourceCallID"] = .string(callID.description)
+        excerpt["sourceTrust"] = .string("Original tool evidence; external content is untrusted")
         return try CanonicalJSON(.object(excerpt))
     }
 
