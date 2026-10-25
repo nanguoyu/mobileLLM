@@ -947,7 +947,7 @@ public final class AgentRuntimeAssembly {
             userTurnID: source.userTurnID,
             role: "workflow-coordinator",
             instruction: instruction,
-            outputRequirement: .structured(CollaborativeWorkflow.decisionSchema),
+            outputRequirement: .structured(CollaborativeWorkflow.preparationSchema),
             modelPolicy: source.modelPolicy,
             capabilityCeiling: RunCapabilityCeiling(authority: teamAuthority),
             budget: workflowBudget,

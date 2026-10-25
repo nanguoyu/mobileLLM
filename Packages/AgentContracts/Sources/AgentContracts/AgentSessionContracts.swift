@@ -9,6 +9,8 @@ public typealias AgentSessionID = AgentIdentifier<AgentSessionIDDomain>
 public enum AgentSessionInputMode: String, Codable, Sendable {
     case steer
     case nextTurn
+    /// Agent-authored information, saved for later context without requiring a reply or activation.
+    case notice
 }
 
 /// Nil on old records means a human. Agent identities are supplied by the trusted runtime.
@@ -145,7 +147,11 @@ public struct AgentSessionSnapshot: Hashable, Codable, Sendable {
                   input.body.semanticType == "agent-session-input.v1",
                   (input.mode == .steer && input.targetRunID.map(runs.contains) == true)
                     || (input.mode == .nextTurn && input.targetRunID == nil)
+                    || (input.mode == .notice && (input.targetRunID == nil || input.targetRunID.map(runs.contains) == true))
             else { throw AgentContractError.invalidName("agent session input") }
+            if input.mode == .notice, case .agent = input.sender {} else if input.mode == .notice {
+                throw AgentContractError.invalidName("only agent messages may be optional notices")
+            }
         }
         for inclusion in inclusions {
             guard let input = inputs.first(where: { $0.id == inclusion.messageID }),
@@ -163,6 +169,10 @@ public struct AgentSessionSnapshot: Hashable, Codable, Sendable {
     public func pendingInputs(for runID: AgentRunID) -> [AgentSessionInput] {
         let included = Set(inclusions.map(\.messageID))
         return inputs(for: runID).filter { !included.contains($0.id) }
+    }
+
+    public func pendingInstructions(for runID: AgentRunID) -> [AgentSessionInput] {
+        pendingInputs(for: runID).filter { $0.mode != .notice }
     }
 
     public var pendingTurns: [AgentSessionInput] {

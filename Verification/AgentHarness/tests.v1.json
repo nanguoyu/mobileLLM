@@ -2123,6 +2123,14 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testV5FailedCoordinatorReplaysItsPauseBeforeResumingWithoutRepeatingWorkers"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testV5PreparationRequiresDelegationOrARealBlocker"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testTeamCatalogRetainsTheOldMessageAdapterWithoutAdvertisingDuplicateTools"
         }
       ],
       "platforms": [
@@ -3084,6 +3092,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.AgentSessionExecutionTests/testGoalOwnedInputCannotAutomaticallyMintAStandaloneHumanTurnBudget"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.WorkflowAgentToolExecutionTests/testNoticeIsRetainedWithoutRequiringAnActivationAndJoinsTheNextRealAssignment"
         }
       ],
       "platforms": [

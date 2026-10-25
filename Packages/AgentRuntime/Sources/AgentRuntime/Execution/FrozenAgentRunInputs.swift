@@ -7,7 +7,7 @@ extension FrozenAgentRunInputs {
     /// Collaboration exposes only its scoped internal operations. Disabled external tools stay off.
     public func addingWorkflowTools(availableSkills: [WorkflowSkillDefinition] = []) throws -> FrozenAgentRunInputs {
         let operations = WorkflowAgentToolOperation.allCases.filter { !availableSkills.isEmpty || !$0.isSkillOperation }
-        let additions = try operations.map(WorkflowAgentTool.descriptor)
+        let additions = try operations.map { try WorkflowAgentTool.descriptor($0) }
         let ids = additions.map(\.id.logicalID)
         let catalog = try ToolCatalogSnapshot(revision: toolCatalog.revision,
             descriptors: toolCatalog.descriptors.filter { $0.id.logicalID.providerID != "agent" } + additions,

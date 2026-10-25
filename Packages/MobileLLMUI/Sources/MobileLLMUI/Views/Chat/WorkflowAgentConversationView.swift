@@ -59,7 +59,7 @@ struct WorkflowAgentConversationView: View {
                             HStack {
                                 Text(message.senderName ?? "You").font(.callout.weight(.semibold))
                                 Spacer()
-                                Text(message.included ? "Included in a request" : "Saved · Pending")
+                                Text(message.included ? "Included in a request" : message.mode == .notice ? "Notice saved · Unread" : "Saved · Pending")
                                     .font(.caption).foregroundStyle(Theme.textSecondary)
                             }
                             if message.isAssignment {

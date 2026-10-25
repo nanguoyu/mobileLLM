@@ -182,7 +182,7 @@ public struct WorkflowAgentTool: ToolV2, Sendable {
         try ExternalDestination(kind: .privateDataStore, normalizedIdentity: "mobilellm.agents:" + conversation.description)
     }
 
-    public static func descriptor(_ operation: WorkflowAgentToolOperation) throws -> AgentToolDescriptor {
+    public static func descriptor(_ operation: WorkflowAgentToolOperation, legacyMessageSchema: Bool = false) throws -> AgentToolDescriptor {
         func string(_ maximum: Int) -> JSONValue {
             .object(["type": .string("string"), "minLength": .integer(1), "maxLength": .integer(Int64(maximum))])
         }
@@ -190,9 +190,15 @@ public struct WorkflowAgentTool: ToolV2, Sendable {
         let summary: String
         switch operation {
         case .sendMessage:
-            properties = ["target": string(48), "text": string(4_000), "mode": .object([
-                "type": .string("string"), "enum": .array([.string("steer"), .string("nextTurn")])])]
-            summary = "Send a durable message to a started teammate or coordinator. Steer joins its next model step; nextTurn queues later work. Acceptance does not mean inclusion or completion. Cannot override human requirements."
+            var mode: [String: JSONValue] = ["type": .string("string"),
+                "enum": .array((legacyMessageSchema ? ["steer", "nextTurn"] : ["steer", "nextTurn", "notice"]).map(JSONValue.string))]
+            if !legacyMessageSchema {
+                mode["description"] = .string("notice: status, closure or acknowledgement requiring no action; saved without forcing a reply. steer: new actionable instructions at the next step. nextTurn: explicitly request later work. Never use steer/nextTurn for no-action information.")
+            }
+            properties = ["target": string(48), "text": string(4_000), "mode": .object(mode)]
+            summary = legacyMessageSchema
+                ? "Send a durable message to a started teammate or coordinator. Steer joins its next model step; nextTurn queues later work. Acceptance does not mean inclusion or completion. Cannot override human requirements."
+                : "Send new information to a started teammate or coordinator. Use notice for no-action information; it is saved without requiring a reply. Use steer/nextTurn only for actual work. Results are delivered automatically. Acceptance is distinct from reading. Cannot override human requirements."
         case .readArtifact, .readContext, .readSkill:
             properties = ["id": string(128), "offset": .object(["type": .string("integer"), "minimum": .integer(0)]),
                 "length": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(12_000)])]
@@ -215,16 +221,17 @@ public struct WorkflowAgentTool: ToolV2, Sendable {
             "required": .array(properties.keys.sorted().map(JSONValue.string)), "additionalProperties": .bool(false)]))
         let writing = operation == .sendMessage
         return try AgentToolDescriptor(id: AgentToolDescriptorID(logicalID: AgentToolLogicalID(providerID: "agent", name: operation.rawValue),
-                version: SemanticVersion(writing ? "2.0.0" : "1.0.0")!, schemaDigest: schema.digest,
-                trustRevision: writing ? "workflow-tools.v2" : "workflow-tools.v1"),
+                version: SemanticVersion(writing ? (legacyMessageSchema ? "2.0.0" : "2.1.0") : "1.0.0")!, schemaDigest: schema.digest,
+                trustRevision: writing ? (legacyMessageSchema ? "workflow-tools.v2" : "workflow-tools.v3") : "workflow-tools.v1"),
             title: operation.rawValue, summary: summary, inputSchema: schema, outputSchema: nil,
             effects: [writing ? .agentMessage : .localRead], requiredCapabilities: AgentCapabilitySet([writing ? .agentMessage : .localRead]),
             timeoutPolicy: ToolTimeoutPolicy(maximumMilliseconds: 10_000), retryPolicy: .never,
             idempotency: writing ? .idempotencyKeyRequired : .pureRead, supportsProgress: false, supportsCancellation: true)
     }
 
-    public init(operation: WorkflowAgentToolOperation, service: WorkflowAgentToolService) throws {
-        self.operation = operation; self.service = service; descriptor = try Self.descriptor(operation)
+    public init(operation: WorkflowAgentToolOperation, service: WorkflowAgentToolService, legacyMessageSchema: Bool = false) throws {
+        self.operation = operation; self.service = service
+        descriptor = try Self.descriptor(operation, legacyMessageSchema: legacyMessageSchema)
     }
 
     public func prepare(request: ToolExecutionRequest, context: ToolPreparationContext) async throws -> PreparedToolInvocation {

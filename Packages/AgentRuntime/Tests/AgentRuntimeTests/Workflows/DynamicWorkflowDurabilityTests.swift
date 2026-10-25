@@ -131,6 +131,19 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
         XCTAssertEqual(count, 0)
     }
 
+    func testV5PreparationRequiresDelegationOrARealBlocker() throws {
+        let schema = CollaborativeWorkflow.preparationSchema
+        XCTAssertEqual(schema.enforcement, .fullyEnforced)
+        XCTAssertFalse(try schema.validates(instance: v5Decision("deliver", answer: "Pretend the team finished")))
+        XCTAssertFalse(try schema.validates(instance: v5Decision("work")))
+        XCTAssertTrue(try schema.validates(instance: v5Decision("blocked")))
+        let task: JSONValue = .object(["id": .string("analysis"), "expectedRevision": .integer(0), "agent": .string("analyst"),
+            "instruction": .string("Analyze the supplied evidence"), "dependencies": .array([]), "inputs": .array([]),
+            "required": .bool(true), "maxToolCalls": .integer(0), "model": .string(""), "tools": .array([]),
+            "skills": .array([]), "effort": .string("inherit"), "inputRanges": .array([])])
+        XCTAssertTrue(try schema.validates(instance: v5Decision("work", tasks: [task])))
+    }
+
     func testV5CoordinatorRunsDeclaredDependenciesAndExactSourceRangesThroughProductionEngine() async throws {
         func task(_ id: String, dependencies: [String] = [], ranges: [JSONValue] = []) -> JSONValue {
             .object(["id": .string(id), "expectedRevision": .integer(0), "agent": .string(id),
@@ -157,6 +170,9 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
         XCTAssertFalse(dependentPrompt.contains(String(repeating: "x", count: 100)))
         let starts = await spawner.starts
         XCTAssertEqual(starts.filter { $0 != "coordinator" }, ["slow", "source", "dependent"])
+        let frames = await spawner.coordinatorPrompts
+        XCTAssertTrue(frames.allSatisfy { !$0.contains(String(repeating: "x", count: 13_000)) },
+                      "The artifact catalog must not duplicate whole source bodies beside bounded previews")
     }
 
     func testV5LateInboxReopensItsOwnerWithinTheGoalInsteadOfRepeatingDelivery() async throws {
@@ -992,6 +1008,7 @@ private actor V5WorkflowSpawner: SubagentSpawning {
     private var dependentStarted = false
     private(set) var starts: [String] = []
     private(set) var dependentPrompt = ""
+    private(set) var coordinatorPrompts: [String] = []
     private let lateMessage: Bool
     private let reassignPendingOwner: Bool
     private let failFirstCoordinator: Bool
@@ -1015,6 +1032,7 @@ private actor V5WorkflowSpawner: SubagentSpawning {
         requests[handle] = request
         let name = request.role == "workflow-supervisor" ? "coordinator" : request.instruction.components(separatedBy: "\nTASK ID: ").last!.components(separatedBy: "\n")[0]
         starts.append(name)
+        if name == "coordinator" { coordinatorPrompts.append(request.instruction) }
         if name == "dependent" {
             dependentPrompt = request.instruction
             dependentStarted = true

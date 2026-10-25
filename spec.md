@@ -2170,3 +2170,15 @@ reach the recorded pause and explicit resumption grant before starting a new act
 failed coordinator while reconstructing the prefix would change later collaboration-command identities.
 Non-session archived programs keep their established retry semantics. An unrelated replay or host
 invariant failure retains its own diagnostic instead of being mislabeled with an earlier child failure.
+
+
+Agent-authored `notice` messages retain their durable body and unread/included status, but do not
+require a new activation or block completion. They join a later real assignment or an already-needed
+model step. Human input and goal amendments cannot use notice mode and remain mandatory. `steer` and
+`nextTurn` retain their existing semantics. The message tool's 2.1 schema advertises this distinction;
+the exact 2.0 adapter remains available for frozen requests through the same execution implementation.
+
+New Work with agents preparation admits only actual nonempty assignments or an explicit blocker.
+It cannot report a final answer without delegation. Later coordination still permits delivery when
+required work is complete. Artifact catalogs contain references and provenance, not duplicate full
+result bodies beside selected previews. Ordinary chat and historical workflows retain their paths.

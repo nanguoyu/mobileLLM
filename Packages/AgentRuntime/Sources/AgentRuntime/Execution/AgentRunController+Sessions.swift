@@ -73,7 +73,7 @@ extension AgentRunController {
         for runID in runIDs {
             guard let session = try await journal.session(for: runID), visited.insert(session.id).inserted else { continue }
             let consumed = Set(session.inclusions.map(\.messageID))
-            let pending = session.inputs.filter { !consumed.contains($0.id) }
+            let pending = session.inputs.filter { $0.mode != .notice && !consumed.contains($0.id) }
             count += pending.count
             for input in pending where messages.count < 32 {
                 messages.append(AgentSessionPendingMessage(id: input.id, seedRunID: session.seedRunID, sender: input.sender,
@@ -232,6 +232,9 @@ extension AgentRunController {
         defer { endPublicMutation() }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               text.utf8.count <= 16_384 else { throw AgentSessionError.inputTooLarge }
+        if mode == .notice, case .agent = sender {} else if mode == .notice {
+            throw AgentSessionError.invalidHistory
+        }
         let id = try await sessionSnapshot(seedRunID: seedRunID, conversationID: conversationID).id
         await acquireSessionGate(id)
         defer { releaseSessionGate(id) }
@@ -262,10 +265,10 @@ extension AgentRunController {
             }
             let last = session.activations.last!
             let facts = try await repository.loadRunFacts(for: last.runID)
-            let target = mode == .steer && facts?.projection.isTerminal == false ? last.runID : nil
+            let target = (mode == .steer || mode == .notice) && facts?.projection.isTerminal == false ? last.runID : nil
             var next = session
             next.revision += 1
-            next.inputs.append(AgentSessionInput(id: messageID, mode: target == nil ? .nextTurn : .steer,
+            next.inputs.append(AgentSessionInput(id: messageID, mode: mode == .notice ? .notice : target == nil ? .nextTurn : .steer,
                 body: body, acceptedAt: acceptedAt, targetRunID: target,
                 requestedMode: target == nil && mode == .steer ? mode : nil, sender: sender))
             do {

@@ -7,6 +7,14 @@ import XCTest
 // TEST-ID: AHT-SESSION-002
 final class WorkflowAgentToolExecutionTests: XCTestCase {
     func testModelMessageUsesAuthorizedBoundaryAndWaitsForBudgetedCoordinatorActivation() async throws {
+        try await runMessagingCase(mode: .steer)
+    }
+
+    func testNoticeIsRetainedWithoutRequiringAnActivationAndJoinsTheNextRealAssignment() async throws {
+        try await runMessagingCase(mode: .notice)
+    }
+
+    private func runMessagingCase(mode: AgentSessionInputMode) async throws {
         let offset = 842
         let model = try ExecutorTestModelDefinition(offset: offset)
         let descriptor = try WorkflowAgentTool.descriptor(.sendMessage)
@@ -14,7 +22,7 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
         let skillReader = try WorkflowAgentTool.descriptor(.readSkill)
         let invocationID = ToolInvocationID()
         let proposed = try ProposedToolCall(invocationID: invocationID, toolID: descriptor.id.logicalID,
-            arguments: CanonicalJSON(.object(["target": .string("coordinator"), "text": .string("The source changed to fourteen days."), "mode": .string("steer")])))
+            arguments: CanonicalJSON(.object(["target": .string("coordinator"), "text": .string("The source changed to fourteen days."), "mode": .string(mode.rawValue)])))
         let readCall = try ProposedToolCall(invocationID: ToolInvocationID(), toolID: reader.id.logicalID,
             arguments: CanonicalJSON(.object(["id": .string("turn:" + ExecutorTestID.run(offset).description + ":user"),
                 "offset": .integer(0), "length": .integer(200)])))
@@ -107,7 +115,22 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
         let accepted = try await harness.repository.session(for: root.runID)
         XCTAssertEqual(accepted?.inputs.count, 1)
         XCTAssertEqual(accepted?.inputs.first?.sender, .agent(childRunID))
-        XCTAssertEqual(accepted?.inputs.first?.mode, .nextTurn, "The completed coordinator anchor must queue its next activation")
+        XCTAssertEqual(accepted?.inputs.first?.mode, mode == .notice ? .notice : .nextTurn)
+        let pending = try await harness.executor.controller.pendingSessionInputs(runIDs: [root.runID])
+        XCTAssertEqual(pending.count, mode == .notice ? 0 : 1)
+        XCTAssertEqual(accepted?.pendingTurns.count, mode == .notice ? 0 : 1)
+        if mode == .notice, var active = accepted, let notice = active.inputs.first {
+            active.inputs[0] = AgentSessionInput(id: notice.id, mode: .notice, body: notice.body,
+                acceptedAt: notice.acceptedAt, targetRunID: root.runID, sender: notice.sender)
+            try active.validate()
+            XCTAssertEqual(active.pendingInputs(for: root.runID).count, 1)
+            XCTAssertTrue(active.pendingInstructions(for: root.runID).isEmpty)
+            do {
+                try await harness.executor.controller.sendSessionInput(seedRunID: root.runID, conversationID: conversation,
+                    messageID: MessageID(), text: "Human constraints stay required", mode: .notice, startNextTurn: false)
+                XCTFail("Human input cannot be downgraded to an optional notice")
+            } catch AgentSessionError.invalidHistory {}
+        }
         XCTAssertEqual(accepted?.activations.count, 1)
         let storedTool = try await harness.executor.controller.readSessionContext(runID: childRunID,
             id: "tool:" + childRunID.description + ":" + invocationID.description, offset: 0, length: 12_000)

@@ -1084,7 +1084,7 @@ public actor SQLiteRunJournal: RuntimeRepository {
 
         if request.events.contains(where: { $0.payload.event.isRunTerminal && $0.payload.runState == .completed }),
            let session = try session(for: request.runID, db: db),
-           !session.pendingInputs(for: request.runID).isEmpty {
+           !session.pendingInstructions(for: request.runID).isEmpty {
             throw AgentSessionError.pendingInput
         }
         let projected: AgentRunProjection

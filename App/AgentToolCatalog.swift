@@ -271,10 +271,15 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
                 trustRevision: "builtin.v1"
             ))
         }
+        var teamDescriptors: [AgentToolDescriptor] = []
         if let workflowAgents {
             for operation in WorkflowAgentToolOperation.allCases {
-                try register(WorkflowAgentTool(operation: operation, service: workflowAgents))
+                let tool = try WorkflowAgentTool(operation: operation, service: workflowAgents)
+                register(tool); teamDescriptors.append(tool.descriptor)
             }
+            // Exact old frozen descriptors remain executable, but only the current schema is
+            // advertised on fresh admission. Both versions use the same execution implementation.
+            try register(WorkflowAgentTool(operation: .sendMessage, service: workflowAgents, legacyMessageSchema: true))
         }
         let builtins = try Self.catalog(
             enabledToolNames: enabledToolNames,
@@ -283,7 +288,7 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
             locationSeamAvailable: locationProvider != nil
         )
         self.snapshot = try ToolCatalogSnapshot(revision: builtins.revision,
-            descriptors: builtins.descriptors + adapters.values.filter { $0.descriptor.id.logicalID.providerID == "agent" }.map(\.descriptor),
+            descriptors: builtins.descriptors + teamDescriptors,
             unavailable: builtins.unavailable)
         self.adapters = adapters
         self.mcpCache = mcpCache

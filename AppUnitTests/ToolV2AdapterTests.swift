@@ -306,6 +306,7 @@ final class ToolV2AdapterTests: XCTestCase {
         let snapshot = makeSnapshot(userMessageID: UUID(), deepSeekWebServiceID: "account-A")
         let expected = try assembly.frozenBuilder.frozenInputs(snapshot: snapshot, artifactReferences: [])
         let generator = try assembly.makeWorkflowCoordinator(snapshot: snapshot)
+        XCTAssertEqual(generator.outputRequirement, .structured(CollaborativeWorkflow.preparationSchema))
         let frozen = try await assembly.inputFreezer.freeze(generator)
         XCTAssertTrue(try frozen.selectedTools(latestUserRequest: "Search and read official webpages").descriptors.isEmpty)
         XCTAssertEqual(frozen.toolCatalog.descriptors.filter { $0.id.logicalID.providerID != "agent" }, expected.toolCatalog.descriptors)
@@ -334,6 +335,27 @@ final class ToolV2AdapterTests: XCTestCase {
             XCTAssertEqual(reasoningFrozen.generationParameters.thinkingMode, enabled ? .enabled : .disabled,
                 "The generator's durable parent is inherited by research children")
         }
+    }
+
+    @MainActor
+    func testTeamCatalogRetainsTheOldMessageAdapterWithoutAdvertisingDuplicateTools() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)
+        let suite = "message-schema-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
+        let assembly = try AgentRuntimeAssembly(engine: MockLLMEngine(script: .init()), downloadBase: root,
+            conversationDirectory: root, models: [LLMCatalog.bonsai8b], snapshot: { _, _, _, _ in nil })
+        let service = WorkflowAgentToolService(repository: assembly.repository, journal: assembly.dynamicWorkflowJournal, values: InlineWorkflowValueStore())
+        let catalog = try AppToolCatalog(enabledToolNames: [], memoryStore: nil, eventStore: nil, locationProvider: nil,
+            mcpCache: MCPDiscoveryCache(defaults: defaults), workflowAgents: service)
+        let snapshot = try await catalog.localSnapshot()
+        XCTAssertEqual(snapshot.descriptors.filter { $0.id.logicalID.name == "send_message" }.count, 1)
+        let prior = try WorkflowAgentTool.descriptor(.sendMessage, legacyMessageSchema: true)
+        let restored = try await catalog.tool(for: prior.id)
+        XCTAssertEqual(restored?.descriptor, prior)
+        let notice = JSONValue.object(["target": .string("coordinator"), "text": .string("Status only"), "mode": .string("notice")])
+        XCTAssertFalse(try prior.inputSchema.validates(instance: notice))
+        XCTAssertTrue(try WorkflowAgentTool.descriptor(.sendMessage).inputSchema.validates(instance: notice))
     }
 
     // TEST-ID: AHT-DYNAMIC-001
