@@ -651,6 +651,10 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
         if let requestedAgentType { object["requestedAgentType"] = .string(requestedAgentType) }
         if let maximumToolCalls { object["maximumToolCalls"] = .unsignedInteger(maximumToolCalls) }
         if let sessionKey { object["sessionKey"] = .string(sessionKey) }
+        if let task, let revision = task.expectedRevision {
+            object["taskClaim"] = .object(["id": .string(task.taskID), "revision": .unsignedInteger(revision),
+                "inputs": .array(task.inputArtifactIDs.map(JSONValue.string)), "output": .string(task.outputArtifactID)])
+        }
         return try CanonicalJSON(.object(object)).fingerprint
     }
 }
@@ -738,6 +742,9 @@ public enum WorkflowRunEventKindV1: Hashable, Codable, Sendable {
     case agentChildSubmitted(callID: WorkflowAgentCallID, handleID: AgentExecutionHandleID)
     case agentCallSettled(callID: WorkflowAgentCallID, outcome: WorkflowAgentOutcomeV1)
     case waitSelected(WorkflowWaitSelection)
+    case collaborationRecorded(WorkflowCollaborationReceipt)
+    case goalAmended(WorkflowGoalAmendment)
+    case goalResumed(pauseIndex: UInt32, graph: WorkflowTaskGraph)
     case agentRestartRequested(callID: WorkflowAgentCallID)
     case usageCommitted(AgentUsage)
     case reconciliationRequired(callID: WorkflowAgentCallID?, reason: String)

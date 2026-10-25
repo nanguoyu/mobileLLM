@@ -209,6 +209,9 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         let startWait: @convention(block) (Int32, Int32, String) -> Void = { [weak self] requestID, index, ordinals in
             self?.startWait(requestID: requestID, index: index, ordinals: ordinals)
         }
+        let startCollaboration: @convention(block) (Int32, Int32, String) -> Void = { [weak self] requestID, index, command in
+            self?.startCollaboration(requestID: requestID, index: index, command: command)
+        }
         let finished: @convention(block) (Bool, String) -> Void = { [weak self] succeeded, payload in
             self?.scriptFinished(succeeded: succeeded, payload: payload)
         }
@@ -229,12 +232,13 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         context.setObject(startEvidence, forKeyedSubscript: "__mllmStartEvidence" as NSString)
         context.setObject(startBudgetSnapshot, forKeyedSubscript: "__mllmStartBudgetSnapshot" as NSString)
         context.setObject(startWait, forKeyedSubscript: "__mllmStartWait" as NSString)
+        context.setObject(startCollaboration, forKeyedSubscript: "__mllmStartCollaboration" as NSString)
         context.setObject(finished, forKeyedSubscript: "__mllmFinished" as NSString)
     }
 
     private func userFunctionSource() -> String {
         """
-        (async function(agent, parallel, pipeline, workflow, phase, log, serialize, unique, webEvidence, args, budget, console, spawn, waitAny,
+        (async function(agent, parallel, pipeline, workflow, phase, log, serialize, unique, webEvidence, args, budget, console, spawn, waitAny, collaborate,
                         __workflowCheckpoint) {
         'use strict';
         \(script.instrumentedSource)
@@ -261,12 +265,13 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
           const __startEvidenceNative = globalThis.__mllmStartEvidence;
           const __startBudgetSnapshotNative = globalThis.__mllmStartBudgetSnapshot;
           const __startWaitNative = globalThis.__mllmStartWait;
+          const __startCollaborationNative = globalThis.__mllmStartCollaboration;
           const __finishedNative = globalThis.__mllmFinished;
           const __userFunction = globalThis.__mllmUserFunction;
           for (const __name of ['__mllmCheckpoint','__mllmStopCode','__mllmPhase','__mllmLog',
             '__mllmCollectionAllowed','__mllmSerializedEstimateAllowed','__mllmBudgetTotal','__mllmStartEvidence',
             '__mllmBudgetSpent','__mllmStartAgent','__mllmStartWorkflow','__mllmFinished',
-            '__mllmUserFunction','__mllmStartBudgetSnapshot','__mllmStartWait']) { try { delete globalThis[__name]; } catch (_) {} }
+            '__mllmUserFunction','__mllmStartBudgetSnapshot','__mllmStartWait','__mllmStartCollaboration']) { try { delete globalThis[__name]; } catch (_) {} }
 
           const __RealJSON = JSON;
           const __RealJSONParse = __RealJSON.parse.bind(__RealJSON);
@@ -414,6 +419,8 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
               return result;
             }, error => { __waiting = false; throw error; });
           };
+          let __collaborationSequence = 1;
+          const collaborate = command => __request(__startCollaborationNative, [__collaborationSequence++, __stringify(command)]);
           const parallel = thunks => {
             if (!Array.isArray(thunks) || !__collectionAllowedNative(thunks.length)) {
               const error = new Error('__MOBILELLM_WORKFLOW_ERROR__|collectionLimitExceeded|parallel input exceeds the collection limit');
@@ -550,7 +557,7 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             try { __finishedNative(true, __stringify(value === undefined ? null : value)); }
             catch (error) { __finishedNative(false, __safeMessage(error)); }
           };
-          __userFunction(agent, parallel, pipeline, workflow, phase, log, serialize, unique, webEvidence, args, budget, console, spawn, waitAny,
+          __userFunction(agent, parallel, pipeline, workflow, phase, log, serialize, unique, webEvidence, args, budget, console, spawn, waitAny, collaborate,
                          __checkpoint).then(
             __finishSuccess,
             error => __finishedNative(false, __safeMessage(error))
@@ -619,6 +626,24 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
                 guard index > 0 else { throw WorkflowScriptRuntimeError.invalidArguments("wait index") }
                 let handles = try JSONDecoder().decode([UInt32].self, from: Data(ordinals.utf8))
                 let result = try await host.waitAny(UInt32(index), handles)
+                try Task.checkCancellation()
+                try resolve(requestID: requestID, value: result)
+            } catch is CancellationError {
+                reject(requestID: requestID, error: .cancelled, fatal: true)
+            } catch {
+                reject(requestID: requestID, error: .hostFailure(Self.sanitize(String(describing: error))), fatal: true)
+            }
+        }
+    }
+
+    private func startCollaboration(requestID: Int32, index: Int32, command: String) {
+        guard pendingTasks[requestID] == nil, !isCompleted else { return }
+        pendingTasks[requestID] = Task { [weak self, host] in
+            guard let self else { return }
+            do {
+                guard index > 0 else { throw WorkflowScriptRuntimeError.invalidArguments("collaboration index") }
+                let value = try CanonicalJSON(JSONDecoder().decode(JSONValue.self, from: Data(command.utf8)))
+                let result = try await host.collaborate(UInt32(index), value)
                 try Task.checkCancellation()
                 try resolve(requestID: requestID, value: result)
             } catch is CancellationError {

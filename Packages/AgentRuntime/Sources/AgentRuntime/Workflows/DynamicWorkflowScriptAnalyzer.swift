@@ -123,7 +123,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
     /// Candidate lint for the common `try { return agent(...) } catch` mistake. Returning a
     /// promise bypasses this catch when it later rejects. Strings/comments are already lexed out.
     private static func returnsUnawaitedHostCallFromTry(_ tokens: [JSToken]) -> Bool {
-        let asynchronousHosts: Set<String> = ["agent", "spawn", "waitAny", "parallel", "pipeline", "workflow", "webEvidence"]
+        let asynchronousHosts: Set<String> = ["agent", "spawn", "waitAny", "collaborate", "parallel", "pipeline", "workflow", "webEvidence"]
         for i in tokens.indices where tokens[i].identifier == "try" {
             guard i + 4 < tokens.count, tokens[i + 1].symbol == "{",
                   tokens[i + 2].identifier == "return",
@@ -355,7 +355,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
                         )
                     }
                     if embedded.contains(where: {
-                        ["agent", "spawn", "waitAny", "parallel", "pipeline", "workflow", "phase", "log", "webEvidence", "unique"]
+                        ["agent", "spawn", "waitAny", "collaborate", "parallel", "pipeline", "workflow", "phase", "log", "webEvidence", "unique"]
                             .contains($0.identifier ?? "")
                     }) {
                         throw WorkflowScriptAnalysisError.unsupportedConstruct(

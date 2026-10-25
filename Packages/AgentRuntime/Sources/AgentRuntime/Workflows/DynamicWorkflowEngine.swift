@@ -322,7 +322,29 @@ public actor DynamicWorkflowEngine {
             _ = await current.task.result
             active[runID] = nil
         }
+        let saved = try await requiredProjection(runID)
+        if saved.state == .paused, var graph = saved.taskGraph,
+           graph.state != .active, graph.state != .completed, graph.state != .cancelled,
+           let index = saved.collaborationReceipts.last?.index {
+            try graph.setGoalState(.active, reason: "Explicitly resumed")
+            _ = try await append([.goalResumed(pauseIndex: index, graph: graph)], to: saved)
+        }
         try await start(runID: runID)
+    }
+
+    /// User amendments are separate immutable facts. Reading a goal never invokes this method.
+    public func amendGoal(runID: WorkflowRunID, messageID: MessageID, text: String) async throws {
+        let amendment = WorkflowGoalAmendment(id: messageID, text: text, acceptedAt: try await clock.now())
+        if let current = active[runID] {
+            try await current.session.amendGoal(amendment)
+        } else {
+            let saved = try await requiredProjection(runID)
+            if let prior = saved.taskGraph?.amendments.first(where: { $0.id == messageID }) {
+                guard prior.text == text else { throw WorkflowTaskGraphError.stale }
+                return
+            }
+            _ = try await append([.goalAmended(amendment)], to: saved)
+        }
     }
 
     /// Resolves an uncertain child operation through that child's durable AgentExecutor command,
@@ -662,6 +684,12 @@ private actor DynamicWorkflowSession {
             throw childFailure
         } catch {
             if projection.state == .waitingForReconciliation { throw error }
+            if let goal = projection.taskGraph, [.blocked, .budgetExhausted, .paused].contains(goal.state),
+               projection.submittedHandles.keys.allSatisfy({ projection.outcomes[$0] != nil }),
+               !projection.isTerminal {
+                _ = try await append([.stateChanged(from: projection.state, to: .paused, reason: goal.reason)])
+                throw error
+            }
             if !projection.isTerminal {
                 // JavaScriptCore transports host failures through a bounded bridge error. Recover
                 // the already-journaled typed child failure so the workflow terminal record uses
@@ -728,6 +756,10 @@ private actor DynamicWorkflowSession {
             waitAny: { [weak self] index, ordinals in
                 guard let self, depth == 0 else { throw WorkflowScriptRuntimeError.unsupportedRequirement }
                 return try await self.waitAny(index: index, ordinals: ordinals)
+            },
+            collaborate: { [weak self] index, command in
+                guard let self, depth == 0 else { throw WorkflowScriptRuntimeError.unsupportedRequirement }
+                return try await self.collaborate(index: index, command: command)
             }
         )
     }
@@ -743,7 +775,7 @@ private actor DynamicWorkflowSession {
             try Task.checkCancellation()
             if stopped { throw CancellationError() }
             let candidates = ordinals.compactMap { detachedCalls[$0] }
-            if candidates.count == ordinals.count {
+            if candidates.count == ordinals.count, candidates.allSatisfy({ id in projection.calls.contains { $0.callID == id } }) {
                 let selected: WorkflowAgentCallID?
                 if let saved = projection.waits.first(where: { $0.index == index }) {
                     guard saved.candidates == candidates else { throw DynamicWorkflowEngineError.invocationOrderMismatch }
@@ -800,6 +832,117 @@ private actor DynamicWorkflowSession {
         let waiting = Array(journalWaiters.values)
         journalWaiters.removeAll()
         waiting.forEach { $0.resume() }
+    }
+
+    func amendGoal(_ amendment: WorkflowGoalAmendment) async throws {
+        if let prior = projection.taskGraph?.amendments.first(where: { $0.id == amendment.id }) {
+            guard prior.text == amendment.text else { throw WorkflowTaskGraphError.stale }
+            return
+        }
+        _ = try await append([.goalAmended(amendment)])
+    }
+
+    private func collaborate(index: UInt32, command: CanonicalJSON) async throws -> JSONValue {
+        guard command.data.count <= 262_144, index > 0, index <= 256 else { throw WorkflowTaskGraphError.invalid }
+        if let receipt = projection.collaborationReceipts.first(where: { $0.index == index }) {
+            guard receipt.commandDigest == command.fingerprint else { throw DynamicWorkflowEngineError.invocationOrderMismatch }
+            return try collaborationPacket(receipt, resumed: projection.goalResumptions[index])
+        }
+        let decoded = try JSONDecoder().decode(WorkflowCollaborationCommand.self, from: command.data)
+        if decoded.action == "admitted" {
+            guard let handles = decoded.handles, !handles.isEmpty else { throw WorkflowTaskGraphError.invalid }
+            while !handles.allSatisfy({ handle in
+                guard let id = detachedCalls[handle] else { return false }
+                return projection.calls.contains { $0.callID == id }
+            }) {
+                try Task.checkCancellation()
+                try await awaitJournalChange()
+            }
+        }
+        return try await appendMutex.run { [weak self] in
+            guard let self else { throw CancellationError() }
+            return try await self.performCollaboration(index: index, command: command, decoded: decoded)
+        }
+    }
+
+    private func performCollaboration(index: UInt32, command: CanonicalJSON,
+                                      decoded: WorkflowCollaborationCommand) async throws -> JSONValue {
+        guard index == projection.collaborationReceipts.count + 1 else { throw DynamicWorkflowEngineError.invocationOrderMismatch }
+        var graph: WorkflowTaskGraph
+        if let current = projection.taskGraph { graph = current }
+        else {
+            guard let args = projection.launch.args,
+                  case .object(let root) = try JSONDecoder().decode(JSONValue.self, from: args.data),
+                  case .string(let objective)? = root["goal"] else { throw WorkflowTaskGraphError.invalid }
+            graph = try WorkflowTaskGraph(objective: objective)
+        }
+        var feedback: String?
+        var observation: JSONValue?
+        do {
+            switch decoded.action {
+            case "snapshot", "admitted": break
+            case "update":
+                guard let revision = decoded.expectedRevision, let changes = decoded.tasks else { throw WorkflowTaskGraphError.invalid }
+                try graph.update(changes, expectedRevision: revision)
+            case "settle":
+                guard let handle = decoded.handle, let id = detachedCalls[handle], evidenceVisibleCalls.contains(id),
+                      let call = projection.calls.first(where: { $0.callID == id }), let outcome = projection.outcomes[id]
+                else { throw WorkflowTaskGraphError.ownership }
+                try graph.settle(call: call, outcome: outcome)
+            case "read":
+                guard let id = decoded.artifactID, let artifact = graph.artifacts.first(where: { $0.id == id }),
+                      let offset = decoded.offset, offset >= 0, let length = decoded.length, (1...12_000).contains(length)
+                else { throw WorkflowTaskGraphError.unavailableInput }
+                let raw = try await valueStore.load(artifact.value)
+                let value = try JSONDecoder().decode(JSONValue.self, from: raw.data)
+                let text: String
+                if case .string(let content) = value { text = content } else { text = raw.string }
+                let source = Array(text.utf16)
+                guard offset < source.count else { throw WorkflowTaskGraphError.unavailableInput }
+                let end = min(source.count, offset + length)
+                observation = .object(["id": .string(id), "offset": .integer(Int64(offset)),
+                    "nextOffset": .integer(Int64(end)), "totalCharacters": .integer(Int64(source.count)),
+                    "content": .string(String(decoding: source[offset..<end], as: UTF16.self)), "truncated": .bool(end < source.count)])
+            case "deliver":
+                guard decoded.expectedRevision == graph.revision else { throw WorkflowTaskGraphError.stale }
+                guard projection.submittedHandles.keys.allSatisfy({ projection.outcomes[$0] != nil }),
+                      projection.reconciliationCallID == nil else { throw WorkflowTaskGraphError.incomplete }
+                try graph.setGoalState(.completed, reason: decoded.reason)
+            case "pause":
+                guard !graph.tasks.contains(where: { $0.state == .running }) else { throw WorkflowTaskGraphError.incomplete }
+                let next: WorkflowGoalState = decoded.reasonCode == "budget" ? .budgetExhausted : .blocked
+                try graph.setGoalState(next, reason: decoded.reason)
+            default: throw WorkflowTaskGraphError.invalid
+            }
+        } catch let error as WorkflowTaskGraphError {
+            feedback = error.localizedDescription
+            // Graph methods are transactional; an invalid model command is feedback, not a
+            // partial state change or an exception that discards successful sibling results.
+        }
+        let sender = projection.calls.last(where: {
+            $0.options.requestedAgentType == "workflow-supervisor" && evidenceVisibleCalls.contains($0.callID)
+        })?.childRunID ?? projection.launch.initiatingRunID
+        let receipt = WorkflowCollaborationReceipt(index: index, commandDigest: command.fingerprint,
+            senderRunID: sender, graph: graph, feedback: feedback, observation: observation)
+        _ = try await performAppendAndInstall([.collaborationRecorded(receipt)])
+        return try collaborationPacket(receipt)
+    }
+
+    private func collaborationPacket(_ receipt: WorkflowCollaborationReceipt, resumed: WorkflowTaskGraph? = nil) throws -> JSONValue {
+        let graph = resumed ?? receipt.graph
+        let encoded = try JSONEncoder().encode(graph)
+        guard case .object(var value) = try JSONDecoder().decode(JSONValue.self, from: encoded) else { throw WorkflowTaskGraphError.invalid }
+        // Model-facing catalogs contain identities. Full protected payloads are retrieved only by
+        // bounded read operations; they are never serialized into every coordination prompt.
+        if case .array(let artifacts)? = value["artifacts"] {
+            value["artifacts"] = .array(artifacts.map { artifact in
+                guard case .object(var item) = artifact else { return artifact }
+                item.removeValue(forKey: "value")
+                return .object(item)
+            })
+        }
+        return .object(["graph": .object(value), "ready": .array(graph.readyTasks.map { .string($0.id) }),
+            "feedback": receipt.feedback.map(JSONValue.string) ?? .null, "observation": receipt.observation ?? .null])
     }
 
     private func recordedBudget() throws -> JSONValue {
@@ -1678,4 +1821,17 @@ private final class WorkflowHostSignalBuffer: @unchecked Sendable {
         }
         signals.append(signal)
     }
+}
+
+private struct WorkflowCollaborationCommand: Decodable, Sendable {
+    let action: String
+    let expectedRevision: UInt64?
+    let tasks: [WorkflowTaskUpdate]?
+    let handles: [UInt32]?
+    let handle: UInt32?
+    let artifactID: String?
+    let offset: Int?
+    let length: Int?
+    let reason: String?
+    let reasonCode: String?
 }

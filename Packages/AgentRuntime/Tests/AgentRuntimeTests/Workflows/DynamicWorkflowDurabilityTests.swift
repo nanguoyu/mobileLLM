@@ -8,6 +8,51 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowDurabilityTests: XCTestCase {
+    func testTaskGraphPausesWithUnfinishedGoalAndExplicitResumeContinuesWithoutRepeatingWork() async throws {
+        let fixture = try makeFixture(body: """
+        let view = await collaborate({action:'snapshot'});
+        view = await collaborate({action:'update',expectedRevision:view.graph.revision,tasks:[
+          {id:'task',expectedRevision:0,agent:'worker',instruction:'original',dependencies:[],required:true,maximumToolCalls:0}
+        ]});
+        view = await collaborate({action:'deliver',expectedRevision:view.graph.revision,reason:'early finish'});
+        if (!view.feedback) throw new Error('Unfinished work was accepted');
+        view = await collaborate({action:'pause',reason:'Missing evidence'});
+        if (view.graph.state !== 'active') throw new Error('Goal awaits an explicit resume');
+        const task = view.graph.tasks[0];
+        const handle = spawn(task.instruction,{session:task.agent,task:{taskID:task.id,instruction:task.instruction,
+          expectedRevision:task.revision,inputArtifactIDs:[],outputArtifactID:'task:1'}});
+        await waitAny([handle]);
+        view = await collaborate({action:'settle',handle:handle});
+        view = await collaborate({action:'deliver',expectedRevision:view.graph.revision,reason:'Required result is available'});
+        if (view.feedback) throw new Error(view.feedback);
+        return 'finished after explicit resume';
+        """, args: CanonicalJSON(.object(["goal": .string("Complete the required task with actual evidence.")])))
+        let spawner = WorkflowFakeSpawner()
+        let journal = InMemoryDynamicWorkflowJournal()
+        let engine = DynamicWorkflowEngine(journal: journal, runtime: JavaScriptCoreWorkflowRuntime(), spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        do { _ = try await engine.runAndWait(runID: fixture.launch.runID); XCTFail("Goal should pause") } catch {}
+        let paused = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(paused?.state, .paused)
+        XCTAssertEqual(paused?.taskGraph?.state, .blocked)
+        XCTAssertNil(paused?.output)
+        let before = await spawner.spawnCount
+        XCTAssertEqual(before, 0)
+        let restored = DynamicWorkflowEngine(journal: journal, runtime: JavaScriptCoreWorkflowRuntime(), spawner: spawner, requestBuilder: childBuilder())
+        _ = try await restored.projection(runID: fixture.launch.runID)
+        let afterRead = await spawner.spawnCount
+        XCTAssertEqual(afterRead, 0)
+        try await restored.resume(runID: fixture.launch.runID)
+        let result = try await restored.runAndWait(runID: fixture.launch.runID)
+        XCTAssertEqual(try decode(result), .string("finished after explicit resume"))
+        let finished = try await restored.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(finished?.taskGraph?.state, .completed)
+        XCTAssertEqual(finished?.taskGraph?.artifacts.count, 1)
+        let count = await spawner.spawnCount
+        XCTAssertEqual(count, 1)
+    }
+
     func testWaitAnyStartsDependentWorkBeforeUnrelatedSiblingFinishes() async throws {
         let fixture = try makeFixture(body: """
         const slow = spawn('slow');
@@ -480,7 +525,7 @@ private func fullCapacityRequest(_ launch: WorkflowLaunchSnapshotV1, _ call: Wor
         source: .workflow, approvalMode: launch.approvalMode)
 }
 
-private func makeFixture(body: String) throws -> WorkflowFixture {
+private func makeFixture(body: String, args: CanonicalJSON? = nil) throws -> WorkflowFixture {
     let conversationID = ConversationID()
     let source = "export const meta = { name: 'durability-test', description: 'Durability test' };\n" + body
     let script = try WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1, source: source)
@@ -510,7 +555,7 @@ private func makeFixture(body: String) throws -> WorkflowFixture {
     let launch = WorkflowLaunchSnapshotV1(
         runID: WorkflowRunID(),
         scriptReference: script.reference,
-        args: nil,
+        args: args,
         conversationID: conversationID,
         initiatingRunID: AgentRunID(),
         initiatingRequestID: AgentRequestID(),

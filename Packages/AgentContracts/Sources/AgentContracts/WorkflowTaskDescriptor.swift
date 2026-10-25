@@ -9,8 +9,11 @@ public struct WorkflowTaskDescriptorV1: Hashable, Codable, Sendable {
     public let instruction: String
     public let inputArtifactIDs: [String]
     public let outputArtifactID: String
+    /// Present only for a task graph claim. Old display-only descriptors retain their semantics.
+    public let expectedRevision: UInt64?
 
-    public init(taskID: String, instruction: String, inputArtifactIDs: [String], outputArtifactID: String) throws {
+    public init(taskID: String, instruction: String, inputArtifactIDs: [String], outputArtifactID: String,
+                expectedRevision: UInt64? = nil) throws {
         guard AgentWireValidation.isNonblankControlFree(taskID, maximumLength: 128),
               !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               instruction.utf8.count <= 16_384,
@@ -24,6 +27,7 @@ public struct WorkflowTaskDescriptorV1: Hashable, Codable, Sendable {
         self.instruction = instruction
         self.inputArtifactIDs = inputArtifactIDs
         self.outputArtifactID = outputArtifactID
+        self.expectedRevision = expectedRevision
     }
 
     public init(from decoder: Decoder) throws {
@@ -32,7 +36,8 @@ public struct WorkflowTaskDescriptorV1: Hashable, Codable, Sendable {
             taskID: values.decode(String.self, forKey: .taskID),
             instruction: values.decode(String.self, forKey: .instruction),
             inputArtifactIDs: values.decode([String].self, forKey: .inputArtifactIDs),
-            outputArtifactID: values.decode(String.self, forKey: .outputArtifactID)
+            outputArtifactID: values.decode(String.self, forKey: .outputArtifactID),
+            expectedRevision: values.decodeIfPresent(UInt64.self, forKey: .expectedRevision)
         )
     }
 }

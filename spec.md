@@ -2023,3 +2023,20 @@ one active selection at a time. Native admission, cumulative reservations, tool 
 and reconciliation remain shared with ordinary workflow calls. Wait selection is not task completion.
 A controlled acceptance case starts a dependent worker while an unrelated sibling remains unfinished;
 a replay case verifies original result order and excludes later sibling usage from earlier prompts.
+
+
+Collaboration receipts persist the model-facing task graph at each host operation. A graph retains the
+original objective, human amendments, required tasks, per-task revisions, assigned agent identities,
+dependency edges, call ownership and immutable output versions. Updates compare revisions and reject
+cycles, missing dependencies, competing claims and removal of an existing required-task obligation.
+Dispatch claims the task in the same journal append that prepares its call. Source reopening invalidates
+downstream results; an already running consumer keeps its original inputs and settles as needing review
+when those inputs are stale. Historical output bytes and dependency identities remain available.
+
+Goal completion requires all required tasks to be completed and every submitted child to be settled,
+with no reconciliation pending. A blocked or exhausted goal retains its partial task results and pauses
+the workflow. Explicit resume records a continuation grant at that pause boundary. Replay returns the
+recorded grant and continues past the pause without repeating previous calls. Reading the graph or
+launching the application grants no continuation. Human amendments use a separate trusted host API;
+model-facing operations cannot rewrite the original objective or manufacture a human amendment.
+These guards enforce lifecycle facts; independent task outcomes still require evaluation.

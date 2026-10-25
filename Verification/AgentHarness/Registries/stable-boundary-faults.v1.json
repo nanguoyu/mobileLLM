@@ -5,7 +5,7 @@
   "registryType": "stable-boundary-faults",
   "completeness": "complete",
   "sourceSpecification": {
-    "path": "spec.md", "sha256": "00a5f1a93966ab08570adc700abed546a13f1387290e0cfef96aa44279689f80",
+    "path": "spec.md", "sha256": "e4c0491e58df6cda82ca5d9b6119db57a94c79ff24362ed3790fbae8482ca728",
     "section": "8.1", "lineStart": 284, "lineEnd": 301
   },
   "entries": [

@@ -34,6 +34,9 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
     public private(set) var submittedHandles: [WorkflowAgentCallID: AgentExecutionHandleID]
     public private(set) var outcomes: [WorkflowAgentCallID: WorkflowAgentOutcomeV1]
     public private(set) var waits: [WorkflowWaitSelection]
+    public private(set) var taskGraph: WorkflowTaskGraph?
+    public private(set) var collaborationReceipts: [WorkflowCollaborationReceipt]
+    public private(set) var goalResumptions: [UInt32: WorkflowTaskGraph]
     public private(set) var preparedAt: [WorkflowAgentCallID: AgentTimestamp]
     public private(set) var submittedAt: [WorkflowAgentCallID: AgentTimestamp]
     public private(set) var settledAt: [WorkflowAgentCallID: AgentTimestamp]
@@ -71,6 +74,9 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
             submittedHandles: [:],
             outcomes: [:],
             waits: [],
+            taskGraph: nil,
+            collaborationReceipts: [],
+            goalResumptions: [:],
             preparedAt: [:],
             submittedAt: [:],
             settledAt: [:],
@@ -161,6 +167,11 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
                   call.ordinal <= maximumOrdinal || call.attempt == 1
             else { throw WorkflowProjectionError.noncontiguousAgentOrdinal }
             calls.append(call)
+            if let descriptor = call.options.task, let revision = descriptor.expectedRevision {
+                guard var graph = taskGraph else { throw WorkflowTaskGraphError.invalid }
+                try graph.claim(taskID: descriptor.taskID, expectedRevision: revision, call: call)
+                taskGraph = graph
+            }
             preparedAt[call.callID] = event.timestamp
             preparedSequences[call.callID] = event.sequence
         case .agentChildSubmitted(let callID, let handleID):
@@ -190,6 +201,32 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
                   receipt.candidates.allSatisfy({ id in calls.contains { $0.callID == id } })
             else { throw WorkflowProjectionError.invalidEventForState }
             waits.append(receipt)
+        case .collaborationRecorded(let receipt):
+            guard Self.acceptsRuntimeActivity(state), receipt.index == collaborationReceipts.count + 1,
+                  receipt.senderRunID == launch.initiatingRunID || calls.contains(where: { $0.childRunID == receipt.senderRunID })
+            else { throw WorkflowProjectionError.invalidEventForState }
+            try receipt.graph.validate()
+            if let old = taskGraph {
+                guard receipt.graph.objective == old.objective, receipt.graph.amendments == old.amendments,
+                      receipt.graph.revision >= old.revision, receipt.graph.artifacts.starts(with: old.artifacts),
+                      receipt.graph.revision != old.revision || receipt.graph == old
+                else { throw WorkflowProjectionError.invalidEventForState }
+            }
+            taskGraph = receipt.graph
+            collaborationReceipts.append(receipt)
+        case .goalAmended(let amendment):
+            guard var graph = taskGraph else { throw WorkflowProjectionError.invalidEventForState }
+            try graph.amend(amendment)
+            taskGraph = graph
+        case .goalResumed(let index, let graph):
+            guard let old = taskGraph, state == .paused, goalResumptions[index] == nil,
+                  collaborationReceipts.last?.index == index,
+                  graph.objective == old.objective, graph.amendments == old.amendments,
+                  graph.tasks == old.tasks, graph.artifacts == old.artifacts,
+                  graph.revision == old.revision + 1, graph.state == .active
+            else { throw WorkflowProjectionError.invalidEventForState }
+            taskGraph = graph
+            goalResumptions[index] = graph
         case .usageCommitted(let nextUsage):
             guard usage.quantities.isComponentwiseAtMost(nextUsage.quantities) else {
                 throw WorkflowProjectionError.usageRegression
@@ -226,7 +263,8 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
         case .outputCommitted(let value):
             guard Self.acceptsRuntimeActivity(state), output == nil, failure == nil,
                   reconciliationCallID == nil,
-                  Self.allSubmittedChildrenAreSettled(self)
+                  Self.allSubmittedChildrenAreSettled(self),
+                  taskGraph == nil || taskGraph?.state == .completed
             else {
                 throw WorkflowProjectionError.invalidEventForState
             }

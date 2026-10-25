@@ -62,6 +62,7 @@ public struct WorkflowScriptHost: Sendable {
     public let webEvidence: @Sendable () async throws -> JSONValue
     public let queryWebEvidence: @Sendable (String) async throws -> JSONValue
     public let waitAny: @Sendable (UInt32, [UInt32]) async throws -> JSONValue
+    public let collaborate: @Sendable (UInt32, CanonicalJSON) async throws -> JSONValue
 
     public init(
         agent: @escaping @Sendable (WorkflowAgentInvocation) async throws -> WorkflowAgentBridgeResult,
@@ -80,6 +81,9 @@ public struct WorkflowScriptHost: Sendable {
         queryWebEvidence: (@Sendable (String) async throws -> JSONValue)? = nil,
         waitAny: @escaping @Sendable (UInt32, [UInt32]) async throws -> JSONValue = { _, _ in
             throw WorkflowScriptRuntimeError.unsupportedRequirement
+        },
+        collaborate: @escaping @Sendable (UInt32, CanonicalJSON) async throws -> JSONValue = { _, _ in
+            throw WorkflowScriptRuntimeError.unsupportedRequirement
         }
     ) {
         self.agent = agent
@@ -91,6 +95,7 @@ public struct WorkflowScriptHost: Sendable {
         self.webEvidence = webEvidence
         self.queryWebEvidence = queryWebEvidence ?? { _ in try await webEvidence() }
         self.waitAny = waitAny
+        self.collaborate = collaborate
     }
 }
 
