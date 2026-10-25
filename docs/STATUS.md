@@ -38,6 +38,14 @@ tool settings and the search keyboard were inspected directly. iOS and macOS app
 verifier passed. The Mac desktop was locked, so native Mac visual inspection could not be completed.
 No full repository suite or paid task matrix was rerun for the UI changes.
 
+The goal workspace now includes tasks that are still waiting on dependencies, an update form, saved
+amendments and the shared budget. Goal edits steer active agents at a safe boundary and survive restart.
+An update can resume paused work through an explicit action. Failed attempts and earlier result versions
+remain inspectable. The existing Simulator interaction scenario passed in
+`/tmp/mobilellm-harness-20261025/GoalWorkspaceCurrentFrame.xcresult`. Its earlier failure is retained in
+`GoalWorkspace.xcresult`: the controlled transport had mistaken a previous session frame for current
+state. The fixture now reads the latest user frame; the six-call assertion remains unchanged.
+
 ## Autonomous collaboration: current assessment
 
 ### Persistent task conversations

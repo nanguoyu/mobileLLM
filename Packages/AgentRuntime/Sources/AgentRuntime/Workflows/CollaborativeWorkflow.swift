@@ -121,8 +121,7 @@ public enum CollaborativeWorkflow {
         let observed = [];
         let notes = '';
         let workers = 0;
-        let previousAction = '';
-        let repetitions = 0;
+        let recentActions = [];
         let feedback = '';
         let evidence = null;
         function bytes(text) {
@@ -200,7 +199,7 @@ public enum CollaborativeWorkflow {
             const handle = spawn(prompt,{label:task.agent,agentType:'workflow-worker',session:task.agent,
               maxToolCalls:task.maximumToolCalls,model:task.model || null,profile:task.profile || null,
               task:{taskID:task.id,instruction:task.instruction,expectedRevision:task.revision,
-                inputArtifactIDs:ids,outputArtifactID:outputID}});
+                inputArtifactIDs:ids,outputArtifactID:outputID,goalAmendmentCount:packet.graph.amendments.length}});
             pending.push({handle:handle,taskID:task.id,agent:task.agent,outputID:outputID});
             started.push(handle);
             workers++;
@@ -213,10 +212,12 @@ public enum CollaborativeWorkflow {
           pending = pending.filter(p => p.handle !== result.handle);
           packet = await collaborate({action:'settle',handle:result.handle});
           if (packet.feedback) { throw new Error(packet.feedback); }
-          if (result.status === 'completed' && typeof result.value === 'string') {
-            const content = view(result.value,12000);
-            remember({id:item.outputID,offset:0,nextOffset:content.length,totalCharacters:result.value.length,
-              truncated:content.length<result.value.length,content:content});
+          if (result.code === 'workflow.task-admission' || result.code === 'workflow.child-admission') { workers--; }
+          if (result.status === 'completed') {
+            const text = typeof result.value === 'string' ? result.value : serialize(result.value);
+            const content = view(text,12000);
+            remember({id:item.outputID,offset:0,nextOffset:content.length,totalCharacters:text.length,
+              truncated:content.length<text.length,content:content});
           } else {
             feedback += 'Task ' + item.taskID + ' ended as ' + result.status + ': ' + (result.error || 'No usable output') + '. ';
           }
@@ -230,10 +231,16 @@ public enum CollaborativeWorkflow {
         }
         for (let turn=0; turn<24; turn++) {
           notes = decision.notes;
-          const fingerprint = serialize({revision:packet.graph.revision,action:decision.action,tasks:decision.tasks,reads:decision.reads,query:decision.query});
-          repetitions = fingerprint === previousAction ? repetitions+1 : 0;
-          previousAction = fingerprint;
-          if (repetitions > 1) { await suspend('Repeated decisions produced no new evidence or task progress.','progress'); }
+          const intent = decision.tasks.map(t => ({id:t.id,agent:t.agent,instruction:t.instruction,dependencies:t.dependencies,
+            inputs:t.inputs || [],tools:t.tools || [],skills:t.skills || [],effort:t.effort || 'inherit',
+            maxToolCalls:t.maxToolCalls,model:t.model || '',inputRanges:t.inputRanges}));
+          const fingerprint = serialize({artifacts:packet.graph.artifacts.length,amendments:packet.graph.amendments.length,
+            action:decision.action,tasks:intent,reads:decision.reads,query:decision.query});
+          recentActions.push(fingerprint);
+          if (recentActions.length > 8) { recentActions.shift(); }
+          if (recentActions.filter(item => item === fingerprint).length > 2) {
+            await suspend('Repeated decisions produced no new evidence or task progress.','progress');
+          }
           feedback = '';
           if (decision.action === 'deliver') {
             if (decision.answer.trim().length === 0) { feedback = 'Provide the complete final answer.'; }
@@ -269,8 +276,10 @@ public enum CollaborativeWorkflow {
             await dispatchReady();
           }
           let accounting = await budget.snapshot();
-          if (accounting.consumed.modelAttempts >= accounting.limits.modelAttempts || workers >= 12 && pending.length === 0 && packet.ready.length > 0) {
-            await suspend('The admitted budget is exhausted; remaining work and partial results are saved.','budget');
+          if (accounting.consumed.modelAttempts >= accounting.limits.modelAttempts) {
+            await suspend('The model request budget was used; remaining work and partial results are saved.','budget');
+          } else if (workers >= 12 && pending.length === 0 && packet.ready.length > 0) {
+            await suspend('The limit of 12 worker activations was reached; remaining tasks and results are saved.','budget');
           }
           phase('Coordinate');
           const tasks = packet.graph.tasks.map(t => ({id:t.id,revision:t.revision,agent:t.agent,state:t.state,

@@ -874,7 +874,8 @@ public final class AgentRuntimeAssembly {
             repository: repository,
             payloadStore: payloadStore,
             valueStore: dynamicValueStore,
-            childRequestBuilder: dynamicChildBuilder
+            childRequestBuilder: dynamicChildBuilder,
+            sessionController: executor.controller
         )
         self.diagnosticLogger = diagnosticLogger
         runStore = AgentRunStore(

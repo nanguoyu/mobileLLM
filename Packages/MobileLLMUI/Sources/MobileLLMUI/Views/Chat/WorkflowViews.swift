@@ -67,8 +67,9 @@ struct WorkflowMessageRow: View {
                 ? dynamic.planning.map { WorkflowDisplay.planningStatus($0.state) } ?? "Planning"
                 : dynamic.state.displayLabel(attached: record.isAttachedInCurrentProcess == true)
             var parts = [state]
-            let tasks = WorkflowDisplay.tasks(dynamic.childCalls ?? [])
-            if !tasks.isEmpty {
+            if let goal = dynamic.goal, !goal.tasks.isEmpty {
+                parts.append(WorkflowGoalDisplay.summary(goal))
+            } else if !WorkflowDisplay.tasks(dynamic.childCalls ?? []).isEmpty {
                 parts.append(WorkflowDisplay.summary(dynamic.childCalls ?? []))
             }
             return parts.joined(separator: " · ")
@@ -159,7 +160,7 @@ struct WorkflowSummaryPage: View {
             }
         }
         .background(Theme.bg)
-        .navigationTitle("Workflow")
+        .navigationTitle("Agent tasks")
     }
 
     private func workflowHeader(_ workflow: WorkflowSummary) -> some View {

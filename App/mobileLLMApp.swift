@@ -488,6 +488,9 @@ struct MobileLLMApp: App {
                 container.workflowStore.taskSessionResumeHandler = { [launcher] workflowID, callID in
                     try await launcher.resumeTaskSession(workflowID: workflowID, callID: callID)
                 }
+                container.workflowStore.goalUpdateHandler = { [launcher] workflowID, id, text in
+                    try await launcher.updateGoal(workflowID: workflowID, id: id, text: text)
+                }
                 container.workflowStore.planningObserverHandler = { [launcher] workflowID in
                     try await launcher.observePlanning(workflowID: workflowID)
                 }

@@ -229,6 +229,10 @@ public struct DynamicWorkflowChildPresentation: Hashable, Codable, Sendable, Ide
     public var hasResult: Bool?
     public var preparedSequence: UInt64?
     public var settledSequence: UInt64?
+    public var sessionKey: String?
+    public var profile: WorkflowAgentProfileV1?
+    public var modelName: String?
+    public var toolCallLimit: UInt64?
 
     public init(
         callID: WorkflowAgentCallID,
@@ -249,7 +253,9 @@ public struct DynamicWorkflowChildPresentation: Hashable, Codable, Sendable, Ide
         usage: AgentUsage? = nil,
         hasResult: Bool? = nil,
         preparedSequence: UInt64? = nil,
-        settledSequence: UInt64? = nil
+        settledSequence: UInt64? = nil,
+        sessionKey: String? = nil, profile: WorkflowAgentProfileV1? = nil,
+        modelName: String? = nil, toolCallLimit: UInt64? = nil
     ) {
         self.callID = callID
         self.ordinal = ordinal
@@ -270,6 +276,8 @@ public struct DynamicWorkflowChildPresentation: Hashable, Codable, Sendable, Ide
         self.hasResult = hasResult
         self.preparedSequence = preparedSequence
         self.settledSequence = settledSequence
+        self.sessionKey = sessionKey; self.profile = profile
+        self.modelName = modelName; self.toolCallLimit = toolCallLimit
     }
 }
 
@@ -285,6 +293,38 @@ public struct WorkflowPlanningPresentation: Hashable, Codable, Sendable {
         self.handleID = handleID
         self.state = state
         self.updatedAt = updatedAt
+    }
+}
+
+/// Presentation contains result identities, never another copy of protected result bodies.
+public struct WorkflowGoalResultLink: Hashable, Codable, Sendable, Identifiable {
+    public let id: String
+    public let taskID: String
+    public let callID: WorkflowAgentCallID
+    public let inputArtifactIDs: [String]
+    public init(_ artifact: WorkflowTaskArtifact) {
+        id = artifact.id; taskID = artifact.taskID; callID = artifact.callID; inputArtifactIDs = artifact.inputArtifactIDs
+    }
+}
+
+public struct WorkflowGoalPresentation: Hashable, Codable, Sendable {
+    public let objective: String
+    public let revision: UInt64
+    public let state: WorkflowGoalState
+    public let reason: String?
+    public let amendments: [WorkflowGoalAmendment]
+    public let tasks: [WorkflowTaskNode]
+    public let results: [WorkflowGoalResultLink]
+    public let budget: AgentBudget
+    public let usage: AgentUsage
+    public let pendingInputs: AgentSessionPendingInputs
+    public let skillNames: [String: String]
+
+    public init(graph: WorkflowTaskGraph, budget: AgentBudget, usage: AgentUsage,
+                pendingInputs: AgentSessionPendingInputs = .init(), skillNames: [String: String] = [:]) {
+        objective = graph.objective; revision = graph.revision; state = graph.state; reason = graph.reason
+        amendments = graph.amendments; tasks = graph.tasks; results = graph.artifacts.map(WorkflowGoalResultLink.init)
+        self.budget = budget; self.usage = usage; self.pendingInputs = pendingInputs; self.skillNames = skillNames
     }
 }
 
@@ -306,6 +346,7 @@ public struct DynamicWorkflowPresentation: Hashable, Codable, Sendable {
     public var reconciliationCallID: WorkflowAgentCallID?
     public var failure: String?
     public var planning: WorkflowPlanningPresentation?
+    public var goal: WorkflowGoalPresentation?
 
     public init(
         runID: WorkflowRunID,
@@ -320,7 +361,8 @@ public struct DynamicWorkflowPresentation: Hashable, Codable, Sendable {
         childCalls: [DynamicWorkflowChildPresentation] = [],
         reconciliationCallID: WorkflowAgentCallID? = nil,
         failure: String? = nil,
-        planning: WorkflowPlanningPresentation? = nil
+        planning: WorkflowPlanningPresentation? = nil,
+        goal: WorkflowGoalPresentation? = nil
     ) {
         self.runID = runID
         self.scriptReference = scriptReference
@@ -335,6 +377,7 @@ public struct DynamicWorkflowPresentation: Hashable, Codable, Sendable {
         self.reconciliationCallID = reconciliationCallID
         self.failure = failure
         self.planning = planning
+        self.goal = goal
     }
 }
 

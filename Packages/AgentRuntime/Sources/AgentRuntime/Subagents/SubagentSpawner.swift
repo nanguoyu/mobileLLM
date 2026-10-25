@@ -18,6 +18,8 @@ public enum SubagentSpawnError: Error, Hashable, Sendable {
 /// parent ceiling, carry independent budgets, return structured results and artifacts, and can never
 /// approve their own external access.
 public protocol SubagentSpawning: Sendable {
+    func deliverGoalAmendment(_ amendment: WorkflowGoalAmendment, goalID: WorkflowRunID,
+                              conversationID: ConversationID, runIDs: [AgentRunID]) async throws
     func preparationUsage(runID: AgentRunID) async throws -> AgentUsage
     func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs
     func withSessionInputBarrier(runIDs: [AgentRunID],
@@ -54,6 +56,8 @@ public protocol SubagentSpawning: Sendable {
 }
 
 public extension SubagentSpawning {
+    func deliverGoalAmendment(_ amendment: WorkflowGoalAmendment, goalID: WorkflowRunID,
+                              conversationID: ConversationID, runIDs: [AgentRunID]) async throws {}
     func preparationUsage(runID: AgentRunID) async throws -> AgentUsage { .zero }
     func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs { AgentSessionPendingInputs() }
     func withSessionInputBarrier(runIDs: [AgentRunID],
@@ -129,6 +133,18 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
             throw SubagentSpawnError.parentUnavailable
         }
         return facts.projection.cumulativeUsage
+    }
+
+    public func deliverGoalAmendment(_ amendment: WorkflowGoalAmendment, goalID: WorkflowRunID,
+                                     conversationID: ConversationID, runIDs: [AgentRunID]) async throws {
+        guard let executor = executor as? DurableAgentExecutor else { throw AgentSessionError.unavailable }
+        for runID in runIDs {
+            // Prepared calls have durable recipients even before their seed is submitted. The
+            // workflow retries this same message immediately after that submission or on resume.
+            guard try await repository.loadRunFacts(for: runID) != nil else { continue }
+            try await executor.controller.sendGoalSessionInput(seedRunID: runID, conversationID: conversationID,
+                goalID: goalID, amendment: amendment)
+        }
     }
 
     public func withSessionInputBarrier(runIDs: [AgentRunID],

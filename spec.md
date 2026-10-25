@@ -2111,3 +2111,19 @@ The same ledger then admits all child and coordinator activations against the re
 Planning cannot become an uncharged extra allowance, including after recovery. Legacy records without
 this event retain their historical accounting semantics; presentation adds their preparation usage once.
 New records already include it and never add it again in the UI or evaluation summary.
+
+
+Human goal updates record their recipients at acceptance, enter the same durable inboxes, and remain
+scoped to the existing goal budget. Recovery and post-submission delivery retry the same message IDs.
+Completion flushes outstanding deliveries before its input fence. A stale task/goal claim records a
+rejected call with no execution, allowing bounded dispatch of the current revision; rejected calls never
+become session seeds. New task prompts identify their human-amendment version. Goal-owned messages
+cannot start automatic standalone turns. A human may explicitly request a separate continuation.
+
+The mobile workspace presents planned task dependencies before dispatch, current ownership, actual
+execution state, saved result links and the remaining budget. Result-ready and task-completed states
+remain distinct. Goal updates and explicit continuation are available in the existing workspace. Model
+and tool counters include preparation and known usage from active children without double-counting.
+Presentation snapshots contain artifact identities rather than duplicate result bodies. Old results
+retain their exact producer links through retries and revisions. Opening, closing or refreshing a view
+never starts work; a late asynchronous read cannot replace a newer task result.

@@ -14,6 +14,8 @@ public enum AgentSessionInputMode: String, Codable, Sendable {
 /// Nil on old records means a human. Agent identities are supplied by the trusted runtime.
 public enum AgentSessionInputSender: Hashable, Codable, Sendable {
     case agent(AgentRunID)
+    /// Human amendment scoped to an existing goal; it does not grant a standalone follow-up budget.
+    case goalOwner(WorkflowRunID)
 }
 
 public struct AgentSessionPendingMessage: Hashable, Codable, Sendable {
@@ -137,7 +139,9 @@ public struct AgentSessionSnapshot: Hashable, Codable, Sendable {
             }
         }
         for input in inputs {
-            guard input.body.byteCount > 0, input.body.byteCount <= (input.sender == nil ? 16_384 : 262_144),
+            let limit: UInt64
+            if case .agent = input.sender { limit = 262_144 } else { limit = 16_384 }
+            guard input.body.byteCount > 0, input.body.byteCount <= limit,
                   input.body.semanticType == "agent-session-input.v1",
                   (input.mode == .steer && input.targetRunID.map(runs.contains) == true)
                     || (input.mode == .nextTurn && input.targetRunID == nil)

@@ -236,6 +236,11 @@ final class WorkflowLauncher {
         monitorDynamic(workflowID: workflowID)
     }
 
+    func updateGoal(workflowID: UUID, id: MessageID, text: String) async throws {
+        try await assembly.dynamicWorkflows.amendGoal(runID: try dynamicRunID(workflowID), messageID: id, text: text)
+        try await refreshDynamicSummary(workflowID: workflowID)
+    }
+
     func reconcileDynamic(
         workflowID: UUID,
         decision: AgentReconciliationDecision
@@ -409,7 +414,9 @@ final class WorkflowLauncher {
             totalCallCount: projection.calls.count,
             childCalls: projection.childCalls,
             reconciliationCallID: projection.reconciliationCallID,
-            failure: projection.failure
+            failure: projection.failure,
+            planning: projection.planning,
+            goal: projection.goal
         )
         summary.status = summary.dynamic!.state.workflowStatus
         if projection.state.isTerminal { summary.endTime = projection.updatedAt.date }
@@ -459,7 +466,7 @@ final class WorkflowLauncher {
         guard let dynamic = container?.workflowStore.summary(workflowID: workflowID)?.dynamic else { return }
         for call in dynamic.childCalls ?? [] where call.agentType != "workflow-supervisor" {
             guard let session = try? await taskSession(workflowID: workflowID, callID: call.callID),
-                  !session.snapshot.pendingTurns.isEmpty,
+                  session.snapshot.pendingTurns.contains(where: { $0.sender == nil }),
                   session.turns.last?.status?.state == .completed else { continue }
             try? await resumeTaskSession(workflowID: workflowID, callID: call.callID)
         }
@@ -641,9 +648,12 @@ public struct AppDynamicWorkflowProjection: Hashable, Sendable {
     public let output: WorkflowValueReferenceV1?
     public let reconciliationCallID: WorkflowAgentCallID?
     public let failure: String?
+    public let planning: WorkflowPlanningPresentation?
+    public let goal: WorkflowGoalPresentation?
 
     init(_ projection: WorkflowRunProjectionV1, preparationUsage: AgentUsage = .zero,
-         childStates: [AgentRunID: AgentRunState] = [:]) throws {
+         childStates: [AgentRunID: AgentRunState] = [:], inFlightUsage: [AgentRunID: AgentUsage] = [:],
+         planning: WorkflowPlanningPresentation? = nil, pendingInputs: AgentSessionPendingInputs = .init()) throws {
         runID = projection.runID
         updatedAt = projection.lastTimestamp
         state = projection.state
@@ -704,16 +714,36 @@ public struct AppDynamicWorkflowProjection: Hashable, Sendable {
                 usage: usage,
                 hasResult: status == .completed && call.options.requestedAgentType != "workflow-supervisor",
                 preparedSequence: projection.preparedSequences[call.callID],
-                settledSequence: projection.settledSequences[call.callID]
+                settledSequence: projection.settledSequences[call.callID],
+                sessionKey: call.options.sessionKey, profile: call.options.profile,
+                modelName: call.options.requestedModel ?? projection.launch.defaultModelPolicy.allowedSelections.first?.modelID.rawValue,
+                toolCallLimit: call.options.maximumToolCalls
             )
         }
         completedCallCount = projection.outcomes.values.filter {
             if case .completed = $0 { return true }; return false
         }.count
-        usage = projection.preparationUsage == nil ? try projection.usage.aggregating(preparationUsage) : projection.usage
+        var observedUsage = projection.preparationUsage == nil ? try projection.usage.aggregating(preparationUsage) : projection.usage
+        for value in inFlightUsage.values { observedUsage = try observedUsage.aggregating(value) }
+        usage = observedUsage
         output = projection.output
         reconciliationCallID = projection.reconciliationCallID
         failure = projection.failure
+        self.planning = planning
+        var skillNames: [String: String] = [:]
+        if let args = projection.launch.args,
+           case .object(let root) = try JSONDecoder().decode(JSONValue.self, from: args.data),
+           case .array(let skills)? = root["availableSkills"] {
+            for entry in skills {
+                if case .object(let skill) = entry, case .string(let id)? = skill["id"], case .string(let name)? = skill["name"] {
+                    skillNames[id.lowercased()] = name
+                }
+            }
+        }
+        goal = projection.taskGraph.map {
+            WorkflowGoalPresentation(graph: $0, budget: projection.launch.budget, usage: observedUsage,
+                pendingInputs: pendingInputs, skillNames: skillNames)
+        }
     }
 }
 
@@ -742,6 +772,7 @@ public actor AppDynamicWorkflowService {
     private let payloadStore: ContentAddressedExecutionPayloadStore
     private let valueStore: any WorkflowValueStoring
     private let childRequestBuilder: AppDynamicWorkflowChildRequestBuilder
+    private let sessionController: AgentRunController
     private let analyzer = DynamicWorkflowScriptAnalyzer()
 
     init(
@@ -750,7 +781,8 @@ public actor AppDynamicWorkflowService {
         repository: SQLiteRunJournal,
         payloadStore: ContentAddressedExecutionPayloadStore,
         valueStore: any WorkflowValueStoring,
-        childRequestBuilder: AppDynamicWorkflowChildRequestBuilder
+        childRequestBuilder: AppDynamicWorkflowChildRequestBuilder,
+        sessionController: AgentRunController
     ) {
         self.engine = engine
         self.journal = journal
@@ -758,6 +790,7 @@ public actor AppDynamicWorkflowService {
         self.payloadStore = payloadStore
         self.valueStore = valueStore
         self.childRequestBuilder = childRequestBuilder
+        self.sessionController = sessionController
     }
 
     /// Normalizes/analyzes one exact candidate, saves it through the durable workflow journal, and
@@ -885,6 +918,10 @@ public actor AppDynamicWorkflowService {
         try await engine.start(runID: runID)
     }
 
+    public func amendGoal(runID: WorkflowRunID, messageID: MessageID, text: String) async throws {
+        try await engine.amendGoal(runID: runID, messageID: messageID, text: text)
+    }
+
     @discardableResult
     public func approveAndStart(
         runID: WorkflowRunID,
@@ -954,12 +991,22 @@ public actor AppDynamicWorkflowService {
         let preparation = projection.preparationUsage == nil && (role == "workflow-coordinator" || role == "workflow-generator")
             ? parent?.projection.cumulativeUsage ?? .zero : .zero
         var childStates: [AgentRunID: AgentRunState] = [:]
+        var inFlightUsage: [AgentRunID: AgentUsage] = [:]
         for call in projection.calls where projection.outcomes[call.callID] == nil {
             if let facts = try await repository.loadRunFacts(for: call.childRunID) {
                 childStates[call.childRunID] = facts.projection.state
+                inFlightUsage[call.childRunID] = facts.projection.cumulativeUsage
             }
         }
-        return try AppDynamicWorkflowProjection(projection, preparationUsage: preparation, childStates: childStates)
+        let planning = (role == "workflow-coordinator" || role == "workflow-generator")
+            ? parent.map { WorkflowPlanningPresentation(runID: projection.launch.initiatingRunID,
+                handleID: $0.projection.executionHandleID, state: $0.projection.state, updatedAt: $0.projection.cursor.timestamp) }
+            : nil
+        let pending = projection.taskGraph != nil && !projection.isTerminal
+            ? try await sessionController.pendingSessionInputs(runIDs: [projection.launch.initiatingRunID] + projection.calls.map(\.childRunID))
+            : AgentSessionPendingInputs()
+        return try AppDynamicWorkflowProjection(projection, preparationUsage: preparation, childStates: childStates,
+            inFlightUsage: inFlightUsage, planning: planning, pendingInputs: pending)
     }
 
     /// Reads the committed public result for a call in this workflow. Opening a detail never dispatches work.

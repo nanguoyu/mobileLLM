@@ -65,7 +65,7 @@ final class WorkflowUITests: XCTestCase {
             "the workflow must begin generating or running, got '\(value)'"
         )
 
-        let workflowBar = app.navigationBars["Workflow"]
+        let workflowBar = app.navigationBars["Agent tasks"]
         for _ in 0 ..< 5 where !workflowBar.exists {
             if row.exists, row.isHittable { row.tap() }
             else { app.swipeDown() }

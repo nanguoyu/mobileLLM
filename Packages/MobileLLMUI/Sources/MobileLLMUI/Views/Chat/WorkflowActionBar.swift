@@ -28,6 +28,7 @@ struct WorkflowActionBar: View {
         attached: Bool
     ) -> some View {
         let busy = store?.actioningWorkflowIDs.contains(workflowID) == true
+        let exhausted = store?.summary(workflowID: workflowID)?.dynamic?.goal?.state == .budgetExhausted
         switch state {
         case .waitingForLaunchApproval:
             controlsLayout {
@@ -53,6 +54,7 @@ struct WorkflowActionBar: View {
                 Button("Resume", systemImage: "play.fill") {
                     Task { await store?.resumeDynamic(workflowID: workflowID) }
                 }
+                .disabled(exhausted)
                 .buttonStyle(.borderedProminent)
                 Button("Stop", role: .destructive) {
                     Task { await store?.stopDynamic(workflowID: workflowID) }
@@ -74,6 +76,7 @@ struct WorkflowActionBar: View {
                 Button("Resume", systemImage: "play.fill") {
                     Task { await store?.resumeDynamic(workflowID: workflowID) }
                 }
+                .disabled(exhausted)
                 Button("Stop", role: .destructive) {
                     Task { await store?.stopDynamic(workflowID: workflowID) }
                 }

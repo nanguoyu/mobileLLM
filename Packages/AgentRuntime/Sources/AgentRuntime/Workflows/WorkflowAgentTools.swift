@@ -45,7 +45,7 @@ public final class WorkflowAgentToolService: @unchecked Sendable {
         else { throw AgentSessionError.requiresResume }
         let seed: AgentRunID
         if target == "coordinator" { seed = workflow.launch.initiatingRunID }
-        else if let call = workflow.calls.first(where: { $0.options.sessionKey == target }) { seed = call.childRunID }
+        else if let call = workflow.calls.first(where: { $0.options.sessionKey == target && workflow.submittedHandles[$0.callID] != nil }) { seed = call.childRunID }
         else { throw AgentSessionError.unavailable }
         try await controller.sendAgentSessionInput(seedRunID: seed, senderRunID: sender,
             messageID: messageID, text: text, mode: mode)

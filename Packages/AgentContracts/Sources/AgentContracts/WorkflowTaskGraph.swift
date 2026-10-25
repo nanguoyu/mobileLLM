@@ -14,9 +14,11 @@ public struct WorkflowGoalAmendment: Hashable, Codable, Sendable {
     public let id: MessageID
     public let text: String
     public let acceptedAt: AgentTimestamp
+    /// Runtime-chosen recipients present at acceptance. Missing seed runs are delivered after spawn.
+    public let targetRunIDs: [AgentRunID]?
 
-    public init(id: MessageID, text: String, acceptedAt: AgentTimestamp) {
-        self.id = id; self.text = text; self.acceptedAt = acceptedAt
+    public init(id: MessageID, text: String, acceptedAt: AgentTimestamp, targetRunIDs: [AgentRunID]? = nil) {
+        self.id = id; self.text = text; self.acceptedAt = acceptedAt; self.targetRunIDs = targetRunIDs
     }
 }
 
@@ -190,6 +192,7 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
             throw WorkflowTaskGraphError.stale
         }
         let task = tasks[index]
+        if let count = call.options.task?.goalAmendmentCount, count != amendments.count { throw WorkflowTaskGraphError.stale }
         guard task.state != .running, !tasks.contains(where: { $0.state == .running && $0.agent == task.agent }) else {
             throw WorkflowTaskGraphError.busy
         }
@@ -264,6 +267,9 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
         guard state != .completed && state != .cancelled, amendments.count < 64,
               !amendment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               amendment.text.utf8.count <= 16_384 else { throw WorkflowTaskGraphError.invalid }
+        if let targets = amendment.targetRunIDs {
+            guard targets.count <= 1_001, Set(targets).count == targets.count else { throw WorkflowTaskGraphError.invalid }
+        }
         amendments.append(amendment)
         revision += 1
     }

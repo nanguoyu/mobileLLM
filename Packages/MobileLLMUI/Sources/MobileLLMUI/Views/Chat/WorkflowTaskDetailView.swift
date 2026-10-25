@@ -11,6 +11,7 @@ struct WorkflowTaskDetailView: View {
     @State private var result: String?
     @State private var readError: String?
     @State private var loading = false
+    @State private var readToken: UUID?
     @State private var copied = false
     @State private var observer: AgentRunStore?
     @State private var observationError: String?
@@ -56,6 +57,7 @@ struct WorkflowTaskDetailView: View {
                     output(call)
                     inputs(call)
                     assignment(call)
+                    agentSettings(call)
                     if history.count > 1 {
                         VStack(alignment: .leading, spacing: Theme.Space.sm) {
                             Text("Task history").font(.headline)
@@ -79,6 +81,19 @@ struct WorkflowTaskDetailView: View {
                             .buttonStyle(.borderedProminent).controlSize(.large)
                             .disabled(store?.actioningWorkflowIDs.contains(workflowID) == true)
                             .accessibilityIdentifier("workflow.agent.restart")
+                    }
+                    if canRetryGoalTask(call) {
+                        Button("Retry task", systemImage: "arrow.clockwise") {
+                            Task {
+                                guard let store, let id = call.task?.taskID else { return }
+                                do {
+                                    try await store.updateGoal(workflowID: workflowID, id: MessageID(),
+                                        text: "Retry the task identified by \(String(reflecting: id)) under the current goal and all existing updates. Keep unrelated successful results.",
+                                        resumeAfterSave: true)
+                                } catch { observationError = error.localizedDescription }
+                            }
+                        }.buttonStyle(.bordered).controlSize(.large)
+                            .disabled(store?.actioningWorkflowIDs.contains(workflowID) == true)
                     }
                 } else {
                     Text("This task record is no longer available.").foregroundStyle(Theme.textSecondary)
@@ -109,8 +124,11 @@ struct WorkflowTaskDetailView: View {
             }
         }
         .navigationTitle(call?.taskTitle ?? "Task")
-        .task(id: call?.hasResult == true) { await loadResult() }
-        .task(id: observationKey) { await observe() }
+        .task(id: "\(callID.description)-\(call?.hasResult == true)") {
+            result = nil; copied = false; readError = nil
+            await loadResult()
+        }
+        .task(id: observationKey) { detach(); await observe() }
         .onDisappear(perform: detach)
     }
 
@@ -146,7 +164,7 @@ struct WorkflowTaskDetailView: View {
                 if task.inputArtifactIDs.isEmpty {
                     Text("This task started independently.").font(.callout).foregroundStyle(Theme.textSecondary)
                 }
-                let sources = WorkflowDisplay.inputs(for: call, in: calls)
+                let sources = WorkflowDisplay.inputs(for: call, in: calls, goal: dynamic?.goal)
                 ForEach(task.inputArtifactIDs, id: \.self) { id in
                     if let source = sources.first(where: { $0.task?.outputArtifactID == id }) {
                         NavigationLink {
@@ -193,10 +211,39 @@ struct WorkflowTaskDetailView: View {
     }
 
     private func canRestart(_ call: DynamicWorkflowChildPresentation) -> Bool {
+        guard dynamic?.goal == nil else { return false }
         guard dynamic?.state == .paused || dynamic?.state == .waitingForReconciliation,
               [.failed, .unavailable, .stopped, .uncertain].contains(call.status)
         else { return false }
         return !calls.contains { $0.ordinal == call.ordinal && $0.attempt > call.attempt }
+    }
+
+    private func canRetryGoalTask(_ call: DynamicWorkflowChildPresentation) -> Bool {
+        guard let goal = dynamic?.goal, dynamic?.state == .paused, goal.state != .budgetExhausted,
+              let id = call.task?.taskID, let node = goal.tasks.first(where: { $0.id == id }), node.state == .failed,
+              WorkflowGoalDisplay.call(node, in: calls)?.callID == callID,
+              [.failed, .unavailable, .stopped].contains(call.status) else { return false }
+        return true
+    }
+
+    @ViewBuilder private func agentSettings(_ call: DynamicWorkflowChildPresentation) -> some View {
+        if call.sessionKey != nil || call.modelName != nil {
+            DisclosureGroup("Agent settings") {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    if let agent = call.sessionKey { LabeledContent("Agent", value: WorkflowDisplay.name(agent)) }
+                    if let model = call.modelName { LabeledContent("Model policy", value: model) }
+                    if let effort = call.profile?.reasoningEffort { LabeledContent("Reasoning", value: WorkflowDisplay.name(effort.rawValue)) }
+                    if let limit = call.toolCallLimit { LabeledContent("Tool allowance", value: limit == 0 ? "Reasoning only" : "Up to \(limit) calls") }
+                    if let profile = call.profile, !profile.toolNames.isEmpty {
+                        Text(profile.toolNames.joined(separator: ", ")).font(.caption).foregroundStyle(Theme.textSecondary)
+                    }
+                    if let profile = call.profile, !profile.skillIDs.isEmpty {
+                        let names = profile.skillIDs.map { dynamic?.goal?.skillNames[$0.lowercased()] ?? $0 }
+                        LabeledContent("Additional skills", value: names.joined(separator: ", "))
+                    }
+                }.font(.callout).padding(.top, Theme.Space.sm)
+            }.font(.callout.weight(.medium)).studioCard()
+        }
     }
 
     private func restart() {
@@ -205,11 +252,18 @@ struct WorkflowTaskDetailView: View {
 
     private func loadResult() async {
         guard call?.hasResult == true, let store else { return }
+        let token = UUID()
+        readToken = token
         loading = true
         readError = nil
-        defer { loading = false }
-        do { result = try await store.result(workflowID: workflowID, callID: callID) }
-        catch { readError = "Could not read the saved result: \(error.localizedDescription)" }
+        defer { if readToken == token { loading = false } }
+        do {
+            let value = try await store.result(workflowID: workflowID, callID: callID)
+            guard !Task.isCancelled, readToken == token else { return }
+            result = value
+        } catch {
+            if !Task.isCancelled, readToken == token { readError = "Could not read the saved result: \(error.localizedDescription)" }
+        }
     }
 
     private func observe() async {

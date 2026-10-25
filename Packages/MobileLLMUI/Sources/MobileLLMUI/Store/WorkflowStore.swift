@@ -36,6 +36,22 @@ public final class WorkflowStore: WorkflowRecording {
     public var taskSessionHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> AgentSessionView)?
     public var taskMessageHandler: (@MainActor (UUID, WorkflowAgentCallID, MessageID, String) async throws -> Void)?
     public var taskSessionResumeHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> Void)?
+    public var goalUpdateHandler: (@MainActor (UUID, MessageID, String) async throws -> Void)?
+
+    public func updateGoal(workflowID: UUID, id: MessageID, text: String, resumeAfterSave: Bool) async throws {
+        guard let dynamic = workflows[workflowID]?.dynamic, dynamic.goal != nil,
+              ![.completed, .failed, .cancelled].contains(dynamic.state),
+              !actioningWorkflowIDs.contains(workflowID), let goalUpdateHandler else { throw WorkflowStoreActionError.unavailable }
+        actioningWorkflowIDs.insert(workflowID)
+        defer { actioningWorkflowIDs.remove(workflowID) }
+        try await goalUpdateHandler(workflowID, id, text)
+        if resumeAfterSave {
+            do {
+                guard let dynamicResumeHandler else { throw WorkflowStoreActionError.unavailable }
+                try await dynamicResumeHandler(workflowID)
+            } catch { throw WorkflowStoreActionError.goalSavedCannotResume(error.localizedDescription) }
+        }
+    }
 
     public func taskSession(workflowID: UUID, callID: WorkflowAgentCallID) async throws -> AgentSessionView {
         guard workflows[workflowID] != nil, let taskSessionHandler else { throw WorkflowStoreActionError.unavailable }
@@ -272,6 +288,12 @@ public final class WorkflowStore: WorkflowRecording {
 
 private enum WorkflowStoreActionError: LocalizedError {
     case unavailable
+    case goalSavedCannotResume(String)
 
-    var errorDescription: String? { "This workflow action is unavailable." }
+    var errorDescription: String? {
+        switch self {
+        case .unavailable: "This workflow action is unavailable."
+        case .goalSavedCannotResume(let reason): "Your update is saved. Work could not resume: \(reason)"
+        }
+    }
 }

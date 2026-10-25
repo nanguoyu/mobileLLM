@@ -6,6 +6,32 @@ import XCTest
 
 // TEST-ID: AHT-SESSION-002
 final class AgentSessionExecutionTests: XCTestCase {
+    func testGoalOwnedInputCannotAutomaticallyMintAStandaloneHumanTurnBudget() async throws {
+        let model = try ExecutorTestModelDefinition(offset: 853)
+        let probe = SessionRequestProbe()
+        let provider = try SessionProbeProvider(model: model, script: probe)
+        let harness = try ExecutorTestHarness(offset: 853, provider: provider, model: model)
+        let seed = harness.request
+        let handle = try await harness.executor.submit(seed, commandID: ExecutorTestID.command(853))
+        _ = try await collectTerminalEvents(from: harness.executor.attach(to: handle))
+        let userTurn = MessageID(rawValue: ExecutorTestID.uuid(8531))
+        try await harness.executor.controller.sendSessionInput(seedRunID: seed.runID, conversationID: seed.conversationID,
+            messageID: userTurn, text: "One explicitly requested follow-up.", mode: .nextTurn, startNextTurn: true)
+        let continued = try await harness.executor.controller.sessionView(seedRunID: seed.runID, conversationID: seed.conversationID)
+        _ = try await collectTerminalEvents(from: harness.executor.attach(to: XCTUnwrap(continued.turns.last?.handleID)))
+        try await waitForWorkerToStop(AgentRunID(rawValue: userTurn.rawValue), controller: harness.executor.controller)
+        let goalID = WorkflowRunID()
+        let amendment = WorkflowGoalAmendment(id: MessageID(), text: "Keep this update inside the goal budget.", acceptedAt: AgentTimestamp(rawValue: 60_000))
+        try await harness.executor.controller.sendGoalSessionInput(seedRunID: seed.runID, conversationID: seed.conversationID,
+            goalID: goalID, amendment: amendment)
+        await harness.executor.controller.advanceSessionAfterCompletion(AgentRunID(rawValue: userTurn.rawValue))
+        let saved = try await harness.executor.controller.sessionView(seedRunID: seed.runID, conversationID: seed.conversationID)
+        XCTAssertEqual(saved.turns.count, 2)
+        XCTAssertEqual(saved.snapshot.pendingTurns.first?.sender, .goalOwner(goalID))
+        let count = await probe.values().count
+        XCTAssertEqual(count, 2)
+    }
+
     func testReducedHistoryKeepsOriginalRequirementReadableAndRecentCorrectionInContextAfterRestart() async throws {
         let firstID = MessageID()
         var conversation = [try ConversationTurnContextSource(messageID: firstID, revision: "original", role: .user,

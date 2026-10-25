@@ -659,6 +659,7 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
         if let task, let revision = task.expectedRevision {
             object["taskClaim"] = .object(["id": .string(task.taskID), "revision": .unsignedInteger(revision),
                 "inputs": .array(task.inputArtifactIDs.map(JSONValue.string)), "output": .string(task.outputArtifactID)])
+            if let count = task.goalAmendmentCount { object["goalAmendmentCount"] = .integer(Int64(count)) }
         }
         return try CanonicalJSON(.object(object)).fingerprint
     }
@@ -745,6 +746,7 @@ public enum WorkflowRunEventKindV1: Hashable, Codable, Sendable {
     case logAppended(String)
     case savedWorkflowPinned(name: String, reference: WorkflowScriptReferenceV1)
     case agentCallPrepared(WorkflowAgentCallV1)
+    case agentCallRejected(call: WorkflowAgentCallV1, failure: AgentFailure)
     case agentChildSubmitted(callID: WorkflowAgentCallID, handleID: AgentExecutionHandleID)
     case agentCallSettled(callID: WorkflowAgentCallID, outcome: WorkflowAgentOutcomeV1)
     case waitSelected(WorkflowWaitSelection)

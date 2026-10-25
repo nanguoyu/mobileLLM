@@ -8,7 +8,7 @@ struct WorkflowTaskGroup: Identifiable {
     let id: String
     let calls: [DynamicWorkflowChildPresentation]
     var latest: DynamicWorkflowChildPresentation { calls[calls.count - 1] }
-    var title: String { WorkflowDisplay.name(latest.task?.taskID ?? latest.label ?? "Task \(latest.ordinal)") }
+    var title: String { latest.taskTitle }
 }
 
 enum WorkflowDisplay {
@@ -63,8 +63,12 @@ enum WorkflowDisplay {
     }
 
     static func inputs(for call: DynamicWorkflowChildPresentation,
-                       in calls: [DynamicWorkflowChildPresentation]) -> [DynamicWorkflowChildPresentation] {
+                       in calls: [DynamicWorkflowChildPresentation], goal: WorkflowGoalPresentation? = nil) -> [DynamicWorkflowChildPresentation] {
         (call.task?.inputArtifactIDs ?? []).compactMap { id in
+            if let goal {
+                guard let link = goal.results.first(where: { $0.id == id }) else { return nil }
+                return calls.first { $0.callID == link.callID }
+            }
             let sources = calls.filter { source in
                 guard source.task?.outputArtifactID == id else { return false }
                 if let prepared = call.preparedSequence, let settled = source.settledSequence {
@@ -86,7 +90,11 @@ enum WorkflowDisplay {
 
 extension DynamicWorkflowChildPresentation {
     var isCoordinator: Bool { agentType == "workflow-supervisor" }
-    var taskTitle: String { WorkflowDisplay.name(task?.taskID ?? label ?? "Task \(ordinal)") }
+    var taskTitle: String {
+        let id = task?.taskID ?? label ?? "Task \(ordinal)"
+        let compact = id.count < 4 || id.range(of: #"^[Tt][0-9]+$"#, options: .regularExpression) != nil
+        return WorkflowDisplay.name(compact ? (sessionKey ?? label ?? id) : id)
+    }
 
     func statusText(workflowState: DynamicWorkflowPresentationState, attached: Bool) -> String {
         guard status == .prepared || status == .submitted else { return status.label }

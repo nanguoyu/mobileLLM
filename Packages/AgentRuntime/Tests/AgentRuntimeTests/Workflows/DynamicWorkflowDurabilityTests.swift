@@ -8,6 +8,73 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowDurabilityTests: XCTestCase {
+    func testRejectedTaskClaimIsDurableAndRetryDoesNotContinueAnUnsubmittedSeed() async throws {
+        let fixture = try makeFixture(body: """
+        let state = await collaborate({action:'snapshot'});
+        state = await collaborate({action:'update',expectedRevision:state.graph.revision,tasks:[
+          {id:'work',expectedRevision:0,agent:'worker',instruction:'Do work',dependencies:[],required:true,maximumToolCalls:0}
+        ]});
+        const stale = spawn('Do work',{session:'worker',maxToolCalls:0,task:{taskID:'work',instruction:'Do work',
+          expectedRevision:99,goalAmendmentCount:0,inputArtifactIDs:[],outputArtifactID:'work:bad'}});
+        const failure = await waitAny([stale]);
+        if (failure.code !== 'workflow.task-admission') throw new Error('Missing durable rejection');
+        state = await collaborate({action:'settle',handle:stale});
+        const task = state.graph.tasks[0];
+        const valid = spawn('Do work',{session:'worker',maxToolCalls:0,task:{taskID:'work',instruction:'Do work',
+          expectedRevision:task.revision,goalAmendmentCount:0,inputArtifactIDs:[],outputArtifactID:'work:good'}});
+        await waitAny([valid]);
+        state = await collaborate({action:'settle',handle:valid});
+        state = await collaborate({action:'deliver',expectedRevision:state.graph.revision});
+        if (state.feedback) throw new Error(state.feedback);
+        return 'recovered';
+        """, args: CanonicalJSON(.object(["goal": .string("Complete work with a valid owner.")])))
+        let spawner = WorkflowFakeSpawner()
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        let result = try await engine.runAndWait(runID: fixture.launch.runID)
+        XCTAssertEqual(try decode(result), .string("recovered"))
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(projection?.outcomes.count, 2)
+        XCTAssertEqual(projection?.submittedHandles.count, 1)
+        XCTAssertEqual(projection?.taskGraph?.artifacts.map(\.id), ["work:good"])
+        let count = await spawner.spawnCount
+        XCTAssertEqual(count, 1)
+    }
+
+    func testHumanGoalUpdateRecordsRecipientsAndSteersAnActiveTaskWithoutRestartingIt() async throws {
+        let fixture = try makeFixture(body: """
+        let view = await collaborate({action:'snapshot'});
+        view = await collaborate({action:'update',expectedRevision:view.graph.revision,tasks:[
+          {id:'task',expectedRevision:0,agent:'worker',instruction:'Wait for evidence',dependencies:[],required:true,maximumToolCalls:0}
+        ]});
+        const handle = spawn('Wait for evidence',{session:'worker',maxToolCalls:0,task:{taskID:'task',instruction:'Wait for evidence',
+          expectedRevision:1,goalAmendmentCount:0,inputArtifactIDs:[],outputArtifactID:'task:1'}});
+        const result = await waitAny([handle]);
+        view = await collaborate({action:'settle',handle:handle});
+        view = await collaborate({action:'deliver',expectedRevision:view.graph.revision});
+        if (view.feedback) throw new Error(view.feedback);
+        return result.value;
+        """, args: CanonicalJSON(.object(["goal": .string("Use the requested evidence.")])))
+        let spawner = GoalUpdateSpawner()
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        let run = Task { try await engine.runAndWait(runID: fixture.launch.runID) }
+        try await waitForExecutorCondition { await spawner.collecting }
+        let id = MessageID()
+        try await engine.amendGoal(runID: fixture.launch.runID, messageID: id, text: "Use the corrected seven-day limit.")
+        let result = try await run.value
+        XCTAssertEqual(try decode(result), .string("Use the corrected seven-day limit."))
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(projection?.taskGraph?.amendments.count, 1)
+        XCTAssertEqual(projection?.taskGraph?.amendments.first?.targetRunIDs?.count, 2)
+        let count = await spawner.spawnCount
+        XCTAssertEqual(count, 1)
+    }
+
     func testPreparationUsageIsRecordedBeforeApprovalAndCannotBecomeFreshChildCapacity() async throws {
         let fixture = try makeFixture(body: """
         const before = await budget.snapshot();
@@ -886,5 +953,34 @@ private actor V5WorkflowSpawner: SubagentSpawning {
             answer = try AgentAnswer(text: "Reviewed original tail")
         }
         return SubagentResult(runID: request.childRunID, handleID: handleID, outcome: .completed(answer: answer, usage: .zero))
+    }
+}
+
+private actor GoalUpdateSpawner: SubagentSpawning {
+    private var request: SubagentSpawnRequest?
+    private var handle: AgentExecutionHandleID?
+    private var waiter: CheckedContinuation<Void, Never>?
+    private var message: String?
+    private(set) var collecting = false
+    private(set) var spawnCount = 0
+
+    func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID {
+        self.request = request
+        let handle = AgentExecutionHandleID(); self.handle = handle
+        spawnCount += 1
+        return handle
+    }
+    func collect(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult {
+        collecting = true
+        if message == nil { await withCheckedContinuation { waiter = $0 } }
+        return SubagentResult(runID: request!.childRunID, handleID: handleID,
+            outcome: .completed(answer: try AgentAnswer(text: message!), usage: .zero))
+    }
+    func deliverGoalAmendment(_ amendment: WorkflowGoalAmendment, goalID: WorkflowRunID,
+                              conversationID: ConversationID, runIDs: [AgentRunID]) async throws {
+        if let request, runIDs.contains(request.childRunID) {
+            message = amendment.text
+            waiter?.resume(); waiter = nil
+        }
     }
 }

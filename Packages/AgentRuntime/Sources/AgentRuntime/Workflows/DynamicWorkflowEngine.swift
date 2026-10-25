@@ -337,6 +337,7 @@ public actor DynamicWorkflowEngine {
 
     /// User amendments are separate immutable facts. Reading a goal never invokes this method.
     public func amendGoal(runID: WorkflowRunID, messageID: MessageID, text: String) async throws {
+        guard !dataEraseSuspended else { throw WorkflowScriptRuntimeError.cancelled }
         let amendment = WorkflowGoalAmendment(id: messageID, text: text, acceptedAt: try await clock.now())
         if let current = active[runID] {
             try await current.session.amendGoal(amendment)
@@ -344,9 +345,15 @@ public actor DynamicWorkflowEngine {
             let saved = try await requiredProjection(runID)
             if let prior = saved.taskGraph?.amendments.first(where: { $0.id == messageID }) {
                 guard prior.text == text else { throw WorkflowTaskGraphError.stale }
+                try await spawner.deliverGoalAmendment(prior, goalID: runID, conversationID: saved.launch.conversationID,
+                    runIDs: prior.targetRunIDs ?? [saved.launch.initiatingRunID])
                 return
             }
-            _ = try await append([.goalAmended(amendment)], to: saved)
+            let stored = WorkflowGoalAmendment(id: messageID, text: text, acceptedAt: amendment.acceptedAt,
+                targetRunIDs: goalAmendmentRecipients(saved))
+            _ = try await append([.goalAmended(stored)], to: saved)
+            try await spawner.deliverGoalAmendment(stored, goalID: runID, conversationID: saved.launch.conversationID,
+                runIDs: stored.targetRunIDs ?? [])
         }
     }
 
@@ -632,6 +639,7 @@ private actor DynamicWorkflowSession {
                     from: projection.state, to: .running, reason: "execution-started"
                 )])
             }
+            try await deliverGoalAmendments()
             let host = makeHost(depth: 0)
             let result = try await runtime.execute(
                 script,
@@ -803,6 +811,9 @@ private actor DynamicWorkflowSession {
                         result["value"] = try JSONDecoder().decode(JSONValue.self, from: await valueStore.load(reference).data)
                     case .failed(let failure, _):
                         result["status"] = .string("failed"); result["error"] = .string(failure.safeMessage)
+                        if projection.calls.first(where: { $0.callID == selected })?.options.task?.goalAmendmentCount != nil {
+                            result["code"] = .string(failure.code)
+                        }
                     case .unavailable(let reason, _):
                         result["status"] = .string("unavailable"); result["error"] = .string(reason)
                     case .stopped:
@@ -838,11 +849,32 @@ private actor DynamicWorkflowSession {
     }
 
     func amendGoal(_ amendment: WorkflowGoalAmendment) async throws {
+        let stored = try await appendMutex.run { [weak self] in
+            guard let self else { throw CancellationError() }
+            return try await self.acceptGoalAmendment(amendment)
+        }
+        try await spawner.deliverGoalAmendment(stored, goalID: projection.runID, conversationID: projection.launch.conversationID,
+            runIDs: stored.targetRunIDs ?? [projection.launch.initiatingRunID])
+    }
+
+    private func acceptGoalAmendment(_ amendment: WorkflowGoalAmendment) async throws -> WorkflowGoalAmendment {
         if let prior = projection.taskGraph?.amendments.first(where: { $0.id == amendment.id }) {
             guard prior.text == amendment.text else { throw WorkflowTaskGraphError.stale }
-            return
+            return prior
         }
-        _ = try await append([.goalAmended(amendment)])
+        let stored = WorkflowGoalAmendment(id: amendment.id, text: amendment.text, acceptedAt: amendment.acceptedAt,
+            targetRunIDs: goalAmendmentRecipients(projection))
+        _ = try await performAppendAndInstall([.goalAmended(stored)])
+        return stored
+    }
+
+    private func deliverGoalAmendments(only runID: AgentRunID? = nil) async throws {
+        for amendment in projection.taskGraph?.amendments ?? [] {
+            let targets = amendment.targetRunIDs ?? [projection.launch.initiatingRunID]
+            let selected = runID.map { id in targets.filter { $0 == id } } ?? targets
+            try await spawner.deliverGoalAmendment(amendment, goalID: projection.runID,
+                conversationID: projection.launch.conversationID, runIDs: selected)
+        }
     }
 
     private func collaborate(index: UInt32, command: CanonicalJSON) async throws -> JSONValue {
@@ -863,6 +895,7 @@ private actor DynamicWorkflowSession {
             }
         }
         if decoded.action == "deliver" {
+            try await deliverGoalAmendments()
             let runIDs = [projection.launch.initiatingRunID] + projection.calls.map(\.childRunID)
             return try await spawner.withSessionInputBarrier(runIDs: runIDs) { [weak self] in
                 guard let self else { throw CancellationError() }
@@ -904,7 +937,10 @@ private actor DynamicWorkflowSession {
                 guard let handle = decoded.handle, let id = detachedCalls[handle], evidenceVisibleCalls.contains(id),
                       let call = projection.calls.first(where: { $0.callID == id }), let outcome = projection.outcomes[id]
                 else { throw WorkflowTaskGraphError.ownership }
-                try graph.settle(call: call, outcome: outcome)
+                if case .failed(let failure, _) = outcome, failure.code == "workflow.task-admission" {
+                    // The call never acquired this task. Return the current graph so dispatch can
+                    // use the newer goal/task revision without inventing a failed execution.
+                } else { try graph.settle(call: call, outcome: outcome) }
             case "read":
                 guard let id = decoded.artifactID, let artifact = graph.artifacts.first(where: { $0.id == id }),
                       let offset = decoded.offset, offset >= 0, let length = decoded.length, (1...12_000).contains(length)
@@ -1149,7 +1185,16 @@ private actor DynamicWorkflowSession {
             case .execute(let call):
                 visibleCallID = call.callID
                 try await invalidateUnsettledSuffix(startingAt: call.ordinal)
-                _ = try await append([.agentCallPrepared(call)])
+                do {
+                    _ = try await append([.agentCallPrepared(call)])
+                } catch let error as WorkflowTaskGraphError {
+                    let failure = try AgentFailure(code: "workflow.task-admission", classification: .permanent,
+                        safeMessage: error.localizedDescription, retryAdvice: .never, externalEffect: .confirmedNone,
+                        requiredUserAction: .none, redaction: RedactionMetadata(classification: .publicMetadata, policyVersion: 1))
+                    _ = try await append([.agentCallRejected(call: call, failure: failure)])
+                    await order.complete(invocation.sequence)
+                    throw WorkflowChildExecutionFailed(failure: failure)
+                }
                 await order.complete(invocation.sequence)
                 return try await execute(call: call, prompt: invocation.prompt, prepared: false)
             }
@@ -1258,15 +1303,19 @@ private actor DynamicWorkflowSession {
             admission = admitted.admission
             do {
                 let seed = call.options.sessionKey.flatMap { key in
-                    projection.calls.first(where: { $0.ordinal < call.ordinal && $0.options.sessionKey == key })?.childRunID
+                    projection.calls.first(where: {
+                        $0.ordinal < call.ordinal && $0.options.sessionKey == key && projection.submittedHandles[$0.callID] != nil
+                    })?.childRunID
                         ?? (key == "coordinator" && call.options.requestedAgentType == "workflow-supervisor" ? launch.initiatingRunID : nil)
                 }
                 if let seed {
                     // Identity is selected by the host from committed coordinator calls, never
                     // accepted as a sender name from model-produced options.
                     let sender = projection.calls.last(where: {
-                        $0.ordinal < call.ordinal && $0.options.requestedAgentType == "workflow-supervisor"
-                            && projection.outcomes[$0.callID] != nil
+                        guard $0.ordinal < call.ordinal, $0.options.requestedAgentType == "workflow-supervisor",
+                              projection.submittedHandles[$0.callID] != nil else { return false }
+                        if case .completed = projection.outcomes[$0.callID] { return true }
+                        return false
                     })?.childRunID ?? launch.initiatingRunID
                     handleID = try await spawner.spawn(request, continuing: seed, senderRunID: sender)
                 } else {
@@ -1280,6 +1329,9 @@ private actor DynamicWorkflowSession {
         }
         let result: SubagentResult
         do {
+            do { try await deliverGoalAmendments(only: call.childRunID) }
+            catch is CancellationError { throw CancellationError() }
+            catch { signals.recordLog("Saved goal instructions await inbox delivery; completion will retry delivery.") }
             result = try await spawner.collect(handleID, stallMilliseconds: call.options.stallMilliseconds)
         } catch let timeout as SubagentStallTimeout {
             try await settleAfterCancellation(call: call, handleID: handleID, admission: admission)
@@ -1855,4 +1907,9 @@ private struct WorkflowCollaborationCommand: Decodable, Sendable {
     let length: Int?
     let reason: String?
     let reasonCode: String?
+}
+
+private func goalAmendmentRecipients(_ projection: WorkflowRunProjectionV1) -> [AgentRunID] {
+    let active = projection.calls.filter { projection.outcomes[$0.callID] == nil }.map(\.childRunID)
+    return Array(Set([projection.launch.initiatingRunID] + active)).sorted { $0.description < $1.description }
 }

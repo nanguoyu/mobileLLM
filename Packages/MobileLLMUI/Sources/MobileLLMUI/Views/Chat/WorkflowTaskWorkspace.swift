@@ -11,10 +11,12 @@ struct WorkflowTaskWorkspace: View {
     @State private var destination: Destination?
 
     private enum Destination: Identifiable {
-        case task(WorkflowAgentCallID), result, planning
+        case task(WorkflowAgentCallID), goalTask(String), updateGoal, result, planning
         var id: String {
             switch self {
             case .task(let id): id.rawValue.uuidString
+            case .goalTask(let id): "goal-task-" + id
+            case .updateGoal: "update-goal"
             case .result: "result"
             case .planning: "planning"
             }
@@ -42,6 +44,7 @@ struct WorkflowTaskWorkspace: View {
                     .accessibilityIdentifier("workflow.failure")
             }
             WorkflowActionBar(store: store, workflowID: workflow.id, state: dynamic.state, attached: attached)
+            if let goal = dynamic.goal { WorkflowGoalInfo(goal: goal) }
             if !attention.isEmpty {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text("Needs your attention").font(.headline)
@@ -51,17 +54,22 @@ struct WorkflowTaskWorkspace: View {
                     }
                 }
             }
-            if tasks.isEmpty {
+            if tasks.isEmpty && (dynamic.goal?.tasks.isEmpty ?? true) {
                 Label(emptyTaskMessage,
                       systemImage: "point.3.connected.trianglepath.dotted")
                     .font(.callout).foregroundStyle(Theme.textSecondary).studioCard()
             }
-            ForEach(phases, id: \.self) { phase in
-                VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    Text(WorkflowDisplay.name(phase)).font(.headline).foregroundStyle(Theme.textPrimary)
-                    ForEach(stageTasks.filter { ($0.latest.phase ?? "Tasks") == phase }) { task in
-                        WorkflowTaskCard(task: task, calls: calls, state: dynamic.state, attached: attached) {
-                            destination = .task(task.latest.callID)
+            if let goal = dynamic.goal {
+                WorkflowGoalTasks(goal: goal, dynamic: dynamic, attached: attached,
+                    excluding: Set(attention.compactMap { $0.task?.taskID })) { destination = .goalTask($0) }
+            } else {
+                ForEach(phases, id: \.self) { phase in
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        Text(WorkflowDisplay.name(phase)).font(.headline).foregroundStyle(Theme.textPrimary)
+                        ForEach(stageTasks.filter { ($0.latest.phase ?? "Tasks") == phase }) { task in
+                            WorkflowTaskCard(task: task, calls: calls, state: dynamic.state, attached: attached) {
+                                destination = .task(task.latest.callID)
+                            }
                         }
                     }
                 }
@@ -74,6 +82,10 @@ struct WorkflowTaskWorkspace: View {
                     switch target {
                     case .task(let id):
                         WorkflowTaskDetailView(store: store, workflowID: workflow.id, callID: id)
+                    case .goalTask(let id):
+                        WorkflowGoalTaskDetail(store: store, workflowID: workflow.id, taskID: id)
+                    case .updateGoal:
+                        if let store { WorkflowGoalUpdateView(store: store, workflowID: workflow.id) }
                     case .planning:
                         WorkflowPlanningInspector(store: store, workflowID: workflow.id)
                     case .result:
@@ -85,7 +97,11 @@ struct WorkflowTaskWorkspace: View {
                         }.background(Theme.bg).navigationTitle("Final result")
                     }
                 }
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { destination = nil } } }
+                .toolbar {
+                    if target.id != "update-goal" {
+                        ToolbarItem(placement: .confirmationAction) { Button("Done") { destination = nil } }
+                    }
+                }
             }
             #if os(macOS)
             .frame(minWidth: 540, minHeight: 600)
@@ -103,12 +119,25 @@ struct WorkflowTaskWorkspace: View {
             }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(dynamic.state == .completed ? Theme.fitGreen : Theme.accent)
-            if !tasks.isEmpty {
-                Text(WorkflowDisplay.summary(calls))
+            if !tasks.isEmpty || !(dynamic.goal?.tasks.isEmpty ?? true) {
+                Text(dynamic.goal.map(WorkflowGoalDisplay.summary) ?? WorkflowDisplay.summary(calls))
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
                     .accessibilityIdentifier("workflow.task.count")
             }
             WorkflowElapsedLabel(start: workflow.startTime, end: workflow.endTime)
+            if let latest = dynamic.goal?.amendments.last {
+                Text("Latest update: " + latest.text).font(.callout).foregroundStyle(Theme.textSecondary).lineLimit(2)
+                    .accessibilityIdentifier("workflow.goal.latest-update")
+            }
+            if (dynamic.goal?.pendingInputs.count ?? 0) > 0 {
+                Label("Agents have saved updates to include", systemImage: "bubble.left.and.bubble.right")
+                    .font(.caption).foregroundStyle(Theme.fitAmber)
+            }
+            if let goal = dynamic.goal, goal.state != .budgetExhausted, store?.goalUpdateHandler != nil,
+               ![.completed, .failed, .cancelled, .pausing].contains(dynamic.state) {
+                Button("Update goal", systemImage: "square.and.pencil") { destination = .updateGoal }
+                    .buttonStyle(.bordered).controlSize(.large).accessibilityIdentifier("workflow.goal.update")
+            }
             if dynamic.state == .generatingCandidate, dynamic.planning != nil {
                 Button("Review planning", systemImage: "person.crop.circle.badge.questionmark") { destination = .planning }
                     .buttonStyle(.bordered).controlSize(.large)
@@ -137,6 +166,8 @@ struct WorkflowTaskWorkspace: View {
         if dynamic.state == .generatingCandidate, let planning = dynamic.planning {
             return WorkflowDisplay.planningStatus(planning.state)
         }
+        if dynamic.state == .paused, dynamic.goal?.state == .budgetExhausted { return "Limit reached" }
+        if dynamic.state == .paused, dynamic.goal?.state == .blocked { return "Needs attention" }
         return dynamic.state.displayLabel(attached: attached)
     }
 

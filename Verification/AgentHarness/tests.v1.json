@@ -2083,6 +2083,22 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.ToolV2AdapterTests/testOnlineSkillDiscoveryKeepsUnselectedCustomPacksPrivateAndLocalSelectionExplicit"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testRejectedTaskClaimIsDurableAndRetryDoesNotContinueAnUnsubmittedSeed"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testHumanGoalUpdateRecordsRecipientsAndSteersAnActiveTaskWithoutRestartingIt"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.WorkflowGoalPresentationTests/testPlannedDependenciesAndReadyResultReflectDifferentRuntimeStates"
+        },
+        {
+          "kind": "xctest",
+          "value": "MobileLLMUITests.WorkflowGoalPresentationTests/testViewingGoalNeverResumesAndExplicitUpdateIsSavedBeforeResume"
         }
       ],
       "platforms": [
@@ -3015,6 +3031,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.WorkflowAgentToolExecutionTests/testModelMessageUsesAuthorizedBoundaryAndWaitsForBudgetedCoordinatorActivation"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionExecutionTests/testGoalOwnedInputCannotAutomaticallyMintAStandaloneHumanTurnBudget"
         }
       ],
       "platforms": [

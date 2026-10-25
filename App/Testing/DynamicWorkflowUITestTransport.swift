@@ -23,7 +23,7 @@ private final class DynamicWorkflowUITestResponsesProtocol: URLProtocol, @unchec
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
-        let body = Self.requestBodyString(request)
+        let body = Self.latestUserText(request)
         let text: String
         if body.contains("SESSION_UI_CONTINUATION") {
             text = "SESSION_UI_ACK: This follow-up was received in the existing agent conversation. The original workflow result remains available."
@@ -87,6 +87,20 @@ private final class DynamicWorkflowUITestResponsesProtocol: URLProtocol, @unchec
     }
 
     override func stopLoading() {}
+
+    /// Fixture decisions follow the current request. Persisted coordinator sessions also contain
+    /// earlier task graphs; treating their old running states as current creates fake extra rounds.
+    private static func latestUserText(_ request: URLRequest) -> String {
+        let raw = requestBodyString(request)
+        guard let object = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any],
+              let messages = (object["messages"] ?? object["input"]) as? [[String: Any]],
+              let user = messages.last(where: { $0["role"] as? String == "user" }) else { return raw }
+        if let text = user["content"] as? String { return text }
+        if let parts = user["content"] as? [[String: Any]] {
+            return parts.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        }
+        return raw
+    }
 
     private static func requestBodyString(_ request: URLRequest) -> String {
         if let data = request.httpBody { return String(data: data, encoding: .utf8) ?? "" }
