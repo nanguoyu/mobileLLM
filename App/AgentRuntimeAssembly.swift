@@ -368,7 +368,7 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         let roleInputs = try parent.frozen.applying(profile: call.options.profile, online: !modelPolicy.localOnly)
         var permitted = roleInputs.toolPolicy.allowedToolIDs.filter { id in
             guard let descriptor = roleInputs.toolCatalog.descriptor(for: id) else { return false }
-            return call.options.requiresIsolatedWorkspace || !descriptor.effects.contains(.localWrite) || id.providerID == "agent"
+            return call.options.requiresIsolatedWorkspace || !descriptor.effects.contains(.localWrite)
         }
         if role == "workflow-supervisor" {
             permitted = permitted.filter {
@@ -386,9 +386,8 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         let childToolPolicy = try ConversationToolPolicy(masterEnabled: roleInputs.toolPolicy.masterEnabled,
             allowedToolIDs: permitted, pinnedToolIDs: roleInputs.toolPolicy.pinnedToolIDs.filter { permitted.contains($0) },
             selectionPolicyVersion: roleInputs.toolPolicy.selectionPolicyVersion, materializedFromGlobalTemplate: false)
-        let teamWrites = permitted.contains { $0.providerID == "agent" && $0.name == WorkflowAgentToolOperation.sendMessage.rawValue }
         let childCeiling = try attenuatedCeiling(from: launch.capabilityCeiling,
-            requiresIsolation: call.options.requiresIsolatedWorkspace, allowsTeamWrites: teamWrites)
+            requiresIsolation: call.options.requiresIsolatedWorkspace)
         let childCatalog = try ToolCatalogSnapshot(revision: roleInputs.toolCatalog.revision,
             descriptors: roleInputs.toolCatalog.descriptors.filter { permitted.contains($0.id.logicalID) },
             unavailable: roleInputs.toolCatalog.unavailable.filter { permitted.contains($0.logicalID) })
@@ -505,8 +504,7 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
 
     private func attenuatedCeiling(
         from parent: RunCapabilityCeiling,
-        requiresIsolation: Bool,
-        allowsTeamWrites: Bool
+        requiresIsolation: Bool
     ) throws -> RunCapabilityCeiling {
         guard parent.capabilities.contains(AppFrozenInputBuilder.workflowDelegationCapability) else {
             throw AppDynamicWorkflowIntegrationError.delegationNotAuthorized
@@ -515,7 +513,7 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         return try parent.attenuating(to: AgentAuthorityScope(
             capabilities: AgentCapabilitySet(authority.capabilities.values.filter {
                 $0 != AppFrozenInputBuilder.workflowDelegationCapability
-                    && (requiresIsolation || allowsTeamWrites || $0 != .localWrite)
+                    && (requiresIsolation || $0 != .localWrite)
             }),
             destinations: authority.destinations,
             dataCategories: authority.dataCategories,
@@ -936,7 +934,7 @@ public final class AgentRuntimeAssembly {
         let workflowBudget = try dynamicWorkflowBudget(from: source.budget,
             maximumOutputTokensPerAttempt: UInt64(generatorOutputTokens))
         let parentAuthority = source.capabilityCeiling.authority
-        let teamAuthority = try AgentAuthorityScope(capabilities: parentAuthority.capabilities,
+        let teamAuthority = try AgentAuthorityScope(capabilities: AgentCapabilitySet(parentAuthority.capabilities.values + [.localRead, .agentMessage]),
             destinations: parentAuthority.destinations + [WorkflowAgentTool.destination(source.conversationID)],
             dataCategories: parentAuthority.dataCategories + [WorkflowAgentTool.dataCategory],
             artifactIDs: parentAuthority.artifactIDs, secretReferenceIDs: parentAuthority.secretReferenceIDs,

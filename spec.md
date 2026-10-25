@@ -2127,3 +2127,12 @@ and tool counters include preparation and known usage from active children witho
 Presentation snapshots contain artifact identities rather than duplicate result bodies. Old results
 retain their exact producer links through retries and revisions. Opening, closing or refreshing a view
 never starts work; a late asynchronous read cannot replace a newer task result.
+
+
+Team message admission has its own `agent.message` capability and `agentMessage` effect. It grants
+only durable inbox admission through the scoped team adapter. It grants no local file, canonical memory,
+calendar or workspace write authority. The child validator continues to require an isolated provider
+for `local.write`. Safe preset treats authorized team admission as an app-owned effect; each invocation
+still binds the actual sender, team destination, payload, idempotency key and shared tool budget.
+The send_message descriptor is version 2. Historical version 1 results remain readable, while fresh
+admissions use version 2. Old frozen tool descriptors are never silently rewritten.

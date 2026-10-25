@@ -166,9 +166,10 @@ public struct WorkflowAgentTool: ToolV2, Sendable {
             "required": .array(properties.keys.sorted().map(JSONValue.string)), "additionalProperties": .bool(false)]))
         let writing = operation == .sendMessage
         return try AgentToolDescriptor(id: AgentToolDescriptorID(logicalID: AgentToolLogicalID(providerID: "agent", name: operation.rawValue),
-                version: SemanticVersion("1.0.0")!, schemaDigest: schema.digest, trustRevision: "workflow-tools.v1"),
+                version: SemanticVersion(writing ? "2.0.0" : "1.0.0")!, schemaDigest: schema.digest,
+                trustRevision: writing ? "workflow-tools.v2" : "workflow-tools.v1"),
             title: operation.rawValue, summary: summary, inputSchema: schema, outputSchema: nil,
-            effects: [writing ? .localWrite : .localRead], requiredCapabilities: AgentCapabilitySet([writing ? .localWrite : .localRead]),
+            effects: [writing ? .agentMessage : .localRead], requiredCapabilities: AgentCapabilitySet([writing ? .agentMessage : .localRead]),
             timeoutPolicy: ToolTimeoutPolicy(maximumMilliseconds: 10_000), retryPolicy: .never,
             idempotency: writing ? .idempotencyKeyRequired : .pureRead, supportsProgress: false, supportsCancellation: true)
     }

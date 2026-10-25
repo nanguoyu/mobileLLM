@@ -305,7 +305,7 @@ enum AgentOperationSemantics {
             throw AgentContractError.invalidExternalOperationPlan("idempotency key contract mismatch")
         }
         let writeEffects: Set<AgentEffect> = [
-            .localWrite, .externalWrite, .externalCommunication, .destructive, .financial,
+            .localWrite, .agentMessage, .externalWrite, .externalCommunication, .destructive, .financial,
         ]
         if requiresBoundIdempotencyKey,
            retryPolicy.kind != .never,

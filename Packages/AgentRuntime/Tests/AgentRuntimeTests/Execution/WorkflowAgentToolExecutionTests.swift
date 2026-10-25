@@ -31,11 +31,11 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
             outcome(.finalAnswer(AgentAnswer(text: "Used the received evidence")))])
         let catalog = DeferredWorkflowToolCatalog(descriptors: [descriptor, reader, skillReader])
         let conversation = ExecutorTestID.conversation(offset)
-        let authority = try AgentAuthorityScope(capabilities: AgentCapabilitySet([.localRead, .localWrite, AgentCapability(rawValue: "workflow.delegate")]),
+        let authority = try AgentAuthorityScope(capabilities: AgentCapabilitySet([.localRead, .agentMessage, AgentCapability(rawValue: "workflow.delegate")]),
             destinations: [WorkflowAgentTool.destination(conversation)], dataCategories: [WorkflowAgentTool.dataCategory])
         let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model, toolDescriptors: [descriptor, reader, skillReader],
             tools: catalog, capabilityCeiling: RunCapabilityCeiling(authority: authority),
-            availableToolCapabilities: AgentCapabilitySet([.localRead, .localWrite]),
+            availableToolCapabilities: AgentCapabilitySet([.localRead, .agentMessage]),
             explicitlyRequestedToolIDs: [descriptor.id.logicalID, reader.id.logicalID, skillReader.id.logicalID],
             provenance: AgentRequestProvenance(source: .workflow), skillCatalog: [skill])
         let root = harness.request
@@ -77,7 +77,7 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
                 timestamp: AgentTimestamp(rawValue: Int64(index + 1)), previousDigest: events.last?.recordDigest, kind: kind))
         }
         _ = try await journal.append(WorkflowEventAppendRequestV1(runID: workflowID, expectedSequence: 0, expectedDigest: nil, events: events))
-        let childCeiling = RunCapabilityCeiling(authority: try AgentAuthorityScope(capabilities: AgentCapabilitySet([.localRead, .localWrite]),
+        let childCeiling = RunCapabilityCeiling(authority: try AgentAuthorityScope(capabilities: AgentCapabilitySet([.localRead, .agentMessage]),
             destinations: authority.destinations, dataCategories: authority.dataCategories))
         let child = try AgentRequest(id: ExecutorTestID.request(8421), runID: childRunID, conversationID: conversation,
             userTurnID: root.userTurnID, parent: ParentAgentContext(runID: root.runID, requestingStepID: AgentStepID(), capabilityCeiling: root.capabilityCeiling),

@@ -61,7 +61,7 @@ public enum ApprovalEffectClass: String, CaseIterable, Hashable, Codable, Sendab
             switch effect {
             case .localPure: .localPure
             case .localRead: .appLocalRead
-            case .localWrite: .appLocalWrite
+            case .localWrite, .agentMessage: .appLocalWrite
             case .privateDataRead, .networkRead: .externalRead
             case .externalWrite: .externalWrite
             case .externalCommunication, .destructive, .financial: .strongExact
@@ -229,7 +229,7 @@ public struct ApprovalPresentationOutcome: Hashable, Codable, Sendable {
     /// execution) still asks.
     public static func isSafePresetOperation(_ plan: ExternalOperationPlan) -> Bool {
         let safeEffects: Set<AgentEffect> = [
-            .localPure, .localRead, .localWrite, .networkRead, .privateDataRead,
+            .localPure, .localRead, .localWrite, .agentMessage, .networkRead, .privateDataRead,
         ]
         if Set(plan.effects).isSubset(of: safeEffects) { return true }
         return plan.effects == [.externalCommunication]

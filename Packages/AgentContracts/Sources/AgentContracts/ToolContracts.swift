@@ -802,7 +802,7 @@ public struct AgentToolDescriptor: Hashable, Codable, Sendable {
             requiresBoundIdempotencyKey: false
         )
         let writeEffects: Set<AgentEffect> = [
-            .localWrite, .externalWrite, .externalCommunication, .destructive, .financial,
+            .localWrite, .agentMessage, .externalWrite, .externalCommunication, .destructive, .financial,
         ]
         if retryPolicy.kind != .never,
            !Set(normalizedEffects).isDisjoint(with: writeEffects),

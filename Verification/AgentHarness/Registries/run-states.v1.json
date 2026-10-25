@@ -5,7 +5,7 @@
   "registryType": "run-states",
   "completeness": "complete",
   "sourceSpecification": {
-    "path": "spec.md", "sha256": "1a3e43757bd32f88de75ff87e302e5238a3641348af303a5af512d000daa5941",
+    "path": "spec.md", "sha256": "fa6e237563fea86b45ae57b1f487c0d542e8d85a2ffb9c53ffb459ff7c272862",
     "section": "8", "lineStart": 222, "lineEnd": 327
   },
   "entries": [

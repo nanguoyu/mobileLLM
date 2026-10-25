@@ -17,7 +17,8 @@ extension FrozenAgentRunInputs {
         let policy = try ConversationToolPolicy(masterEnabled: true, allowedToolIDs: allowed, pinnedToolIDs: pinned,
             selectionPolicyVersion: toolPolicy.selectionPolicyVersion, materializedFromGlobalTemplate: false)
         return try replacing(toolCatalog: catalog, toolPolicy: policy,
-            contextPolicyVersion: 3, skillCatalog: availableSkills)
+            contextPolicyVersion: 3, skillCatalog: availableSkills,
+            availableToolCapabilities: AgentCapabilitySet(availableToolCapabilities.values + [.localRead, .agentMessage]))
     }
 
     public func applying(profile: WorkflowAgentProfileV1?, online: Bool) throws -> FrozenAgentRunInputs {
@@ -72,11 +73,12 @@ extension FrozenAgentRunInputs {
                            baseSystem: BaseSystemContextSource? = nil, skills: [SkillInstructionContextSource]? = nil,
                            conversation: [ConversationTurnContextSource]? = nil, currentUser: CurrentUserContextSource? = nil,
                            toolCatalog: ToolCatalogSnapshot? = nil, toolPolicy: ConversationToolPolicy? = nil,
-                           contextPolicyVersion: UInt32? = nil, skillCatalog: [WorkflowSkillDefinition]? = nil) throws -> FrozenAgentRunInputs {
+                           contextPolicyVersion: UInt32? = nil, skillCatalog: [WorkflowSkillDefinition]? = nil,
+                           availableToolCapabilities: AgentCapabilitySet? = nil) throws -> FrozenAgentRunInputs {
         try FrozenAgentRunInputs(modelSelection: modelSelection, generationParameters: generationParameters ?? self.generationParameters,
             contextBudget: contextBudget, baseSystem: baseSystem ?? self.baseSystem, skills: skills ?? self.skills, memories: memories,
             conversation: conversation ?? self.conversation, currentUser: currentUser ?? self.currentUser, artifactExcerpts: artifactExcerpts,
-            toolCatalog: toolCatalog ?? self.toolCatalog, toolPolicy: toolPolicy ?? self.toolPolicy, availableToolCapabilities: availableToolCapabilities,
+            toolCatalog: toolCatalog ?? self.toolCatalog, toolPolicy: toolPolicy ?? self.toolPolicy, availableToolCapabilities: availableToolCapabilities ?? self.availableToolCapabilities,
             activeSkillToolHints: activeSkillToolHints, explicitlyRequestedToolIDs: explicitlyRequestedToolIDs,
             recentSuccessfulToolChain: recentSuccessfulToolChain, maximumAdvertisedTools: maximumAdvertisedTools,
             contextPolicyVersion: contextPolicyVersion ?? self.contextPolicyVersion, approvalPolicyVersion: approvalPolicyVersion,

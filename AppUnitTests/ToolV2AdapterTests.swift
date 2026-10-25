@@ -363,7 +363,9 @@ final class ToolV2AdapterTests: XCTestCase {
                 prefixKey: digest, promptDigest: digest,
                 options: WorkflowAgentOptionsV1(requestedAgentType: role, maximumToolCalls: 2), childRunID: AgentRunID())
             let spawn = try builder.makeRequest(launch: launch, call: call, prompt: "Coordinate with your team.")
-            XCTAssertTrue(spawn.capabilityCeiling.capabilities.contains(.localWrite))
+            try WorkflowChildRequestValidator().validate(spawn, launch: launch, call: call)
+            XCTAssertTrue(spawn.capabilityCeiling.capabilities.contains(.agentMessage))
+            XCTAssertFalse(spawn.capabilityCeiling.capabilities.contains(.localWrite))
             XCTAssertFalse(spawn.capabilityCeiling.capabilities.contains(AppFrozenInputBuilder.workflowDelegationCapability))
             let request = try AgentRequest(id: AgentRequestID(), runID: spawn.childRunID,
                 conversationID: parent.conversationID, userTurnID: parent.userTurnID,

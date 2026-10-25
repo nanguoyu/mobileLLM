@@ -45,6 +45,8 @@ public struct AgentCapability: Hashable, Codable, Sendable, Comparable,
     public static let localRead = try! Self(rawValue: "local.read")
     /// Authority to write app-owned local data.
     public static let localWrite = try! Self(rawValue: "local.write")
+    /// Authority to append a message to a runtime-owned agent inbox, never user data or files.
+    public static let agentMessage = try! Self(rawValue: "agent.message")
     /// Authority to access private user or system data.
     public static let privateDataRead = try! Self(rawValue: "private-data.read")
     /// Authority to read from a network boundary.
@@ -457,6 +459,8 @@ public enum AgentEffect: String, CaseIterable, Hashable, Codable, Sendable, Comp
     case localRead
     /// App-owned local data is changed.
     case localWrite
+    /// A message is durably admitted within the current agent team.
+    case agentMessage
     /// Private user or system data is read.
     case privateDataRead
     /// Data is read from a network destination.
@@ -483,6 +487,7 @@ public enum AgentEffect: String, CaseIterable, Hashable, Codable, Sendable, Comp
         case .localPure: nil
         case .localRead: .localRead
         case .localWrite: .localWrite
+        case .agentMessage: .agentMessage
         case .privateDataRead: .privateDataRead
         case .networkRead: .networkRead
         case .unknownExternal: .unknownExternal
