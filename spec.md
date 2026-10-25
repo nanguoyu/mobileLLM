@@ -2067,3 +2067,11 @@ budget. A zero-tool activation advertises none. Goal delivery snapshots pending 
 completion cut against message acceptance, including lazily registered sessions. An earlier acknowledged
 input blocks completion until included. A later accepted human follow-up remains a separate pending turn.
 Task conversations show the actual sender and keep full automatic assignment details collapsed.
+
+
+Task updates may pin immutable historical artifact inputs in addition to dependencies on current task
+versions. This permits a draft to be revised using its previous review without creating a cycle between
+current task nodes. The review is invalidated and must inspect the new draft before completion. Exact
+historical inputs remain visible in the resulting artifact record. Coordinator and worker artifact
+reads share one reader with source digests and Unicode-safe ranges. An offset inside a surrogate pair
+is rejected; a page end is shortened to a valid boundary instead of inventing replacement characters.

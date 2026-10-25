@@ -6,6 +6,41 @@ import XCTest
 
 // TEST-ID: AHT-DYNAMIC-001
 final class WorkflowTaskGraphTests: XCTestCase {
+    func testHistoricalReviewCanReviseTheSameTaskWithoutACurrentDependencyCycle() throws {
+        var graph = try WorkflowTaskGraph(objective: "Revise the draft using its review.")
+        try graph.update([update("draft"), update("review", dependencies: ["draft"])], expectedRevision: 1)
+        let draft = try call(graph.tasks[0], output: "draft:1")
+        try graph.claim(taskID: "draft", expectedRevision: 1, call: draft)
+        try graph.settle(call: draft, outcome: completed("Draft version one"))
+        let review = try call(graph.tasks[1], inputs: ["draft:1"], output: "review:1")
+        try graph.claim(taskID: "review", expectedRevision: 1, call: review)
+        try graph.settle(call: review, outcome: completed("Correct the retained source attribution"))
+        try graph.update([WorkflowTaskUpdate(id: "draft", expectedRevision: graph.tasks[0].revision, agent: "draft",
+            instruction: "Address the review", artifactInputs: ["review:1"])], expectedRevision: graph.revision)
+        XCTAssertEqual(graph.tasks[1].state, .needsReview)
+        let revised = try call(graph.tasks[0], inputs: ["review:1"], output: "draft:2")
+        try graph.claim(taskID: "draft", expectedRevision: graph.tasks[0].revision, call: revised)
+        try graph.settle(call: revised, outcome: completed("Revised draft with the original attribution"))
+        XCTAssertEqual(graph.readyTasks.map(\.id), ["review"])
+        XCTAssertEqual(graph.artifacts.last?.inputArtifactIDs, ["review:1"])
+        XCTAssertEqual(graph.artifacts[1].inputArtifactIDs, ["draft:1"])
+        XCTAssertThrowsError(try graph.setGoalState(.completed, reason: nil), "The old review cannot certify the revised draft")
+    }
+
+    func testArtifactReadsPreserveUnicodeAndRejectSurrogateInteriorOffsets() throws {
+        let original = "前😀后, original source"
+        let raw = try CanonicalJSON(.string(original))
+        let first = try WorkflowArtifactExcerpt.read(raw, id: "source:1", offset: 0, length: 2)
+        XCTAssertEqual(first["content"], .string("前"))
+        XCTAssertEqual(first["nextOffset"], .integer(1))
+        let second = try WorkflowArtifactExcerpt.read(raw, id: "source:1", offset: 1, length: 2)
+        XCTAssertEqual(second["content"], .string("😀"))
+        XCTAssertEqual(second["sourceDigest"], .string(raw.fingerprint.rawValue))
+        XCTAssertThrowsError(try WorkflowArtifactExcerpt.read(raw, id: "source:1", offset: 2, length: 3))
+        XCTAssertThrowsError(try WorkflowArtifactExcerpt.read(raw, id: "source:1", offset: 1, length: 1))
+        XCTAssertThrowsError(try WorkflowArtifactExcerpt.read(raw, id: "source:1", offset: Int.max, length: 12_000))
+    }
+
     func testCycleAndStaleAssignmentRejectionLeaveTheWholeGraphUnchanged() throws {
         var graph = try WorkflowTaskGraph(objective: "Produce a checked maintenance plan.")
         try graph.update([update("source"), update("consumer", dependencies: ["source"])], expectedRevision: 1)

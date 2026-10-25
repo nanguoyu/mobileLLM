@@ -907,15 +907,7 @@ private actor DynamicWorkflowSession {
                       let offset = decoded.offset, offset >= 0, let length = decoded.length, (1...12_000).contains(length)
                 else { throw WorkflowTaskGraphError.unavailableInput }
                 let raw = try await valueStore.load(artifact.value)
-                let value = try JSONDecoder().decode(JSONValue.self, from: raw.data)
-                let text: String
-                if case .string(let content) = value { text = content } else { text = raw.string }
-                let source = Array(text.utf16)
-                guard offset < source.count else { throw WorkflowTaskGraphError.unavailableInput }
-                let end = min(source.count, offset + length)
-                observation = .object(["id": .string(id), "offset": .integer(Int64(offset)),
-                    "nextOffset": .integer(Int64(end)), "totalCharacters": .integer(Int64(source.count)),
-                    "content": .string(String(decoding: source[offset..<end], as: UTF16.self)), "truncated": .bool(end < source.count)])
+                observation = .object(try WorkflowArtifactExcerpt.read(raw, id: id, offset: offset, length: length))
             case "deliver":
                 guard decoded.expectedRevision == graph.revision else { throw WorkflowTaskGraphError.stale }
                 guard pendingInputs.count == 0 else { throw AgentSessionError.pendingInput }

@@ -30,14 +30,16 @@ public struct WorkflowTaskUpdate: Hashable, Codable, Sendable {
     public let maximumToolCalls: UInt64
     public let model: String?
     public let inputRanges: [WorkflowTaskInputRange]?
+    public let artifactInputs: [String]?
 
     public init(id: String, expectedRevision: UInt64, agent: String, instruction: String,
                 dependencies: [String] = [], required: Bool = true, maximumToolCalls: UInt64 = 0, model: String? = nil,
-                inputRanges: [WorkflowTaskInputRange]? = nil) {
+                inputRanges: [WorkflowTaskInputRange]? = nil, artifactInputs: [String]? = nil) {
         self.id = id; self.expectedRevision = expectedRevision; self.agent = agent
         self.instruction = instruction; self.dependencies = dependencies; self.required = required
         self.maximumToolCalls = maximumToolCalls; self.model = model
         self.inputRanges = inputRanges
+        self.artifactInputs = artifactInputs
     }
 }
 
@@ -62,6 +64,9 @@ public struct WorkflowTaskNode: Hashable, Codable, Sendable, Identifiable {
     public var outputArtifactID: String?
     public var failure: String?
     public var inputRanges: [WorkflowTaskInputRange]?
+    /// Exact historical versions, such as a review of this task's previous output. These are
+    /// immutable data edges, not a cycle between the current task revisions.
+    public var artifactInputs: [String]?
 }
 
 public struct WorkflowTaskArtifact: Hashable, Codable, Sendable, Identifiable {
@@ -129,7 +134,11 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
                   change.instruction.utf8.count <= 16_384, change.maximumToolCalls <= 6,
                   change.dependencies.count <= 32, Set(change.dependencies).count == change.dependencies.count,
                   (change.inputRanges?.count ?? 0) <= 8,
-                  change.inputRanges?.allSatisfy({ change.dependencies.contains($0.taskID) && $0.offset >= 0 && (1...12_000).contains($0.length) }) ?? true,
+                  change.inputRanges?.allSatisfy({ (change.dependencies.contains($0.taskID) || (change.artifactInputs ?? []).contains($0.taskID))
+                    && $0.offset >= 0 && (1...12_000).contains($0.length) }) ?? true,
+                  (change.artifactInputs?.count ?? 0) <= 32,
+                  Set(change.artifactInputs ?? []).count == (change.artifactInputs?.count ?? 0),
+                  change.artifactInputs?.allSatisfy({ id in artifacts.contains { $0.id == id } }) ?? true,
                   change.model.map({ AgentWireValidation.isNonblankControlFree($0, maximumLength: 256) }) ?? true
             else { throw WorkflowTaskGraphError.invalid }
             if let index = next.tasks.firstIndex(where: { $0.id == change.id }) {
@@ -140,13 +149,14 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
                 next.tasks[index] = WorkflowTaskNode(id: old.id, revision: old.revision + 1,
                     agent: change.agent, instruction: change.instruction, dependencies: change.dependencies,
                     required: old.required, maximumToolCalls: change.maximumToolCalls, model: change.model,
-                    state: .pending, inputArtifactIDs: [], inputRanges: change.inputRanges)
+                    state: .pending, inputArtifactIDs: [], inputRanges: change.inputRanges, artifactInputs: change.artifactInputs)
                 reopened.insert(old.id)
             } else {
                 guard change.expectedRevision == 0 else { throw WorkflowTaskGraphError.stale }
                 next.tasks.append(WorkflowTaskNode(id: change.id, revision: 1, agent: change.agent,
                     instruction: change.instruction, dependencies: change.dependencies, required: change.required,
-                    maximumToolCalls: change.maximumToolCalls, model: change.model, state: .pending, inputArtifactIDs: [], inputRanges: change.inputRanges))
+                    maximumToolCalls: change.maximumToolCalls, model: change.model, state: .pending, inputArtifactIDs: [],
+                    inputRanges: change.inputRanges, artifactInputs: change.artifactInputs))
             }
         }
         try next.validate()
@@ -182,11 +192,12 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
         guard readyTasks.contains(where: { $0.id == taskID }), let descriptor = call.options.task,
               descriptor.taskID == taskID, descriptor.instruction == task.instruction,
               call.options.sessionKey == task.agent else { throw WorkflowTaskGraphError.ownership }
-        let inputs = try task.dependencies.map { id -> String in
+        let dependencyInputs = try task.dependencies.map { id -> String in
             guard let source = tasks.first(where: { $0.id == id }), source.state == .completed,
                   let artifact = source.outputArtifactID else { throw WorkflowTaskGraphError.unavailableInput }
             return artifact
         }
+        let inputs = Self.unique(dependencyInputs + (task.artifactInputs ?? []))
         guard descriptor.inputArtifactIDs == inputs,
               !artifacts.contains(where: { $0.id == descriptor.outputArtifactID }) else { throw WorkflowTaskGraphError.unavailableInput }
         tasks[index].state = .running
@@ -208,9 +219,10 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
             }
             artifacts.append(WorkflowTaskArtifact(id: descriptor.outputArtifactID, taskID: tasks[index].id,
                 taskRevision: tasks[index].revision, callID: call.callID, inputArtifactIDs: tasks[index].inputArtifactIDs, value: value))
-            let currentInputs = tasks[index].dependencies.compactMap { id in
+            let currentDependencies = tasks[index].dependencies.compactMap { id in
                 tasks.first(where: { $0.id == id && $0.state == .completed })?.outputArtifactID
             }
+            let currentInputs = Self.unique(currentDependencies + (tasks[index].artifactInputs ?? []))
             let current = currentInputs == tasks[index].inputArtifactIDs
             tasks[index].state = current ? .completed : .needsReview
             tasks[index].outputArtifactID = current ? descriptor.outputArtifactID : nil
@@ -262,6 +274,11 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
             visited.insert(id)
         }
         for task in tasks { try visit(task.id, path: []) }
+    }
+
+    private static func unique(_ values: [String]) -> [String] {
+        var seen: Set<String> = []
+        return values.filter { seen.insert($0).inserted }
     }
 }
 

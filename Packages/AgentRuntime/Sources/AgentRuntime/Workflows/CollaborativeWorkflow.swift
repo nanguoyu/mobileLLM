@@ -23,6 +23,12 @@ public enum CollaborativeWorkflow {
     reassigned. Preserve required flags on existing tasks. Failed tasks remain visible and may be
     revised and reassigned. Do not repeatedly retry the same ineffective approach.
 
+    inputs optionally pins already available artifact IDs, including historical feedback about a task's
+    previous version. Use these immutable inputs for revision loops instead of creating a dependency
+    cycle. For example, revise a draft using its prior review artifact, then let the review task check
+    the new draft. Dependencies always address current completed task versions; inputs address exact
+    stored versions. Initial inputs are empty. inputRanges.taskID may also name one of these artifact IDs.
+
     Workers receive exact original dependency excerpts and immutable artifact IDs. inputRanges selects
     taskID, offset and length from a dependency's current result in UTF-16 characters. Leave it empty
     for first-page previews. Read any existing artifact yourself using reads. Reads use id, offset and
@@ -72,8 +78,9 @@ public enum CollaborativeWorkflow {
         "tasks": array(8, object([
             "id": string(48, min: 1), "expectedRevision": number(10_000), "agent": string(48, min: 1),
             "instruction": string(3_000, min: 1), "dependencies": array(12, string(48, min: 1)),
+            "inputs": array(12, string(128, min: 1)),
             "required": .object(["type": .string("boolean")]), "maxToolCalls": number(6), "model": string(256),
-            "inputRanges": array(8, object(["taskID": string(48, min: 1), "offset": number(10_000_000), "length": number(12_000)])),
+            "inputRanges": array(8, object(["taskID": string(128, min: 1), "offset": number(10_000_000), "length": number(12_000)])),
         ])),
         "reads": array(4, object(["id": string(128, min: 1), "offset": number(10_000_000), "length": number(12_000)])),
     ]))
@@ -154,16 +161,20 @@ public enum CollaborativeWorkflow {
             const inputs = [];
             const ids = [];
             let invalid = false;
-            for (const dependency of task.dependencies) {
-              const source = packet.graph.tasks.find(t => t.id === dependency);
-              ids.push(source.outputArtifactID);
-              const chosen = (task.inputRanges || []).filter(r => r.taskID === dependency);
+            const sources = task.dependencies.map(dependency => ({taskID:dependency,
+              id:packet.graph.tasks.find(t => t.id === dependency).outputArtifactID}));
+            for (const id of task.artifactInputs || []) {
+              if (!sources.some(s => s.id === id)) { sources.push({taskID:id,id:id}); }
+            }
+            for (const source of sources) {
+              ids.push(source.id);
+              const chosen = (task.inputRanges || []).filter(r => r.taskID === source.taskID || r.taskID === source.id);
               const ranges = chosen.length > 0 ? chosen : [{offset:0,length:12000}];
               for (const range of ranges) {
-                packet = await collaborate({action:'read',artifactID:source.outputArtifactID,offset:range.offset,length:range.length});
+                packet = await collaborate({action:'read',artifactID:source.id,offset:range.offset,length:range.length});
                 if (packet.feedback) { feedback += packet.feedback + ' Task: ' + task.id + '. '; invalid = true; break; }
                 const original = packet.observation;
-                const content = view(original.content,24000/Math.max(1,task.dependencies.length));
+                const content = view(original.content,24000/Math.max(1,sources.length));
                 inputs.push({id:original.id,offset:original.offset,nextOffset:original.offset+content.length,
                   totalCharacters:original.totalCharacters,truncated:original.offset+content.length<original.totalCharacters,content:content});
               }
@@ -224,7 +235,7 @@ public enum CollaborativeWorkflow {
           } else if (decision.action === 'work') {
             const changes = decision.tasks.map(t => ({id:t.id,expectedRevision:t.expectedRevision,agent:t.agent,
               instruction:t.instruction,dependencies:t.dependencies,required:t.required,maximumToolCalls:t.maxToolCalls,
-              model:t.model || null,inputRanges:t.inputRanges}));
+              model:t.model || null,inputRanges:t.inputRanges,artifactInputs:t.inputs || []}));
             packet = await collaborate({action:'update',expectedRevision:packet.graph.revision,tasks:changes});
             feedback = packet.feedback || '';
             phase(decision.stage);

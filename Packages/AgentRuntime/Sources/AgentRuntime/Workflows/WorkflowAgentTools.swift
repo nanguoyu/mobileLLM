@@ -64,16 +64,10 @@ public final class WorkflowAgentToolService: @unchecked Sendable {
             throw WorkflowTaskGraphError.unavailableInput
         }
         let raw = try await values.load(artifact.value)
-        let value = try JSONDecoder().decode(JSONValue.self, from: raw.data)
-        let text: String
-        if case .string(let content) = value { text = content } else { text = raw.string }
-        let source = Array(text.utf16)
-        guard offset < source.count else { throw WorkflowTaskGraphError.unavailableInput }
-        let end = min(source.count, offset + length)
-        return try CanonicalJSON(.object(["id": .string(artifactID), "taskID": .string(artifact.taskID),
-            "sourceCallID": .string(artifact.callID.description), "offset": .integer(Int64(offset)),
-            "nextOffset": .integer(Int64(end)), "totalCharacters": .integer(Int64(source.count)),
-            "content": .string(String(decoding: source[offset..<end], as: UTF16.self)), "truncated": .bool(end < source.count)]))
+        var excerpt = try WorkflowArtifactExcerpt.read(raw, id: artifactID, offset: offset, length: length)
+        excerpt["taskID"] = .string(artifact.taskID)
+        excerpt["sourceCallID"] = .string(artifact.callID.description)
+        return try CanonicalJSON(.object(excerpt))
     }
 
     public func list(sender: AgentRunID) async throws -> CanonicalJSON {
