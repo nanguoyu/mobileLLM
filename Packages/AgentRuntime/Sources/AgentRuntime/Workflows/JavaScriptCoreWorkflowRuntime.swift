@@ -139,6 +139,9 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             source,
             withSourceURL: URL(string: "mobilellm-workflow-runtime://driver.js")
         )
+        // An exception can synchronously finish and clear this realm during evaluateScript.
+        // Accessing a property on its undefined return value would notify that cleared handler.
+        guard !isCompleted else { return }
         settleFunction = value?.forProperty("settle")
         if value == nil, !isCompleted {
             let message = context.exception?.toString() ?? "script evaluation returned no value"
@@ -928,7 +931,7 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
 
     private static func optionalString(_ value: JSONValue?, field: String) throws -> String? {
         switch value {
-        case nil: nil
+        case nil, .null: nil
         case .string(let value): value
         default: throw WorkflowScriptRuntimeError.invalidAgentOptions("\(field) must be a string")
         }

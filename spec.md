@@ -2040,3 +2040,13 @@ recorded grant and continues past the pause without repeating previous calls. Re
 launching the application grants no continuation. Human amendments use a separate trusted host API;
 model-facing operations cannot rewrite the original objective or manufacture a human amendment.
 These guards enforce lifecycle facts; independent task outcomes still require evaluation.
+
+
+The `collaborative-workflow-v5` program uses these operations to assign persistent agent identities,
+dispatch ready dependencies, read exact source ranges and keep coordinating after individual results.
+The model may create or revise tasks, read, wait, deliver or record a blocker. Waiting is driven by actual
+results. Repeated decisions without task or evidence progress and exhausted budgets preserve unfinished
+work at a durable pause. Large source outputs retain original artifacts; a dependency may explicitly
+select a later range instead of receiving only a truncated prefix. The frozen v4 program remains
+unchanged for historical replay. Deterministic tests establish control flow and source handoff, not
+real-model task quality.

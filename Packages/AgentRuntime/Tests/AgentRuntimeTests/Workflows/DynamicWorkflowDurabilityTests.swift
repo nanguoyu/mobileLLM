@@ -8,6 +8,47 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowDurabilityTests: XCTestCase {
+    func testOversizedArgumentsFailWithoutAccessingADisposedJavaScriptRealm() async throws {
+        let fixture = try makeFixture(body: "return 'not executed';", args: CanonicalJSON(.array(Array(repeating: .string("x"), count: 33))))
+        let spawner = WorkflowFakeSpawner()
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        do { _ = try await engine.runAndWait(runID: fixture.launch.runID); XCTFail("Expected bounded argument failure") }
+        catch { XCTAssertTrue(String(describing: error).contains("limit")) }
+        let count = await spawner.spawnCount
+        XCTAssertEqual(count, 0)
+    }
+
+    func testV5CoordinatorRunsDeclaredDependenciesAndExactSourceRangesThroughProductionEngine() async throws {
+        func task(_ id: String, dependencies: [String] = [], ranges: [JSONValue] = []) -> JSONValue {
+            .object(["id": .string(id), "expectedRevision": .integer(0), "agent": .string(id),
+                "instruction": .string("Complete " + id), "dependencies": .array(dependencies.map(JSONValue.string)),
+                "required": .bool(true), "maxToolCalls": .integer(0), "model": .string(""), "inputRanges": .array(ranges)])
+        }
+        let plan = v5Decision("work", tasks: [task("slow"), task("source"), task("dependent", dependencies: ["source"], ranges: [
+            .object(["taskID": .string("source"), "offset": .integer(40_000), "length": .integer(100)])])])
+        let args = try CanonicalJSON(.object(["goal": .string("Use independent agents and a dependent source review."),
+            "plan": plan, "availableTools": .array([]), "runDate": .string("2026-10-25")]))
+        let fixture = try makeFixture(body: "", args: args, source: CollaborativeWorkflow.source)
+        let spawner = V5WorkflowSpawner()
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        let result = try await engine.runAndWait(runID: fixture.launch.runID)
+        XCTAssertEqual(try decode(result), .string("All required outputs are available."))
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(projection?.taskGraph?.tasks.map(\.state), [.completed, .completed, .completed])
+        XCTAssertEqual(projection?.taskGraph?.artifacts.count, 3)
+        let dependentPrompt = await spawner.dependentPrompt
+        XCTAssertTrue(dependentPrompt.contains("EXACT-TAIL-EVIDENCE"))
+        XCTAssertFalse(dependentPrompt.contains(String(repeating: "x", count: 100)))
+        let starts = await spawner.starts
+        XCTAssertEqual(starts.filter { $0 != "coordinator" }, ["slow", "source", "dependent"])
+    }
+
     func testTaskGraphPausesWithUnfinishedGoalAndExplicitResumeContinuesWithoutRepeatingWork() async throws {
         let fixture = try makeFixture(body: """
         let view = await collaborate({action:'snapshot'});
@@ -525,13 +566,13 @@ private func fullCapacityRequest(_ launch: WorkflowLaunchSnapshotV1, _ call: Wor
         source: .workflow, approvalMode: launch.approvalMode)
 }
 
-private func makeFixture(body: String, args: CanonicalJSON? = nil) throws -> WorkflowFixture {
+private func makeFixture(body: String, args: CanonicalJSON? = nil, source suppliedSource: String? = nil) throws -> WorkflowFixture {
     let conversationID = ConversationID()
-    let source = "export const meta = { name: 'durability-test', description: 'Durability test' };\n" + body
+    let source = suppliedSource ?? "export const meta = { name: 'durability-test', description: 'Durability test' };\n" + body
     let script = try WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1, source: source)
     let saved = SavedWorkflowScriptV1(
         script: script,
-        metadata: try WorkflowScriptMetadataV1(name: "durability-test", description: "Durability test"),
+        metadata: try DynamicWorkflowScriptAnalyzer().analyze(script).metadata,
         owner: .conversation(conversationID),
         createdAt: AgentTimestamp(rawValue: 1)
     )
@@ -568,9 +609,9 @@ private func makeFixture(body: String, args: CanonicalJSON? = nil) throws -> Wor
         limits: try WorkflowRunLimitsV1(
             maximumConcurrentAgents: 2,
             maximumAgentCalls: 32,
-            maximumCollectionItems: 32,
+            maximumCollectionItems: suppliedSource == nil ? 32 : WorkflowRunLimitsV1.hardMaximumCollectionItems,
             maximumWallClockMilliseconds: 5_000,
-            maximumScriptSteps: 100_000,
+            maximumScriptSteps: suppliedSource == nil ? 100_000 : WorkflowRunLimitsV1.iPhoneDefault().maximumScriptSteps,
             maximumLogLines: 100,
             maximumPhaseEntries: 100,
             maximumSerializedValueBytes: 1_048_576
@@ -591,7 +632,7 @@ private func childBuilder() -> ClosureWorkflowChildRequestBuilder {
             outputRequirement: call.options.schema.map(AgentOutputRequirement.structured) ?? .text,
             modelPolicy: launch.defaultModelPolicy,
             capabilityCeiling: RunCapabilityCeiling(capabilities: AgentCapabilitySet([])),
-            budget: try workflowChildBudget(parent: launch.budget),
+            budget: try workflowChildBudget(parent: launch.budget, maximumToolCalls: call.options.maximumToolCalls),
             source: .workflow,
             approvalMode: launch.approvalMode
         )
@@ -663,12 +704,15 @@ private actor WorkflowDependencySpawner: SubagentSpawning {
     }
 }
 
-private func workflowChildBudget(parent: AgentBudget) throws -> AgentBudget {
+private func workflowChildBudget(parent: AgentBudget, maximumToolCalls: UInt64? = nil) throws -> AgentBudget {
+    let shared = try parent.limits.sharingCumulativeCapacity(among: 2)
+    var values = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map { ($0, shared[$0]) })
+    if let maximumToolCalls { values[.toolInvocations] = min(shared[.toolInvocations], maximumToolCalls) }
     let child = try AgentBudget(
         // The fixture launches two children concurrently. Pure floor sharing is important here:
         // promoting a zero cumulative share to one would over-reserve parent dimensions whose
         // total budget is one (for example structured-output repairs).
-        limits: parent.limits.sharingCumulativeCapacity(among: 2),
+        limits: BudgetQuantities(values),
         maximumThermalState: parent.maximumThermalState,
         memoryPressureResponse: parent.memoryPressureResponse
     )
@@ -740,5 +784,51 @@ private func assertThrows<E: Error & Equatable>(
         XCTAssertEqual(error, expected, file: file, line: line)
     } catch {
         XCTFail("Unexpected error: \(error)", file: file, line: line)
+    }
+}
+
+private func v5Decision(_ action: String, tasks: [JSONValue] = [], answer: String = "") -> JSONValue {
+    .object(["action": .string(action), "stage": .string("Work"), "reason": .string("Required work"),
+        "tasks": .array(tasks), "reads": .array([]), "notes": .string(""), "query": .string(""), "answer": .string(answer)])
+}
+
+private actor V5WorkflowSpawner: SubagentSpawning {
+    private var requests: [AgentExecutionHandleID: SubagentSpawnRequest] = [:]
+    private var waiter: CheckedContinuation<Void, Never>?
+    private var dependentStarted = false
+    private(set) var starts: [String] = []
+    private(set) var dependentPrompt = ""
+
+    func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID {
+        let handle = AgentExecutionHandleID()
+        requests[handle] = request
+        let name = request.role == "workflow-supervisor" ? "coordinator" : request.instruction.components(separatedBy: "\nTASK ID: ").last!.components(separatedBy: "\n")[0]
+        starts.append(name)
+        if name == "dependent" {
+            dependentPrompt = request.instruction
+            dependentStarted = true
+            waiter?.resume(); waiter = nil
+        }
+        return handle
+    }
+
+    func collect(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult {
+        let request = requests[handleID]!
+        let answer: AgentAnswer
+        if request.role == "workflow-supervisor" {
+            let text = request.instruction.components(separatedBy: "\nTASK GRAPH:\n")[1].components(separatedBy: "\nARTIFACT CATALOG:")[0]
+            let graph = try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [[String: Any]]
+            let done = graph.allSatisfy { $0["state"] as? String == "completed" }
+            let decision = v5Decision(done ? "deliver" : "wait", answer: done ? "All required outputs are available." : "")
+            answer = try AgentAnswer(text: CanonicalJSON(decision).string, structuredOutput: decision)
+        } else if request.instruction.contains("\nTASK ID: slow\n") {
+            if !dependentStarted { await withCheckedContinuation { waiter = $0 } }
+            answer = try AgentAnswer(text: "Unrelated slow output")
+        } else if request.instruction.contains("\nTASK ID: source\n") {
+            answer = try AgentAnswer(text: String(repeating: "x", count: 40_000) + "EXACT-TAIL-EVIDENCE")
+        } else {
+            answer = try AgentAnswer(text: "Reviewed original tail")
+        }
+        return SubagentResult(runID: request.childRunID, handleID: handleID, outcome: .completed(answer: answer, usage: .zero))
     }
 }

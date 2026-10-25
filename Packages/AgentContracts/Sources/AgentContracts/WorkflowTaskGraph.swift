@@ -29,13 +29,22 @@ public struct WorkflowTaskUpdate: Hashable, Codable, Sendable {
     public let required: Bool
     public let maximumToolCalls: UInt64
     public let model: String?
+    public let inputRanges: [WorkflowTaskInputRange]?
 
     public init(id: String, expectedRevision: UInt64, agent: String, instruction: String,
-                dependencies: [String] = [], required: Bool = true, maximumToolCalls: UInt64 = 0, model: String? = nil) {
+                dependencies: [String] = [], required: Bool = true, maximumToolCalls: UInt64 = 0, model: String? = nil,
+                inputRanges: [WorkflowTaskInputRange]? = nil) {
         self.id = id; self.expectedRevision = expectedRevision; self.agent = agent
         self.instruction = instruction; self.dependencies = dependencies; self.required = required
         self.maximumToolCalls = maximumToolCalls; self.model = model
+        self.inputRanges = inputRanges
     }
+}
+
+public struct WorkflowTaskInputRange: Hashable, Codable, Sendable {
+    public let taskID: String
+    public let offset: Int
+    public let length: Int
 }
 
 public struct WorkflowTaskNode: Hashable, Codable, Sendable, Identifiable {
@@ -52,6 +61,7 @@ public struct WorkflowTaskNode: Hashable, Codable, Sendable, Identifiable {
     public var inputArtifactIDs: [String]
     public var outputArtifactID: String?
     public var failure: String?
+    public var inputRanges: [WorkflowTaskInputRange]?
 }
 
 public struct WorkflowTaskArtifact: Hashable, Codable, Sendable, Identifiable {
@@ -117,6 +127,8 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
                   !change.instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   change.instruction.utf8.count <= 16_384, change.maximumToolCalls <= 6,
                   change.dependencies.count <= 32, Set(change.dependencies).count == change.dependencies.count,
+                  (change.inputRanges?.count ?? 0) <= 8,
+                  change.inputRanges?.allSatisfy({ change.dependencies.contains($0.taskID) && $0.offset >= 0 && (1...12_000).contains($0.length) }) ?? true,
                   change.model.map({ AgentWireValidation.isNonblankControlFree($0, maximumLength: 256) }) ?? true
             else { throw WorkflowTaskGraphError.invalid }
             if let index = next.tasks.firstIndex(where: { $0.id == change.id }) {
@@ -127,13 +139,13 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
                 next.tasks[index] = WorkflowTaskNode(id: old.id, revision: old.revision + 1,
                     agent: change.agent, instruction: change.instruction, dependencies: change.dependencies,
                     required: old.required, maximumToolCalls: change.maximumToolCalls, model: change.model,
-                    state: .pending, inputArtifactIDs: [])
+                    state: .pending, inputArtifactIDs: [], inputRanges: change.inputRanges)
                 reopened.insert(old.id)
             } else {
                 guard change.expectedRevision == 0 else { throw WorkflowTaskGraphError.stale }
                 next.tasks.append(WorkflowTaskNode(id: change.id, revision: 1, agent: change.agent,
                     instruction: change.instruction, dependencies: change.dependencies, required: change.required,
-                    maximumToolCalls: change.maximumToolCalls, model: change.model, state: .pending, inputArtifactIDs: []))
+                    maximumToolCalls: change.maximumToolCalls, model: change.model, state: .pending, inputArtifactIDs: [], inputRanges: change.inputRanges))
             }
         }
         try next.validate()

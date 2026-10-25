@@ -97,9 +97,6 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
         let explicitlyBudgetedCalls = try Self.validateAgentOptions(tokens)
         let savedWorkflowNames = try Self.savedWorkflowNames(in: tokens)
         let instrumentation = try Self.instrument(source: body, tokens: tokens)
-        let callSites = tokens.reduce(into: UInt32(0)) { count, token in
-            if ["agent", "spawn"].contains(token.identifier ?? "") { count &+= UInt32(1) }
-        }
         func calls(_ name: String) -> UInt32 {
             UInt32(tokens.indices.filter {
                 tokens[$0].identifier == name && $0 + 1 < tokens.count && tokens[$0 + 1].symbol == "("
@@ -110,7 +107,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
             metadata: extraction.metadata,
             executableSource: body,
             instrumentedSource: instrumentation.source,
-            staticAgentCallSites: callSites,
+            staticAgentCallSites: calls("agent") + calls("spawn"),
             staticPhaseCallSites: calls("phase"),
             staticParallelCallSites: calls("parallel"),
             explicitlyBudgetedAgentCallSites: explicitlyBudgetedCalls,
