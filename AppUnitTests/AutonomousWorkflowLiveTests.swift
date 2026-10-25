@@ -86,23 +86,24 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                         print("[LiveWorkflow] \(task.rawValue): \(state.calls.count) child invocations, phase=\(state.currentPhase ?? "preparing")")
                         lastCount = state.calls.count
                     }
-                    if state.isTerminal { break }
+                    if state.isTerminal || (state.state == .paused && state.taskGraph?.state != .active) { break }
                 }
                 try await Task.sleep(nanoseconds:500_000_000)
             }
-            guard let projection = try await assembly.dynamicWorkflowJournal.loadProjection(for:runID), projection.isTerminal else {
+            guard let projection = try await assembly.dynamicWorkflowJournal.loadProjection(for:runID),
+                  projection.isTerminal || (projection.state == .paused && projection.taskGraph?.state != .active) else {
                 try await assembly.dynamicWorkflows.stop(runID:runID)
                 throw LiveEvaluationError("Runtime did not finish within the evaluation deadline")
             }
             if let output = try await assembly.dynamicWorkflows.resolvedOutput(runID:runID),
                case .string(let text) = try JSONDecoder().decode(JSONValue.self,from:output.data) { answer = text }
-            if projection.state != .completed { failures.append("Workflow state \(projection.state): \(projection.failure ?? "no final output")") }
+            if projection.state != .completed { failures.append("Workflow state \(projection.state): \(projection.failure ?? projection.taskGraph?.reason ?? "no final output")") }
             if let object = try? JSONSerialization.jsonObject(with:Data(answer.utf8)) as? [String:Any] {
                 failures += try task.verify(object)
             } else { failures.append("Final answer is not the requested JSON artifact") }
             let trace = try await inspectTrace(assembly,projection:projection)
             failures += trace.failures
-            if task.usesCalculator, trace.completedToolCalls == 0 { failures.append("Required Calculator operation was not executed") }
+            if task.usesCalculator, trace.completedCalculatorCalls == 0 { failures.append("Required Calculator operation was not executed") }
             let summary = try await assembly.dynamicWorkflows.projection(runID:runID)
             let evidence:[String:Any] = [
                 "case":task.rawValue,"model":model,"goal":task.goal,"sourceSHA256":projection.launch.scriptReference.sourceDigest.rawValue,
@@ -111,6 +112,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                 "toolCalls":projection.usage.quantities[.toolInvocations],
                 "inputTokens":summary?.usage.quantities[.inputTokens] ?? 0,"outputTokens":summary?.usage.quantities[.outputTokens] ?? 0,
                 "successfulToolCalls":trace.completedToolCalls,"workerWaves":trace.waves,"dependentWorkers":trace.dependencies,"distinctWorkerIDs":trace.workerIDs.sorted(),
+                "successfulCalculatorCalls":trace.completedCalculatorCalls,
                 "calls":trace.calls,"checksPassed":failures.isEmpty,"failures":failures,"answer":answer,
                 "intervention":"Original task only. No corrective external prompts or model-output fixtures."
             ]
@@ -144,6 +146,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         var waves = 0
         var dependencies = 0
         var completedToolCalls = 0
+        var completedCalculatorCalls = 0
         var workerIDs = Set<String>()
         var calls:[[String:Any]] = []
     }
@@ -169,13 +172,11 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             default: break
             }
         }
-        var phase = 0
-        var usedPhases = Set<Int>()
+        var completedDepths: [Int] = []
         var artifactCount = 0
-        var artifacts:[String:(text:String,settled:UInt64)] = [:]
+        var artifacts:[String:(text:String,settled:UInt64,depth:Int)] = [:]
         for call in projection.calls {
             let supervisor = call.options.requestedAgentType == "workflow-supervisor"
-            if supervisor { phase += 1 }
             guard let handle = projection.submittedHandles[call.callID],
                   let snapshot = try await assembly.repository.loadRunSnapshot(for:call.childRunID),
                   let request = snapshot.facts.submission?.request.payload else { continue }
@@ -185,6 +186,10 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             let history = try ExecutionHistory(events:snapshot.events,projection:snapshot.facts.projection)
             result.completedToolCalls += history.toolOutcomes.values.filter {
                 if case .completed = $0.1 { return true }; return false
+            }.count
+            result.completedCalculatorCalls += history.toolOutcomes.filter { id, value in
+                guard case .completed = value.1 else { return false }
+                return history.toolIntents[id]?.1.plan.subjectID == "builtin.calculator"
             }.count
             let terminal = try await spawner.terminalResult(handle)
             let output:String?
@@ -197,11 +202,13 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             if !supervisor {
                 artifactCount += 1
                 let label = call.options.label ?? "unnamed"
-                if completed { usedPhases.insert(phase); result.workerIDs.insert(label) }
-                let marker = "\n<input-artifacts>\n"
+                if completed { result.workerIDs.insert(call.options.sessionKey ?? label) }
+                let delimiter = request.instruction.contains("\n<original-dependency-artifacts>\n")
+                    ? "original-dependency-artifacts" : "input-artifacts"
+                let marker = "\n<" + delimiter + ">\n"
                 var inputIDs:[String] = []
                 if let start = request.instruction.range(of:marker),
-                   let end = request.instruction.range(of:"\n</input-artifacts>",range:start.upperBound..<request.instruction.endIndex),
+                   let end = request.instruction.range(of:"\n</" + delimiter + ">",range:start.upperBound..<request.instruction.endIndex),
                    let inputs = try JSONSerialization.jsonObject(with:Data(request.instruction[start.upperBound..<end.lowerBound].utf8)) as? [[String:Any]] {
                     for input in inputs {
                         guard let id = input["id"] as? String, let origin = artifacts[id],
@@ -215,14 +222,22 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                     }
                 }
                 if completed && !inputIDs.isEmpty { result.dependencies += 1 }
+                if let descriptor = call.options.task, Set(descriptor.inputArtifactIDs) != Set(inputIDs) {
+                    result.failures.append("Recorded task inputs do not match the original excerpts actually handed to its model")
+                }
+                let depth = (inputIDs.compactMap { artifacts[$0]?.depth }.max() ?? -1) + 1
+                if completed { completedDepths.append(depth) }
                 item["inputArtifactIDs"] = inputIDs
-                if let output, let end = settled[call.callID] { artifacts[label+":"+String(artifactCount)] = (output,end) }
+                item["dependencyDepth"] = depth
+                if let output, let end = settled[call.callID] {
+                    artifacts[call.options.task?.outputArtifactID ?? label+":"+String(artifactCount)] = (output,end,depth)
+                }
             }
             result.calls.append(item)
         }
-        result.waves = usedPhases.count
+        result.waves = (completedDepths.max() ?? -1) + 1
         if result.waves < 3 || result.dependencies < 2 || result.workerIDs.count < 3 {
-            result.failures.append("Requested staged collaboration missing: \(result.waves) worker waves, \(result.dependencies) dependent workers, \(result.workerIDs.count) distinct task IDs")
+            result.failures.append("Requested staged collaboration missing: \(result.waves) dependency stages, \(result.dependencies) dependent workers, \(result.workerIDs.count) distinct agent identities")
         }
         return result
     }
