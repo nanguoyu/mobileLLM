@@ -585,7 +585,7 @@ extension AgentRuntimeAssembly {
             throw WorkflowLaunchError.planGenerationFailed("The coordinator did not return an executable plan.")
         }
         return try await dynamicWorkflows.prepareCandidate(
-            source: CoordinatedWorkflow.source,
+            source: CollaborativeWorkflow.source,
             scriptID: WorkflowScriptID(),
             version: 1,
             scope: scope,

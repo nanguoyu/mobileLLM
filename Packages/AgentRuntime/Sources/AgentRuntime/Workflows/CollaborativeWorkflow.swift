@@ -83,7 +83,7 @@ public enum CollaborativeWorkflow {
         };
         const instruction = \#(try! CanonicalJSON(.string(planningInstruction)).string);
         const schema = \#(try! CanonicalJSON(decisionSchema.root).string);
-        const workerInstruction = 'Complete your assigned task with actual findings or the requested artifact. '
+        const workerInstruction = 'MOBILELLM_WORKER_V5\nComplete your assigned task with actual findings or the requested artifact. '
           + 'Preserve facts, calculations and source URLs needed downstream. State missing evidence. '
           + 'Do not claim the whole goal passed, invent tool calls, or role-play other agents. '
           + 'Earlier turns are your actual agent conversation. Respect later corrections. '

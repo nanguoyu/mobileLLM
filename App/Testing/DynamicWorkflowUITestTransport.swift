@@ -27,6 +27,18 @@ private final class DynamicWorkflowUITestResponsesProtocol: URLProtocol, @unchec
         let text: String
         if body.contains("SESSION_UI_CONTINUATION") {
             text = "SESSION_UI_ACK: This follow-up was received in the existing agent conversation. The original workflow result remains available."
+        } else if body.contains("MOBILELLM_COORDINATOR_V5") && body.contains("ARTIFACT CATALOG:") {
+            let unescaped = body.replacingOccurrences(of: #"\""#, with: "\"")
+            let pending = unescaped.contains(#""state":"running""#) || unescaped.contains(#""state":"pending""#)
+            if pending {
+                text = #"{"action":"wait","stage":"Wait","reason":"Actual child results remain outstanding.","tasks":[],"reads":[],"query":"","notes":"","answer":""}"#
+            } else {
+                text = #"{"action":"deliver","stage":"Deliver","reason":"The fixture investigations are available.","tasks":[],"reads":[],"query":"","notes":"","answer":"EVAL_KIMI_LOCAL: The complete Kimi K3 model as local weights on an iPhone 16 Pro is not feasible under this fixture's assumed memory and storage constraints. Use a smaller local model or a remote API."}"#
+            }
+        } else if body.contains("MOBILELLM_COORDINATOR_V5") {
+            text = #"{"action":"work","stage":"Investigate","reason":"Independent constraint tracks.","notes":"","answer":"","reads":[],"query":"","tasks":[{"id":"model","expectedRevision":0,"agent":"model","instruction":"Assess model memory constraints.","dependencies":[],"required":true,"inputRanges":[],"maxToolCalls":0,"model":""},{"id":"device","expectedRevision":0,"agent":"device","instruction":"Assess phone constraints.","dependencies":[],"required":true,"inputRanges":[],"maxToolCalls":0,"model":""},{"id":"alternatives","expectedRevision":0,"agent":"alternatives","instruction":"Assess smaller local and remote alternatives.","dependencies":[],"required":true,"inputRanges":[],"maxToolCalls":0,"model":""}]}"#
+        } else if body.contains("MOBILELLM_WORKER_V5") {
+            text = "Under the fixture assumptions the phone lacks RAM and storage for complete local weights; consider a smaller local model or remote API."
         } else if body.contains("MOBILELLM_COORDINATOR_V3") && body.contains("ARTIFACT CATALOG:") {
             text = #"{"action":"deliver","stage":"Deliver","reason":"The fixture investigations are available.","tasks":[],"reads":[],"query":"","notes":"","answer":"EVAL_KIMI_LOCAL: The complete Kimi K3 model as local weights on an iPhone 16 Pro is not feasible under this fixture's assumed memory and storage constraints. Use a smaller local model or a remote API."}"#
         } else if body.contains("MOBILELLM_COORDINATOR_V3") {

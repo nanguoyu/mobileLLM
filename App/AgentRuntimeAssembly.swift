@@ -886,7 +886,7 @@ public final class AgentRuntimeAssembly {
     public func makeWorkflowCoordinator(snapshot: AgentRunRequestSnapshot, runDate: String? = nil) throws -> AgentRequest {
         let tools = try availableWorkflowTools(snapshot: snapshot)
         let date = runDate ?? String(ISO8601DateFormatter().string(from: Date()).prefix(10))
-        let instruction = CoordinatedWorkflow.planningInstruction
+        let instruction = CollaborativeWorkflow.planningInstruction
             + "\nWORKER TOOL IDS (host delegation remains available when this list is empty):\n" + tools.joined(separator: ", ")
             + "\nACTUAL RUN DATE (UTC): " + date
             + "\nORIGINAL GOAL:\n" + snapshot.text
@@ -907,7 +907,7 @@ public final class AgentRuntimeAssembly {
             userTurnID: source.userTurnID,
             role: "workflow-coordinator",
             instruction: instruction,
-            outputRequirement: .structured(CoordinatedWorkflow.planSchema),
+            outputRequirement: .structured(CollaborativeWorkflow.decisionSchema),
             modelPolicy: source.modelPolicy,
             capabilityCeiling: source.capabilityCeiling,
             budget: workflowBudget,

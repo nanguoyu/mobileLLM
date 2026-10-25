@@ -7,11 +7,11 @@ continue individual agents, exchange messages, revise dependencies, and recover 
 DeepSeek Harness supplies the main architectural reference. OpenMinis supplies useful mobile
 interaction and continuation examples. Quality will be assessed through actual task outcomes.
 
-This is the implementation roadmap. The first Stage 1 slice provides persistent human follow-ups,
-steering, successive activations and restart recovery through the shared executor. Task-detail controls
-passed focused Simulator interaction checks, and real online follow-ups retained changed requirements
-after relaunch. Model-authored messaging and autonomous session reuse remain to be integrated with
-workflow authority and budgets. [STATUS.md](STATUS.md) records the scope and observed results.
+This roadmap remains active. Human steering and durable follow-ups are implemented. New app launches now
+use the v5 coordinator with shared-budget session reuse, recorded result selection, versioned dependencies,
+source invalidation and explicit goal continuation. Focused runtime tests and the existing Simulator
+interaction case pass. Peer messaging, context/capability work, graph presentation and six-family real-model
+qualification remain to be completed. [STATUS.md](STATUS.md) records the observed results.
 The owner's separate iOS agent sandbox is unavailable for near-term integration. The harness
 milestone therefore has no dependency on that project's delivery.
 
@@ -287,13 +287,12 @@ production code-edit/run/fix, data processing, document generation and workspace
 Validate actual artifacts and confinement with that provider. Existing sandbox contract fakes
 remain contract evidence only.
 
-## First implementation slice
+## Current implementation boundary
 
-The first slice now supports one continuing child conversation through the existing executor.
-Deterministic execution checks cover updates during generation and interruption boundaries. Real
-Simulator interactions cover subsequent requirements and recall after app relaunch.
+The shared-budget session path, asynchronous result delivery, versioned task graph and bounded goal
+continuation are implemented. New app launches use the v5 program; archived v4 records keep their original
+semantics. The Simulator interaction regression passes on the new launch path.
 
-Next, bind parent and child messages to the actual sending agent and the workflow's existing budget,
-then let the coordinator reuse sessions automatically. Automatic agents must not use the human-turn
-API to obtain fresh budgets. Task dependencies and per-result dispatch follow those authority and
-ownership rules. This work continues without a dependency on the separate sandbox project.
+Continue with authorized peer messaging and parent inbox delivery, context reduction and on-demand
+capabilities, the task/goal interface, then the planned diverse real-model qualification. Small commits
+are delivery checkpoints, not reasons to stop before the owner's requested milestone is complete.

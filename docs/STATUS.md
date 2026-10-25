@@ -1,6 +1,6 @@
 # Current implementation and validation status
 
-Updated **2026-10-24** for persistent task conversations on `main`. The dated model evaluations below
+Updated **2026-10-25** for the v5 collaboration runtime and app launch path on `main`. The dated model evaluations below
 retain their original tested versions and outcomes; interface changes do not rerun or recertify them.
 [spec.md](../spec.md) defines requirements, [ARCHITECTURE.md](ARCHITECTURE.md) describes the code,
 and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
@@ -63,10 +63,21 @@ interaction separately found and fixed missing automatic scrolling to new replie
 UI-store checks, iOS and macOS builds, and the static specification verifier passed. Evidence is retained under
 `/tmp/mobilellm-harness-session-20261024/`, including `TaskSessionUI.xcresult`.
 
-The coordinator still uses the v4 program and its batch barriers. Model-authored session messaging,
-automatic reuse of these persistent sessions, dynamic dependency dispatch, goal continuation and context
-compaction remain in the [implementation plan](AGENT_HARNESS_PLAN.md). The separate iOS sandbox remains
-optional. No autonomous task matrix was rerun or promoted by the conversation work.
+New app launches now use `collaborative-workflow-v5`. It reuses agent sessions under the shared workflow
+budget, records actual sending coordinator identities, dispatches dependencies after individual results,
+and persists versioned tasks and goal continuation. Reopening a source invalidates consumers without
+replacing historical artifacts. Delivery cannot conceal required unfinished tasks. A blocked goal retains
+partial results and requires explicit continuation; reading history cannot resume it. Saved v4 scripts
+retain their original source and replay behavior.
+
+At `a93f042`, 68 focused runtime, graph, replay and script-boundary checks passed. The v5 production-engine
+case starts a dependent worker before an unrelated slow worker ends and hands off an exact later source
+range. The app cutover then passed the existing Simulator interaction scenario with controlled transport:
+planning and child approvals, three worker results, six actual workflow calls, saved follow-up and source
+inspection. Its xcresult is `/tmp/mobilellm-harness-20261025/V5Cutover.xcresult`. These checks establish
+runtime and interaction behavior. Peer messaging, long-context capability work, goal/task graph UI and
+new real-model qualification remain in progress under the [implementation plan](AGENT_HARNESS_PLAN.md).
+The separate iOS sandbox remains optional; earlier autonomous outcome evidence retains its tested version.
 
 ### Earlier autonomous engineering tasks
 
