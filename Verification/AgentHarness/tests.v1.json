@@ -2948,6 +2948,10 @@
         },
         {
           "kind": "xctest",
+          "value": "AgentRuntimeTests.AgentSessionExecutionTests/testReducedHistoryKeepsOriginalRequirementReadableAndRecentCorrectionInContextAfterRestart"
+        },
+        {
+          "kind": "xctest",
           "value": "AgentRuntimeTests.WorkflowAgentToolExecutionTests/testModelMessageUsesAuthorizedBoundaryAndWaitsForBudgetedCoordinatorActivation"
         }
       ],

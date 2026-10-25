@@ -2075,3 +2075,15 @@ current task nodes. The review is invalidated and must inspect the new draft bef
 historical inputs remain visible in the resulting artifact record. Coordinator and worker artifact
 reads share one reader with source digests and Unicode-safe ranges. An offset inside a surrogate pair
 is rejected; a page end is shortened to a valid boundary instead of inventing replacement characters.
+
+
+New session activation snapshots carry a bounded recent conversation window instead of repeatedly
+copying their entire transcript. Worker and human follow-up windows retain at most 24 messages and
+128 KiB. Coordinator windows retain at most four messages and 16 KiB because the current frame already
+contains the authoritative goal, amendments, task graph and working notes. A large assistant answer does
+not evict a concise preceding instruction. Pruned input and output remain in immutable run records.
+`agent.read_context` lists and reads only the executing agent's original history, including prior tool
+observations, through the same scoped Tool V2 boundary. Stored observations do not repeat external I/O.
+Exact source revisions and digests accompany reads. A fresh process can retrieve an early requirement
+that is absent from the working window while the latest correction remains in its current context.
+This deterministic reduction uses no additional summarizer model calls or synthetic replacement answers.

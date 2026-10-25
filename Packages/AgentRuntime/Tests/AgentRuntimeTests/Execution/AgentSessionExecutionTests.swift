@@ -6,6 +6,50 @@ import XCTest
 
 // TEST-ID: AHT-SESSION-002
 final class AgentSessionExecutionTests: XCTestCase {
+    func testReducedHistoryKeepsOriginalRequirementReadableAndRecentCorrectionInContextAfterRestart() async throws {
+        let firstID = MessageID()
+        var conversation = [try ConversationTurnContextSource(messageID: firstID, revision: "original", role: .user,
+            content: "Project CEDAR_ARCHIVE must retain records for fourteen days.")]
+        for index in 0..<30 {
+            conversation.append(try ConversationTurnContextSource(messageID: MessageID(), revision: "page-\(index)",
+                role: index.isMultiple(of: 2) ? .user : .assistant, content: String(repeating: "Unrelated archived source \(index). ", count: 100)))
+        }
+        let model = try ExecutorTestModelDefinition(offset: 844)
+        let probe = SessionRequestProbe()
+        let provider = try SessionProbeProvider(model: model, script: probe)
+        let harness = try ExecutorTestHarness(offset: 844, provider: provider, model: model, conversation: conversation)
+        let seed = harness.request
+        let handle = try await harness.executor.submit(seed, commandID: ExecutorTestID.command(844))
+        _ = try await collectTerminalEvents(from: harness.executor.attach(to: handle))
+        let correction = MessageID(rawValue: ExecutorTestID.uuid(8441))
+        try await harness.executor.controller.sendSessionInput(seedRunID: seed.runID, conversationID: seed.conversationID,
+            messageID: correction, text: "Change the retention requirement to seven days.", mode: .nextTurn, startNextTurn: true)
+        let corrected = try await harness.executor.controller.sessionView(seedRunID: seed.runID, conversationID: seed.conversationID)
+        _ = try await collectTerminalEvents(from: harness.executor.attach(to: XCTUnwrap(corrected.turns.last?.handleID)))
+        await harness.repository.close()
+        let restored = makeRestored(harness, provider: provider)
+        let latestID = MessageID(rawValue: ExecutorTestID.uuid(8442))
+        try await restored.controller.sendSessionInput(seedRunID: seed.runID, conversationID: seed.conversationID,
+            messageID: latestID, text: "Recall the project and current retention requirement.", mode: .nextTurn, startNextTurn: true)
+        let current = try await restored.controller.sessionView(seedRunID: seed.runID, conversationID: seed.conversationID)
+        _ = try await collectTerminalEvents(from: restored.attach(to: XCTUnwrap(current.turns.last?.handleID)))
+        let requests = await probe.values()
+        XCTAssertTrue(requests.last!.messages.contains { $0.content.contains("seven days") })
+        XCTAssertFalse(requests.last!.messages.contains { $0.content.contains("CEDAR_ARCHIVE") }, "The original is genuinely outside the working window")
+        let read = try await restored.controller.readSessionContext(runID: AgentRunID(rawValue: latestID.rawValue),
+            id: "history:" + firstID.description, offset: 0, length: 200)
+        XCTAssertTrue(read.string.contains("CEDAR_ARCHIVE"))
+        XCTAssertTrue(read.string.contains("fourteen days"), "Original evidence is not overwritten by the correction")
+        let changed = try await restored.controller.readSessionContext(runID: AgentRunID(rawValue: latestID.rawValue),
+            id: "turn:" + AgentRunID(rawValue: correction.rawValue).description + ":user", offset: 0, length: 200)
+        XCTAssertTrue(changed.string.contains("seven days"))
+        do {
+            _ = try await restored.controller.readSessionContext(runID: AgentRunID(rawValue: latestID.rawValue),
+                id: "turn:" + AgentRunID().description + ":user", offset: 0, length: 100)
+            XCTFail("Other agents' contexts must not be addressable")
+        } catch AgentSessionError.unavailable {}
+    }
+
     func testGoalCompletionBarrierOrdersConcurrentMessageAcceptance() async throws {
         let model = try ExecutorTestModelDefinition(offset: 843)
         let provider = try SessionProbeProvider(model: model, script: SessionRequestProbe())

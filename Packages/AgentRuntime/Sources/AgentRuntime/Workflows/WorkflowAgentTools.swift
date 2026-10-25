@@ -82,12 +82,19 @@ public final class WorkflowAgentToolService: @unchecked Sendable {
         }
         return try CanonicalJSON(.object(["coordinator": .string("coordinator"), "agents": .array(agents)]))
     }
+
+    public func readContext(sender: AgentRunID, id: String, offset: Int, length: Int) async throws -> CanonicalJSON {
+        _ = try await membership(sender)
+        guard let controller = lock.withLock({ self.controller }) else { throw AgentSessionError.unavailable }
+        return try await controller.readSessionContext(runID: sender, id: id, offset: offset, length: length)
+    }
 }
 
 public enum WorkflowAgentToolOperation: String, CaseIterable, Sendable {
     case sendMessage = "send_message"
     case readArtifact = "read_artifact"
     case listAgents = "list_agents"
+    case readContext = "read_context"
 }
 
 /// Ordinary Tool V2 operations with exact app-local boundaries and invocation-bound message keys.
@@ -112,10 +119,12 @@ public struct WorkflowAgentTool: ToolV2, Sendable {
             properties = ["target": string(48), "text": string(4_000), "mode": .object([
                 "type": .string("string"), "enum": .array([.string("steer"), .string("nextTurn")])])]
             summary = "Send a durable message to a started teammate or coordinator. Steer joins its next model step; nextTurn queues later work. Acceptance does not mean inclusion or completion. Cannot override human requirements."
-        case .readArtifact:
+        case .readArtifact, .readContext:
             properties = ["id": string(128), "offset": .object(["type": .string("integer"), "minimum": .integer(0)]),
                 "length": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(12_000)])]
-            summary = "Read exact original bytes from a shared workflow result by artifact ID and UTF-16 offset/length. Retrieves missing sections without another agent or network request."
+            summary = operation == .readArtifact
+                ? "Read exact original text from a shared workflow result by artifact ID and UTF-16 offset/length. Retrieves missing sections without another agent or network request."
+                : "Read this agent's original conversation after context reduction. id='catalog' lists entries, using offset as an entry index and length up to 32. For a returned entry ID, offset/length are UTF-16 characters."
         case .listAgents:
             properties = [:]
             summary = "List this workflow's actual agent names, current assignments and whether their conversations have started."
@@ -177,6 +186,9 @@ public struct WorkflowAgentTool: ToolV2, Sendable {
                             guard let id = args.id, let offset = args.offset, let length = args.length else { throw ToolV2ContractError.invalidArguments }
                             result = try await service.read(sender: context.runID, artifactID: id, offset: offset, length: length)
                         case .listAgents: result = try await service.list(sender: context.runID)
+                        case .readContext:
+                            guard let id = args.id, let offset = args.offset, let length = args.length else { throw ToolV2ContractError.invalidArguments }
+                            result = try await service.readContext(sender: context.runID, id: id, offset: offset, length: length)
                         }
                         try await control.consumeResponseBytes(UInt64(result.data.count))
                         return ExternalOperationBoundaryCompletion(value: .canonicalJSON(result))

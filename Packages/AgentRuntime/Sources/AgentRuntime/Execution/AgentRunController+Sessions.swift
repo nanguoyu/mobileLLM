@@ -77,6 +77,84 @@ extension AgentRunController {
         return AgentSessionPendingInputs(count: count, messages: messages)
     }
 
+    /// Reads only this executing agent's historical inputs and answers. References are derived
+    /// from durable session membership, not arbitrary run IDs supplied by the model.
+    public func readSessionContext(runID: AgentRunID, id: String, offset: Int, length: Int) async throws -> CanonicalJSON {
+        guard offset >= 0, (1...12_000).contains(length),
+              let request = try await repository.loadRunFacts(for: runID)?.submission?.request.payload else {
+            throw AgentSessionError.unavailable
+        }
+        let session = try await sessionSnapshot(seedRunID: runID, conversationID: request.conversationID)
+        let (seedFacts, _) = try await loadRun(session.seedRunID)
+        guard let seed = seedFacts.submission else { throw AgentSessionError.unavailable }
+        let original = try await loadPayload(FrozenAgentRunInputs.self, reference: seed.inputSnapshot)
+        let prior = Array(session.activations.prefix(while: { $0.runID != runID }))
+        let originals = original.conversation.map { "history:" + $0.frozen.sourceID }
+        let turns: [String] = prior.flatMap { activation -> [String] in
+            let prefix = "turn:" + activation.runID.description
+            return [prefix + ":user", prefix + ":answer", prefix + ":tools"]
+        }
+        let ids = originals + turns + ["turn:" + runID.description + ":tools"]
+        let permittedRuns = Set(prior.map(\.runID) + [runID])
+        func content(_ reference: String) async throws -> (role: String, text: String, revision: String) {
+            if let index = originals.firstIndex(of: reference) {
+                let source = original.conversation[index]
+                return (source.role.rawValue, source.frozen.content, source.frozen.revision)
+            }
+            let components = reference.split(separator: ":").map(String.init)
+            guard components.count == 3, let sourceRunID = AgentRunID(components[1]), permittedRuns.contains(sourceRunID) else {
+                throw AgentSessionError.unavailable
+            }
+            let (facts, history) = try await loadRun(sourceRunID)
+            if components[0] == "tool" {
+                guard let invocationID = ToolInvocationID(components[2]), let outcome = history.toolOutcomes[invocationID],
+                      let plan = history.toolIntents[invocationID]?.1.plan else { throw AgentSessionError.unavailable }
+                let arguments = try plan.canonicalArguments.map { try JSONDecoder().decode(JSONValue.self, from: $0.value.data) } ?? .null
+                let value = try CanonicalJSON(.object(["tool": .string(plan.subjectID), "arguments": arguments,
+                    "outcome": JSONDecoder().decode(JSONValue.self, from: ExecutionEncoding.encode(outcome.1))]))
+                return ("tool", value.string, outcome.0.recordDigest.rawValue)
+            }
+            guard components[0] == "turn", ids.contains(reference) else { throw AgentSessionError.unavailable }
+            if components[2] == "tools" {
+                let observations: [JSONValue] = history.toolOutcomes.sorted { $0.value.0.sequence < $1.value.0.sequence }.map { id, pair in
+                    let status: String
+                    switch pair.1 { case .completed: status = "completed"; case .failed: status = "failed"; case .uncertain: status = "uncertain" }
+                    return .object(["id": .string("tool:" + sourceRunID.description + ":" + id.description),
+                        "tool": .string(history.toolIntents[id]?.1.plan.subjectID ?? "unknown"), "status": .string(status)])
+                }
+                return ("tool-index", try CanonicalJSON(.object(["observations": .array(observations)])).string,
+                        facts.projection.cursor.recordDigest.rawValue)
+            }
+            if components[2] == "user" {
+                guard let submission = facts.submission else { throw AgentSessionError.unavailable }
+                let frozen = try await loadPayload(FrozenAgentRunInputs.self, reference: submission.inputSnapshot)
+                let input = try await sessionCurrentUser(frozen: frozen, runID: sourceRunID, includedOnly: true).source
+                return ("user", input.frozen.content, input.frozen.revision)
+            }
+            return ("assistant", history.result?.answer?.text ?? history.status.failure?.safeMessage ?? "No answer was produced.",
+                    facts.projection.cursor.recordDigest.rawValue)
+        }
+        if id == "catalog" {
+            guard offset <= ids.count else { throw AgentSessionError.unavailable }
+            let end = min(ids.count, offset + min(length, 32))
+            var entries: [JSONValue] = []
+            for reference in ids[offset..<end] {
+                let source = try await content(reference)
+                entries.append(.object(["id": .string(reference), "role": .string(source.role),
+                    "revision": .string(source.revision), "characters": .integer(Int64(source.text.utf16.count)),
+                    "preview": .string(String(source.text.prefix(160)))]))
+            }
+            return try CanonicalJSON(.object(["entries": .array(entries), "nextOffset": .integer(Int64(end)),
+                "totalEntries": .integer(Int64(ids.count)), "truncated": .bool(end < ids.count)]))
+        }
+        guard ids.contains(id) || id.hasPrefix("tool:") else { throw AgentSessionError.unavailable }
+        let source = try await content(id)
+        var excerpt = try WorkflowArtifactExcerpt.read(CanonicalJSON(.string(source.text)), id: id, offset: offset, length: length)
+        excerpt["role"] = .string(source.role)
+        excerpt["revision"] = .string(source.revision)
+        return try CanonicalJSON(.object(excerpt))
+    }
+
     /// Reading a session never registers it, starts a run, or resumes interrupted work.
     public func sessionView(seedRunID: AgentRunID, conversationID: ConversationID) async throws -> AgentSessionView {
         let session = try await sessionSnapshot(seedRunID: seedRunID, conversationID: conversationID)
@@ -260,7 +338,9 @@ extension AgentRunController {
         let fresh = try await inputFreezer.freeze(request)
         let inputs = try fresh.replacingConversation(conversation, currentUser: CurrentUserContextSource(
             userTurnID: request.userTurnID, revision: "workflow-session." + request.runID.description,
-            content: request.instruction, attachments: request.artifactReferences))
+            content: request.instruction, attachments: request.artifactReferences),
+            maximumHistoryBytes: request.role == "workflow-supervisor" ? 16_384 : 131_072,
+            maximumHistoryTurns: request.role == "workflow-supervisor" ? 4 : 24)
         let prepared = PreparedAgentSessionActivation(request: request, inputs: inputs)
         let body = try await payloadStore.commit(data: Data(request.instruction.utf8), mimeType: "text/plain",
             semanticType: "agent-session-input.v1", runID: session.seedRunID, stepID: nil, invocationID: nil,

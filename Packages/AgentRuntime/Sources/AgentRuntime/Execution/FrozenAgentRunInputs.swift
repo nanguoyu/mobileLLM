@@ -27,10 +27,18 @@ extension FrozenAgentRunInputs {
     }
 
     func replacingConversation(_ conversation: [ConversationTurnContextSource],
-                               currentUser: CurrentUserContextSource) throws -> FrozenAgentRunInputs {
-        try FrozenAgentRunInputs(modelSelection: modelSelection, generationParameters: generationParameters,
-            contextBudget: contextBudget, baseSystem: baseSystem, skills: skills, memories: memories,
-            conversation: conversation, currentUser: currentUser, artifactExcerpts: artifactExcerpts,
+                               currentUser: CurrentUserContextSource,
+                               maximumHistoryBytes: Int = 131_072, maximumHistoryTurns: Int = 24) throws -> FrozenAgentRunInputs {
+        let retained = AgentSessionContextWindow.retain(conversation, maximumBytes: maximumHistoryBytes, maximumTurns: maximumHistoryTurns)
+        var system = baseSystem
+        if !conversation.isEmpty && !baseSystem.frozen.content.contains(AgentSessionContextWindow.marker) {
+            system = try BaseSystemContextSource(sourceID: baseSystem.frozen.sourceID,
+                revision: baseSystem.frozen.revision + ".session-window.v1",
+                content: baseSystem.frozen.content + "\n\n" + AgentSessionContextWindow.notice)
+        }
+        return try FrozenAgentRunInputs(modelSelection: modelSelection, generationParameters: generationParameters,
+            contextBudget: contextBudget, baseSystem: system, skills: skills, memories: memories,
+            conversation: retained, currentUser: currentUser, artifactExcerpts: artifactExcerpts,
             toolCatalog: toolCatalog, toolPolicy: toolPolicy, availableToolCapabilities: availableToolCapabilities,
             activeSkillToolHints: activeSkillToolHints, explicitlyRequestedToolIDs: explicitlyRequestedToolIDs,
             recentSuccessfulToolChain: recentSuccessfulToolChain, maximumAdvertisedTools: maximumAdvertisedTools,

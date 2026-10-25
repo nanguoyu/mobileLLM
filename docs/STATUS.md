@@ -81,6 +81,15 @@ cover model-authored message acceptance, later inclusion and the message/goal-co
 build passes. Long-context capability work, goal/task graph UI and new real-model qualification remain in progress under the [implementation plan](AGENT_HARNESS_PLAN.md).
 The separate iOS sandbox remains optional; earlier autonomous outcome evidence retains its tested version.
 
+### Long conversations
+
+Session activations now keep bounded working history, with smaller windows for the coordinator because
+its current frame already carries the goal and task state. Original instructions, answers and tool
+observations remain readable through `agent.read_context`; retrieved observations make no new external
+request. Focused recovery checks retain a later correction and retrieve the exact early requirement after
+that requirement has left the working window. This path uses deterministic reduction and original-source
+reads, without an extra summarizer loop.
+
 ### v5 development evaluation
 
 The new production path completed the incident-evidence case with real `deepseek-v4-flash` on the iPhone

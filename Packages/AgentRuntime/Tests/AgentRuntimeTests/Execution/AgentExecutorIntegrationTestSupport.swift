@@ -171,7 +171,8 @@ struct ExecutorTestHarness {
         repositoryFactory: ((SQLiteRunJournal) -> any RuntimeRepository)? = nil,
         parallelToolBatchLimit: UInt16 = 1,
         localOnly: Bool = true,
-        approvalMode: AgentApprovalMode = .ask
+        approvalMode: AgentApprovalMode = .ask,
+        conversation: [ConversationTurnContextSource] = []
     ) throws {
         self.model = model
         let runID = ExecutorTestID.run(offset)
@@ -215,6 +216,7 @@ struct ExecutorTestHarness {
                 revision: "executor-test-v1",
                 content: "Follow the user's instructions and return one normalized action."
             ),
+            conversation: conversation,
             currentUser: CurrentUserContextSource(
                 userTurnID: userTurnID,
                 revision: "executor-test-v1",

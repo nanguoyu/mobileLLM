@@ -10,28 +10,34 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
         let offset = 842
         let model = try ExecutorTestModelDefinition(offset: offset)
         let descriptor = try WorkflowAgentTool.descriptor(.sendMessage)
+        let reader = try WorkflowAgentTool.descriptor(.readContext)
         let invocationID = ToolInvocationID()
         let proposed = try ProposedToolCall(invocationID: invocationID, toolID: descriptor.id.logicalID,
             arguments: CanonicalJSON(.object(["target": .string("coordinator"), "text": .string("The source changed to fourteen days."), "mode": .string("steer")])))
+        let readCall = try ProposedToolCall(invocationID: ToolInvocationID(), toolID: reader.id.logicalID,
+            arguments: CanonicalJSON(.object(["id": .string("turn:" + ExecutorTestID.run(offset).description + ":user"),
+                "offset": .integer(0), "length": .integer(200)])))
         func outcome(_ action: AgentAction) throws -> AgentModelAttemptOutcome {
             .completed(try AgentModelCompletion(action: action, usage: modelUsage(input: 8, output: 3, milliseconds: 4, memory: 48)))
         }
         let provider = try SequencedModelOutcomeProvider(model: model, outcomes: [
             outcome(.finalAnswer(AgentAnswer(text: "Initial assignment"))), outcome(.callTools([proposed])),
-            outcome(.finalAnswer(AgentAnswer(text: "Sent the evidence"))), outcome(.finalAnswer(AgentAnswer(text: "Used the received evidence")))])
-        let catalog = DeferredWorkflowToolCatalog(descriptor: descriptor)
+            outcome(.finalAnswer(AgentAnswer(text: "Sent the evidence"))), outcome(.callTools([readCall])),
+            outcome(.finalAnswer(AgentAnswer(text: "Used the received evidence")))])
+        let catalog = DeferredWorkflowToolCatalog(descriptors: [descriptor, reader])
         let conversation = ExecutorTestID.conversation(offset)
-        let authority = try AgentAuthorityScope(capabilities: AgentCapabilitySet([.localRead, .localWrite]),
+        let authority = try AgentAuthorityScope(capabilities: AgentCapabilitySet([.localRead, .localWrite, AgentCapability(rawValue: "workflow.delegate")]),
             destinations: [WorkflowAgentTool.destination(conversation)], dataCategories: [WorkflowAgentTool.dataCategory])
-        let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model, toolDescriptors: [descriptor],
+        let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model, toolDescriptors: [descriptor, reader],
             tools: catalog, capabilityCeiling: RunCapabilityCeiling(authority: authority),
             availableToolCapabilities: AgentCapabilitySet([.localRead, .localWrite]),
-            explicitlyRequestedToolIDs: [descriptor.id.logicalID], provenance: AgentRequestProvenance(source: .workflow))
+            explicitlyRequestedToolIDs: [descriptor.id.logicalID, reader.id.logicalID], provenance: AgentRequestProvenance(source: .workflow))
         let root = harness.request
         let journal = InMemoryDynamicWorkflowJournal()
         let service = WorkflowAgentToolService(repository: harness.repository, journal: journal, values: InlineWorkflowValueStore())
         service.bind(harness.executor.controller)
         await catalog.install(try WorkflowAgentTool(operation: .sendMessage, service: service))
+        await catalog.install(try WorkflowAgentTool(operation: .readContext, service: service))
         let rootHandle = try await harness.executor.submit(root, commandID: ExecutorTestID.command(offset))
         _ = try await collectTerminalEvents(from: harness.executor.attach(to: rootHandle))
         let script = try WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1,
@@ -64,7 +70,7 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
                 timestamp: AgentTimestamp(rawValue: Int64(index + 1)), previousDigest: events.last?.recordDigest, kind: kind))
         }
         _ = try await journal.append(WorkflowEventAppendRequestV1(runID: workflowID, expectedSequence: 0, expectedDigest: nil, events: events))
-        let childCeiling = RunCapabilityCeiling(authority: try AgentAuthorityScope(capabilities: AgentCapabilitySet([.localWrite]),
+        let childCeiling = RunCapabilityCeiling(authority: try AgentAuthorityScope(capabilities: AgentCapabilitySet([.localRead, .localWrite]),
             destinations: authority.destinations, dataCategories: authority.dataCategories))
         let child = try AgentRequest(id: ExecutorTestID.request(8421), runID: childRunID, conversationID: conversation,
             userTurnID: root.userTurnID, parent: ParentAgentContext(runID: root.runID, requestingStepID: AgentStepID(), capabilityCeiling: root.capabilityCeiling),
@@ -82,13 +88,28 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
         XCTAssertEqual(accepted?.inputs.first?.sender, .agent(childRunID))
         XCTAssertEqual(accepted?.inputs.first?.mode, .nextTurn, "The completed coordinator anchor must queue its next activation")
         XCTAssertEqual(accepted?.activations.count, 1)
+        let storedTool = try await harness.executor.controller.readSessionContext(runID: childRunID,
+            id: "tool:" + childRunID.description + ":" + invocationID.description, offset: 0, length: 12_000)
+        XCTAssertTrue(storedTool.string.contains("accepted"))
+        let callsBeforeRead = await provider.script.capturedRequests().count
+        XCTAssertEqual(callsBeforeRead, 3, "Reading original tool evidence cannot rerun a model or tool")
         let coordinator = try AgentRequest(id: ExecutorTestID.request(8422), runID: ExecutorTestID.run(8422), conversationID: conversation,
             userTurnID: root.userTurnID, parent: child.parent, role: "coordinator", instruction: "Use the new evidence.",
             outputRequirement: .text, modelPolicy: root.modelPolicy, capabilityCeiling: childCeiling,
-            budget: root.budget, provenance: AgentRequestProvenance(source: .workflow, parentRequestID: root.id))
+            budget: root.budget, labels: [AgentRequestLabel(key: "workflow.run", value: workflowID.description)],
+            provenance: AgentRequestProvenance(source: .workflow, parentRequestID: root.id))
+        let recordedHead = try await journal.loadProjection(for: workflowID)
+        let head = try XCTUnwrap(recordedHead)
+        let coordinatorCall = try WorkflowAgentCallV1(callID: WorkflowAgentCallID(), ordinal: 2, attempt: 1,
+            prefixKey: StableDigest.sha256(Data("coordinator".utf8)), promptDigest: StableDigest.sha256(Data("Use the new evidence.".utf8)),
+            options: WorkflowAgentOptionsV1(sessionKey: "coordinator"), childRunID: coordinator.runID)
+        _ = try await journal.append(WorkflowEventAppendRequestV1(runID: workflowID, expectedSequence: head.lastSequence,
+            expectedDigest: head.lastDigest, events: [WorkflowRunEventV1(eventID: WorkflowEventID(), runID: workflowID,
+                sequence: head.lastSequence + 1, timestamp: AgentTimestamp(rawValue: 100), previousDigest: head.lastDigest, kind: .agentCallPrepared(coordinatorCall))]))
         let continued = try await harness.executor.controller.submitWorkflowActivation(coordinator, commandID: ExecutorTestID.command(8422),
             seedRunID: root.runID, senderRunID: childRunID)
-        _ = try await collectTerminalEvents(from: harness.executor.attach(to: continued))
+        let continuedEvents = try await collectTerminalEvents(from: harness.executor.attach(to: continued))
+        XCTAssertTrue(continuedEvents.contains { if case .toolOutcomeRecorded(let id, .completed) = $0.payload.event { return id == readCall.invocationID }; return false })
         let requests = await provider.script.capturedRequests()
         XCTAssertTrue(requests.last!.messages.contains { $0.content.contains("The source changed to fourteen days.") })
         let consumed = try await harness.repository.session(for: root.runID)
@@ -99,10 +120,10 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
 }
 
 private actor DeferredWorkflowToolCatalog: ExecutableToolCatalog {
-    let descriptor: AgentToolDescriptor
-    private var installed: (any ToolV2)?
-    init(descriptor: AgentToolDescriptor) { self.descriptor = descriptor }
-    func install(_ tool: any ToolV2) { installed = tool }
-    func localSnapshot() async throws -> ToolCatalogSnapshot { try ToolCatalogSnapshot(revision: 1, descriptors: [descriptor]) }
-    func tool(for descriptorID: AgentToolDescriptorID) async throws -> (any ToolV2)? { descriptorID == descriptor.id ? installed : nil }
+    let descriptors: [AgentToolDescriptor]
+    private var installed: [AgentToolDescriptorID: any ToolV2] = [:]
+    init(descriptors: [AgentToolDescriptor]) { self.descriptors = descriptors }
+    func install(_ tool: any ToolV2) { installed[tool.descriptor.id] = tool }
+    func localSnapshot() async throws -> ToolCatalogSnapshot { try ToolCatalogSnapshot(revision: 1, descriptors: descriptors) }
+    func tool(for descriptorID: AgentToolDescriptorID) async throws -> (any ToolV2)? { installed[descriptorID] }
 }
