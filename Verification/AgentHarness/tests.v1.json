@@ -2115,6 +2115,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.ResponsesAPIModelProviderTests/testDeepSeekNativeHistoryKeepsExplicitEmptyReasoningAcrossANonThinkingRepair"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testV5ReassignedAgentConsumesItsInboxWithoutTakingBackTaskOwnership"
         }
       ],
       "platforms": [
@@ -2262,6 +2266,10 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/testSourceQuoteCheckHandlesRenderedEscapesWithoutAcceptingAnotherPageOrParaphrase"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/testPlanningOracleAcceptsAProofWithoutRelaxingCostOrFeasibility"
         }
       ],
       "platforms": [

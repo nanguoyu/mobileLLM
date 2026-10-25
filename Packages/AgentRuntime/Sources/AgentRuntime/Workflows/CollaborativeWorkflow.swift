@@ -183,7 +183,13 @@ public enum CollaborativeWorkflow {
             if (packet.graph.tasks.some(t => t.agent === recipient && t.state !== 'completed')) { continue; }
             const prior = packet.graph.artifacts.slice().reverse().find(a => packet.graph.tasks.some(t =>
               t.id === a.taskID && t.agent === recipient && t.outputArtifactID === a.id));
-            if (!prior) { continue; }
+            if (!prior) {
+              if (!packet.graph.tasks.some(t => t.agent === recipient)) {
+                packet = await collaborate({action:'continueInbox',expectedRevision:packet.graph.revision,recipient:recipient});
+                if (packet.feedback) { feedback += packet.feedback; }
+              }
+              continue;
+            }
             const task = packet.graph.tasks.find(t => t.id === prior.taskID);
             const inputs = (task.artifactInputs || []).filter(id => id !== prior.id);
             inputs.push(prior.id);

@@ -23,6 +23,7 @@ enum WorkflowDisplay {
     }
 
     static func taskName(id: String, agent: String) -> String {
+        if id.hasPrefix("inbox-") { return name(agent) + " follow-up" }
         let compact = id.count < 4 || id.range(of: #"^[Tt][0-9]+$"#, options: .regularExpression) != nil
         let title = compact ? agent : id.replacingOccurrences(of: #"^[Tt][0-9]+[-_ ]+"#, with: "", options: .regularExpression)
         return name(title)

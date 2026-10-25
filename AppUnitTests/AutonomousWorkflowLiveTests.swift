@@ -20,6 +20,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
     @MainActor func test16OriginalContextAndLaterCorrection() async throws { try await evaluate(.longContext) }
 
     @MainActor func test30ResumeRetainedPausedGoalWithItsOriginalBudget() async throws {
+        executionTimeAllowance = 1_200
         guard let path = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_RESUME_ROOT"],
               let raw = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_RESUME_ID"], let id = WorkflowRunID(raw) else {
             throw XCTSkip("An explicit retained evaluation and goal ID are required")
@@ -27,9 +28,10 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         try await evaluate(.rollout, heldOut: true, resume: (URL(fileURLWithPath: path), id))
     }
 
-    @MainActor func test31AffectedPlanningFamilyAfterArgumentRepair() async throws {
+    @MainActor func test31AffectedFamiliesAfterRepair() async throws {
         executionTimeAllowance = 3_600
         for repetition in 1...3 { try await evaluate(.rollout, heldOut: true, repetition: repetition) }
+        try await evaluate(.migration, heldOut: true)
     }
 
     @MainActor func test20FrozenSixFamilyQualification() async throws {
@@ -57,6 +59,26 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                 catch { XCTFail("\(task.rawValue) attempt \(repetition): \(error.localizedDescription)") }
             }
         }
+    }
+
+    func testPlanningOracleAcceptsAProofWithoutRelaxingCostOrFeasibility() throws {
+        let resources = ["DB", "App", "DB", "App", "DB", "DB", "QA", "App"]
+        func plan(_ starts: [Int], _ ends: [Int]) -> [String: Any] {
+            ["makespan": ends.max()!, "tasks": Array("ABCDEFGH").enumerated().map { index, id in
+                ["id": String(id), "start": starts[index], "end": ends[index], "resource": resources[index]] as [String: Any]
+            }]
+        }
+        var result: [String: Any] = ["marker": "EVAL_ROLLOUT", "laborCostEUR": 1605, "changedStartIDs": ["G", "H"],
+            "baseline": plan([0,0,3,5,5,9,9,12], [3,2,5,7,9,11,12,13]),
+            "revised": plan([0,0,3,5,5,9,13,16], [3,2,5,7,9,11,16,17]),
+            "lowerBounds": ["baseline": "Critical path A->C->E->G->H = 13, and the schedule attains it.",
+                            "outage": "QA outage delays G until 13, so H ends no earlier than 17."]]
+        XCTAssertTrue(try WorkflowLiveCase.rollout.verify(result, heldOut: true).isEmpty)
+        result["laborCostEUR"] = 1606
+        XCTAssertFalse(try WorkflowLiveCase.rollout.verify(result, heldOut: true).isEmpty)
+        result["laborCostEUR"] = 1605
+        result["revised"] = plan([0,0,3,5,5,9,12,16], [3,2,5,7,9,11,15,17])
+        XCTAssertFalse(try WorkflowLiveCase.rollout.verify(result, heldOut: true).isEmpty)
     }
 
     func testSourceQuoteCheckHandlesRenderedEscapesWithoutAcceptingAnotherPageOrParaphrase() {

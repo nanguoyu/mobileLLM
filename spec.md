@@ -2156,3 +2156,10 @@ malformed-action failure with measured usage and bounded schema feedback. The ex
 records the originating failure code and owns at most one constrained repair of that invalid action.
 Repair consumes the original model/repair budget; a second invalid attempt terminates without dispatch.
 The transport does not retry, alter arguments, authorize a new tool, or execute a valid batch prefix.
+
+
+Reassigning a task does not discard the former agent's accepted input. When that agent has no current
+assignment, `continueInbox` creates one required follow-up in the same session, using its original
+profile/model and the existing goal allowance. It consumes pending messages without taking ownership
+back from the replacement agent. The transition and resulting task are journaled. Historical scripts
+retain their original control flow; new launches use this continuation rule.

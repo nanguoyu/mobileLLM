@@ -185,6 +185,28 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
         XCTAssertTrue(prompt.contains("dependent:1"), "The continuation receives its prior result")
     }
 
+    func testV5ReassignedAgentConsumesItsInboxWithoutTakingBackTaskOwnership() async throws {
+        let plan = v5Decision("work", tasks: [.object(["id": .string("dependent"), "expectedRevision": .integer(0),
+            "agent": .string("dependent"), "instruction": .string("Review the candidate"), "dependencies": .array([]),
+            "required": .bool(true), "maxToolCalls": .integer(0), "model": .string(""), "inputRanges": .array([])])])
+        let args = try CanonicalJSON(.object(["goal": .string("Recover a reviewer and consume its late messages."),
+            "plan": plan, "availableTools": .array([]), "runDate": .string("2026-10-26")]))
+        let fixture = try makeFixture(body: "", args: args, source: CollaborativeWorkflow.source)
+        let spawner = V5WorkflowSpawner(lateMessage: true, reassignPendingOwner: true)
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        _ = try await engine.runAndWait(runID: fixture.launch.runID)
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(projection?.state, .completed)
+        XCTAssertEqual(projection?.taskGraph?.tasks.first(where: { $0.id == "dependent" })?.agent, "replacement")
+        XCTAssertEqual(projection?.taskGraph?.tasks.first(where: { $0.id.hasPrefix("inbox-") })?.agent, "dependent")
+        XCTAssertTrue(projection?.taskGraph?.tasks.allSatisfy { $0.state == .completed } == true)
+        let remaining = try await spawner.pendingSessionInputs(runIDs: [])
+        XCTAssertEqual(remaining.count, 0)
+    }
+
     func testTaskGraphPausesWithUnfinishedGoalAndExplicitResumeContinuesWithoutRepeatingWork() async throws {
         let fixture = try makeFixture(body: """
         let view = await collaborate({action:'snapshot'});
@@ -943,9 +965,12 @@ private actor V5WorkflowSpawner: SubagentSpawning {
     private(set) var starts: [String] = []
     private(set) var dependentPrompt = ""
     private let lateMessage: Bool
+    private let reassignPendingOwner: Bool
     private var inbox: AgentSessionPendingInputs = .init()
     private var injected = false
-    init(lateMessage: Bool = false) { self.lateMessage = lateMessage }
+    init(lateMessage: Bool = false, reassignPendingOwner: Bool = false) {
+        self.lateMessage = lateMessage; self.reassignPendingOwner = reassignPendingOwner
+    }
     func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs { inbox }
 
     func spawn(_ request: SubagentSpawnRequest, continuing seedRunID: AgentRunID,
@@ -974,7 +999,14 @@ private actor V5WorkflowSpawner: SubagentSpawning {
             let text = request.instruction.components(separatedBy: "\nTASK GRAPH:\n")[1].components(separatedBy: "\n")[0]
             let graph = try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [[String: Any]]
             let done = graph.allSatisfy { $0["state"] as? String == "completed" }
-            let decision = v5Decision(done ? "deliver" : "wait", answer: done ? "All required outputs are available." : "")
+            let failed = graph.first { $0["state"] as? String == "failed" }
+            let decision: JSONValue
+            if reassignPendingOwner, let failed {
+                decision = v5Decision("work", tasks: [.object(["id": .string("dependent"),
+                    "expectedRevision": .integer(Int64(failed["revision"] as! Int)), "agent": .string("replacement"),
+                    "instruction": .string("Review the candidate"), "dependencies": .array([]), "required": .bool(true),
+                    "maxToolCalls": .integer(0), "model": .string(""), "inputRanges": .array([])])])
+            } else { decision = v5Decision(done ? "deliver" : "wait", answer: done ? "All required outputs are available." : "") }
             answer = try AgentAnswer(text: CanonicalJSON(decision).string, structuredOutput: decision)
         } else if request.instruction.contains("\nTASK ID: slow\n") {
             if !dependentStarted { await withCheckedContinuation { waiter = $0 } }
@@ -987,6 +1019,12 @@ private actor V5WorkflowSpawner: SubagentSpawning {
                 injected = true
                 inbox = AgentSessionPendingInputs(count: 1, messages: [AgentSessionPendingMessage(id: MessageID(),
                     seedRunID: request.childRunID, sender: .agent(request.parentRunID), preview: "Check the new evidence before delivery.")])
+                if reassignPendingOwner {
+                    let failure = try AgentFailure(code: "model.test.unavailable", classification: .permanent,
+                        safeMessage: "Provider unavailable", retryAdvice: .never, externalEffect: .confirmedNone,
+                        requiredUserAction: .none, redaction: RedactionMetadata(classification: .publicMetadata, policyVersion: 1))
+                    return SubagentResult(runID: request.childRunID, handleID: handleID, outcome: .failed(failure: failure, usage: .zero))
+                }
             }
         }
         return SubagentResult(runID: request.childRunID, handleID: handleID, outcome: .completed(answer: answer, usage: .zero))

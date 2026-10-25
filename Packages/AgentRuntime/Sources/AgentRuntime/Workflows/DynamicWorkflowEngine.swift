@@ -930,6 +930,23 @@ private actor DynamicWorkflowSession {
         do {
             switch decoded.action {
             case "snapshot", "admitted": break
+            case "continueInbox":
+                guard let revision = decoded.expectedRevision, let recipient = decoded.recipient,
+                      recipient != "coordinator", !graph.tasks.contains(where: { $0.agent == recipient }),
+                      let message = pendingInputs.messages.first(where: { message in
+                          projection.calls.contains { $0.childRunID == message.seedRunID && $0.options.sessionKey == recipient }
+                      }), let source = projection.calls.first(where: { $0.childRunID == message.seedRunID }) else {
+                    throw WorkflowTaskGraphError.unavailableInput
+                }
+                // Reassignment changes task ownership, not the addressed agent's inbox. Give
+                // that existing session a bounded follow-up without undoing the reassignment or
+                // silently discarding messages. Its original profile/model remain the ceiling.
+                let prior = graph.artifacts.last(where: { $0.callID == source.callID })
+                try graph.update([WorkflowTaskUpdate(id: "inbox-" + message.id.description, expectedRevision: 0,
+                    agent: recipient,
+                    instruction: "Process your accepted pending messages for this goal. Your former assignment has been reassigned. Preserve the current ownership; do not redo that assignment unless a human explicitly requests it. Return any new evidence or correction, or acknowledge that an obsolete notice needs no further action. Your result reaches the coordinator automatically; do not send a redundant acknowledgement.",
+                    maximumToolCalls: source.options.maximumToolCalls ?? 0, model: source.options.requestedModel,
+                    artifactInputs: prior.map { [$0.id] } ?? [], profile: source.options.profile)], expectedRevision: revision)
             case "update":
                 guard let revision = decoded.expectedRevision, let changes = decoded.tasks else { throw WorkflowTaskGraphError.invalid }
                 try graph.update(changes, expectedRevision: revision)
@@ -1907,6 +1924,7 @@ private struct WorkflowCollaborationCommand: Decodable, Sendable {
     let length: Int?
     let reason: String?
     let reasonCode: String?
+    let recipient: String?
 }
 
 private func goalAmendmentRecipients(_ projection: WorkflowRunProjectionV1) -> [AgentRunID] {

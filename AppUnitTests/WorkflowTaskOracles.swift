@@ -150,8 +150,16 @@ enum WorkflowLiveCase: String {
         let changed = Set((starts["baseline"] ?? [:]).keys.filter { starts["baseline"]?[$0] != starts["revised"]?[$0] })
         guard changed == (heldOut ? ["G","H"] : ["D","G","H"]), let reported = value["changedStartIDs"] as? [String],
               reported.count == changed.count, Set(reported) == changed else { return ["Rescheduling is not minimally disruptive or changed-task list is wrong"] }
+        // The prompt asks for a lower-bound proof, without requiring a scalar JSON field.
+        // Feasibility and the exact optimum above are checked independently of this explanation.
+        let bounds = value["lowerBounds"] as? [String: Any] ?? [:]
+        func reports(_ key: String, _ expected: Int) -> Bool {
+            if let number = bounds[key] as? Int { return number == expected }
+            guard let proof = bounds[key] as? String, proof.count >= 20 else { return false }
+            return proof.range(of: "(?<![0-9])" + String(expected) + "(?![0-9])", options: .regularExpression) != nil
+        }
         guard value["marker"] as? String == "EVAL_ROLLOUT", value["laborCostEUR"] as? Int == (heldOut ? 1605 : 1680),
-              let bounds = value["lowerBounds"] as? [String:Int], bounds["baseline"] == 13, bounds["outage"] == (heldOut ? 17 : 14) else {
+              reports("baseline", 13), reports("outage", heldOut ? 17 : 14) else {
             return ["Cost or optimality bound is wrong"]
         }
         return []
