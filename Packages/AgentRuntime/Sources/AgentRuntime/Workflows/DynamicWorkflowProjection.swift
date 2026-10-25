@@ -47,6 +47,8 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
     public private(set) var reconciliationDecision: AgentReconciliationDecision?
     public private(set) var reconciliationGeneration: UInt32
     public private(set) var usage: AgentUsage
+    /// Nil identifies older workflows whose presentation added preparation separately.
+    public private(set) var preparationUsage: AgentUsage?
     public private(set) var output: WorkflowValueReferenceV1?
     public private(set) var failure: String?
     public private(set) var lastSequence: UInt64
@@ -87,6 +89,7 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
             reconciliationDecision: nil,
             reconciliationGeneration: 0,
             usage: .zero,
+            preparationUsage: nil,
             output: nil,
             failure: nil,
             lastSequence: first.sequence,
@@ -114,6 +117,13 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
         switch event.kind {
         case .created:
             throw WorkflowProjectionError.duplicateCreatedEvent
+        case .preparationUsageCommitted(let value):
+            guard state == .waitingForLaunchApproval, preparationUsage == nil, calls.isEmpty, usage == .zero else {
+                throw WorkflowProjectionError.invalidEventForState
+            }
+            _ = try BudgetLedgerSnapshot(budget: launch.budget, consumed: value)
+            preparationUsage = value
+            usage = value
         case .launchApproved(let approvalID):
             guard state == .waitingForLaunchApproval, launchApprovalID == nil else {
                 throw WorkflowProjectionError.invalidEventForState

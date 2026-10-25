@@ -710,7 +710,7 @@ public struct AppDynamicWorkflowProjection: Hashable, Sendable {
         completedCallCount = projection.outcomes.values.filter {
             if case .completed = $0 { return true }; return false
         }.count
-        usage = try projection.usage.aggregating(preparationUsage)
+        usage = projection.preparationUsage == nil ? try projection.usage.aggregating(preparationUsage) : projection.usage
         output = projection.output
         reconciliationCallID = projection.reconciliationCallID
         failure = projection.failure
@@ -951,7 +951,7 @@ public actor AppDynamicWorkflowService {
         // Derive its usage afresh from the journal, so repeated projection cannot double-count it.
         let parent = try await repository.loadRunFacts(for: projection.launch.initiatingRunID)
         let role = parent?.submission?.request.payload.role
-        let preparation = role == "workflow-coordinator" || role == "workflow-generator"
+        let preparation = projection.preparationUsage == nil && (role == "workflow-coordinator" || role == "workflow-generator")
             ? parent?.projection.cumulativeUsage ?? .zero : .zero
         var childStates: [AgentRunID: AgentRunState] = [:]
         for call in projection.calls where projection.outcomes[call.callID] == nil {

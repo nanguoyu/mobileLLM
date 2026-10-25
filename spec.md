@@ -2104,3 +2104,10 @@ Loading guidance never enables a disabled tool or execution environment. New goa
 unavailable definitions while old frozen snapshots remain reproducible. Context policy 3 retains selected
 skill instructions in full as user guidance, below the current request; insufficient space fails admission
 instead of silently discarding instructions. Historical context policy versions retain their semantics.
+
+
+New workflow creation atomically records the settled preparation run's actual usage with the launch.
+The same ledger then admits all child and coordinator activations against the remaining parent budget.
+Planning cannot become an uncharged extra allowance, including after recovery. Legacy records without
+this event retain their historical accounting semantics; presentation adds their preparation usage once.
+New records already include it and never add it again in the UI or evaluation summary.

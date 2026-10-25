@@ -189,11 +189,14 @@ public actor DynamicWorkflowEngine {
             previousDigest: nil,
             kind: .created(preparedSnapshot)
         )
+        let preparation = try await spawner.preparationUsage(runID: snapshot.initiatingRunID)
+        let preparationEvent = try WorkflowRunEventV1(eventID: WorkflowEventID(), runID: snapshot.runID,
+            sequence: 2, timestamp: timestamp, previousDigest: created.recordDigest, kind: .preparationUsageCommitted(preparation))
         var projection = try await journal.append(try WorkflowEventAppendRequestV1(
             runID: snapshot.runID,
             expectedSequence: 0,
             expectedDigest: nil,
-            events: [created]
+            events: [created, preparationEvent]
         )).projection
         if !dependencyPins.isEmpty {
             projection = try await append(
@@ -961,7 +964,7 @@ private actor DynamicWorkflowSession {
     }
 
     private func recordedBudget() throws -> JSONValue {
-        var consumed = AgentUsage.zero
+        var consumed = projection.preparationUsage ?? .zero
         for call in projection.calls where evidenceVisibleCalls.contains(call.callID) {
             let usage: AgentUsage
             switch projection.outcomes[call.callID] {

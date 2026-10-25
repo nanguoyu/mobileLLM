@@ -2042,6 +2042,10 @@
         },
         {
           "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testPreparationUsageIsRecordedBeforeApprovalAndCannotBecomeFreshChildCapacity"
+        },
+        {
+          "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testV5CoordinatorRunsDeclaredDependenciesAndExactSourceRangesThroughProductionEngine"
         },
         {

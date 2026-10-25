@@ -738,6 +738,7 @@ public enum WorkflowRunControlV1: Hashable, Codable, Sendable {
 
 public enum WorkflowRunEventKindV1: Hashable, Codable, Sendable {
     case created(WorkflowLaunchSnapshotV1)
+    case preparationUsageCommitted(AgentUsage)
     case launchApproved(ApprovalID)
     case stateChanged(from: WorkflowRunStateV1, to: WorkflowRunStateV1, reason: String?)
     case phaseStarted(String)

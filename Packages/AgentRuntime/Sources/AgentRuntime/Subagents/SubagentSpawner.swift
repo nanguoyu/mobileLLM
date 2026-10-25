@@ -18,6 +18,7 @@ public enum SubagentSpawnError: Error, Hashable, Sendable {
 /// parent ceiling, carry independent budgets, return structured results and artifacts, and can never
 /// approve their own external access.
 public protocol SubagentSpawning: Sendable {
+    func preparationUsage(runID: AgentRunID) async throws -> AgentUsage
     func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs
     func withSessionInputBarrier(runIDs: [AgentRunID],
                                  operation: @Sendable () async throws -> JSONValue) async throws -> JSONValue
@@ -53,6 +54,7 @@ public protocol SubagentSpawning: Sendable {
 }
 
 public extension SubagentSpawning {
+    func preparationUsage(runID: AgentRunID) async throws -> AgentUsage { .zero }
     func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs { AgentSessionPendingInputs() }
     func withSessionInputBarrier(runIDs: [AgentRunID],
                                  operation: @Sendable () async throws -> JSONValue) async throws -> JSONValue { try await operation() }
@@ -120,6 +122,13 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
     public func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs {
         guard let executor = executor as? DurableAgentExecutor else { throw AgentSessionError.unavailable }
         return try await executor.controller.pendingSessionInputs(runIDs: runIDs)
+    }
+
+    public func preparationUsage(runID: AgentRunID) async throws -> AgentUsage {
+        guard let facts = try await repository.loadRunFacts(for: runID), facts.projection.isTerminal else {
+            throw SubagentSpawnError.parentUnavailable
+        }
+        return facts.projection.cumulativeUsage
     }
 
     public func withSessionInputBarrier(runIDs: [AgentRunID],

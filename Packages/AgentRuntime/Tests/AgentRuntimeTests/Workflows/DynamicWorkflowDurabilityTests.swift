@@ -8,6 +8,28 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowDurabilityTests: XCTestCase {
+    func testPreparationUsageIsRecordedBeforeApprovalAndCannotBecomeFreshChildCapacity() async throws {
+        let fixture = try makeFixture(body: """
+        const before = await budget.snapshot();
+        try { await agent('No remaining model allowance'); } catch(error) {}
+        return before.consumed.modelAttempts;
+        """)
+        let spent = try AgentUsage(quantities: BudgetQuantities([.modelAttempts: fixture.launch.budget.limits[.modelAttempts]]))
+        let spawner = WorkflowFakeSpawner(preparation: spent)
+        let journal = InMemoryDynamicWorkflowJournal()
+        let engine = DynamicWorkflowEngine(journal: journal, runtime: JavaScriptCoreWorkflowRuntime(), spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        let prepared = try await journal.loadProjection(for: fixture.launch.runID)
+        XCTAssertEqual(prepared?.state, .waitingForLaunchApproval)
+        XCTAssertEqual(prepared?.preparationUsage, spent)
+        XCTAssertEqual(prepared?.usage, spent)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        let result = try await engine.runAndWait(runID: fixture.launch.runID)
+        XCTAssertEqual(try decode(result), .integer(Int64(fixture.launch.budget.limits[.modelAttempts])))
+        let count = await spawner.spawnCount
+        XCTAssertEqual(count, 0)
+    }
+
     func testGoalDeliveryCannotHideAcceptedPendingAgentInput() async throws {
         let fixture = try makeFixture(body: """
         let view = await collaborate({action:'snapshot'});
@@ -666,15 +688,19 @@ private actor WorkflowFakeSpawner: SubagentSpawning {
     private(set) var collectCount = 0
     private let observations: [AgentExecutionHandleID: [WorkflowWebObservation]]
     private let pending: AgentSessionPendingInputs
+    private let preparation: AgentUsage
 
     init(preexisting: [AgentExecutionHandleID: (AgentRunID, String)] = [:],
-         observations: [AgentExecutionHandleID: [WorkflowWebObservation]] = [:], pending: AgentSessionPendingInputs = .init()) {
+         observations: [AgentExecutionHandleID: [WorkflowWebObservation]] = [:], pending: AgentSessionPendingInputs = .init(),
+         preparation: AgentUsage = .zero) {
         promptsByHandle = preexisting
         self.observations = observations
         self.pending = pending
+        self.preparation = preparation
     }
 
     func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs { pending }
+    func preparationUsage(runID: AgentRunID) async throws -> AgentUsage { preparation }
 
     func webObservations(_ handleID: AgentExecutionHandleID) async throws -> [WorkflowWebObservation] {
         observations[handleID, default: []]
