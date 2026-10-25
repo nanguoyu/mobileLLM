@@ -337,6 +337,57 @@ final class ToolV2AdapterTests: XCTestCase {
     }
 
     // TEST-ID: AHT-DYNAMIC-001
+    @MainActor
+    func testDelegatedMessagingKeepsItsCapabilityWithoutGrantingCanonicalWrites() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let assembly = try AgentRuntimeAssembly(engine: MockLLMEngine(script: .init()), downloadBase: root,
+            conversationDirectory: root, models: [LLMCatalog.bonsai8b], snapshot: { _, _, _, _ in nil })
+        let snapshot = makeSnapshot(userMessageID: UUID(), online: true)
+        let parent = try assembly.makeWorkflowCoordinator(snapshot: snapshot)
+        let frozen = try await assembly.inputFreezer.freeze(parent)
+        let script = try WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1,
+            source: "export const meta = {name:'test',description:'test'}; return 'ok';")
+        let digest = StableDigest.sha256(Data("policy".utf8))
+        let launch = WorkflowLaunchSnapshotV1(runID: WorkflowRunID(), scriptReference: script.reference,
+            args: nil, conversationID: parent.conversationID, initiatingRunID: parent.runID,
+            initiatingRequestID: parent.id, requestingStepID: AgentStepID(),
+            capabilityCeiling: parent.capabilityCeiling, budget: parent.budget,
+            defaultModelPolicy: parent.modelPolicy, toolPolicyDigest: digest, policySnapshotDigest: digest,
+            approvalMode: parent.approvalMode)
+        let cache = PendingSubmissionCache()
+        let builder = AppDynamicWorkflowChildRequestBuilder(pendingSubmissions: cache)
+        try builder.register(launch: launch, parent: .init(request: parent, frozen: frozen))
+        for role in ["workflow-agent", "workflow-supervisor"] {
+            let call = try WorkflowAgentCallV1(callID: WorkflowAgentCallID(), ordinal: 1,
+                prefixKey: digest, promptDigest: digest,
+                options: WorkflowAgentOptionsV1(requestedAgentType: role, maximumToolCalls: 2), childRunID: AgentRunID())
+            let spawn = try builder.makeRequest(launch: launch, call: call, prompt: "Coordinate with your team.")
+            XCTAssertTrue(spawn.capabilityCeiling.capabilities.contains(.localWrite))
+            XCTAssertFalse(spawn.capabilityCeiling.capabilities.contains(AppFrozenInputBuilder.workflowDelegationCapability))
+            let request = try AgentRequest(id: AgentRequestID(), runID: spawn.childRunID,
+                conversationID: parent.conversationID, userTurnID: parent.userTurnID,
+                parent: ParentAgentContext(runID: spawn.parentRunID, requestingStepID: spawn.requestingStepID,
+                    capabilityCeiling: parent.capabilityCeiling), role: spawn.role, instruction: spawn.instruction,
+                outputRequirement: spawn.outputRequirement, modelPolicy: spawn.modelPolicy,
+                capabilityCeiling: spawn.capabilityCeiling, budget: spawn.budget,
+                contextReferences: spawn.contextReferences, artifactReferences: spawn.artifactReferences,
+                sandboxRequirement: spawn.sandboxRequirement, labels: spawn.labels,
+                provenance: AgentRequestProvenance(source: spawn.source, sourceMessageID: parent.provenance.sourceMessageID,
+                    parentRequestID: parent.id, evidenceDigests: spawn.evidenceDigests), approvalMode: spawn.approvalMode)
+            let child = try XCTUnwrap(cache.take(matching: request))
+            let send = try XCTUnwrap(child.toolCatalog.descriptors.first { $0.id.logicalID.name == "send_message" })
+            XCTAssertTrue(child.toolPolicy.allowedToolIDs.contains(send.id.logicalID))
+            XCTAssertTrue(send.requiredCapabilities.values.allSatisfy { spawn.capabilityCeiling.capabilities.contains($0) })
+            XCTAssertFalse(child.toolCatalog.descriptors.contains { $0.id.logicalID.providerID != "agent" && $0.effects.contains(.localWrite) })
+            XCTAssertEqual(child.toolCatalog.descriptors.contains { $0.id.logicalID.name == "recall" }, role == "workflow-agent")
+        }
+        let offered = try assembly.availableWorkflowTools(snapshot: snapshot)
+        XCTAssertFalse(offered.contains(try AgentToolLogicalID(providerID: "builtin", name: "remember").description))
+        XCTAssertTrue(offered.contains(try WorkflowAgentTool.descriptor(.sendMessage).id.logicalID.description))
+    }
+
+    // TEST-ID: AHT-DYNAMIC-001
     func testWorkflowChildUsesRemainingToolCapacityWithoutIncreasingItsShare() throws {
         let baseline = try AgentBudget.firstReleaseDefaults(contextTokensPerAttempt: 1024, outputTokens: 256, peakMemoryBytes: 1024)
         var values = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map { ($0, baseline.limits[$0]) })

@@ -258,6 +258,7 @@ struct WorkflowGoalUpdateView: View {
     @State private var submittedText: String?
     @State private var sending = false
     @State private var error: String?
+    @FocusState private var focused: Bool
     private var dynamic: DynamicWorkflowPresentation? { store.summary(workflowID: workflowID)?.dynamic }
     private var shouldResume: Bool {
         guard let dynamic, dynamic.goal?.state != .budgetExhausted else { return false }
@@ -268,7 +269,7 @@ struct WorkflowGoalUpdateView: View {
     var body: some View {
         Form {
             Section("What should change?") {
-                TextEditor(text: $text).frame(minHeight: 150).accessibilityLabel("Goal update")
+                TextEditor(text: $text).frame(minHeight: 150).focused($focused).accessibilityLabel("Goal update")
                     .accessibilityIdentifier("workflow.goal.input")
                 Text("Your update is saved and delivered to active agents at their next step.")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
@@ -290,6 +291,7 @@ struct WorkflowGoalUpdateView: View {
             }
         }
         .interactiveDismissDisabled(sending)
+        .task { focused = true }
     }
 
     @MainActor private func send() async {
