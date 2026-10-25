@@ -81,6 +81,17 @@ cover model-authored message acceptance, later inclusion and the message/goal-co
 build passes. Long-context capability work, goal/task graph UI and new real-model qualification remain in progress under the [implementation plan](AGENT_HARNESS_PLAN.md).
 The separate iOS sandbox remains optional; earlier autonomous outcome evidence retains its tested version.
 
+### v5 development evaluation
+
+The new production path completed the incident-evidence case with real `deepseek-v4-flash` on the iPhone
+Simulator in 82.856 seconds. Four agent identities formed three dependency stages, with two dependent
+workers receiving exact original artifacts. The coordinator used five activations in one durable session.
+Independent evidence and recovery-choice checks passed without corrective prompts. The run used five
+team-tool calls; two coordinator roster reads duplicated its task graph and prompted removal of that
+coordinator permission. [Retained evidence](evaluations/evidence/2026-10-25-v5-incident-development.json)
+records the result at runtime `7f9c76f` and evaluator `48fb944`. This is one development run, not the final
+six-family qualification or a reliability estimate.
+
 ### Earlier autonomous engineering tasks
 
 The general supervisor now completes independently checked multi-stage engineering tasks. Real online

@@ -154,6 +154,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
     @MainActor
     private func inspectTrace(_ assembly:AgentRuntimeAssembly,projection:WorkflowRunProjectionV1) async throws -> Trace {
         var result = Trace()
+        let calculatorID = try AgentToolLogicalID(providerID: "builtin", name: "calculator").description
         let spawner = DurableSubagentSpawner(executor:assembly.executor,repository:assembly.repository)
         var events:[WorkflowRunEventV1] = []
         var cursor:UInt64 = 0
@@ -189,7 +190,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             }.count
             result.completedCalculatorCalls += history.toolOutcomes.filter { id, value in
                 guard case .completed = value.1 else { return false }
-                return history.toolIntents[id]?.1.plan.subjectID == "builtin.calculator"
+                return history.toolIntents[id]?.1.plan.subjectID == calculatorID
             }.count
             let terminal = try await spawner.terminalResult(handle)
             let output:String?
@@ -216,7 +217,8 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                               let content = input["content"] as? String,
                               offset >= 0, next >= offset, next <= (origin.text as NSString).length,
                               origin.settled < (submitted[call.callID] ?? 0),
-                              Data((origin.text as NSString).substring(with:NSRange(location:offset,length:next-offset)).utf8) == Data(content.utf8)
+                              let range = Range(NSRange(location:offset,length:next-offset), in:origin.text),
+                              Data(origin.text[range].utf8) == Data(content.utf8)
                         else { result.failures.append("A dependent input was not an exact prior settled artifact"); continue }
                         inputIDs.append(id)
                     }

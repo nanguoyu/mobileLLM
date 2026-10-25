@@ -371,7 +371,9 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         let role = call.options.requestedAgentType ?? "workflow-agent"
         let childToolPolicy: ConversationToolPolicy
         if role == "workflow-supervisor" {
-            let teamTools = parent.frozen.toolPolicy.allowedToolIDs.filter { $0.providerID == "agent" }
+            let teamTools = parent.frozen.toolPolicy.allowedToolIDs.filter {
+                $0.providerID == "agent" && $0.name != WorkflowAgentToolOperation.listAgents.rawValue
+            }
             childToolPolicy = try ConversationToolPolicy(masterEnabled: parent.frozen.toolPolicy.masterEnabled,
                 allowedToolIDs: teamTools, pinnedToolIDs: teamTools,
                 selectionPolicyVersion: parent.frozen.toolPolicy.selectionPolicyVersion, materializedFromGlobalTemplate: false)

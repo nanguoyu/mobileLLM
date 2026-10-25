@@ -1,0 +1,123 @@
+{
+  "answer": "{\"marker\":\"EVAL_RECOVERY\",\"claims\":[{\"id\":\"C1\",\"verdict\":\"supported\",\"evidence\":\"E2 states that W1 records dispatch intent and sends the request; E5 states that W2 sends the same logical job using new key K2. The supplied trace also states that both sends are observed. These are two distinct send attempts by two workers, which is directly established even though neither attempt's external effect is known.\"},{\"id\":\"C2\",\"verdict\":\"unknown\",\"evidence\":\"Only the two send attempts are observed. E3 states the connection timed out and no acknowledgement/result was committed locally. E6 states the trace ends with effects unobserved, and no provider execution logs, accepted-write records or lookup results are available. A send is not proof of an external write: zero, one or two writes are all consistent with E1-E6, so 'two external writes definitely happened' is neither established nor refuted by the supplied evidence.\"},{\"id\":\"C3\",\"verdict\":\"refuted\",\"evidence\":\"E4 establishes only that W1's local lease expired. A local lease is ownership/coordination state, not provider execution evidence. E3's timeout and missing committed acknowledgement are equally consistent with no remote execution and with a remote effect whose response was lost. The contract explicitly states that, without a durable provider key/result, local state cannot reveal whether a sent request took effect; therefore lease expiry cannot prove the remote operation did not happen. Counterexample consistent with all events: W1's request executed at the provider, the response was lost, and W1's lease later expired.\"},{\"id\":\"C4\",\"verdict\":\"supported\",\"evidence\":\"The contract limits deduplication to requests with the same idempotency key, only for 24 hours, and states that different keys may create different effects. E1 durably records stable key K for logical job J; E5 sends the same logical job under new key K2. Because K2 is not K, the provider's same-key deduplication for K does not apply, so changing K to K2 can bypass that deduplication and permit a different effect. This establishes the bypass possibility only; it does not establish that a second write occurred (C2 remains unknown).\"},{\"id\":\"C5\",\"verdict\":\"refuted\",\"evidence\":\"A local fencing token can serialize local ownership and local state writes, but it is not a provider-side idempotency or exactly-once mechanism. Under the contract, deduplication is same-key only and expires after 24 hours, different keys may create different effects, and local state cannot reveal whether a sent request took effect without a durable provider key/result. E5 already used a different key K2, so local fencing cannot prevent a second external effect, and it provides no protection after the 24-hour window. Counterexample consistent with all events: W1's request executes, W2's K2 request also executes, and local fencing correctly excludes W1 from local state while both external effects exist.\"}],\"recovery\":[{\"id\":\"R1\",\"action\":\"dispatch_new\",\"reason\":\"Durable evidence proves no dispatch occurred and no competing owner exists, so there is no prior provider request to deduplicate or reconcile. Dispatch once using durable key K and payload hash H, first recording dispatch intent durably. Guard: re-check the no-dispatch proof and absence of a competing owner under the same fence/transaction that authorizes the send; if either no longer holds, do not use dispatch_new.\"},{\"id\":\"R2\",\"action\":\"retry_same_key\",\"reason\":\"A request was sent and timed out, while original key K and identical payload hash H are durable and the provider's deduplication/lookup window is still valid. Optionally look up K first and durably store the lookup result, then idempotently resubmit with the ORIGINAL key K and identical payload. Same-key deduplication inside the valid 24-hour window prevents the resubmission from creating a second effect. Never substitute K2, never change the payload, and do not use this action once the window has expired.\"},{\"id\":\"R3\",\"action\":\"reconcile\",\"reason\":\"The request was sent with an unknown result, and the provider supports neither deduplication nor lookup, so no provider-side mechanism makes an automatic repeat safe and no key lookup can establish the outcome. Stop automatic resubmission and establish the external outcome through other durable evidence or seek explicit resolution. Per the definition, reconcile never means assume failure and repeat.\"},{\"id\":\"R4\",\"action\":\"reuse_result\",\"reason\":\"A durable successful result already exists for the same logical job and matches the payload hash, so the external effect is already established. Return the stored result and send nothing; do not generate a new key or resubmit.\"},{\"id\":\"R5\",\"action\":\"reject_conflict\",\"reason\":\"A duplicate logical job arrives with a different payload hash, so it is not the same operation as the durably recorded J/H. Do not merge it, retry it under K, dispatch it, or serve the old result. Reject it and require an explicit conflict-resolution decision before any new operation is created.\"},{\"id\":\"R6\",\"action\":\"reconcile\",\"reason\":\"The sent request has an unknown result and its original provider deduplication/lookup window has expired. Retrying with the original key no longer carries the contractual same-key deduplication guarantee, and the earlier outcome was never established, so automatic resubmission could create a duplicate effect. Stop automatic resubmission and establish the external outcome or seek explicit resolution; never assume failure and repeat.\"}],\"safeguards\":[\"Persist an immutable outbox/dispatch record before every send containing logical job ID J, provider idempotency key K, payload hash H, dispatch-intent timestamp, attempt ID, worker ID, lease/fencing token and any provider request ID; durably append every response, timeout or explicit UNKNOWN outcome after the send returns or times out.\",\"Enforce a durable uniqueness constraint on (logical job ID J, payload hash H) for the stable provider key K, and prohibit generating or persisting a replacement key such as K2 for the same J/H without an explicit recorded conflict or reconciliation decision.\",\"Represent timeout, missing acknowledgement and lease expiry as outcome UNKNOWN, never FAILED; ensure lease expiry cannot transition a job to ready-for-new-dispatch and cannot authorize new-key generation.\",\"Make every recovery worker read and reuse the durable original key K and identical payload for the same J/H; block automatic key rotation on timeout, lease loss or worker failover.\",\"Permit retry_same_key only after checking that the original key K, identical payload hash H and the still-valid provider deduplication/lookup window are all durably recorded; optionally perform a provider lookup by K and durably store the request, response, key, payload hash and timestamp before resubmitting with K and the identical payload only.\",\"Record the first-send timestamp per key, compute the provider's 24-hour deduplication/lookup expiry, and hard-block same-key automatic retry after expiry by routing the job to a reconciliation queue requiring explicit resolution.\",\"If a new key such as K2 has already been used for the same logical job, flag possible duplicate external effects and reconcile across both K and K2; never assume the first attempt failed or that the second attempt is the only effect.\",\"Use fencing tokens only to serialize local ownership and local state writes; never treat a fencing token or lease as provider-side idempotency or as proof of remote execution or non-execution.\",\"Commit local success only when a durable provider result matching the key and payload hash is stored; otherwise keep the job in an explicit UNKNOWN state rather than inferring success or failure.\",\"Implement reconciliation for providers lacking deduplication and lookup as a non-resubmitting procedure: gather available external evidence, seek provider/operator confirmation and mark the job for explicit resolution; never fall back to automatic repetition.\",\"Add independent counterexample tests asserting: observed sends are not counted as writes; lease expiry with possible remote success remains UNKNOWN; no K2 is generated on timeout or lease expiry; payload-hash mismatch is rejected; retry_same_key is blocked after the 24-hour window and routed to reconcile; R2 requires the original key plus identical payload; and no exactly-once external guarantee is claimed from local fencing alone.\",\"Add a post-incident reconciliation check that explicitly handles the observed E5 K2 send as a possible second effect and does not infer from the absence of provider logs, accepted-write records or lookup results that either send failed; these absences must remain UNKNOWN evidence.\"]}",
+  "calls": [
+    {
+      "completed": true,
+      "dependencyDepth": 0,
+      "inputArtifactIDs": [],
+      "label": "event-evidence",
+      "ordinal": 1,
+      "role": "workflow-worker",
+      "settledSequence": 20,
+      "submittedSequence": 11
+    },
+    {
+      "completed": true,
+      "dependencyDepth": 0,
+      "inputArtifactIDs": [],
+      "label": "protocol-safety",
+      "ordinal": 2,
+      "role": "workflow-worker",
+      "settledSequence": 13,
+      "submittedSequence": 12
+    },
+    {
+      "completed": true,
+      "label": "coordinator",
+      "ordinal": 3,
+      "role": "workflow-supervisor",
+      "settledSequence": 22,
+      "submittedSequence": 19
+    },
+    {
+      "completed": true,
+      "dependencyDepth": 1,
+      "inputArtifactIDs": [
+        "T1:1",
+        "T2:1"
+      ],
+      "label": "designer",
+      "ordinal": 4,
+      "role": "workflow-worker",
+      "settledSequence": 36,
+      "submittedSequence": 30
+    },
+    {
+      "completed": true,
+      "label": "coordinator",
+      "ordinal": 5,
+      "role": "workflow-supervisor",
+      "settledSequence": 34,
+      "submittedSequence": 33
+    },
+    {
+      "completed": true,
+      "dependencyDepth": 2,
+      "inputArtifactIDs": [
+        "T3:1"
+      ],
+      "label": "counterexample-check",
+      "ordinal": 6,
+      "role": "workflow-worker",
+      "settledSequence": 49,
+      "submittedSequence": 43
+    },
+    {
+      "completed": true,
+      "label": "coordinator",
+      "ordinal": 7,
+      "role": "workflow-supervisor",
+      "settledSequence": 47,
+      "submittedSequence": 46
+    },
+    {
+      "completed": true,
+      "label": "coordinator",
+      "ordinal": 8,
+      "role": "workflow-supervisor",
+      "settledSequence": 56,
+      "submittedSequence": 55
+    }
+  ],
+  "case": "incident",
+  "checksPassed": true,
+  "codeRevision": "48fb944",
+  "dependentWorkers": 2,
+  "distinctWorkerIDs": [
+    "counterexample-check",
+    "designer",
+    "event-evidence",
+    "protocol-safety"
+  ],
+  "elapsedSeconds": 82.85647904872894,
+  "failures": [],
+  "goal": "Analyze this distributed-job recovery incident and deliver an implementable decision table.\nContract: the provider deduplicates requests with the same idempotency key ONLY for 24 hours.\nIt supports lookup by that key during that period. Different keys may create different effects.\nWithout a durable provider key/result, local state cannot reveal whether a sent request took effect.\nEvents: E1 local outbox durably records logical job J, stable key K and payload hash H.\nE2 worker W1 records dispatch intent and sends the request. E3 the connection times out;\nno acknowledgement/result is committed locally. E4 W1's local lease expires. E5 worker W2\nsends the same logical job using NEW key K2. E6 the trace ends. No provider execution logs,\naccepted-write records or lookup results are available. Both sends are observed; effects are not.\nAssess these claims with supported/refuted/unknown, using only the supplied evidence:\nC1: two send attempts happened; C2: two external writes definitely happened;\nC3: expiry of a local lease proves W1's remote operation did not happen;\nC4: changing K to K2 can bypass the provider's same-key deduplication;\nC5: a local fencing token alone guarantees exactly-once external effects under this contract.\nDesign recovery actions for these cases. Return exactly one action per case from\ndispatch_new, retry_same_key, reconcile, reuse_result, reject_conflict:\nR1: durable evidence proves no dispatch occurred yet, with no competing owner.\nR2: a request was sent and timed out; original key and identical payload are durable;\n    provider deduplication/lookup window is still valid.\nR3: request sent with unknown result, but provider supports neither deduplication nor lookup.\nR4: same logical job already has a durable successful result matching the payload.\nR5: a duplicate logical job arrives with a different payload hash.\nR6: sent request has unknown result; its old provider deduplication window has expired.\nThe retry_same_key action means an idempotent resubmission with the ORIGINAL key and payload,\noptionally preceded by lookup. reconcile means stop automatic resubmission and establish the\nexternal outcome or seek an explicit resolution; it never means assume failure and repeat.\nUse separate event-evidence and protocol-safety agents, then a designer consuming those\nfindings, followed by an independent counterexample check of the actual candidate.\nThis is diagnosis/design, not authorization to send any request or modify a real service.\nReturn ONLY JSON with marker=\"EVAL_RECOVERY\", claims (array {id,verdict,evidence}),\nrecovery (array {id,action,reason}), and safeguards (array of concrete implementation steps).",
+  "inputTokens": 126082,
+  "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+  "model": "deepseek-v4-flash",
+  "outputTokens": 18942,
+  "sourceSHA256": "bbfb3f91717cf19c3cb8e6318d903c3ac0a68358ac933bac079f411a8c310781",
+  "state": "completed",
+  "successfulCalculatorCalls": 0,
+  "successfulToolCalls": 5,
+  "toolCalls": 5,
+  "workerWaves": 3,
+  "runnerCodeRevision": "7f9c76f + v5 trace evaluator",
+  "runtimeRevision": "7f9c76f",
+  "evaluatorRevision": "48fb944",
+  "qualification": "Development case, one run; not the final held-out repeated-run matrix.",
+  "sessions": [
+    {
+      "sessionID": "3d17cb4f-f082-406c-8992-06925772d4cc",
+      "activations": 5,
+      "inputs": 4,
+      "inclusions": 4
+    }
+  ],
+  "toolBreakdown": {
+    "coordinator.list_agents": 2,
+    "coordinator.read_artifact": 2,
+    "counterexample-check.list_agents": 1
+  },
+  "observedEfficiencyIssue": "Two coordinator roster reads repeated information in its task graph. A subsequent change removes that coordinator tool permission."
+}
