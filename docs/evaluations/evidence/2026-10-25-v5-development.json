@@ -1,0 +1,669 @@
+{
+  "scope": "Development attempts at different revisions, not a combined reliability sample. Original check results are retained. Rechecks use saved output and original retrieved source bodies; no model call is repeated.",
+  "attempts": [
+    {
+      "answer": "",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "storage-agent",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 15,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "sync-agent",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 25,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 22,
+          "submittedSequence": 21
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "storage:1",
+            "sync:1"
+          ],
+          "label": "integration-agent",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 40,
+          "submittedSequence": 34
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 38,
+          "submittedSequence": 37
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "integration:2"
+          ],
+          "label": "reviewer-agent",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 53,
+          "submittedSequence": 47
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 51,
+          "submittedSequence": 50
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 60,
+          "submittedSequence": 59
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 9,
+          "role": "workflow-supervisor",
+          "settledSequence": 66,
+          "submittedSequence": 65
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 10,
+          "role": "workflow-supervisor",
+          "settledSequence": 72,
+          "submittedSequence": 71
+        }
+      ],
+      "case": "correction",
+      "checksPassed": false,
+      "codeRevision": "99205cf",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "integration-agent",
+        "reviewer-agent",
+        "storage-agent",
+        "sync-agent"
+      ],
+      "elapsedSeconds": 265.4505180120468,
+      "failures": [
+        "Workflow state paused: Repeated decisions produced no new evidence or task progress.",
+        "Final answer is not the requested JSON artifact"
+      ],
+      "goal": "Design an offline notes app. Initial requirements: keep deleted notes in trash for 14 days,\nallow restore throughout that retention, support Markdown and JSON export, cap each export\nat 20 MiB, and support all these actions fully offline. Sync is optional. Use separate storage\nand sync agents, then an integration agent consuming both designs, then an independent reviewer\nof that candidate. Allow corrections during this work and reconcile affected results.\nThe storage agent must use agent.send_message to send the coordinator its retention decision.\nMake that message before finishing its assignment. Do not execute code or fetch the internet.\nReturn ONLY JSON with marker=\"EVAL_CORRECTION\", retentionDays, exportLimitMiB,\noffline=true, restore=true, formats=[\"markdown\",\"json\"], and design containing the final design.",
+      "inputTokens": 236222,
+      "intervention": "Scripted human amendment after first worker submission: Change trash retention from 14 days to 7 days. Preserve the 20 MiB maximum export size, offline operation, Markdown and JSON export, and restore during retention. Apply this update to every affected design and the final result.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 59775,
+      "repetition": 1,
+      "sourceSHA256": "6d6323a4a62b2d31801d4e03403fb7e3b176a11d1cc72ea0bc9f45b2fd160362",
+      "state": "paused",
+      "successfulCalculatorCalls": 0,
+      "successfulToolCalls": 11,
+      "successfulTools": {
+        "read_artifact": 8,
+        "send_message": 3
+      },
+      "toolCalls": 11,
+      "variant": "development",
+      "workerWaves": 3,
+      "retainedOutputRecheck": {
+        "case": "correction",
+        "failures": [
+          "Final answer is not the requested JSON artifact"
+        ],
+        "outcomeChecksPassed": false
+      },
+      "evaluatorRevision": "43bd777",
+      "executionTraceResultUnchanged": true
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_CONTEXT\",\"region\":\"eu-central-1\",\"retentionDays\":7,\"exportLimitMiB\":32,\"encryptionRequired\":true,\"releaseCode\":\"CEDAR-279\",\"sources\":[\"R01\",\"R14\",\"R30\"],\"explanation\":\"Changed: retentionDays from 14 to 7, per R30 ('Latest correction: retentionDays=7. Preserve all other baseline and export decisions.'); R30 changes no other field. Retained unchanged from R01 baseline ('Baseline: region=eu-central-1; retentionDays=14; encryptionRequired=true; releaseCode=CEDAR-279.'): region=eu-central-1, encryptionRequired=true, releaseCode=CEDAR-279 (the original retentionDays=14 is superseded by R30). Added by R14 export rule ('Export decision: exportLimitMiB=32. This rule is independent of trash retention.'): exportLimitMiB=32. The marker value is prescribed by the task instruction, not by any record. No code was executed and no web was fetched.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "baseline",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "change",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "t1-baseline:1",
+            "t2-change:1"
+          ],
+          "label": "integrator",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 38,
+          "submittedSequence": 34
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 36,
+          "submittedSequence": 35
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "t3-integrate:1"
+          ],
+          "label": "reviewer",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 51,
+          "submittedSequence": 47
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 49,
+          "submittedSequence": 48
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 58,
+          "submittedSequence": 57
+        }
+      ],
+      "case": "longContext",
+      "checksPassed": true,
+      "codeRevision": "99205cf",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "baseline",
+        "change",
+        "integrator",
+        "reviewer"
+      ],
+      "elapsedSeconds": 49.16086804866791,
+      "failures": [],
+      "goal": "Synthesize the current release contract from our earlier project records. Those records include\nan original baseline R01, an export rule R14, and a later correction R30. Their exact contents\nremain in your original session context even if the current window omitted them. Retrieve those\noriginal records through agent.read_context; do not infer values from general knowledge.\nUse separate baseline/history and change-control agents to extract evidence. An integration\nagent must consume both results, then a separate reviewer must check the candidate against the\noriginal records. Preserve unchanged requirements and apply the latest correction only to fields\nit changes. Do not execute code or fetch the web. Return ONLY JSON with marker=\"EVAL_CONTEXT\",\nregion, retentionDays, exportLimitMiB, encryptionRequired, releaseCode, sources (array of source\nlabels such as R01), and explanation identifying which fields changed and which were retained.",
+      "inputTokens": 334285,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 8,
+      "outputTokens": 7558,
+      "repetition": 1,
+      "sourceSHA256": "6d6323a4a62b2d31801d4e03403fb7e3b176a11d1cc72ea0bc9f45b2fd160362",
+      "state": "completed",
+      "successfulCalculatorCalls": 0,
+      "successfulToolCalls": 18,
+      "successfulTools": {
+        "read_artifact": 3,
+        "read_context": 14,
+        "send_message": 1
+      },
+      "toolCalls": 18,
+      "variant": "development",
+      "workerWaves": 3,
+      "retainedOutputRecheck": {
+        "case": "longContext",
+        "failures": [],
+        "outcomeChecksPassed": true
+      },
+      "evaluatorRevision": "43bd777",
+      "executionTraceResultUnchanged": true
+    },
+    {
+      "answer": "",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "Researcher A",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "Researcher B",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "research_a:1",
+            "research_b:1"
+          ],
+          "label": "Synthesis",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 37,
+          "submittedSequence": 31
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 35,
+          "submittedSequence": 34
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "synthesize:1"
+          ],
+          "label": "Reviewer",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 50,
+          "submittedSequence": 44
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 48,
+          "submittedSequence": 47
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 57,
+          "submittedSequence": 56
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 9,
+          "role": "workflow-supervisor",
+          "settledSequence": 63,
+          "submittedSequence": 62
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 3,
+          "inputArtifactIDs": [
+            "review:1"
+          ],
+          "label": "Reviewer",
+          "ordinal": 10,
+          "role": "workflow-worker",
+          "settledSequence": 71,
+          "submittedSequence": 70
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 11,
+          "role": "workflow-supervisor",
+          "settledSequence": 78,
+          "submittedSequence": 77
+        }
+      ],
+      "case": "research",
+      "checksPassed": false,
+      "codeRevision": "99205cf",
+      "dependentWorkers": 3,
+      "distinctWorkerIDs": [
+        "Researcher A",
+        "Researcher B",
+        "Reviewer",
+        "Synthesis"
+      ],
+      "elapsedSeconds": 126.1322660446167,
+      "failures": [
+        "Workflow state paused: The model request budget was used; remaining work and partial results are saved.",
+        "Final answer is not the requested JSON artifact"
+      ],
+      "goal": "Prepare a source-checked technical decision table using the current official SQLite documentation.\nUse web_search at least once to locate the relevant official documentation, and fetch both\nhttps://sqlite.org/lang_conflict.html and https://sqlite.org/lang_upsert.html. Have two independent source researchers, a synthesis agent using both findings,\nthen an independent reviewer checking the actual candidate. Fix disagreements before delivery.\nAnswer these statements with Boolean true/false, using only retrieved official support:\nF1: Does UPSERT handle foreign-key violations?\nF2: Does ABORT preserve earlier statements of the same transaction?\nF3: Does FAIL preserve earlier row changes made by the failing statement?\nF4: Can an explicit unique index provide a uniqueness constraint used by UPSERT?\nA colleague also claims that the Aurora Notes product team has benchmarked these choices and\nguarantees a 40% speedup. No Aurora product benchmark has been supplied. Mark that claim unknown,\ndo not invent a benchmark. Return ONLY JSON {\"marker\":\"EVAL_RESEARCH\",\"facts\":[\n{\"id\":\"F1\",\"value\":false,\"url\":\"official page URL\",\"quote\":\"one exact supporting excerpt\"},...],\n\"productSpeedup\":\"unknown\",\"conclusion\":\"...\"}. Each quote must be 8 to 30 words from the\nretrieved body, with no ellipsis or invented wording. Cite the appropriate page for each fact.\nNo code execution or changes to a real database are authorized.",
+      "inputTokens": 270495,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 20742,
+      "repetition": 1,
+      "sourceSHA256": "6d6323a4a62b2d31801d4e03403fb7e3b176a11d1cc72ea0bc9f45b2fd160362",
+      "state": "paused",
+      "successfulCalculatorCalls": 0,
+      "successfulToolCalls": 21,
+      "successfulTools": {
+        "fetch_webpage": 9,
+        "read_artifact": 3,
+        "send_message": 7,
+        "web_search": 2
+      },
+      "toolCalls": 23,
+      "variant": "development",
+      "workerWaves": 4,
+      "retainedOutputRecheck": {
+        "case": "research",
+        "failures": [
+          "Final answer is not the requested JSON artifact"
+        ],
+        "outcomeChecksPassed": false
+      },
+      "evaluatorRevision": "43bd777",
+      "executionTraceResultUnchanged": true
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_CORRECTION\",\"retentionDays\":7,\"exportLimitMiB\":20,\"offline\":true,\"restore\":true,\"formats\":[\"markdown\",\"json\"],\"design\":{\"scope\":\"Offline-first notes app. Authoritative requirements after the human amendment: deleted notes are retained in trash for 7 days (supersedes the original 14-day figure); restore is available throughout that window; Markdown and JSON export are supported; each single export operation is hard-capped at 20 MiB (20,971,520 bytes); all trash, restore, and export actions work fully offline with no account or server; sync is optional and never required for any core action.\",\"workflowAndCorrectionReconciliation\":{\"pipeline\":\"Separate storage-agent and sync-agent designs were produced, then an integration agent consumed both (integration:1) to produce a candidate, then an independent reviewer examined that candidate (review:1) and returned CONDITIONAL_PASS with required corrections.\",\"amendment\":\"The human amendment changed retention 14 -> 7 days and required propagation to every affected design and to the final result. Storage, sync, integration, and this final design all use 7 days; 14-day references are superseded.\",\"storageCoordinatorMessage\":\"The storage agent used agent.send_message to send the coordinator its retention decision before finishing its assignment. That message stated 14 days because it preceded the amendment; the review correctly flagged it as stale. The authoritative final decision recorded here is 7 days, and this final result supersedes the pre-amendment message content.\",\"reviewDisposition\":\"All reviewer corrections are applied below: forward-clock-jump hardening, optional/bounded sync change log, idempotent remote soft-delete application, a security baseline, additional failure modes, and corrected/expanded tests.\"},\"architecture\":{\"localStore\":\"Single embedded transactional database (e.g. SQLite or equivalent) with WAL/journaling and atomic transactions. Sole authority for notes, trash state, retention, restore, purge, revisions, and attachments. All UI reads and writes go through this layer. No server or account required.\",\"exportService\":\"Reads only localStore; serializes Markdown or JSON; performs exact UTF-8 byte preflight; writes to a temp file and atomically renames only on success. Never consults sync state and never uses the network.\",\"trashPurgeJob\":\"Local-only opportunistic job (app start, trash view open, periodic local timer) that permanently removes notes with state=trashed and expiry reached under the hardened clock rules below. Serialized transactionally against restore so exactly one wins.\",\"syncEngine\":\"Optional, opt-in, disabled by default, additive. Drains a durable outbox when connectivity and sync are enabled; applies downloads transactionally; uses HLC conflict rules. Reads/writes note fields only through the storage API.\",\"ui\":\"Notes list, Markdown editor, trash view with restore and remaining-time display, export flow with preflight result, optional sync settings/status.\",\"osIntegration\":\"OS file save/share sheet for exports; OS keystore for optional sync tokens.\"},\"dataModel\":{\"note\":{\"id\":\"stable client-generated UUID, never reused\",\"title\":\"string\",\"bodyMarkdown\":\"string, source of truth\",\"createdAt\":\"UTC epoch ms\",\"updatedAt\":\"UTC epoch ms\",\"deletedAt\":\"UTC epoch ms or null; set on soft delete\",\"localTrashedAt\":\"UTC epoch ms or null; set when this device moves the note to trash, including first local receipt of a remote soft delete\",\"purgeEligibleAt\":\"localTrashedAt + 7*24*60*60*1000, persisted at trash time and not recomputed\",\"state\":\"active | trashed\",\"revision\":\"hybrid logical clock (HLC) plus device-ID tie-break\",\"syncState\":\"localOnly | pending | synced | conflict\",\"lastSyncedRevision\":\"sync metadata\"},\"changeLog\":\"Append-only operation log used to build the sync outbox, but only maintained while sync has been enabled at least once. When sync has never been enabled, no sync log entries are written; enabling sync later performs a full-state baseline reconciliation instead of replaying history. While sync is enabled, the outbox is bounded by compaction after acknowledgement, and growth beyond a configurable threshold triggers a user warning plus an offer to export locally. Entries are never silently discarded.\",\"tombstone\":{\"purpose\":\"Sync-only metadata so devices offline longer than the trash window do not resurrect old deletions\",\"fields\":\"noteId, deleted revision/HLC, device ID, createdAt, expiresAt (suggested 90 days, configurable)\",\"constraints\":\"contains no note body; never triggers local purge, export exclusion, or shortening of the 7-day restore window; lifetime independent of trash retention\"},\"assets\":\"Content-addressed local attachments with reference counts; purge removes only unreferenced assets. Missing attachments at export time are reported explicitly and never silently dropped from the manifest.\",\"persistence\":\"Versioned schema migrations run offline at startup, with a pre-migration snapshot and rollback on failure.\"},\"trashLifecycle\":{\"delete\":\"One atomic transaction: state=trashed, deletedAt=now, localTrashedAt=now, purgeEligibleAt=localTrashedAt+7 days. Body retained. Trashed notes are read-only until restored. A transient Undo affordance is simply an immediate restore.\",\"restore\":\"Allowed while state=trashed and before purge has executed (including at the exact expiry boundary if purge has not yet run). Sets state=active, deletedAt=null, localTrashedAt=null, purgeEligibleAt=null, preserves id, body, and createdAt, bumps updatedAt and revision. Fully local, no network.\",\"purge\":\"Only when expiry is established under the hardened clock rules. Deletes the row and unreferenced assets. Never triggered by remote state.\",\"emptyTrash\":\"Explicit user 'delete permanently' before expiry is permitted only with confirmation and is distinct from automatic expiry.\",\"race\":\"Purge and restore are serialized in one transaction so exactly one outcome occurs.\"},\"clockAndEdgeCases\":{\"baseline\":\"All comparisons in UTC; purgeEligibleAt persisted at deletion time so DST and local timezone changes cannot shift the deadline.\",\"forwardJumpHardening\":\"Retention uses a persisted wall-clock deadline plus a monotonic elapsed anchor recorded per app session. If a forward wall-clock jump would make a note appear expired but the monotonic elapsed time since localTrashedAt is materially shorter than 7 days, automatic purge is deferred and the note stays restorable; a deferred-purge note is purged only once monotonic elapsed time also reaches 7 days or the user confirms. This prevents an early purge that would cut restore short.\",\"monotonicLimits\":\"Monotonic clocks reset across reboots and are not comparable to persisted wall-clock values, so they are used only as a sanity check within a session; the persisted purgeEligibleAt remains the durable fallback.\",\"backwardJump\":\"A backward clock jump never resurrects an already-purged note and never extends a note that has genuinely expired beyond the deferral rules above.\",\"unreliableClock\":\"If now < deletedAt (implausible), purge is deferred and the note remains restorable rather than being destroyed.\",\"appClosedBeyondRetention\":\"On next launch, notes that are expired under the hardened rules are purged; they were not practically restorable while the app was closed.\"},\"export\":{\"formats\":\"Markdown (.md, with metadata front-matter) and JSON (.json, structured notes array with id, title, body, timestamps, state). Both generated fully offline from localStore.\",\"cap\":\"20 MiB = 20 * 1024 * 1024 = 20,971,520 bytes per single export operation (one file/archive), not per note.\",\"preflight\":\"Exact encoded UTF-8 byte length is computed before writing, using exact serialization or a counting sink so the check matches the bytes actually written. JSON escaping, indentation, metadata, and included attachments all count. The same serialization code path is used for preflight and output so they cannot diverge.\",\"boundary\":\"Exactly 20,971,520 bytes is allowed; 20,971,521 bytes is rejected.\",\"failure\":\"If projected size exceeds the cap, abort before producing output, surface an explicit 'Export exceeds 20 MiB limit' error with guidance to export a subset, leave no partial or corrupt file, and write to temp then rename only on success.\",\"defaultScope\":\"Active notes only by default; trashed notes are excluded unless explicitly included. Attachments count toward the cap when included, and the UI states this.\",\"encoding\":\"UTF-8 with deterministic handling of invalid/unpaired surrogates (replacement or explicit error) so size math is stable.\"},\"deletionPropagationAndSync\":{\"localDelete\":\"Soft delete only, per trashLifecycle.\",\"syncOfDelete\":\"A soft-delete revision syncs as metadata (noteId, deletedAt, HLC); no remote purge command is authoritative.\",\"remoteDeleteReceived\":\"The receiving device moves its copy to trash and sets its own localTrashedAt at first receipt, granting a full 7-day local window.\",\"idempotency\":\"Applying a remote soft delete is idempotent: duplicate or older delete revisions (HLC not newer than lastSyncedRevision) do not reset localTrashedAt and therefore cannot extend or shorten an existing trash window.\",\"resurrection\":\"Restore propagates as a newer revision; a newer HLC resurrection supersedes an older tombstone. If the remote copy was purged, sync recreates it as an upsert keyed by noteId.\",\"purgeAuthority\":\"Only the local purge job may permanently delete bodies, only after local 7-day expiry under the hardened clock rules.\",\"conflicts\":\"Whole-note last-writer-wins by HLC with device-ID tie-break; the losing body is preserved as a separate local conflict-copy note so no user text is lost. Restore participates as a normal revision.\",\"enableDisable\":\"Disabled by default with no network calls. Enabling is explicit and runs a non-destructive baseline reconciliation with a summary before the first sync. Disabling stops network activity immediately, retains all local data and trash, and freezes pending outbox entries as visibly unsynced; re-enabling resumes idempotently.\",\"tombstoneVsTrash\":\"Tombstones (suggested 90 days) prevent stale resurrection but never delete local bodies or shorten restore availability. A device offline beyond tombstone lifetime may resurrect a note; documented accepted edge case.\"},\"security\":{\"atRest\":\"Local database encryption at rest using an OS keychain-wrapped key is supported and recommended; if the platform cannot provide it, this limitation is disclosed in-app.\",\"appLock\":\"Optional app lock/biometric gate for opening the app and for viewing trash.\",\"exportHandling\":\"Exported Markdown/JSON are plaintext by design; the UI warns before export. Export temp files use restrictive permissions and are deleted on success, failure, and on next launch after a crash.\",\"syncSecrets\":\"Sync auth tokens live in the OS keystore, never in plain files or logs.\",\"logging\":\"No note content in telemetry, crash reports, or sync logs; only IDs, sizes, and status codes. Log and crash-report redaction is applied to note bodies and export paths.\",\"backup\":\"Database and export directories are excluded from cloud backup where the platform allows it, since exports and encrypted data may leave the device.\",\"remoteControl\":\"User-visible control to revoke device sessions and delete remote data when sync is enabled.\"},\"failureModes\":{\"diskFull\":\"Note writes and export temp writes fail atomically with an explicit error, leaving prior committed state intact and no partial file.\",\"corruption\":\"Startup integrity check; on detected corruption the app offers restore from the pre-migration snapshot or local backup and refuses to purge notes while integrity is unverified.\",\"migration\":\"Migrations run in a transaction with rollback and a pre-migration snapshot; a failed migration leaves the previous schema usable.\",\"missingAttachments\":\"Export reports missing attachments explicitly and requires user acknowledgement rather than silently omitting them.\",\"tempCleanup\":\"Orphaned export temp files are removed at startup.\",\"syncFailure\":\"Sync failures never block or degrade trash, restore, or export; the outbox is preserved and retried with backoff.\"},\"keyApis\":{\"storage\":\"createNote(fields), updateNote(id, bodyMarkdown, expectedRevision), softDeleteNote(id), restoreNote(id), listNotes(filter), listTrash(), purgeExpired(now), getNote(id).\",\"export\":\"preflightExport(format, selection) -> {bytes, exceedsCap, noteCount, missingAssets}; exportNotes(format, selection, destination) -> {ok, path} | {error: 'EXPORT_EXCEEDS_LIMIT' | 'IO_ERROR' | 'MISSING_ASSETS'}.\",\"sync\":\"enqueueChange(op) within the note-write transaction (only when sync enabled), drainOutbox(), applyRemoteBatch(batch) transactionally and idempotently, enableSync()/disableSync(), getSyncStatus().\",\"purge\":\"runPurgeCycle(now, monotonicAnchor) local only; transactional compare-and-set against state and purgeEligibleAt.\"},\"uiFlows\":{\"delete\":\"Delete -> moves to Trash with transient Undo -> trash view shows remaining retention time.\",\"restore\":\"Trash view -> Restore -> note returns to the active list with original body and createdAt, available throughout the 7-day window and at the boundary until purge executes.\",\"export\":\"Choose format (Markdown/JSON) and scope -> preflight shows exact size and any missing assets -> within cap: write temp, atomically rename, hand to OS save/share sheet; over cap: explicit error with subset guidance and no partial file.\",\"sync\":\"Settings shows disabled/enabled/failing states, pending unsynced count, and a warning with export offer if the outbox exceeds threshold.\"},\"acceptanceCriteria\":[\"A deleted note is retained in trash for 7 days from localTrashedAt and remains restorable throughout that window.\",\"Restore during retention returns the note with original id, body, and createdAt, with sync disabled and no network.\",\"Purge occurs only after expiry under the hardened clock rules; restore and purge cannot both succeed for the same note.\",\"A large forward wall-clock jump does not cause early purge or shorten restore availability.\",\"Remote soft deletes set a full 7-day local window on first receipt; duplicate or older delete revisions do not reset it; remote purge signals never delete local bodies.\",\"Tombstones never trigger local purge, never affect export, and never shorten restore availability.\",\"Markdown and JSON export both work fully offline; each export is hard-capped at 20,971,520 bytes with exact preflight, explicit failure, no truncation, and no partial file.\",\"All create/edit/delete/restore/purge/export paths work with no network and no account.\",\"Sync is optional; disabling or failing sync leaves trash, restore, and export fully functional and does not discard local data or pending changes; users who never enable sync accumulate no unbounded sync log.\",\"Security baseline is present: at-rest encryption or disclosed equivalent, optional app lock, restrictive temp-file permissions with cleanup, plaintext-export warning, log redaction, and backup exclusion guidance.\"],\"tests\":[\"Unit: soft delete sets state, deletedAt, localTrashedAt, and purgeEligibleAt = localTrashedAt + 7 days.\",\"Unit: restore at day 0, day 6, and just before expiry succeeds and clears trash fields.\",\"Unit: purge at exactly purgeEligibleAt and after succeeds; before expiry does not.\",\"Concurrency: simultaneous restore and purge yields exactly one outcome and consistent state.\",\"Clock: forward wall-clock jump past expiry with short monotonic elapsed time defers purge and keeps restore available; backward jump and DST do not shorten retention; implausible clock defers purge.\",\"Persistence: restart and crash during delete/restore/purge leave consistent state via transactions.\",\"Sync: remote soft delete grants a full 7-day local window on first receipt; a duplicate or older delete revision does not reset localTrashedAt; remote purge signal does not delete the local body.\",\"Sync: tombstone older than a resurrection does not override it; tombstone expiry edge case documented and tested.\",\"Sync: with sync never enabled, no unbounded change log is produced; enabling later performs baseline reconciliation.\",\"Export: exact 20,971,520-byte payload succeeds; 20,971,521 bytes fails with explicit error and leaves no partial file; preflight and final output use the same serializer.\",\"Export: UTF-8 multibyte content sized by bytes not characters; both Markdown and JSON covered; missing attachment path reported.\",\"Failure: disk-full during note write and export, database corruption detection and recovery, migration rollback, and orphaned temp-file cleanup.\",\"Security: at-rest encryption/lock behavior, temp-file permissions and cleanup, and log/crash redaction.\",\"Offline: all core flows pass with networking disabled and sync never enabled.\",\"UI: trash countdown, restore flow, export preflight error guidance, and sync-disable data retention.\"],\"openItems\":[\"Sync server API shape, conflict-copy UX wording, and tombstone lifetime (suggested 90 days) remain configurable and must exceed expected maximum offline duration.\",\"Attachment inclusion policy must be explicit in the export UI because attachments count toward the 20 MiB cap.\",\"Process evidence for the separate storage/sync agents and the storage agent's coordinator message is asserted from the workflow record; the recorded message content predates the amendment and is superseded by the 7-day decision here.\"]}}",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "storage-agent",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 15,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "sync-agent",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 22,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 24,
+          "submittedSequence": 21
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "storage:1",
+            "sync:1"
+          ],
+          "label": "integration-agent",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 40,
+          "submittedSequence": 33
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 37,
+          "submittedSequence": 36
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "integration:1"
+          ],
+          "label": "reviewer-agent",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 53,
+          "submittedSequence": 47
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 51,
+          "submittedSequence": 50
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 60,
+          "submittedSequence": 59
+        }
+      ],
+      "case": "correction",
+      "checksPassed": false,
+      "codeRevision": "41f62ef",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "integration-agent",
+        "reviewer-agent",
+        "storage-agent",
+        "sync-agent"
+      ],
+      "elapsedSeconds": 192.32007598876953,
+      "failures": [
+        "The final artifact lost the amendment or an unchanged requirement"
+      ],
+      "goal": "Design an offline notes app. Initial requirements: keep deleted notes in trash for 14 days,\nallow restore throughout that retention, support Markdown and JSON export, cap each export\nat 20 MiB, and support all these actions fully offline. Sync is optional. Use separate storage\nand sync agents, then an integration agent consuming both designs, then an independent reviewer\nof that candidate. Allow corrections during this work and reconcile affected results.\nThe storage agent must use agent.send_message to send the coordinator its retention decision.\nMake that message before finishing its assignment. Do not execute code or fetch the internet.\nReturn ONLY JSON with marker=\"EVAL_CORRECTION\", retentionDays, exportLimitMiB,\noffline=true, restore=true, formats=[\"markdown\",\"json\"], and design containing the final design.",
+      "inputTokens": 104079,
+      "intervention": "Scripted human amendment after first worker submission: Change trash retention from 14 days to 7 days. Preserve the 20 MiB maximum export size, offline operation, Markdown and JSON export, and restore during retention. Apply this update to every affected design and the final result.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 44048,
+      "repetition": 1,
+      "sourceSHA256": "fb7f6269ff1c525f8c9ce1c46527d7469e61043c7b357b1e2e605679b033ab1b",
+      "state": "completed",
+      "successfulCalculatorCalls": 0,
+      "successfulToolCalls": 3,
+      "successfulTools": {
+        "send_message": 3
+      },
+      "toolCalls": 5,
+      "variant": "development",
+      "workerWaves": 3,
+      "retainedOutputRecheck": {
+        "case": "correction",
+        "failures": [],
+        "outcomeChecksPassed": true
+      },
+      "evaluatorRevision": "43bd777",
+      "executionTraceResultUnchanged": true
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_RESEARCH\",\"facts\":[{\"id\":\"F1\",\"value\":false,\"url\":\"https://sqlite.org/lang_upsert.html\",\"quote\":\"UPSERT does not intervene for failed NOT NULL, CHECK, or foreign key constraints or for constraints that are implemented using triggers.\"},{\"id\":\"F2\",\"value\":true,\"url\":\"https://sqlite.org/lang_conflict.html\",\"quote\":\"changes caused by prior SQL statements within the same transaction are preserved and the transaction remains active.\"},{\"id\":\"F3\",\"value\":true,\"url\":\"https://sqlite.org/lang_conflict.html\",\"quote\":\"the FAIL resolution does not back out prior changes of the SQL statement that failed\"},{\"id\":\"F4\",\"value\":true,\"url\":\"https://sqlite.org/lang_upsert.html\",\"quote\":\"A \\\"uniqueness constraint\\\" is an explicit UNIQUE or PRIMARY KEY constraint within the CREATE TABLE statement, or a unique index.\"}],\"productSpeedup\":\"unknown\",\"conclusion\":\"UPSERT does not handle foreign-key violations (F1 false), so such errors bypass the ON CONFLICT path. ABORT preserves changes from earlier statements in the same transaction (F2 true), while FAIL preserves earlier row changes made by the failing statement (F3 true); only ROLLBACK reverses the whole transaction. An explicit unique index counts as a uniqueness constraint that can drive UPSERT (F4 true). The claimed Aurora Notes 40% speedup is unverified and marked unknown: no benchmark was supplied and none was invented, and no code was executed or database modified.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 1,
+          "role": "workflow-supervisor",
+          "settledSequence": 12,
+          "submittedSequence": 11
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "researcher1",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 19
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "researcher2",
+          "ordinal": 3,
+          "role": "workflow-worker",
+          "settledSequence": 28,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 4,
+          "role": "workflow-supervisor",
+          "settledSequence": 30,
+          "submittedSequence": 27
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "R1:1",
+            "R2:1"
+          ],
+          "label": "synthesizer",
+          "ordinal": 5,
+          "role": "workflow-worker",
+          "settledSequence": 44,
+          "submittedSequence": 38
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 6,
+          "role": "workflow-supervisor",
+          "settledSequence": 42,
+          "submittedSequence": 41
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "S1:1"
+          ],
+          "label": "reviewer",
+          "ordinal": 7,
+          "role": "workflow-worker",
+          "settledSequence": 57,
+          "submittedSequence": 51
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 55,
+          "submittedSequence": 54
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 9,
+          "role": "workflow-supervisor",
+          "settledSequence": 64,
+          "submittedSequence": 63
+        }
+      ],
+      "case": "research",
+      "checksPassed": true,
+      "codeRevision": "41f62ef",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "researcher1",
+        "researcher2",
+        "reviewer",
+        "synthesizer"
+      ],
+      "elapsedSeconds": 76.85984897613525,
+      "failures": [],
+      "goal": "Prepare a source-checked technical decision table using the current official SQLite documentation.\nUse web_search at least once to locate the relevant official documentation, and fetch both\nhttps://sqlite.org/lang_conflict.html and https://sqlite.org/lang_upsert.html. Have two independent source researchers, a synthesis agent using both findings,\nthen an independent reviewer checking the actual candidate. Fix disagreements before delivery.\nAnswer these statements with Boolean true/false, using only retrieved official support:\nF1: Does UPSERT handle foreign-key violations?\nF2: Does ABORT preserve earlier statements of the same transaction?\nF3: Does FAIL preserve earlier row changes made by the failing statement?\nF4: Can an explicit unique index provide a uniqueness constraint used by UPSERT?\nA colleague also claims that the Aurora Notes product team has benchmarked these choices and\nguarantees a 40% speedup. No Aurora product benchmark has been supplied. Mark that claim unknown,\ndo not invent a benchmark. Return ONLY JSON {\"marker\":\"EVAL_RESEARCH\",\"facts\":[\n{\"id\":\"F1\",\"value\":false,\"url\":\"official page URL\",\"quote\":\"one exact supporting excerpt\"},...],\n\"productSpeedup\":\"unknown\",\"conclusion\":\"...\"}. Each quote must be 8 to 30 words from the\nretrieved body, with no ellipsis or invented wording. Cite the appropriate page for each fact.\nNo code execution or changes to a real database are authorized.",
+      "inputTokens": 157051,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 14121,
+      "repetition": 1,
+      "sourceSHA256": "fb7f6269ff1c525f8c9ce1c46527d7469e61043c7b357b1e2e605679b033ab1b",
+      "state": "completed",
+      "successfulCalculatorCalls": 0,
+      "successfulToolCalls": 16,
+      "successfulTools": {
+        "fetch_webpage": 6,
+        "read_artifact": 6,
+        "read_context": 1,
+        "send_message": 1,
+        "web_search": 2
+      },
+      "toolCalls": 16,
+      "variant": "development",
+      "workerWaves": 3,
+      "retainedOutputRecheck": {
+        "case": "research",
+        "failures": [],
+        "outcomeChecksPassed": true
+      },
+      "evaluatorRevision": "43bd777",
+      "executionTraceResultUnchanged": true
+    }
+  ]
+}

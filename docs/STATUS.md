@@ -48,6 +48,29 @@ state. The fixture now reads the latest user frame; the six-call assertion remai
 
 ## Autonomous collaboration: current assessment
 
+The runtime now separates durable team messages from workspace writes. Actual Simulator testing found
+that treating messaging as `local.write` first removed its capability during delegation and then hit the
+isolation requirement. The dedicated `agent.message` effect fixes both boundaries without enabling
+canonical writes. The complete app child-builder/validator regression and 31 focused authority/tool
+checks passed. A fresh real UI run then accepted a 14-to-7-day correction and completed four tasks in
+113.919 seconds, preserving restore, export and offline operation. The earlier failed attempt remains in
+history. [Inputs, result and failure history](evaluations/evidence/2026-10-25-live-goal-update.json) and
+[the recording](../assets/demo/goal-update.gif) distinguish the fresh run from the failed recovery.
+
+Development research and interactive cases exposed unnecessary reminders to idle agents and repeated
+source fetching. Accepted late input now reopens its owner's completed task within the existing budget,
+with its prior artifact retained and downstream consumers invalidated. Original tool observations are
+shared through the artifact reader. Focused checks cover both this wake-up and cross-goal access denial.
+The research and interactive cases then completed at `41f62ef`; the long-context case completed at
+`99205cf`, retrieving original records and preserving an early requirement and later correction.
+[All development attempts](evaluations/evidence/2026-10-25-v5-development.json) retain the two earlier
+runtime failures and the subsequent successes. Evaluator corrections accept a structured design allowed
+by the prompt and render CommonMark escapes before comparing a quote with its exact retrieved page.
+Those corrections regrade saved results without repeating inference.
+
+The unused fixed six-stage fallback has been removed. The v4 generator is only a compatibility test
+fixture; old records continue to replay their stored source. Eight archived-workflow checks passed.
+
 ### Persistent task conversations
 
 Task details now open a continuing agent conversation. Human updates are committed before acknowledgement,
@@ -86,7 +109,7 @@ inspection. Its xcresult is `/tmp/mobilellm-harness-20261025/V5Cutover.xcresult`
 runtime and interaction behavior. Peer messages and artifact reads now cross the ordinary Tool V2 authorization boundary and use actual
 sender identities. The coordinator continues a durable session under shared reservations. Focused tests
 cover model-authored message acceptance, later inclusion and the message/goal-completion race. The iOS
-build passes. Long-context capability work, goal/task graph UI and new real-model qualification remain in progress under the [implementation plan](AGENT_HARNESS_PLAN.md).
+build passes. Context retrieval, per-agent profiles and the goal workspace are implemented. The six-family frozen real-model qualification remains in progress under the [implementation plan](AGENT_HARNESS_PLAN.md).
 The separate iOS sandbox remains optional; earlier autonomous outcome evidence retains its tested version.
 
 ### Long conversations
