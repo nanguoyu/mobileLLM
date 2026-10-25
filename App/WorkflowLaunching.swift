@@ -593,6 +593,9 @@ extension AgentRuntimeAssembly {
                 "goal": .string(snapshot.text), "plan": plan,
                 "runDate": .string(runDate),
                 "availableTools": .array(try availableWorkflowTools(snapshot: snapshot).map(JSONValue.string)),
+                "availableSkills": .array(availableWorkflowSkills(snapshot: snapshot).map(\.catalogEntry)),
+                "availableModels": .array(coordinator.modelPolicy.allowedSelections.map { .string($0.modelID.rawValue) }),
+                "maximumReasoningEffort": .string(coordinator.modelPolicy.localOnly || !snapshot.onlineReasoningEnabled ? "inherit only" : snapshot.onlineReasoningEffort?.rawValue ?? "service default"),
             ])),
             initiatingRunID: coordinator.runID,
             runID: runID
@@ -727,6 +730,7 @@ public actor AppDynamicWorkflowService {
         let contextBudget: ContextTokenBudget
         let baseSystem: BaseSystemContextSource
         let skills: [SkillInstructionContextSource]
+        let skillCatalog: [WorkflowSkillDefinition]?
         let availableToolCapabilities: AgentCapabilitySet
         let contextPolicyVersion: UInt32
         let approvalPolicyVersion: UInt32
@@ -814,6 +818,7 @@ public actor AppDynamicWorkflowService {
                 contextBudget: parent.frozen.contextBudget,
                 baseSystem: parent.frozen.baseSystem,
                 skills: parent.frozen.skills,
+                skillCatalog: parent.frozen.skillCatalog,
                 availableToolCapabilities: parent.frozen.availableToolCapabilities,
                 contextPolicyVersion: parent.frozen.contextPolicyVersion,
                 approvalPolicyVersion: parent.frozen.approvalPolicyVersion

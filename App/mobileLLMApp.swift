@@ -732,7 +732,8 @@ func makeAgentSnapshot(
         onlineMaximumOutputTokens: onlineService?.maximumOutputTokens,
         approvalMode: conversation.approvalMode ?? .safePreset,
         onlineReasoningEffort: conversation.reasoningEffort ?? .medium,
-        deepSeekWebServiceID: deepSeekWebServiceID
+        deepSeekWebServiceID: deepSeekWebServiceID,
+        availableSkills: container.skills.skills.filter { $0.isBuiltIn || $0.id == conversation.skillID }
     )
 }
 

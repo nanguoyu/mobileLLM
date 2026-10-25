@@ -70,21 +70,20 @@ public struct ContextCompiler: Sendable {
         let candidates = ContextRendering.candidates(snapshot)
         var selections: [String: ContextSelection] = [:]
 
-        let base = candidates.first { $0.kind == .baseSystem }!
-        let current = candidates.first { $0.kind == .currentUser }!
-        let baseSelection = try fullSelection(base)
-        let currentSelection = try fullSelection(current)
-        let (mandatoryTokens, mandatoryOverflow) = baseSelection.estimatedTokens.addingReportingOverflow(
-            currentSelection.estimatedTokens
-        )
-        guard !mandatoryOverflow, mandatoryTokens <= budget.maximumInputTokens else {
-            throw ContextCompilationError.contextUnsatisfiable(
-                requiredTokens: mandatoryOverflow ? UInt64.max : mandatoryTokens,
-                availableTokens: budget.maximumInputTokens
-            )
+        let mandatory = candidates.filter {
+            $0.kind == .baseSystem || $0.kind == .currentUser || (snapshot.contextPolicyVersion == 3 && $0.kind == .skill)
         }
-        selections[base.key] = baseSelection
-        selections[current.key] = currentSelection
+        var mandatoryTokens: UInt64 = 0
+        for candidate in mandatory {
+            let selection = try fullSelection(candidate)
+            let (total, overflow) = mandatoryTokens.addingReportingOverflow(selection.estimatedTokens)
+            guard !overflow, total <= budget.maximumInputTokens else {
+                throw ContextCompilationError.contextUnsatisfiable(requiredTokens: overflow ? UInt64.max : total,
+                    availableTokens: budget.maximumInputTokens)
+            }
+            mandatoryTokens = total
+            selections[candidate.key] = selection
+        }
 
         var consumedTokens = mandatoryTokens
         var consumedToolTokens: UInt64 = 0
@@ -117,7 +116,7 @@ public struct ContextCompiler: Sendable {
             }
         }
 
-        let mandatoryKeys = Set([base.key, current.key])
+        let mandatoryKeys = Set(mandatory.map(\.key))
         let optionalAllocationOrder = ContextRendering.optionalAllocationOrder(candidates, policyVersion: snapshot.contextPolicyVersion)
         for candidate in optionalAllocationOrder where !mandatoryKeys.contains(candidate.key) {
             let available = budget.maximumInputTokens - consumedTokens
@@ -333,7 +332,7 @@ enum ContextRendering {
             untrusted: false
         )]
         result.append(contentsOf: snapshot.skills.map {
-            candidate(kind: .skill, frozen: $0.frozen, role: .system, untrusted: false)
+            candidate(kind: .skill, frozen: $0.frozen, role: snapshot.contextPolicyVersion == 3 ? .user : .system, untrusted: false)
         })
         result.append(contentsOf: snapshot.memories.map {
             candidate(kind: .canonicalEnglishMemory, frozen: $0.frozen, role: .user, untrusted: true)

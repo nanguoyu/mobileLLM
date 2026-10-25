@@ -2087,3 +2087,20 @@ observations, through the same scoped Tool V2 boundary. Stored observations do n
 Exact source revisions and digests accompany reads. A fresh process can retrieve an early requirement
 that is absent from the working window while the latest correction remains in its current context.
 This deterministic reduction uses no additional summarizer model calls or synthetic replacement answers.
+
+
+An optional per-agent profile narrows enabled tools, selects allowed instruction packs and requests a
+supported reasoning effort within the user's ceiling. Model selection remains inside the parent model
+policy. Profiles enter replay identity; unsupported tools, skills and effort requests fail before model
+submission. Effort is frozen in generation parameters and authorization payloads. A missing effort field
+keeps old payload fingerprints and provider-configuration behavior. DeepSeek low effort stays low on the
+wire; medium maps to high according to its current documented compatibility contract.
+
+Online agent tasks may discover built-in skills and the custom skill explicitly selected for the chat.
+Unselected custom packs are excluded. On-device tasks retain explicit skill selection. The catalog is
+frozen at goal admission, bounded to 32 definitions and 1 MiB of instruction text, and is part of policy
+binding. Discovery returns metadata; read_skill retrieves only requested ranges through Tool V2.
+Loading guidance never enables a disabled tool or execution environment. New goal admissions remove
+unavailable definitions while old frozen snapshots remain reproducible. Context policy 3 retains selected
+skill instructions in full as user guidance, below the current request; insufficient space fails admission
+instead of silently discarding instructions. Historical context policy versions retain their semantics.

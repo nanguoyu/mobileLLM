@@ -390,6 +390,8 @@ public struct AgentModelGenerationParameters: Hashable, Codable, Sendable {
     /// Whether the provider sends the output limit on the wire (`.explicit`) or omits it so the
     /// service uses its own model default (`.auto`). Defaults to `.explicit` for compatibility.
     public let outputBudgetMode: AgentOutputBudgetMode
+    /// Optional per-run effort. Nil retains legacy provider-configuration behavior.
+    public let reasoningEffort: AgentModelReasoningEffort?
 
     /// Creates finite, canonicalizable generation controls.
     public init(
@@ -401,7 +403,8 @@ public struct AgentModelGenerationParameters: Hashable, Codable, Sendable {
         repetitionPenalty: Double,
         thinkingMode: AgentModelThinkingMode,
         seed: UInt64?,
-        outputBudgetMode: AgentOutputBudgetMode = .explicit
+        outputBudgetMode: AgentOutputBudgetMode = .explicit,
+        reasoningEffort: AgentModelReasoningEffort? = nil
     ) throws {
         let maximumIJSONInteger: UInt64 = 9_007_199_254_740_991
         guard maximumOutputTokens > 0,
@@ -422,6 +425,7 @@ public struct AgentModelGenerationParameters: Hashable, Codable, Sendable {
         self.thinkingMode = thinkingMode
         self.seed = seed
         self.outputBudgetMode = outputBudgetMode
+        self.reasoningEffort = reasoningEffort
     }
 
     /// Conservative compatibility defaults; production compilers should pass explicit values.
@@ -452,7 +456,8 @@ public struct AgentModelGenerationParameters: Hashable, Codable, Sendable {
                 outputBudgetMode: container.decodeIfPresent(
                     AgentOutputBudgetMode.self,
                     forKey: .outputBudgetMode
-                ) ?? .explicit
+                ) ?? .explicit,
+                reasoningEffort: container.decodeIfPresent(AgentModelReasoningEffort.self, forKey: .reasoningEffort)
             )
         } catch {
             throw DecodingError.dataCorrupted(
@@ -463,7 +468,7 @@ public struct AgentModelGenerationParameters: Hashable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case maximumOutputTokens, maximumContextTokens, temperature, topP, topK
-        case repetitionPenalty, thinkingMode, seed, outputBudgetMode
+        case repetitionPenalty, thinkingMode, seed, outputBudgetMode, reasoningEffort
     }
 }
 
@@ -876,6 +881,12 @@ public struct AgentModelRequest: Hashable, Codable, Sendable {
             ]),
             "output": output,
         ])
+        if let effort = generationParameters.reasoningEffort, case .object(var object) = value,
+           case .object(var generation)? = object["generation"] {
+            generation["reasoningEffort"] = .string(effort.rawValue)
+            object["generation"] = .object(generation)
+            return try CanonicalJSON(.object(object))
+        }
         return try CanonicalJSON(value)
     }
 

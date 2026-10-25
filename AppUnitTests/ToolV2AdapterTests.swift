@@ -223,7 +223,8 @@ final class ToolV2AdapterTests: XCTestCase {
     }
 
     @MainActor
-    private func makeSnapshot(userMessageID: UUID, deepSeekWebServiceID: String? = nil) -> AgentRunRequestSnapshot {
+    private func makeSnapshot(userMessageID: UUID, deepSeekWebServiceID: String? = nil,
+                              online: Bool = false, activeSkill: Skill? = nil, availableSkills: [Skill] = []) -> AgentRunRequestSnapshot {
         let model = LLMCatalog.bonsai8b
         let variant = model.defaultVariantValue
         return AgentRunRequestSnapshot(
@@ -234,7 +235,7 @@ final class ToolV2AdapterTests: XCTestCase {
             messages: [Message(id: userMessageID, role: .user, answer: "What's this?")],
             systemPrompt: "You are helpful.",
             memoryFacts: [],
-            activeSkill: nil,
+            activeSkill: activeSkill,
             model: model,
             variant: variant,
             weightsDirectory: FileManager.default.temporaryDirectory,
@@ -253,21 +254,47 @@ final class ToolV2AdapterTests: XCTestCase {
             mcpToolDescriptors: [],
             webSearchDestinations: deepSeekWebServiceID == nil ? [] : [try! AppDeepSeekWebToolAdapter.destination()],
             toolPolicy: nil,
-            onlineModelEnabled: false,
-            onlineModelID: nil,
-            onlineServiceID: nil,
-            onlineConfigurationID: nil,
+            onlineModelEnabled: online,
+            onlineModelID: online ? "test-online" : nil,
+            onlineServiceID: online ? "test-service" : nil,
+            onlineConfigurationID: online ? "test-config" : nil,
             onlineReasoningEnabled: false,
             onlineContextLength: 128_000,
             onlineOutputBudgetAuto: true,
             onlineMaximumOutputTokens: nil,
             approvalMode: .safePreset,
             onlineReasoningEffort: nil,
-            deepSeekWebServiceID: deepSeekWebServiceID
+            deepSeekWebServiceID: deepSeekWebServiceID,
+            availableSkills: availableSkills
         )
     }
 
     // MARK: - Web search
+
+    @MainActor
+    func testOnlineSkillDiscoveryKeepsUnselectedCustomPacksPrivateAndLocalSelectionExplicit() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let assembly = try AgentRuntimeAssembly(engine: MockLLMEngine(script: .init()), downloadBase: root,
+            conversationDirectory: root, models: [LLMCatalog.bonsai8b], snapshot: { _, _, _, _ in nil })
+        let active = Skill(name: "Selected custom", emoji: "✍️", summary: "The selected style", instructions: "Preserve the user's terminology.")
+        let privatePack = Skill(name: "Unselected private pack", emoji: "🔒", summary: "Private notes", instructions: "PRIVATE_UNSELECTED_INSTRUCTIONS")
+        let builtIn = Skill.builtIns[0]
+        let allowed = [active, privatePack, builtIn]
+        let online = makeSnapshot(userMessageID: UUID(), online: true, activeSkill: active, availableSkills: allowed)
+        let request = try assembly.makeWorkflowCoordinator(snapshot: online)
+        let frozen = try await assembly.inputFreezer.freeze(request)
+        XCTAssertEqual(Set(frozen.skillCatalog?.map(\.id) ?? []), Set([active.id.uuidString, builtIn.id.uuidString]))
+        XCTAssertEqual(frozen.skills.map(\.frozen.sourceID), [active.id.uuidString])
+        XCTAssertFalse(request.instruction.contains(privatePack.name))
+        XCTAssertTrue(frozen.toolPolicy.allowedToolIDs.contains { $0.name == "read_skill" })
+        let local = makeSnapshot(userMessageID: UUID(), activeSkill: active, availableSkills: allowed)
+        let localRequest = try assembly.makeWorkflowCoordinator(snapshot: local)
+        let localInputs = try await assembly.inputFreezer.freeze(localRequest)
+        XCTAssertNil(localInputs.skillCatalog)
+        XCTAssertEqual(localInputs.skills.map(\.frozen.sourceID), [active.id.uuidString])
+        XCTAssertFalse(localInputs.toolPolicy.allowedToolIDs.contains { $0.name == "list_skills" })
+    }
 
     // TEST-ID: AHT-DYNAMIC-001
     @MainActor
@@ -283,7 +310,7 @@ final class ToolV2AdapterTests: XCTestCase {
         XCTAssertTrue(try frozen.selectedTools(latestUserRequest: "Search and read official webpages").descriptors.isEmpty)
         XCTAssertEqual(frozen.toolCatalog.descriptors.filter { $0.id.logicalID.providerID != "agent" }, expected.toolCatalog.descriptors)
         XCTAssertEqual(frozen.toolPolicy.allowedToolIDs.filter { $0.providerID != "agent" }, expected.toolPolicy.allowedToolIDs)
-        let teamIDs = try WorkflowAgentToolOperation.allCases.map { try WorkflowAgentTool.descriptor($0).id.logicalID }.sorted()
+        let teamIDs = try WorkflowAgentToolOperation.allCases.filter { !$0.isSkillOperation }.map { try WorkflowAgentTool.descriptor($0).id.logicalID }.sorted()
         XCTAssertEqual(frozen.toolPolicy.allowedToolIDs.filter { $0.providerID == "agent" }, teamIDs)
         XCTAssertTrue(frozen.toolPolicy.masterEnabled)
         let recovered = try JSONDecoder().decode(FrozenAgentRunInputs.self, from: JSONEncoder().encode(frozen))

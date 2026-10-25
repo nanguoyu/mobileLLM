@@ -546,8 +546,11 @@ A `Skill` is a named instruction pack (`name`, emoji, one-line summary, instruct
 durable JSON store beside the conversation records, seeded once with five built-ins (immutable;
 duplicate-to-edit). Activation is **explicit and per-conversation** — the thread records its `skillID`,
 the composer's [+] menu switches it, and the system prompt is composed as base + "## Active skill" so the
-context meter charges it honestly. There is deliberately no model self-routing of skills in v1: 2–8B
-on-device models pick badly from catalogs, so the human picks. Interop: `SkillIO` parses and emits the
+context meter charges it honestly. On-device conversations and agent tasks keep explicit selection. Online collaboration additionally
+freezes a catalog of built-in packs and the chat's explicitly selected custom pack. Agents may discover
+metadata, read useful instructions or bind a pack to a task profile. Other custom packs remain private.
+Profiles can narrow enabled tools and reasoning effort inside the parent policy; skill text grants no
+extra execution capability. Selected instructions remain complete under context policy 3. Interop: `SkillIO` parses and emits the
 AI Edge Gallery community `SKILL.md` format (frontmatter `name`/`description`/`metadata`, markdown body),
 with URL normalization for webhost/repo links and capability flags on import. Skills that invoke the
 Gallery's `run_js` tool are flagged because that tool is unavailable. The

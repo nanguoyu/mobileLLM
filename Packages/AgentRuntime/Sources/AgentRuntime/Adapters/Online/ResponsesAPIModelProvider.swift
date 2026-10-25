@@ -896,6 +896,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         stream: Bool = false
     ) throws -> Data {
         let parameters = request.generationParameters
+        let effectiveEffort = parameters.reasoningEffort.flatMap { ReasoningEffort(rawValue: $0.rawValue) } ?? reasoningEffort
         let replayNativeTools = !request.advertisedTools.isEmpty
         var messages = try chatMessagesPayload(request.messages, selection: request.selection, replayNativeTools: replayNativeTools)
         if !replayNativeTools, request.messages.contains(where: { $0.nativeToolCall != nil }) {
@@ -926,8 +927,8 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             // One compatibility retry may omit the service-specific directive.
         } else if disabled {
             fields["thinking"] = .object(["type": .string("disabled")])
-        } else if parameters.thinkingMode == .enabled, reasoningEffort != nil {
-            fields["reasoning_effort"] = .string("high")
+        } else if parameters.thinkingMode == .enabled, let effectiveEffort {
+            fields["reasoning_effort"] = .string(effectiveEffort == .low ? "low" : "high")
         }
         let tools = chatCompletionsToolsPayload(request.advertisedTools)
         // Omitting tools while replaying native tool history can make DeepSeek leak its internal
@@ -1017,6 +1018,7 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
         stream: Bool = false
     ) throws -> Data {
         let parameters = request.generationParameters
+        let effectiveEffort = parameters.reasoningEffort.flatMap { ReasoningEffort(rawValue: $0.rawValue) } ?? reasoningEffort
         var (instructions, input) = try messagesPayload(request.messages, selection: request.selection)
         if case .structured(let schema) = request.outputRequirement {
             instructions += "\n" + (try ModelOutputInstructions.structured(schema))
@@ -1062,14 +1064,14 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
             } else {
                 fields["reasoning"] = .object(["enabled": .bool(false)])
             }
-        } else if let reasoningEffort {
+        } else if let effectiveEffort {
             if usesDeepSeekThinkingDialect {
-                // DeepSeek currently accepts high/max. Its compatibility contract maps lower
-                // effort names to high, so emit the canonical value rather than relying on a
-                // gateway-specific coercion.
-                fields["reasoning_effort"] = .string("high")
+                // DeepSeek supports low directly; medium maps to high. Keep the requested low
+                // level instead of silently making a lightweight role use high effort.
+                // https://api-docs.deepseek.com/guides/thinking_mode/
+                fields["reasoning_effort"] = .string(effectiveEffort == .low ? "low" : "high")
             } else {
-                fields["reasoning"] = .object(["effort": .string(reasoningEffort.rawValue)])
+                fields["reasoning"] = .object(["effort": .string(effectiveEffort.rawValue)])
             }
         }
         let tools = try toolsPayload(request.advertisedTools)

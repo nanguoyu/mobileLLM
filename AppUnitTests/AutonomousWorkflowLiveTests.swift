@@ -256,7 +256,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             locationSeamAvailable:false,mcpToolDescriptors:[],webSearchDestinations:[],toolPolicy:nil,
             onlineModelEnabled:true,onlineModelID:model,onlineServiceID:serviceID,onlineConfigurationID:"live-frozen-config",
             onlineReasoningEnabled:true,onlineContextLength:32768,onlineOutputBudgetAuto:true,onlineMaximumOutputTokens:nil,
-            approvalMode:.safePreset,onlineReasoningEffort:nil,deepSeekWebServiceID:nil)
+            approvalMode:.safePreset,onlineReasoningEffort:nil,deepSeekWebServiceID:nil,availableSkills:Skill.builtIns)
     }
 }
 

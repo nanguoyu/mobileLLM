@@ -369,15 +369,17 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
             parent: launch.defaultModelPolicy
         )
         let role = call.options.requestedAgentType ?? "workflow-agent"
+        let roleInputs = try parent.frozen.applying(profile: call.options.profile, online: !modelPolicy.localOnly)
         let childToolPolicy: ConversationToolPolicy
         if role == "workflow-supervisor" {
-            let teamTools = parent.frozen.toolPolicy.allowedToolIDs.filter {
+            let teamTools = roleInputs.toolPolicy.allowedToolIDs.filter {
                 $0.providerID == "agent" && $0.name != WorkflowAgentToolOperation.listAgents.rawValue
+                    && $0.name != WorkflowAgentToolOperation.listSkills.rawValue
             }
-            childToolPolicy = try ConversationToolPolicy(masterEnabled: parent.frozen.toolPolicy.masterEnabled,
+            childToolPolicy = try ConversationToolPolicy(masterEnabled: roleInputs.toolPolicy.masterEnabled,
                 allowedToolIDs: teamTools, pinnedToolIDs: teamTools,
-                selectionPolicyVersion: parent.frozen.toolPolicy.selectionPolicyVersion, materializedFromGlobalTemplate: false)
-        } else { childToolPolicy = parent.frozen.toolPolicy }
+                selectionPolicyVersion: roleInputs.toolPolicy.selectionPolicyVersion, materializedFromGlobalTemplate: false)
+        } else { childToolPolicy = roleInputs.toolPolicy }
         let outputRequirement: AgentOutputRequirement = if let schema = call.options.schema {
             .structured(schema)
         } else {
@@ -426,7 +428,7 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         let selectedModel = try selectedModel(for: modelPolicy, parent: parent.frozen.modelSelection)
         let frozen = try FrozenAgentRunInputs(
             modelSelection: selectedModel,
-            generationParameters: parent.frozen.generationParameters,
+            generationParameters: roleInputs.generationParameters,
             contextBudget: parent.frozen.contextBudget,
             baseSystem: BaseSystemContextSource(
                 revision: "workflow-child.v2:" + parent.frozen.baseSystem.frozen.revision,
@@ -446,7 +448,7 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
                 range and preserve evidence for every retained claim.
                 """
             ),
-            skills: parent.frozen.skills,
+            skills: roleInputs.skills,
             memories: parent.frozen.memories,
             conversation: parent.frozen.conversation,
             currentUser: CurrentUserContextSource(
@@ -465,7 +467,8 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
             maximumAdvertisedTools: parent.frozen.maximumAdvertisedTools,
             contextPolicyVersion: parent.frozen.contextPolicyVersion,
             approvalPolicyVersion: parent.frozen.approvalPolicyVersion,
-            suppressModelTools: childBudget.limits[.toolInvocations] == 0
+            suppressModelTools: childBudget.limits[.toolInvocations] == 0,
+            skillCatalog: roleInputs.skillCatalog ?? []
         )
         pendingSubmissions.storeWorkflow(spawn, parent: parent.request, frozenInputs: frozen)
         return spawn
@@ -899,12 +902,16 @@ public final class AgentRuntimeAssembly {
     /// The app executes a versioned program, not model-generated control flow.
     public func makeWorkflowCoordinator(snapshot: AgentRunRequestSnapshot, runDate: String? = nil) throws -> AgentRequest {
         let tools = try availableWorkflowTools(snapshot: snapshot)
+        let availableSkills = availableWorkflowSkills(snapshot: snapshot)
+        let source = try frozenBuilder.request(snapshot: snapshot, artifactReferences: [])
         let date = runDate ?? String(ISO8601DateFormatter().string(from: Date()).prefix(10))
         let instruction = CollaborativeWorkflow.planningInstruction
             + "\nWORKER TOOL IDS (host delegation remains available when this list is empty):\n" + tools.joined(separator: ", ")
             + "\nACTUAL RUN DATE (UTC): " + date
+            + "\nALLOWED SKILL CATALOG:\n" + (try CanonicalJSON(.array(availableSkills.map(\.catalogEntry))).string)
+            + "\nALLOWED MODELS: " + source.modelPolicy.allowedSelections.map { $0.modelID.rawValue }.joined(separator: ", ")
+            + "\nMAXIMUM REASONING EFFORT: " + (source.modelPolicy.localOnly || !snapshot.onlineReasoningEnabled ? "inherit only" : snapshot.onlineReasoningEffort?.rawValue ?? "service default")
             + "\nORIGINAL GOAL:\n" + snapshot.text
-        let source = try frozenBuilder.request(snapshot: snapshot, artifactReferences: [])
         // Dynamic execution uses the same frozen authority/model/tool policy as the conversation,
         // but needs a workflow-sized resource envelope. Four-way attenuation of the ordinary chat
         // defaults leaves each research child only one model pass, which cannot complete even one
@@ -957,14 +964,30 @@ public final class AgentRuntimeAssembly {
             // conversation's exact catalog/policy for research children and recovery.
             suppressModelTools: true
         )
-        pendingSubmissions.store(AgentRunSubmission(request: request, frozenInputs: try frozen.addingWorkflowTools()))
+        pendingSubmissions.store(AgentRunSubmission(request: request, frozenInputs: try frozen.addingWorkflowTools(availableSkills: availableSkills)))
         return request
     }
 
     public func availableWorkflowTools(snapshot: AgentRunRequestSnapshot) throws -> [String] {
         let frozen = try frozenBuilder.frozenInputs(snapshot: snapshot, artifactReferences: [])
+        let hasSkills = !availableWorkflowSkills(snapshot: snapshot).isEmpty
         return (frozen.toolPolicy.masterEnabled ? frozen.toolPolicy.allowedToolIDs.map(\.description) : [])
-            + (try WorkflowAgentToolOperation.allCases.map { try WorkflowAgentTool.descriptor($0).id.logicalID.description })
+            + (try WorkflowAgentToolOperation.allCases.filter { hasSkills || !$0.isSkillOperation }.map { try WorkflowAgentTool.descriptor($0).id.logicalID.description })
+    }
+
+    public func availableWorkflowSkills(snapshot: AgentRunRequestSnapshot) -> [WorkflowSkillDefinition] {
+        guard AppFrozenInputBuilder.isOnline(snapshot: snapshot) else { return [] }
+        var result: [WorkflowSkillDefinition] = []
+        var bytes = 0
+        var permitted = snapshot.availableSkills.filter { $0.isBuiltIn || $0.id == snapshot.activeSkill?.id }
+        if let active = snapshot.activeSkill, !permitted.contains(where: { $0.id == active.id }) { permitted.append(active) }
+        for skill in permitted.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+            guard result.count < 32, bytes + skill.instructions.utf8.count <= 1_048_576,
+                  let definition = try? WorkflowSkillDefinition(id: skill.id.uuidString, name: skill.name,
+                    summary: skill.summary, instructions: skill.instructions) else { continue }
+            result.append(definition); bytes += skill.instructions.utf8.count
+        }
+        return result
     }
 
     private func dynamicWorkflowOutputTokens(

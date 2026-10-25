@@ -7,7 +7,7 @@ import Foundation
 /// one place prevents a candidate from passing inspection and failing only after execution starts.
 enum WorkflowAgentOptionContract {
     static let allowedKeys: Set<String> = [
-        "label", "phase", "schema", "model", "agentType", "isolation", "stallMs", "maxToolCalls", "task", "session",
+        "label", "phase", "schema", "model", "agentType", "isolation", "stallMs", "maxToolCalls", "task", "session", "profile",
     ]
     static let supportedIsolationValues: Set<String> = ["worktree", "sandbox"]
 }

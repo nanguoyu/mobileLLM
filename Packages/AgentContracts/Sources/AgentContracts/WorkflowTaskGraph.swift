@@ -31,15 +31,18 @@ public struct WorkflowTaskUpdate: Hashable, Codable, Sendable {
     public let model: String?
     public let inputRanges: [WorkflowTaskInputRange]?
     public let artifactInputs: [String]?
+    public let profile: WorkflowAgentProfileV1?
 
     public init(id: String, expectedRevision: UInt64, agent: String, instruction: String,
                 dependencies: [String] = [], required: Bool = true, maximumToolCalls: UInt64 = 0, model: String? = nil,
-                inputRanges: [WorkflowTaskInputRange]? = nil, artifactInputs: [String]? = nil) {
+                inputRanges: [WorkflowTaskInputRange]? = nil, artifactInputs: [String]? = nil,
+                profile: WorkflowAgentProfileV1? = nil) {
         self.id = id; self.expectedRevision = expectedRevision; self.agent = agent
         self.instruction = instruction; self.dependencies = dependencies; self.required = required
         self.maximumToolCalls = maximumToolCalls; self.model = model
         self.inputRanges = inputRanges
         self.artifactInputs = artifactInputs
+        self.profile = profile
     }
 }
 
@@ -67,6 +70,7 @@ public struct WorkflowTaskNode: Hashable, Codable, Sendable, Identifiable {
     /// Exact historical versions, such as a review of this task's previous output. These are
     /// immutable data edges, not a cycle between the current task revisions.
     public var artifactInputs: [String]?
+    public var profile: WorkflowAgentProfileV1?
 }
 
 public struct WorkflowTaskArtifact: Hashable, Codable, Sendable, Identifiable {
@@ -149,14 +153,14 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
                 next.tasks[index] = WorkflowTaskNode(id: old.id, revision: old.revision + 1,
                     agent: change.agent, instruction: change.instruction, dependencies: change.dependencies,
                     required: old.required, maximumToolCalls: change.maximumToolCalls, model: change.model,
-                    state: .pending, inputArtifactIDs: [], inputRanges: change.inputRanges, artifactInputs: change.artifactInputs)
+                    state: .pending, inputArtifactIDs: [], inputRanges: change.inputRanges, artifactInputs: change.artifactInputs, profile: change.profile)
                 reopened.insert(old.id)
             } else {
                 guard change.expectedRevision == 0 else { throw WorkflowTaskGraphError.stale }
                 next.tasks.append(WorkflowTaskNode(id: change.id, revision: 1, agent: change.agent,
                     instruction: change.instruction, dependencies: change.dependencies, required: change.required,
                     maximumToolCalls: change.maximumToolCalls, model: change.model, state: .pending, inputArtifactIDs: [],
-                    inputRanges: change.inputRanges, artifactInputs: change.artifactInputs))
+                    inputRanges: change.inputRanges, artifactInputs: change.artifactInputs, profile: change.profile))
             }
         }
         try next.validate()
@@ -191,7 +195,12 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
         }
         guard readyTasks.contains(where: { $0.id == taskID }), let descriptor = call.options.task,
               descriptor.taskID == taskID, descriptor.instruction == task.instruction,
-              call.options.sessionKey == task.agent else { throw WorkflowTaskGraphError.ownership }
+              call.options.sessionKey == task.agent, call.options.profile == task.profile else { throw WorkflowTaskGraphError.ownership }
+        if task.profile != nil {
+            guard call.options.maximumToolCalls == task.maximumToolCalls, call.options.requestedModel == task.model else {
+                throw WorkflowTaskGraphError.ownership
+            }
+        }
         let dependencyInputs = try task.dependencies.map { id -> String in
             guard let source = tasks.first(where: { $0.id == id }), source.state == .completed,
                   let artifact = source.outputArtifactID else { throw WorkflowTaskGraphError.unavailableInput }

@@ -90,6 +90,16 @@ request. Focused recovery checks retain a later correction and retrieve the exac
 that requirement has left the working window. This path uses deterministic reduction and original-source
 reads, without an extra summarizer loop.
 
+### Agent profiles and skills
+
+Task profiles can narrow tools, choose allowed instruction packs and request a supported reasoning effort
+within the parent policy. Online goals expose built-in skills and the chat's selected custom pack; local
+models keep explicit selection. Unselected custom skills are excluded. Native tool tests exercise reading
+a frozen pack, and Simulator tests cover this privacy boundary and disabled external tools. Selected
+instructions either fit in full or fail admission. Per-run effort is included in authorization and replay
+identity. The DeepSeek adapter now preserves low effort, following its
+[documented control](https://api-docs.deepseek.com/guides/thinking_mode/).
+
 ### v5 development evaluation
 
 The new production path completed the incident-evidence case with real `deepseek-v4-flash` on the iPhone

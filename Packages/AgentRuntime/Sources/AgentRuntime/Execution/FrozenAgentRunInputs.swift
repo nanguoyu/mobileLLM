@@ -4,30 +4,59 @@ import AgentContracts
 import Foundation
 
 extension FrozenAgentRunInputs {
-    /// Called only when the user starts a collaboration workflow. External tool selection remains
-    /// unchanged; disabled external tools are not re-enabled by adding team-local operations.
-    public func addingWorkflowTools() throws -> FrozenAgentRunInputs {
-        let additions = try WorkflowAgentToolOperation.allCases.map(WorkflowAgentTool.descriptor)
+    /// Collaboration exposes only its scoped internal operations. Disabled external tools stay off.
+    public func addingWorkflowTools(availableSkills: [WorkflowSkillDefinition] = []) throws -> FrozenAgentRunInputs {
+        let operations = WorkflowAgentToolOperation.allCases.filter { !availableSkills.isEmpty || !$0.isSkillOperation }
+        let additions = try operations.map(WorkflowAgentTool.descriptor)
         let ids = additions.map(\.id.logicalID)
         let catalog = try ToolCatalogSnapshot(revision: toolCatalog.revision,
-            descriptors: toolCatalog.descriptors.filter { !ids.contains($0.id.logicalID) } + additions,
-            unavailable: toolCatalog.unavailable.filter { !ids.contains($0.logicalID) })
-        let allowed = (toolPolicy.masterEnabled ? toolPolicy.allowedToolIDs : []) + ids
-        let pinned = (toolPolicy.masterEnabled ? toolPolicy.pinnedToolIDs : []) + ids
+            descriptors: toolCatalog.descriptors.filter { $0.id.logicalID.providerID != "agent" } + additions,
+            unavailable: toolCatalog.unavailable.filter { $0.logicalID.providerID != "agent" })
+        let allowed = (toolPolicy.masterEnabled ? toolPolicy.allowedToolIDs.filter { $0.providerID != "agent" } : []) + ids
+        let pinned = (toolPolicy.masterEnabled ? toolPolicy.pinnedToolIDs.filter { $0.providerID != "agent" } : []) + ids
         let policy = try ConversationToolPolicy(masterEnabled: true, allowedToolIDs: allowed, pinnedToolIDs: pinned,
             selectionPolicyVersion: toolPolicy.selectionPolicyVersion, materializedFromGlobalTemplate: false)
-        return try FrozenAgentRunInputs(modelSelection: modelSelection, generationParameters: generationParameters,
-            contextBudget: contextBudget, baseSystem: baseSystem, skills: skills, memories: memories,
-            conversation: conversation, currentUser: currentUser, artifactExcerpts: artifactExcerpts,
-            toolCatalog: catalog, toolPolicy: policy, availableToolCapabilities: availableToolCapabilities,
-            activeSkillToolHints: activeSkillToolHints, explicitlyRequestedToolIDs: explicitlyRequestedToolIDs,
-            recentSuccessfulToolChain: recentSuccessfulToolChain, maximumAdvertisedTools: maximumAdvertisedTools,
-            contextPolicyVersion: contextPolicyVersion, approvalPolicyVersion: approvalPolicyVersion,
-            suppressModelTools: suppressModelTools ?? false)
+        return try replacing(toolCatalog: catalog, toolPolicy: policy,
+            contextPolicyVersion: 3, skillCatalog: availableSkills)
     }
 
-    func replacingConversation(_ conversation: [ConversationTurnContextSource],
-                               currentUser: CurrentUserContextSource,
+    public func applying(profile: WorkflowAgentProfileV1?, online: Bool) throws -> FrozenAgentRunInputs {
+        guard let profile else { return self }
+        var policy = toolPolicy
+        if !profile.toolNames.isEmpty {
+            var allowed: [AgentToolLogicalID] = []
+            for name in profile.toolNames {
+                let matches = toolPolicy.allowedToolIDs.filter { $0.description == name || $0.providerID + "." + $0.name == name }
+                guard toolPolicy.masterEnabled, matches.count == 1, let id = matches.first,
+                      toolCatalog.descriptor(for: id) != nil else { throw WorkflowAgentProfileError.unavailableTool(name) }
+                allowed.append(id)
+            }
+            policy = try ConversationToolPolicy(masterEnabled: true, allowedToolIDs: allowed,
+                pinnedToolIDs: toolPolicy.pinnedToolIDs.filter { allowed.contains($0) },
+                selectionPolicyVersion: toolPolicy.selectionPolicyVersion, materializedFromGlobalTemplate: false)
+        }
+        var selectedSkills = skills
+        for id in profile.skillIDs {
+            if selectedSkills.contains(where: { $0.frozen.sourceID.caseInsensitiveCompare(id) == .orderedSame }) { continue }
+            let matches = (skillCatalog ?? []).filter { $0.id.caseInsensitiveCompare(id) == .orderedSame || $0.name == id }
+            guard matches.count == 1, let skill = matches.first else { throw WorkflowAgentProfileError.unavailableSkill(id) }
+            if !selectedSkills.contains(where: { $0.frozen.sourceID == skill.id }) {
+                selectedSkills.append(try SkillInstructionContextSource(skillID: skill.id, version: skill.digest.rawValue, instructions: skill.instructions))
+            }
+        }
+        var generation = generationParameters
+        if let effort = profile.reasoningEffort {
+            guard online, generation.thinkingMode != .disabled,
+                  generation.reasoningEffort.map({ effort <= $0 }) ?? true else { throw WorkflowAgentProfileError.reasoningCeiling }
+            generation = try AgentModelGenerationParameters(maximumOutputTokens: generation.maximumOutputTokens,
+                maximumContextTokens: generation.maximumContextTokens, temperature: generation.temperature, topP: generation.topP,
+                topK: generation.topK, repetitionPenalty: generation.repetitionPenalty, thinkingMode: .enabled,
+                seed: generation.seed, outputBudgetMode: generation.outputBudgetMode, reasoningEffort: effort)
+        }
+        return try replacing(generationParameters: generation, skills: selectedSkills, toolPolicy: policy)
+    }
+
+    func replacingConversation(_ conversation: [ConversationTurnContextSource], currentUser: CurrentUserContextSource,
                                maximumHistoryBytes: Int = 131_072, maximumHistoryTurns: Int = 24) throws -> FrozenAgentRunInputs {
         let retained = AgentSessionContextWindow.retain(conversation, maximumBytes: maximumHistoryBytes, maximumTurns: maximumHistoryTurns)
         var system = baseSystem
@@ -36,14 +65,22 @@ extension FrozenAgentRunInputs {
                 revision: baseSystem.frozen.revision + ".session-window.v1",
                 content: baseSystem.frozen.content + "\n\n" + AgentSessionContextWindow.notice)
         }
-        return try FrozenAgentRunInputs(modelSelection: modelSelection, generationParameters: generationParameters,
-            contextBudget: contextBudget, baseSystem: system, skills: skills, memories: memories,
-            conversation: retained, currentUser: currentUser, artifactExcerpts: artifactExcerpts,
-            toolCatalog: toolCatalog, toolPolicy: toolPolicy, availableToolCapabilities: availableToolCapabilities,
+        return try replacing(baseSystem: system, conversation: retained, currentUser: currentUser)
+    }
+
+    private func replacing(generationParameters: AgentModelGenerationParameters? = nil,
+                           baseSystem: BaseSystemContextSource? = nil, skills: [SkillInstructionContextSource]? = nil,
+                           conversation: [ConversationTurnContextSource]? = nil, currentUser: CurrentUserContextSource? = nil,
+                           toolCatalog: ToolCatalogSnapshot? = nil, toolPolicy: ConversationToolPolicy? = nil,
+                           contextPolicyVersion: UInt32? = nil, skillCatalog: [WorkflowSkillDefinition]? = nil) throws -> FrozenAgentRunInputs {
+        try FrozenAgentRunInputs(modelSelection: modelSelection, generationParameters: generationParameters ?? self.generationParameters,
+            contextBudget: contextBudget, baseSystem: baseSystem ?? self.baseSystem, skills: skills ?? self.skills, memories: memories,
+            conversation: conversation ?? self.conversation, currentUser: currentUser ?? self.currentUser, artifactExcerpts: artifactExcerpts,
+            toolCatalog: toolCatalog ?? self.toolCatalog, toolPolicy: toolPolicy ?? self.toolPolicy, availableToolCapabilities: availableToolCapabilities,
             activeSkillToolHints: activeSkillToolHints, explicitlyRequestedToolIDs: explicitlyRequestedToolIDs,
             recentSuccessfulToolChain: recentSuccessfulToolChain, maximumAdvertisedTools: maximumAdvertisedTools,
-            contextPolicyVersion: contextPolicyVersion, approvalPolicyVersion: approvalPolicyVersion,
-            suppressModelTools: suppressModelTools ?? false)
+            contextPolicyVersion: contextPolicyVersion ?? self.contextPolicyVersion, approvalPolicyVersion: approvalPolicyVersion,
+            suppressModelTools: suppressModelTools ?? false, skillCatalog: skillCatalog ?? self.skillCatalog ?? [])
     }
 }
 
@@ -76,6 +113,7 @@ public struct FrozenAgentRunInputs: Hashable, Codable, Sendable {
     /// Suppresses tools for this model run while retaining the user's frozen catalog/policy for
     /// delegated work. Omitted on ordinary runs for backward-compatible persisted snapshots.
     public let suppressModelTools: Bool?
+    public let skillCatalog: [WorkflowSkillDefinition]?
 
     public init(
         modelSelection: AgentModelSelection,
@@ -96,7 +134,8 @@ public struct FrozenAgentRunInputs: Hashable, Codable, Sendable {
         maximumAdvertisedTools: UInt16 = 8,
         contextPolicyVersion: UInt32,
         approvalPolicyVersion: UInt32,
-        suppressModelTools: Bool = false
+        suppressModelTools: Bool = false,
+        skillCatalog: [WorkflowSkillDefinition] = []
     ) throws {
         let hints = Array(Set(activeSkillToolHints)).sorted()
         let explicit = Array(Set(explicitlyRequestedToolIDs)).sorted()
@@ -105,7 +144,9 @@ public struct FrozenAgentRunInputs: Hashable, Codable, Sendable {
               contextPolicyVersion > 0,
               approvalPolicyVersion > 0,
               currentUser.attachments.count <= 64,
-              Set(recentSuccessfulToolChain).count == recentSuccessfulToolChain.count
+              Set(recentSuccessfulToolChain).count == recentSuccessfulToolChain.count,
+              skillCatalog.count <= 32, Set(skillCatalog.map(\.id)).count == skillCatalog.count,
+              skillCatalog.reduce(0, { $0 + $1.instructions.utf8.count }) <= 1_048_576
         else { throw AgentExecutionError.internalInvariant("invalid frozen run inputs") }
         version = Self.formatVersion
         self.modelSelection = modelSelection
@@ -127,6 +168,7 @@ public struct FrozenAgentRunInputs: Hashable, Codable, Sendable {
         self.contextPolicyVersion = contextPolicyVersion
         self.approvalPolicyVersion = approvalPolicyVersion
         self.suppressModelTools = suppressModelTools ? true : nil
+        self.skillCatalog = skillCatalog.isEmpty ? nil : skillCatalog
     }
 
     public init(from decoder: Decoder) throws {
@@ -192,7 +234,8 @@ public struct FrozenAgentRunInputs: Hashable, Codable, Sendable {
                     UInt32.self,
                     forKey: .approvalPolicyVersion
                 ),
-                suppressModelTools: container.decodeIfPresent(Bool.self, forKey: .suppressModelTools) ?? false
+                suppressModelTools: container.decodeIfPresent(Bool.self, forKey: .suppressModelTools) ?? false,
+                skillCatalog: container.decodeIfPresent([WorkflowSkillDefinition].self, forKey: .skillCatalog) ?? []
             )
         } catch {
             throw DecodingError.dataCorrupted(
@@ -206,7 +249,7 @@ public struct FrozenAgentRunInputs: Hashable, Codable, Sendable {
         case memories, conversation, currentUser, artifactExcerpts, toolCatalog, toolPolicy
         case availableToolCapabilities, activeSkillToolHints, explicitlyRequestedToolIDs
         case recentSuccessfulToolChain, maximumAdvertisedTools, contextPolicyVersion
-        case approvalPolicyVersion, suppressModelTools
+        case approvalPolicyVersion, suppressModelTools, skillCatalog
     }
 
     func selectedTools(latestUserRequest: String) throws -> ToolSelectionResult {

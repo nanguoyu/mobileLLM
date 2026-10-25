@@ -1888,7 +1888,8 @@
       "kind": "property",
       "riskTier": "P0",
       "requirementIDs": [
-        "AH-DYNAMIC-001"
+        "AH-DYNAMIC-001",
+        "AH-COLLAB-001"
       ],
       "selectors": [
         {
@@ -2022,6 +2023,62 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowRuntimeTests/testEnrichedEvidencePrioritizesLaterCitedSourcesWithinAGlobalTextBound"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testWaitAnyStartsDependentWorkBeforeUnrelatedSiblingFinishes"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testWaitSelectionReplaysOriginalChoiceAndDoesNotLeakOtherCompletedResults"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testTaskGraphPausesWithUnfinishedGoalAndExplicitResumeContinuesWithoutRepeatingWork"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testGoalDeliveryCannotHideAcceptedPendingAgentInput"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testV5CoordinatorRunsDeclaredDependenciesAndExactSourceRangesThroughProductionEngine"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testOversizedArgumentsFailWithoutAccessingADisposedJavaScriptRealm"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.WorkflowTaskGraphTests/testCycleAndStaleAssignmentRejectionLeaveTheWholeGraphUnchanged"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.WorkflowTaskGraphTests/testClaimOwnershipAndReopeningRetainOriginalArtifactsAndInvalidateConsumers"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.WorkflowTaskGraphTests/testGoalAmendmentAndModelUpdatesCannotRemoveOriginalRequirements"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.WorkflowTaskGraphTests/testHistoricalReviewCanReviseTheSameTaskWithoutACurrentDependencyCycle"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.WorkflowTaskGraphTests/testArtifactReadsPreserveUnicodeAndRejectSurrogateInteriorOffsets"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.WorkflowAgentProfileTests/testRoleProfileNarrowsToolsLoadsOnlyAllowedSkillAndRespectsReasoningCeiling"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.WorkflowAgentProfileTests/testNewCatalogAdmissionRemovesUnavailableSkillsWithoutMutatingFrozenSources"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.ToolV2AdapterTests/testOnlineSkillDiscoveryKeepsUnselectedCustomPacksPrivateAndLocalSelectionExplicit"
         }
       ],
       "platforms": [
@@ -2915,7 +2972,8 @@
       "kind": "integration",
       "riskTier": "P0",
       "requirementIDs": [
-        "AH-SESSION-001"
+        "AH-SESSION-001",
+        "AH-COLLAB-001"
       ],
       "selectors": [
         {

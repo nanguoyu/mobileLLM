@@ -935,7 +935,8 @@ extension AgentRunController {
             topK: original.topK,
             repetitionPenalty: original.repetitionPenalty,
             thinkingMode: .disabled,
-            seed: original.seed
+            seed: original.seed,
+            reasoningEffort: original.reasoningEffort
         )
     }
 

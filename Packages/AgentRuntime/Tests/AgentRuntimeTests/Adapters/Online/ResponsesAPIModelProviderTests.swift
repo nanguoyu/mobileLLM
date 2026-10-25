@@ -826,6 +826,28 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         XCTAssertNil(fallbackObject["reasoning"], "fallback must omit the reasoning field entirely")
     }
 
+    func testFrozenRoleEffortOverridesServiceDefaultAndDeepSeekPreservesLow() throws {
+        let low = try ModelFixture(thinkingMode: .enabled, reasoningEffort: .low)
+        let body = try ResponsesAPIModelProvider.requestBody(request: low.request,
+            baseURL: "https://gateway.example/v1", reasoningEffort: .high)
+        guard case .object(let fields) = try JSONDecoder().decode(JSONValue.self, from: body) else { return XCTFail() }
+        XCTAssertEqual(fields["reasoning"], .object(["effort": .string("low")]))
+        let payload = try JSONDecoder().decode(JSONValue.self, from: low.request.authorizationPayload().data)
+        guard case .object(let root) = payload, case .object(let generation)? = root["generation"] else { return XCTFail() }
+        XCTAssertEqual(generation["reasoningEffort"], .string("low"))
+        let restored = try JSONDecoder().decode(AgentModelRequest.self, from: JSONEncoder().encode(low.request))
+        XCTAssertEqual(try restored.fingerprint(), try low.request.fingerprint())
+
+        let deepSeek = try ModelFixture(thinkingMode: .enabled, reasoningEffort: .low, modelID: "deepseek-v4-flash")
+        let chat = try ResponsesAPIModelProvider.chatCompletionsRequestBody(request: deepSeek.request, reasoningEffort: .high)
+        guard case .object(let chatFields) = try JSONDecoder().decode(JSONValue.self, from: chat) else { return XCTFail() }
+        XCTAssertEqual(chatFields["reasoning_effort"], .string("low"))
+        let legacy = try ModelFixture(thinkingMode: .enabled)
+        let old = try JSONDecoder().decode(JSONValue.self, from: legacy.request.authorizationPayload().data)
+        guard case .object(let oldRoot) = old, case .object(let oldGeneration)? = oldRoot["generation"] else { return XCTFail() }
+        XCTAssertNil(oldGeneration["reasoningEffort"], "Old authorization payloads retain their original fingerprint shape")
+    }
+
     func testGeneratePostsResponsesAndEmitsTextUsageCompletion() async throws {
         let responseJSON = """
         {"usage":{"input_tokens":12,"output_tokens":7},

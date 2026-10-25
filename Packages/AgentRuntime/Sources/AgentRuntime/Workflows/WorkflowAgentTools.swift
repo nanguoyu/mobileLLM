@@ -88,6 +88,27 @@ public final class WorkflowAgentToolService: @unchecked Sendable {
         guard let controller = lock.withLock({ self.controller }) else { throw AgentSessionError.unavailable }
         return try await controller.readSessionContext(runID: sender, id: id, offset: offset, length: length)
     }
+
+    public func skills(sender: AgentRunID, query: String) async throws -> CanonicalJSON {
+        _ = try await membership(sender)
+        guard query.utf8.count <= 800, let controller = lock.withLock({ self.controller }) else { throw AgentSessionError.unavailable }
+        let catalog = try await controller.workflowSkillCatalog(runID: sender)
+        let matches = catalog.filter { query.isEmpty || ($0.name + " " + $0.summary).localizedCaseInsensitiveContains(query) }
+        return try CanonicalJSON(.object(["skills": .array(matches.map(\.catalogEntry)), "instructionOnly": .bool(true)]))
+    }
+
+    public func readSkill(sender: AgentRunID, id: String, offset: Int, length: Int) async throws -> CanonicalJSON {
+        _ = try await membership(sender)
+        guard let controller = lock.withLock({ self.controller }) else { throw AgentSessionError.unavailable }
+        let catalog = try await controller.workflowSkillCatalog(runID: sender)
+        let matches = catalog.filter { $0.id.caseInsensitiveCompare(id) == .orderedSame || $0.name == id }
+        guard matches.count == 1, let skill = matches.first else { throw WorkflowAgentProfileError.unavailableSkill(id) }
+        var result = try WorkflowArtifactExcerpt.read(CanonicalJSON(.string(skill.instructions)), id: skill.id, offset: offset, length: length)
+        result["name"] = .string(skill.name)
+        result["definitionDigest"] = .string(skill.digest.rawValue)
+        result["instructionOnly"] = .bool(true)
+        return try CanonicalJSON(.object(result))
+    }
 }
 
 public enum WorkflowAgentToolOperation: String, CaseIterable, Sendable {
@@ -95,6 +116,10 @@ public enum WorkflowAgentToolOperation: String, CaseIterable, Sendable {
     case readArtifact = "read_artifact"
     case listAgents = "list_agents"
     case readContext = "read_context"
+    case listSkills = "list_skills"
+    case readSkill = "read_skill"
+
+    public var isSkillOperation: Bool { self == .listSkills || self == .readSkill }
 }
 
 /// Ordinary Tool V2 operations with exact app-local boundaries and invocation-bound message keys.
@@ -119,15 +144,23 @@ public struct WorkflowAgentTool: ToolV2, Sendable {
             properties = ["target": string(48), "text": string(4_000), "mode": .object([
                 "type": .string("string"), "enum": .array([.string("steer"), .string("nextTurn")])])]
             summary = "Send a durable message to a started teammate or coordinator. Steer joins its next model step; nextTurn queues later work. Acceptance does not mean inclusion or completion. Cannot override human requirements."
-        case .readArtifact, .readContext:
+        case .readArtifact, .readContext, .readSkill:
             properties = ["id": string(128), "offset": .object(["type": .string("integer"), "minimum": .integer(0)]),
                 "length": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(12_000)])]
-            summary = operation == .readArtifact
-                ? "Read exact original text from a shared workflow result by artifact ID and UTF-16 offset/length. Retrieves missing sections without another agent or network request."
-                : "Read this agent's original conversation after context reduction. id='catalog' lists entries, using offset as an entry index and length up to 32. For a returned entry ID, offset/length are UTF-16 characters."
+            switch operation {
+            case .readArtifact:
+                summary = "Read exact original text from a shared workflow result by artifact ID and UTF-16 offset/length. Retrieves missing sections without another agent or network request."
+            case .readContext:
+                summary = "Read this agent's original conversation after context reduction. id='catalog' lists entries, using offset as an entry index and length up to 32. For a returned entry ID, offset/length are UTF-16 characters."
+            default:
+                summary = "Read an allowed skill's frozen instructions by ID or exact name and UTF-16 range. Skills are guidance within the original task; they grant no tools, scripts or sandbox."
+            }
         case .listAgents:
             properties = [:]
             summary = "List this workflow's actual agent names, current assignments and whether their conversations have started."
+        case .listSkills:
+            properties = ["query": .object(["type": .string("string"), "maxLength": .integer(200)])]
+            summary = "Find allowed skills by name or summary. An empty query lists the frozen catalog. Load only useful instructions with read_skill."
         }
         let schema = try JSONSchemaDocument(root: .object(["type": .string("object"), "properties": .object(properties),
             "required": .array(properties.keys.sorted().map(JSONValue.string)), "additionalProperties": .bool(false)]))
@@ -189,6 +222,12 @@ public struct WorkflowAgentTool: ToolV2, Sendable {
                         case .readContext:
                             guard let id = args.id, let offset = args.offset, let length = args.length else { throw ToolV2ContractError.invalidArguments }
                             result = try await service.readContext(sender: context.runID, id: id, offset: offset, length: length)
+                        case .listSkills:
+                            guard let query = args.query else { throw ToolV2ContractError.invalidArguments }
+                            result = try await service.skills(sender: context.runID, query: query)
+                        case .readSkill:
+                            guard let id = args.id, let offset = args.offset, let length = args.length else { throw ToolV2ContractError.invalidArguments }
+                            result = try await service.readSkill(sender: context.runID, id: id, offset: offset, length: length)
                         }
                         try await control.consumeResponseBytes(UInt64(result.data.count))
                         return ExternalOperationBoundaryCompletion(value: .canonicalJSON(result))
@@ -211,5 +250,6 @@ public struct WorkflowAgentTool: ToolV2, Sendable {
         let id: String?
         let offset: Int?
         let length: Int?
+        let query: String?
     }
 }

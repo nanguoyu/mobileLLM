@@ -8,6 +8,22 @@ import XCTest
 // TEST-ID: AHT-CONTEXT-001
 // TEST-ID: AHT-CONTEXT-002
 final class ContextCompilerTests: XCTestCase {
+    func testVersionThreeKeepsSelectedSkillCompleteAsUserGuidanceOrFailsAdmission() throws {
+        let skill = try SkillInstructionContextSource(skillID: "proofreader", version: "1",
+            instructions: "Preserve every number. Do not invent citations. Explain any uncertainty.")
+        let snapshot = try minimalSnapshot(skills: [skill], conversation: [ConversationTurnContextSource(
+            messageID: MessageID(), revision: "old", role: .assistant, content: String(repeating: "Old answer. ", count: 1000))],
+            contextPolicyVersion: 3)
+        let full = try ContextCompiler().compile(snapshot, budget: wideBudget())
+        let required = full.manifest.sourceRecords.filter { [.baseSystem, .currentUser, .skill].contains($0.kind) }
+            .reduce(UInt64(0)) { $0 + $1.adoptedEstimatedTokens }
+        let exact = try ContextTokenBudget(maximumContextTokens: required + 16, reservedOutputTokens: 16, maximumToolSchemaTokens: 0)
+        let compiled = try ContextCompiler().compile(snapshot, budget: exact)
+        XCTAssertEqual(compiled.manifest.sourceRecords.first { $0.kind == .skill }?.disposition, .included)
+        XCTAssertTrue(compiled.messages.contains { $0.role == .user && $0.content.contains("Preserve every number") })
+        XCTAssertThrowsError(try ContextCompiler().compile(snapshot,
+            budget: ContextTokenBudget(maximumContextTokens: required + 15, reservedOutputTokens: 16, maximumToolSchemaTokens: 0)))
+    }
 
     func testCurrentToolObservationSurvivesBudgetPressureAheadOfBackgroundMemory() throws {
         let snapshot = try completeSnapshot()
@@ -496,7 +512,8 @@ final class ContextCompilerTests: XCTestCase {
         skills: [SkillInstructionContextSource] = [],
         conversation: [ConversationTurnContextSource] = [],
         currentAttachments: [ArtifactReference] = [],
-        tools: [AgentToolDescriptor] = []
+        tools: [AgentToolDescriptor] = [],
+        contextPolicyVersion: UInt32 = 1
     ) throws -> FrozenContextSnapshot {
         try FrozenContextSnapshot(
             runID: runID(),
@@ -514,7 +531,7 @@ final class ContextCompilerTests: XCTestCase {
             advertisedTools: tools,
             selectorID: "mobilellm.tool-selector",
             selectorPolicyVersion: 1,
-            contextPolicyVersion: 1,
+            contextPolicyVersion: contextPolicyVersion,
             approvalPolicyVersion: 1
         )
     }

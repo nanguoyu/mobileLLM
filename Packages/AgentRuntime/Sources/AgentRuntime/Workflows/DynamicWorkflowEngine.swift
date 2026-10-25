@@ -1244,7 +1244,7 @@ private actor DynamicWorkflowSession {
                 if case AgentContractError.budgetExceeded = error { classification = .budgetRelated }
                 else { classification = .permanent }
                 let failure = try AgentFailure(code: "workflow.child-admission",
-                    classification: classification, safeMessage: Self.sanitize(String(describing: error)),
+                    classification: classification, safeMessage: Self.sanitize((error as? LocalizedError)?.errorDescription ?? String(describing: error)),
                     retryAdvice: .never, externalEffect: .confirmedNone, requiredUserAction: .none,
                     redaction: RedactionMetadata(classification: .publicMetadata, policyVersion: 1))
                 _ = try await append([.agentCallSettled(callID: call.callID,

@@ -11,33 +11,40 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
         let model = try ExecutorTestModelDefinition(offset: offset)
         let descriptor = try WorkflowAgentTool.descriptor(.sendMessage)
         let reader = try WorkflowAgentTool.descriptor(.readContext)
+        let skillReader = try WorkflowAgentTool.descriptor(.readSkill)
         let invocationID = ToolInvocationID()
         let proposed = try ProposedToolCall(invocationID: invocationID, toolID: descriptor.id.logicalID,
             arguments: CanonicalJSON(.object(["target": .string("coordinator"), "text": .string("The source changed to fourteen days."), "mode": .string("steer")])))
         let readCall = try ProposedToolCall(invocationID: ToolInvocationID(), toolID: reader.id.logicalID,
             arguments: CanonicalJSON(.object(["id": .string("turn:" + ExecutorTestID.run(offset).description + ":user"),
                 "offset": .integer(0), "length": .integer(200)])))
+        let skill = try WorkflowSkillDefinition(id: "source-guidance", name: "Source guidance", summary: "Keep evidence",
+            instructions: "Preserve source URLs and distinguish missing evidence from a negative result.")
+        let skillCall = try ProposedToolCall(invocationID: ToolInvocationID(), toolID: skillReader.id.logicalID,
+            arguments: CanonicalJSON(.object(["id": .string(skill.id), "offset": .integer(0), "length": .integer(200)])))
         func outcome(_ action: AgentAction) throws -> AgentModelAttemptOutcome {
             .completed(try AgentModelCompletion(action: action, usage: modelUsage(input: 8, output: 3, milliseconds: 4, memory: 48)))
         }
         let provider = try SequencedModelOutcomeProvider(model: model, outcomes: [
             outcome(.finalAnswer(AgentAnswer(text: "Initial assignment"))), outcome(.callTools([proposed])),
-            outcome(.finalAnswer(AgentAnswer(text: "Sent the evidence"))), outcome(.callTools([readCall])),
+            outcome(.finalAnswer(AgentAnswer(text: "Sent the evidence"))), outcome(.callTools([readCall])), outcome(.callTools([skillCall])),
             outcome(.finalAnswer(AgentAnswer(text: "Used the received evidence")))])
-        let catalog = DeferredWorkflowToolCatalog(descriptors: [descriptor, reader])
+        let catalog = DeferredWorkflowToolCatalog(descriptors: [descriptor, reader, skillReader])
         let conversation = ExecutorTestID.conversation(offset)
         let authority = try AgentAuthorityScope(capabilities: AgentCapabilitySet([.localRead, .localWrite, AgentCapability(rawValue: "workflow.delegate")]),
             destinations: [WorkflowAgentTool.destination(conversation)], dataCategories: [WorkflowAgentTool.dataCategory])
-        let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model, toolDescriptors: [descriptor, reader],
+        let harness = try ExecutorTestHarness(offset: offset, provider: provider, model: model, toolDescriptors: [descriptor, reader, skillReader],
             tools: catalog, capabilityCeiling: RunCapabilityCeiling(authority: authority),
             availableToolCapabilities: AgentCapabilitySet([.localRead, .localWrite]),
-            explicitlyRequestedToolIDs: [descriptor.id.logicalID, reader.id.logicalID], provenance: AgentRequestProvenance(source: .workflow))
+            explicitlyRequestedToolIDs: [descriptor.id.logicalID, reader.id.logicalID, skillReader.id.logicalID],
+            provenance: AgentRequestProvenance(source: .workflow), skillCatalog: [skill])
         let root = harness.request
         let journal = InMemoryDynamicWorkflowJournal()
         let service = WorkflowAgentToolService(repository: harness.repository, journal: journal, values: InlineWorkflowValueStore())
         service.bind(harness.executor.controller)
         await catalog.install(try WorkflowAgentTool(operation: .sendMessage, service: service))
         await catalog.install(try WorkflowAgentTool(operation: .readContext, service: service))
+        await catalog.install(try WorkflowAgentTool(operation: .readSkill, service: service))
         let rootHandle = try await harness.executor.submit(root, commandID: ExecutorTestID.command(offset))
         _ = try await collectTerminalEvents(from: harness.executor.attach(to: rootHandle))
         let script = try WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1,
@@ -110,8 +117,10 @@ final class WorkflowAgentToolExecutionTests: XCTestCase {
             seedRunID: root.runID, senderRunID: childRunID)
         let continuedEvents = try await collectTerminalEvents(from: harness.executor.attach(to: continued))
         XCTAssertTrue(continuedEvents.contains { if case .toolOutcomeRecorded(let id, .completed) = $0.payload.event { return id == readCall.invocationID }; return false })
+        XCTAssertTrue(continuedEvents.contains { if case .toolOutcomeRecorded(let id, .completed) = $0.payload.event { return id == skillCall.invocationID }; return false })
         let requests = await provider.script.capturedRequests()
         XCTAssertTrue(requests.last!.messages.contains { $0.content.contains("The source changed to fourteen days.") })
+        XCTAssertTrue(requests.last!.messages.contains { $0.content.contains("Preserve source URLs and distinguish missing evidence") })
         let consumed = try await harness.repository.session(for: root.runID)
         XCTAssertEqual(consumed?.inclusions.count, 2)
         do { _ = try await service.list(sender: root.runID); XCTFail("Unbound root IDs do not grant tool membership") }

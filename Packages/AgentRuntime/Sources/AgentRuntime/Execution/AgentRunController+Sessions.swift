@@ -37,6 +37,12 @@ private struct PreparedAgentSessionActivation: Codable, Sendable {
 extension AgentRunController {
     var sessionJournal: (any AgentSessionJournaling)? { repository as? any AgentSessionJournaling }
 
+    public func workflowSkillCatalog(runID: AgentRunID) async throws -> [WorkflowSkillDefinition] {
+        guard let submission = try await repository.loadRunFacts(for: runID)?.submission else { throw AgentSessionError.unavailable }
+        let frozen = try await loadPayload(FrozenAgentRunInputs.self, reference: submission.inputSnapshot)
+        return frozen.skillCatalog ?? []
+    }
+
     /// Serializes the goal completion cut with message acceptance, including sessions not yet
     /// lazily registered. A message acknowledged before the cut must be included or block delivery.
     public func withSessionInputBarrier(runIDs: [AgentRunID],

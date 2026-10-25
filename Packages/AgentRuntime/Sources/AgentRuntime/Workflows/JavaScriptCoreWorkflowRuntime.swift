@@ -912,6 +912,13 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             let task = try object["task"].map {
                 try JSONDecoder().decode(WorkflowTaskDescriptorV1.self, from: CanonicalJSON($0).data)
             }
+            let profile = try object["profile"].flatMap { value -> WorkflowAgentProfileV1? in
+                if case .null = value { return nil }
+                guard case .object(let fields) = value, Set(fields.keys).isSubset(of: ["toolNames", "skillIDs", "reasoningEffort"]) else {
+                    throw WorkflowScriptRuntimeError.invalidAgentOptions("unsupported agent profile fields")
+                }
+                return try JSONDecoder().decode(WorkflowAgentProfileV1.self, from: CanonicalJSON(value).data)
+            }
             return try WorkflowAgentOptionsV1(
                 label: try optionalString(object["label"], field: "label"),
                 phase: try optionalString(object["phase"], field: "phase"),
@@ -922,7 +929,8 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
                 stallMilliseconds: stall,
                 maximumToolCalls: maximumToolCalls,
                 task: task,
-                sessionKey: try optionalString(object["session"], field: "session")
+                sessionKey: try optionalString(object["session"], field: "session"),
+                profile: profile
             )
         } catch {
             throw WorkflowScriptRuntimeError.invalidAgentOptions(Self.sanitize(String(describing: error)))

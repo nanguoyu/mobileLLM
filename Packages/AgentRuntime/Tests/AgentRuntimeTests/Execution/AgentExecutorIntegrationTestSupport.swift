@@ -172,7 +172,8 @@ struct ExecutorTestHarness {
         parallelToolBatchLimit: UInt16 = 1,
         localOnly: Bool = true,
         approvalMode: AgentApprovalMode = .ask,
-        conversation: [ConversationTurnContextSource] = []
+        conversation: [ConversationTurnContextSource] = [],
+        skillCatalog: [WorkflowSkillDefinition] = []
     ) throws {
         self.model = model
         let runID = ExecutorTestID.run(offset)
@@ -233,7 +234,8 @@ struct ExecutorTestHarness {
             availableToolCapabilities: availableToolCapabilities,
             explicitlyRequestedToolIDs: explicitlyRequestedToolIDs,
             contextPolicyVersion: 1,
-            approvalPolicyVersion: 1
+            approvalPolicyVersion: 1,
+            skillCatalog: skillCatalog
         )
 
         let unique = "\(offset)-\(UUID().uuidString)"

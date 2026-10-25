@@ -4,8 +4,8 @@
   "documentID": "AH-REQUIREMENTS-V1",
   "sourceSpecification": {
     "path": "spec.md",
-    "sha256": "68ae223ea1f0096ac960858de70f5ece7871c841cb59049403cc045b3a3ef70f",
-    "capturedAtUTC": "2026-10-24T18:18:13Z"
+    "sha256": "82624ab550af2ff72a3542b3c359cf373eae63d9006ded160f72ec72158e7b57",
+    "capturedAtUTC": "2026-10-25T19:10:36Z"
   },
   "requirements": [
     {
@@ -2242,6 +2242,37 @@
       ],
       "requiredEvidence": [
         "Atomic input admission, immutable history, steering and restart recovery through the production executor"
+      ]
+    },
+    {
+      "id": "AH-COLLAB-001",
+      "area": "subagents-workflows",
+      "title": "Durable collaboration and bounded goal continuation",
+      "statement": "New collaboration launches preserve agent sessions, attributed inboxes, exact dependency versions and cumulative authority/budgets. Goal completion cannot conceal required work or accepted input; continuation, context reduction and scoped profiles remain recoverable.",
+      "status": "active",
+      "riskTier": "P0",
+      "specAnchors": [
+        {
+          "section": "36",
+          "heading": "Event-driven workflow collaboration",
+          "lineStart": 2011,
+          "lineEnd": 2106
+        }
+      ],
+      "platforms": [
+        "swiftpm",
+        "ios"
+      ],
+      "verificationTiers": [
+        "pull-request",
+        "nightly"
+      ],
+      "testIDs": [
+        "AHT-DYNAMIC-001",
+        "AHT-SESSION-002"
+      ],
+      "requiredEvidence": [
+        "Shared-executor session and tool-boundary checks; event-driven dispatch and exact replay; task/goal completion guards; immutable original-context retrieval; scoped profile and skill checks."
       ]
     }
   ]

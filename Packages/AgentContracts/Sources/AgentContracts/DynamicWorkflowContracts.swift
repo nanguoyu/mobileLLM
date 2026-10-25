@@ -576,6 +576,7 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
     public let task: WorkflowTaskDescriptorV1?
     /// Stable agent identity inside this workflow, independent of its current task or activation.
     public let sessionKey: String?
+    public let profile: WorkflowAgentProfileV1?
 
     public init(
         label: String? = nil,
@@ -587,7 +588,8 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
         stallMilliseconds: UInt64? = nil,
         maximumToolCalls: UInt64? = nil,
         task: WorkflowTaskDescriptorV1? = nil,
-        sessionKey: String? = nil
+        sessionKey: String? = nil,
+        profile: WorkflowAgentProfileV1? = nil
     ) throws {
         guard label.map({
                   AgentWireValidation.isNonblankControlFree($0, maximumLength: 256)
@@ -616,6 +618,7 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
         self.maximumToolCalls = maximumToolCalls
         self.task = task
         self.sessionKey = sessionKey
+        self.profile = profile
     }
 
     public init(from decoder: Decoder) throws {
@@ -631,7 +634,8 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
                 stallMilliseconds: values.decodeIfPresent(UInt64.self, forKey: .stallMilliseconds),
                 maximumToolCalls: values.decodeIfPresent(UInt64.self, forKey: .maximumToolCalls),
                 task: values.decodeIfPresent(WorkflowTaskDescriptorV1.self, forKey: .task),
-                sessionKey: values.decodeIfPresent(String.self, forKey: .sessionKey)
+                sessionKey: values.decodeIfPresent(String.self, forKey: .sessionKey),
+                profile: values.decodeIfPresent(WorkflowAgentProfileV1.self, forKey: .profile)
             )
         } catch {
             throw DecodingError.dataCorrupted(.init(
@@ -651,6 +655,7 @@ public struct WorkflowAgentOptionsV1: Hashable, Codable, Sendable {
         if let requestedAgentType { object["requestedAgentType"] = .string(requestedAgentType) }
         if let maximumToolCalls { object["maximumToolCalls"] = .unsignedInteger(maximumToolCalls) }
         if let sessionKey { object["sessionKey"] = .string(sessionKey) }
+        if let profile { object["profileDigest"] = .string(profile.digest.rawValue) }
         if let task, let revision = task.expectedRevision {
             object["taskClaim"] = .object(["id": .string(task.taskID), "revision": .unsignedInteger(revision),
                 "inputs": .array(task.inputArtifactIDs.map(JSONValue.string)), "output": .string(task.outputArtifactID)])

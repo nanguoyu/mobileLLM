@@ -17,6 +17,7 @@ struct ModelFixture {
         features: AgentModelCapabilitySet = AgentModelCapabilitySet([.reasoning]),
         toolCallingMode: ModelToolCallingMode = .unavailable,
         thinkingMode: AgentModelThinkingMode = .automatic,
+        reasoningEffort: AgentModelReasoningEffort? = nil,
         advertisedTools: [AgentToolDescriptor] = [],
         messageArtifacts: [ArtifactReference] = [],
         requiredCapabilities: AgentModelCapabilitySet = AgentModelCapabilitySet([]),
@@ -96,7 +97,8 @@ struct ModelFixture {
                 repetitionPenalty: 1,
                 thinkingMode: thinkingMode,
                 seed: 7,
-                outputBudgetMode: outputBudgetMode
+                outputBudgetMode: outputBudgetMode,
+                reasoningEffort: reasoningEffort
             ),
             outputRequirement: outputRequirement
         )

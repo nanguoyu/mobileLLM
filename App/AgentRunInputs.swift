@@ -20,6 +20,8 @@ public struct AgentRunRequestSnapshot: Sendable {
     public let systemPrompt: String
     public let memoryFacts: [MemoryFact]
     public let activeSkill: Skill?
+    /// Built-in packs and the explicitly selected custom pack available to online agent tasks.
+    public let availableSkills: [Skill]
     public let model: LLMModel
     public let variant: LLMVariant
     public let weightsDirectory: URL
@@ -107,7 +109,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         onlineMaximumOutputTokens: Int?,
         approvalMode: AgentApprovalMode,
         onlineReasoningEffort: ReasoningEffort?,
-        deepSeekWebServiceID: String? = nil
+        deepSeekWebServiceID: String? = nil,
+        availableSkills: [Skill] = []
     ) {
         self.conversationID = conversationID
         self.userTurnID = userTurnID
@@ -117,6 +120,7 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.systemPrompt = systemPrompt
         self.memoryFacts = memoryFacts
         self.activeSkill = activeSkill
+        self.availableSkills = availableSkills
         self.model = model
         self.variant = variant
         self.weightsDirectory = weightsDirectory
@@ -198,7 +202,8 @@ extension AgentRunRequestSnapshot {
             onlineMaximumOutputTokens: onlineMaximumOutputTokens,
             approvalMode: approvalMode,
             onlineReasoningEffort: onlineReasoningEffort,
-            deepSeekWebServiceID: deepSeekWebServiceID
+            deepSeekWebServiceID: deepSeekWebServiceID,
+            availableSkills: availableSkills
         )
     }
 }
@@ -363,7 +368,8 @@ struct AppFrozenInputBuilder: Sendable {
             repetitionPenalty: snapshot.repetitionPenalty,
             thinkingMode: thinkingMode,
             seed: nil,
-            outputBudgetMode: outputBudget.mode
+            outputBudgetMode: outputBudget.mode,
+            reasoningEffort: online ? snapshot.onlineReasoningEffort.flatMap { AgentModelReasoningEffort(rawValue: $0.rawValue) } : nil
         )
 
         let baseSystem = try BaseSystemContextSource(
