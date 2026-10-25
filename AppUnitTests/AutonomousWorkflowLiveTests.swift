@@ -19,6 +19,19 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
     @MainActor func test15InteractiveCorrectionAndMessaging() async throws { try await evaluate(.correction) }
     @MainActor func test16OriginalContextAndLaterCorrection() async throws { try await evaluate(.longContext) }
 
+    @MainActor func test30ResumeRetainedPausedGoalWithItsOriginalBudget() async throws {
+        guard let path = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_RESUME_ROOT"],
+              let raw = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_RESUME_ID"], let id = WorkflowRunID(raw) else {
+            throw XCTSkip("An explicit retained evaluation and goal ID are required")
+        }
+        try await evaluate(.rollout, heldOut: true, resume: (URL(fileURLWithPath: path), id))
+    }
+
+    @MainActor func test31AffectedPlanningFamilyAfterArgumentRepair() async throws {
+        executionTimeAllowance = 3_600
+        for repetition in 1...3 { try await evaluate(.rollout, heldOut: true, repetition: repetition) }
+    }
+
     @MainActor func test20FrozenSixFamilyQualification() async throws {
         guard ProcessInfo.processInfo.environment["MOBILELLM_LIVE_WORKFLOWS"] == "1" else { throw XCTSkip("Explicit real-model opt-in required") }
         executionTimeAllowance = 21_600
@@ -84,7 +97,8 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
     }
 
     @MainActor
-    private func evaluate(_ task: WorkflowLiveCase, heldOut: Bool = false, repetition: Int = 1) async throws {
+    private func evaluate(_ task: WorkflowLiveCase, heldOut: Bool = false, repetition: Int = 1,
+                          resume: (root: URL, runID: WorkflowRunID)? = nil) async throws {
         guard ProcessInfo.processInfo.environment["MOBILELLM_LIVE_WORKFLOWS"] == "1" else {
             throw XCTSkip("Explicit opt-in required for real online workflow evaluation")
         }
@@ -95,6 +109,9 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             ?? FileManager.default.temporaryDirectory.appending(component:"mobilellm-live-evaluations")
         let root = outputBase.appending(component:task.rawValue+"-"+id.uuidString)
         try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
+        if let resume {
+            try FileManager.default.copyItem(at: resume.root.appending(component: "agent"), to: root.appending(component: "agent"))
+        }
         let serviceID = "live-evaluation"
         let model = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_MODEL"] ?? config.model
         let api = ResponsesAPIConfiguration(serviceID:serviceID,baseURL:config.baseURL,apiKey:config.apiKey)
@@ -103,12 +120,13 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             models:[LLMCatalog.bonsai8b], snapshot:{ _,_,_,_ in nil },
             onlineConfiguration:{ _ in api }, deepSeekAPIKey: { _ in config.apiKey }
         )
-        let runID = WorkflowRunID()
+        let runID = resume?.runID ?? WorkflowRunID()
         let started = Date()
         var answer = ""
         var failures:[String] = []
         let goal = task.goal(heldOut: heldOut)
         var amendmentID: MessageID?
+        var beforeResume: WorkflowRunProjectionV1?
         do {
             let snapshot = makeSnapshot(goal:goal,model:model,serviceID:serviceID,task:task,heldOut:heldOut)
             if task.usesCalculator {
@@ -117,8 +135,14 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                     throw LiveEvaluationError("Calculator capability is missing before model dispatch")
                 }
             }
-            _ = try await assembly.prepareCoordinatedWorkflow(snapshot:snapshot,runID:runID)
-            _ = try await assembly.dynamicWorkflows.approveAndStart(runID:runID,reuseScope:nil)
+            if resume != nil {
+                beforeResume = try await assembly.dynamicWorkflowJournal.loadProjection(for: runID)
+                guard beforeResume?.state == .paused else { throw LiveEvaluationError("Only an explicitly paused goal can resume") }
+                try await assembly.dynamicWorkflows.resume(runID: runID)
+            } else {
+                _ = try await assembly.prepareCoordinatedWorkflow(snapshot:snapshot,runID:runID)
+                _ = try await assembly.dynamicWorkflows.approveAndStart(runID:runID,reuseScope:nil)
+            }
             let deadline = Date().addingTimeInterval(900)
             var lastCount = -1
             while Date() < deadline {
@@ -145,6 +169,17 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             if let output = try await assembly.dynamicWorkflows.resolvedOutput(runID:runID),
                case .string(let text) = try JSONDecoder().decode(JSONValue.self,from:output.data) { answer = text }
             if projection.state != .completed { failures.append("Workflow state \(projection.state): \(projection.failure ?? projection.taskGraph?.reason ?? "no final output")") }
+            if let beforeResume {
+                if projection.launch.budget != beforeResume.launch.budget || projection.preparationUsage != beforeResume.preparationUsage {
+                    failures.append("Resume changed the original allowance or preparation accounting")
+                }
+                for (id, outcome) in beforeResume.outcomes where projection.outcomes[id] != outcome {
+                    failures.append("Resume replaced a settled outcome instead of preserving it")
+                }
+                for (id, handle) in beforeResume.submittedHandles where projection.submittedHandles[id] != handle {
+                    failures.append("Resume resubmitted an existing child with a different handle")
+                }
+            }
             if let object = try? JSONSerialization.jsonObject(with:Data(answer.utf8)) as? [String:Any] {
                 failures += try task.verify(object, heldOut: heldOut)
             } else { failures.append("Final answer is not the requested JSON artifact") }
@@ -180,7 +215,8 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                 "successfulToolCalls":trace.completedToolCalls,"workerWaves":trace.waves,"dependentWorkers":trace.dependencies,"distinctWorkerIDs":trace.workerIDs.sorted(),
                 "successfulCalculatorCalls":trace.completedCalculatorCalls,"successfulTools":trace.successfulToolNames,"originalContextReads":trace.originalContextReads,
                 "calls":trace.calls,"checksPassed":failures.isEmpty,"failures":failures,"answer":answer,
-                "intervention":task.amendment(heldOut:heldOut).map { "Scripted human amendment after first worker submission: " + $0 } ?? "Original task only. No corrective external prompts or model-output fixtures."
+                "intervention":resume != nil ? "Explicit resume of a retained paused goal, in a copy of its original journal and artifacts. No corrective prompt or answer supplied. Original allowance, preparation usage, settled outcomes and handles are checked unchanged."
+                    : task.amendment(heldOut:heldOut).map { "Scripted human amendment after first worker submission: " + $0 } ?? "Original task only. No corrective external prompts or model-output fixtures."
             ]
             try publish(evidence,root:root)
         } catch {
