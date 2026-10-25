@@ -69,6 +69,19 @@ The supervisor assigns work, passes results to dependent agents, and returns the
 Open the workflow card to follow tasks and their source results, review requests, or pause and resume
 work. Completed workflows remain available from the conversation menu.
 
+Use **Update goal** to change a requirement while work is running. The change is saved, delivered to
+active agents and carried into later tasks. The workspace shows dependencies, saved result versions
+and the shared budget.
+
+<p align="center">
+  <a href="assets/demo/goal-result.jpg"><img src="assets/demo/goal-update.gif" width="360" alt="Updating a running multi-agent task from fourteen to seven days of retention." /></a>
+  <a href="assets/demo/goal-result.jpg"><img src="assets/demo/goal-result.jpg" width="360" alt="The real final result adopts seven-day retention and preserves offline operation, restore and export." /></a>
+</p>
+
+This October 25 recording shows a human update during a real online run. The clip plays at 2× speed;
+the final result is a separate screenshot. The run completed in 114 seconds.
+[Original task, update and result](docs/evaluations/evidence/2026-10-25-live-goal-update.json).
+
 Open a task and choose **Message this agent** to update it while it works, or continue its
 conversation after the workflow finishes. The agent keeps its earlier context across app restarts.
 

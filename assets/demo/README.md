@@ -1,6 +1,6 @@
 # README captures
 
-Refreshed on 2026-10-24 from the redesigned mobileLLM UI on the iPhone 17 Simulator with iOS 27.
+Refreshed through 2026-10-25 from the redesigned mobileLLM UI on the iPhone 17 Simulator with iOS 27.
 The app used separate real stores for this demo. No fixed-response transport was enabled.
 
 | File | What it shows |
@@ -34,3 +34,11 @@ as specified above. These are interface demonstrations; task-quality evaluations
 
 To refresh, capture the real app with a separate demo conversation, check every frame for private
 content, and replace these files. Keep the provider, capture date, and playback speed accurate.
+
+The October 25 `goal-update.gif` is a continuous excerpt from seconds 15–53 of the original 326.8-second
+Simulator recording, played at 2× speed. It shows a live goal update, not a simulated response. The task
+completed in 113.919 seconds; later idle time in the recording is excluded. `goal-result.jpg` is the
+368 × 800 optimized screenshot returned by XcodeBuildMCP after opening the actual final result.
+The earlier PNG captures retain their original resolution. The runtime was `998b944`, with response
+fixtures disabled. The failed earlier attempt and the successful fresh launch are both documented in
+[the public evidence](../../docs/evaluations/evidence/2026-10-25-live-goal-update.json).

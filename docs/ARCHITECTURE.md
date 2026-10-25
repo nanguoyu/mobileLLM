@@ -133,21 +133,24 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   The `/workflow` marker may appear anywhere in the message; the remaining text is the goal. `WorkflowLauncher`
   (App) calls the shared `AgentRuntimeAssembly.prepareCoordinatedWorkflow` entry point, also used by
   opt-in native evaluation. It first submits a durable, schema-constrained supervisor decision. It saves the exact
-  `CoordinatedWorkflow` program with the original goal, decision and enabled tool IDs in immutable args.
+  `CollaborativeWorkflow` v5 program with the original goal, decision, enabled tool IDs and allowed skill catalog in immutable args.
   The supervisor delegates work, reads stored results, continues logical tasks and returns the answer.
   Host delegation remains available when workers have no external tools; explicit user stage requirements
   cannot be replaced by a direct answer solely to minimize agent count.
-  The coordinator's `suppressModelTools` flag hides its own tools while retaining the conversation's
-  catalog, policy and selected web-service account for children. Recovery uses that frozen catalog.
+  The initial planner's `suppressModelTools` flag preserves its frozen catalog for delegation without
+  calling tools during preparation. Later coordinator activations can read shared originals and send
+  scoped team messages. Per-agent profiles narrow the frozen tools, skills and reasoning policy.
+  Canonical local writes remain unavailable without an isolated execution provider; team inbox
+  admission uses the separate `agent.message` capability. Recovery uses the original frozen inputs.
   `DynamicWorkflowScriptAnalyzer` still validates the program and accepts archived authored scripts
   under the same V1 vocabulary. The
   accepted script is content-addressed, journaled, and digest-bound to a launch approval (`/workflow` itself
   is the launch intent, so no extra Once/Always/Deny prompt), then `DynamicWorkflowEngine` runs it in
   `JavaScriptCoreWorkflowRuntime`: the script sees only `agent(prompt, options)`, `parallel(thunks)`,
-  `pipeline(items, ...stages)`, `workflow(name, args)` (one nesting level, digest-pinned saved scripts),
+  `spawn`, `waitAny`, `collaborate`, `pipeline(items, ...stages)`, `workflow(name, args)` (one nesting level, digest-pinned saved scripts),
   `phase`, `log`, `serialize`, `unique`, `webEvidence`, `args`, and `budget`. It has no filesystem, network, tool, model, secret,
   clock, or RNG of its own — every `agent()` call becomes an ordinary attenuated subagent run whose tool
-  policy is the conversation's frozen policy verbatim. The realm is a logical boundary, not an OS sandbox
+  policy is a permitted subset of the conversation's frozen policy. The realm is a logical boundary, not an OS sandbox
   (spec §34.3). Execution is event-sourced in `SQLiteDynamicWorkflowJournal` (hash-chained, CAS appends);
   a rolling per-call prefix key lets a relaunched run reuse the committed prefix (Claude Code's
   started-order rule) and re-collect submitted-but-unsettled children without respawning them; a fair FIFO
@@ -164,13 +167,18 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   design — is retained for `WorkflowLauncher.resume` of legacy summaries that carry a `WorkflowPlan`, and
   for `MultiAgentWorkflowIntegrationTests`. New launches never use it.
 
-`CoordinatedWorkflow` v4 sends actual worker results to the supervisor and records bounded task
-descriptors alongside each invocation. Long outputs have bounded
-UTF-8 previews with explicit offsets; `read` returns original ranges without another worker or network
-request. Exact `inputRanges` can pass an original middle or tail section to a dependent worker.
-Previously delivered pages stay in the supervisor context alongside its working notes; newest
-pages take priority only when the bounded context fills. It can query recorded web evidence
-through the existing read-only host function. All evidence for a wave is selected before child dispatch.
+The v5 coordinator runs a versioned task graph. Ready consumers start after their own source settles,
+while unrelated siblings may continue. Each agent has a persistent session whose activations use the
+same cumulative goal budget, including initial planning. Durable input distinguishes acceptance from
+inclusion. Late input for a completed agent reopens its task, retains the prior artifact and invalidates
+its consumers. A goal cannot finish with required tasks, pending messages or uncertain effects unresolved.
+
+Bounded context retains the original user goal, amendments, current graph and recent work. Exact earlier
+session content remains available through `agent.read_context`. Shared results and their original tool
+observations are readable through `agent.read_artifact`, with producer identity, offsets and digests.
+Reading evidence does not repeat a model or network call. The v4 source generator now exists only as a
+compatibility test fixture; archived workflows replay their journaled source. The unused fixed six-stage
+fallback generator was removed.
 
 A repeated task ID continues a logical task with its recorded assignments, outputs and selected web
 receipts. Each invocation remains an ordinary durable child run. This is explicit context continuation,

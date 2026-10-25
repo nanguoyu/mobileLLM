@@ -1,0 +1,157 @@
+{
+  "runtimeRevision": "998b944",
+  "provider": "api.deepseek.com",
+  "model": "deepseek-v4-flash",
+  "environment": "iPhone 17 / iOS 27 Simulator, production UI, Safe preset, Medium effort; response fixtures disabled",
+  "goal": "Design an offline notes app. Use separate storage and sync agents, then an integration agent using both results, followed by an independent reviewer. Keep deleted notes for 14 days. Include restore and export. No web research or code execution. Return a concise plan that states the retention period.",
+  "amendments": [
+    {
+      "text": "Change deleted-note retention from 14 days to 7 days. Keep the other requirements and decisions. Apply this correction to the final plan.",
+      "acceptedAt": 1792965875839
+    }
+  ],
+  "state": "completed",
+  "elapsedSeconds": 113.919,
+  "usage": {
+    "elapsedMilliseconds": 113919,
+    "inputTokens": 127635,
+    "outputTokens": 23060,
+    "subagentCount": 4,
+    "toolInvocationCount": 6
+  },
+  "agents": [
+    {
+      "ordinal": 1,
+      "agent": "storage-agent",
+      "role": "workflow-worker",
+      "status": "completed",
+      "task": {
+        "expectedRevision": 1,
+        "goalAmendmentCount": 0,
+        "inputArtifactIDs": [],
+        "instruction": "Design the local storage layer for an offline-first notes app. Cover: on-device database/schema (notes, note bodies, tags, attachments metadata), plain-text/markdown body format, and a soft-delete model that keeps deleted notes for 14 days before permanent purge. Specify the deleted_at field, how the 14-day window is enforced (purge on app launch and on a periodic check, no background daemon required), and the restore path that un-deletes a note within the window. Also specify export: a plain-file/Markdown+JSON export bundle written to a user-chosen local folder, and a full-backup export including soft-deleted notes. State clearly that retention is 14 days. Do NOT do web research and do NOT execute code. Return a concise, structured design (headings + short bullets), under 500 words.",
+        "outputArtifactID": "t1-storage:1",
+        "taskID": "t1-storage"
+      }
+    },
+    {
+      "ordinal": 2,
+      "agent": "sync-agent",
+      "role": "workflow-worker",
+      "status": "completed",
+      "task": {
+        "expectedRevision": 1,
+        "goalAmendmentCount": 0,
+        "inputArtifactIDs": [],
+        "instruction": "Design the sync layer for an offline-first notes app whose primary storage is local. Cover: local-first write path with an outbox/change-log, conflict handling (per-note last-writer-wins with field-level merge where safe, plus conflict copies when both sides edited the body), tombstone propagation for deletions so a note deleted on one device is deleted on peers, and how tombstones interact with a 14-day soft-delete retention window (tombstone carries deleted_at; peers must not resurrect a note whose 14-day window is still open, and purge only after 14 days). Note that sync is optional and the app must be fully usable with sync disabled or permanently offline. Do NOT do web research and do NOT execute code. Return a concise, structured design (headings + short bullets), under 500 words.",
+        "outputArtifactID": "t2-sync:1",
+        "taskID": "t2-sync"
+      }
+    },
+    {
+      "ordinal": 3,
+      "agent": "coordinator",
+      "role": "workflow-supervisor",
+      "status": "completed",
+      "task": null
+    },
+    {
+      "ordinal": 4,
+      "agent": "integration-agent",
+      "role": "workflow-worker",
+      "status": "completed",
+      "task": {
+        "expectedRevision": 1,
+        "goalAmendmentCount": 0,
+        "inputArtifactIDs": [
+          "t1-storage:1",
+          "t2-sync:1"
+        ],
+        "instruction": "Merge the storage design and the sync design you receive into one coherent plan for an offline-first notes app. Resolve any contradictions explicitly (especially: who owns the 14-day soft-delete timer, how tombstones and the local purge job agree, and how restore interacts with an already-synced deletion). Produce the final plan with these sections: Overview, Local storage, Soft delete and 14-day retention, Restore, Export, Sync, Conflict and tombstone handling, UI surface, Edge cases, Out of scope. Keep it concise: headings plus short bullets, under 700 words. The plan must state the retention period as 14 days, and must include both restore and export. No web research, no code execution.",
+        "outputArtifactID": "t3-integration:1",
+        "taskID": "t3-integration"
+      }
+    },
+    {
+      "ordinal": 5,
+      "agent": "coordinator",
+      "role": "workflow-supervisor",
+      "status": "completed",
+      "task": null
+    },
+    {
+      "ordinal": 6,
+      "agent": "reviewer",
+      "role": "workflow-worker",
+      "status": "completed",
+      "task": {
+        "expectedRevision": 1,
+        "goalAmendmentCount": 1,
+        "inputArtifactIDs": [
+          "t3-integration:1"
+        ],
+        "instruction": "Independently review the integrated plan you receive. Check it against the original requirements: (1) separate storage and sync concerns clearly represented, (2) deleted notes retained exactly 14 days, stated explicitly, (3) restore within the retention window is covered, (4) export is covered, (5) fully offline usable with no network dependency, (6) no web research or code execution assumed. Also check internal consistency between the deletion tombstone and the purge job. Return: a short verdict (pass / pass with fixes), a numbered list of concrete required fixes if any, and then the final corrected plan text ready to hand to the user (concise, under 700 words, retention period stated as 14 days).",
+        "outputArtifactID": "t4-review:1",
+        "taskID": "t4-review"
+      }
+    },
+    {
+      "ordinal": 7,
+      "agent": "coordinator",
+      "role": "workflow-supervisor",
+      "status": "completed",
+      "task": null
+    },
+    {
+      "ordinal": 8,
+      "agent": "coordinator",
+      "role": "workflow-supervisor",
+      "status": "completed",
+      "task": null
+    }
+  ],
+  "goalTaskStates": [
+    {
+      "id": "t1-storage",
+      "agent": "storage-agent",
+      "state": "completed",
+      "dependencies": [],
+      "revision": 3
+    },
+    {
+      "id": "t2-sync",
+      "agent": "sync-agent",
+      "state": "completed",
+      "dependencies": [],
+      "revision": 3
+    },
+    {
+      "id": "t3-integration",
+      "agent": "integration-agent",
+      "state": "completed",
+      "dependencies": [
+        "t1-storage",
+        "t2-sync"
+      ],
+      "revision": 3
+    },
+    {
+      "id": "t4-review",
+      "agent": "reviewer",
+      "state": "completed",
+      "dependencies": [
+        "t3-integration"
+      ],
+      "revision": 3
+    }
+  ],
+  "pendingInputsAtCompletion": 0,
+  "answer": "# Offline-First Notes App — Plan\n\n**Retention: deleted notes are kept for exactly 7 days, then purged irreversibly.** (This supersedes the original 14-day figure per your amendment.)\n\n## Overview\nLocal SQLite is the source of truth; sync is optional and may stay off forever. Create, edit, delete, restore and export all work with sync disabled.\n\n## Storage layer (separate agent)\n- SQLite in app-private storage; attachments as files on disk, metadata rows only.\n- Tables: `notes` (id, title, body_format, created_at, updated_at, deleted_at, rev), `note_bodies`, `tags`, `note_tags`, `attachments`, `purge_markers` (note_id, purged_at).\n- Indices on `notes(deleted_at)`, `notes(updated_at)`, `note_tags(tag_id)`.\n- One repository module owns all writes; no network calls in this layer. Bodies stored verbatim as UTF-8 (`markdown` | `plaintext`) so exports are byte-faithful.\n\n## Soft delete and 7-day retention\n- Delete sets `deleted_at = now()` (UTC ms) on note and attachments; nothing is removed. Default queries filter `deleted_at IS NULL`.\n- **Storage owns the timer.** Purge rule: rows/files with `deleted_at <= now() − 7 days`, executed transactionally across note row, body, tag links, attachment rows and files, and outbox entries.\n- Sweep runs on launch/foreground, hourly while open, and after any delete/restore; idempotent and resumable, no background daemon.\n- On purge, write a `purge_marker` kept **permanently** (id-only), distinct from tombstones; stale upserts for that `note_id` are always rejected.\n\n## Restore\n- Trash view lists deleted notes with days remaining (`7 − elapsed`, rounded up).\n- Allowed only while `now − deleted_at < 7 days` **and** no purge marker exists locally or from a peer.\n- Sets `deleted_at = NULL`, bumps `rev`/`updated_at`, emits a `restore` op with a newer HLC.\n\n## Export\n- **Bundle A — visible notes only:** one `.md` per note, `manifest.json` (id, title, tags, timestamps, attachment refs), `attachments/`; written to a temp dir then moved atomically.\n- **Bundle B — full backup:** same layout plus `trash/`, `deleted_at` in manifest, tombstones and version metadata; labeled as containing deleted items. No raw DB dump.\n- Export reads from a snapshot to avoid tearing.\n\n## Sync layer (separate agent)\n- Write commits locally, then appends to outbox: `{op_id, device_id, note_id, type: upsert|delete|restore|purge, changed_fields, hlc, base_version}`.\n- `op_id` makes push idempotent; receiver dedupes and applies in HLC order, `device_id` as tiebreak.\n- Background drain with backoff, cursor-based pull, batched push; sync failure never rolls back local state.\n- Compaction never drops unacked `delete`/`restore`/`purge` ops.\n\n## Conflicts and tombstones\n- Metadata: per-note last-writer-wins via HLC + `device_id`; disjoint field edits merge; both-sides body edit → winner becomes the note, loser kept as a linked conflict copy.\n- Peers soft-delete on tombstone receipt, never hard-delete. Incoming upsert with `hlc <= tombstone.hlc` is discarded.\n- Tombstones are retained for the same 7 days, windowed from the tombstone's own `deleted_at` (deleting device's clock), never local receipt time; re-broadcast each sync until purge.\n- Purge emits a sync `purge` op so peers drop the record and store a permanent marker.\n\n## UI surface\nNote list (active only), editor, trash view with countdown, export sheet (A/B), sync status with explicit \"sync off\" indicator, conflict-copy badge.\n\n## Edge cases\nPurge racing restore: transactional, first commit wins, restore fails with a clear message. Device offline past 7 days: receives tombstone then purge, or is blocked by the permanent marker. Restore then delete again: new `deleted_at`, window restarts. Orphaned attachment from a failed write: removed by the sweep.\n\n## Out of scope\nServer accounts, sharing, key management, web/desktop clients, rich text, interactive import-merge UI.\n\n---\n**How this was produced:** a storage agent and a sync agent worked in parallel, an integration agent merged both results (resolving who owns the deletion timer and how tombstones interact with purge), and an independent reviewer audited the merged plan. The reviewer returned *pass with fixes* and flagged six defects — the residual \"14\" in the changelog, an unpurged resurrection window, restore not checking peer purge markers, unsafe outbox compaction, under-specified purge scope, and an undefined DB-dump option. All six are corrected above. No web research or code execution was used.",
+  "intervention": "Human update entered in the actual Update goal form while the original work was active. No intermediate answer or solution was supplied.",
+  "earlierFailedAttempt": {
+    "initialRevision": "b7094e3",
+    "failure": "Team message advertised but local.write removed from the child ceiling.",
+    "resumeRevision": "063707b",
+    "resumeFailure": "isolationRequirementMismatch after retaining local.write. The failed goal remains in history; the successful attempt is a new launch after introducing agent.message authority."
+  }
+}
