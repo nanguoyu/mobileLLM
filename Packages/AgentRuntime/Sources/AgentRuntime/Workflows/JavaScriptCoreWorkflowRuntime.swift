@@ -186,13 +186,14 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         let budgetSpent: @convention(block) () -> Double = { [host] in
             Double(host.budget().spentOutputTokens)
         }
-        let startAgent: @convention(block) (Int32, Int32, String, String) -> Void = {
-            [weak self] requestID, sequence, prompt, optionsJSON in
+        let startAgent: @convention(block) (Int32, Int32, String, String, Bool) -> Void = {
+            [weak self] requestID, sequence, prompt, optionsJSON, detached in
             self?.startAgent(
                 requestID: requestID,
                 sequence: sequence,
                 prompt: prompt,
-                optionsJSON: optionsJSON
+                optionsJSON: optionsJSON,
+                detached: detached
             )
         }
         let startWorkflow: @convention(block) (Int32, String, String) -> Void = {
@@ -204,6 +205,9 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         }
         let startBudgetSnapshot: @convention(block) (Int32) -> Void = { [weak self] requestID in
             self?.startBudgetSnapshot(requestID: requestID)
+        }
+        let startWait: @convention(block) (Int32, Int32, String) -> Void = { [weak self] requestID, index, ordinals in
+            self?.startWait(requestID: requestID, index: index, ordinals: ordinals)
         }
         let finished: @convention(block) (Bool, String) -> Void = { [weak self] succeeded, payload in
             self?.scriptFinished(succeeded: succeeded, payload: payload)
@@ -224,12 +228,13 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         context.setObject(startWorkflow, forKeyedSubscript: "__mllmStartWorkflow" as NSString)
         context.setObject(startEvidence, forKeyedSubscript: "__mllmStartEvidence" as NSString)
         context.setObject(startBudgetSnapshot, forKeyedSubscript: "__mllmStartBudgetSnapshot" as NSString)
+        context.setObject(startWait, forKeyedSubscript: "__mllmStartWait" as NSString)
         context.setObject(finished, forKeyedSubscript: "__mllmFinished" as NSString)
     }
 
     private func userFunctionSource() -> String {
         """
-        (async function(agent, parallel, pipeline, workflow, phase, log, serialize, unique, webEvidence, args, budget, console,
+        (async function(agent, parallel, pipeline, workflow, phase, log, serialize, unique, webEvidence, args, budget, console, spawn, waitAny,
                         __workflowCheckpoint) {
         'use strict';
         \(script.instrumentedSource)
@@ -255,12 +260,13 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
           const __startWorkflowNative = globalThis.__mllmStartWorkflow;
           const __startEvidenceNative = globalThis.__mllmStartEvidence;
           const __startBudgetSnapshotNative = globalThis.__mllmStartBudgetSnapshot;
+          const __startWaitNative = globalThis.__mllmStartWait;
           const __finishedNative = globalThis.__mllmFinished;
           const __userFunction = globalThis.__mllmUserFunction;
           for (const __name of ['__mllmCheckpoint','__mllmStopCode','__mllmPhase','__mllmLog',
             '__mllmCollectionAllowed','__mllmSerializedEstimateAllowed','__mllmBudgetTotal','__mllmStartEvidence',
             '__mllmBudgetSpent','__mllmStartAgent','__mllmStartWorkflow','__mllmFinished',
-            '__mllmUserFunction']) { try { delete globalThis[__name]; } catch (_) {} }
+            '__mllmUserFunction','__mllmStartBudgetSnapshot','__mllmStartWait']) { try { delete globalThis[__name]; } catch (_) {} }
 
           const __RealJSON = JSON;
           const __RealJSONParse = __RealJSON.parse.bind(__RealJSON);
@@ -384,7 +390,29 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             }
             const effective = { ...options };
             if (effective.phase === undefined && __currentPhase !== undefined) effective.phase = __currentPhase;
-            return __request(__startAgentNative, [__agentSequence++, prompt, __stringify(effective)]);
+            return __request(__startAgentNative, [__agentSequence++, prompt, __stringify(effective), false]);
+          };
+          const __spawned = new __RealMap();
+          let __waitSequence = 1;
+          let __waiting = false;
+          const spawn = (prompt, options = {}) => {
+            if (typeof prompt !== 'string' || prompt.trim().length === 0) throw new Error('spawn requires a prompt');
+            const sequence = __agentSequence++;
+            const effective = { ...options };
+            if (effective.phase === undefined && __currentPhase !== undefined) effective.phase = __currentPhase;
+            __spawned.set(sequence, true);
+            __request(__startAgentNative, [sequence, prompt, __stringify(effective), true]).catch(() => null);
+            return sequence;
+          };
+          const waitAny = handles => {
+            if (__waiting || !Array.isArray(handles) || handles.length === 0 || !__collectionAllowedNative(handles.length)
+                || handles.some(h => !__spawned.has(h))) throw new Error('waitAny requires outstanding handles and one active wait');
+            __waiting = true;
+            return __request(__startWaitNative, [__waitSequence++, __stringify(handles)]).then(result => {
+              __waiting = false;
+              __spawned.delete(result.handle);
+              return result;
+            }, error => { __waiting = false; throw error; });
           };
           const parallel = thunks => {
             if (!Array.isArray(thunks) || !__collectionAllowedNative(thunks.length)) {
@@ -522,7 +550,7 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             try { __finishedNative(true, __stringify(value === undefined ? null : value)); }
             catch (error) { __finishedNative(false, __safeMessage(error)); }
           };
-          __userFunction(agent, parallel, pipeline, workflow, phase, log, serialize, unique, webEvidence, args, budget, console,
+          __userFunction(agent, parallel, pipeline, workflow, phase, log, serialize, unique, webEvidence, args, budget, console, spawn, waitAny,
                          __checkpoint).then(
             __finishSuccess,
             error => __finishedNative(false, __safeMessage(error))
@@ -532,7 +560,7 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
         """
     }
 
-    private func startAgent(requestID: Int32, sequence: Int32, prompt: String, optionsJSON: String) {
+    private func startAgent(requestID: Int32, sequence: Int32, prompt: String, optionsJSON: String, detached: Bool) {
         guard pendingTasks[requestID] == nil, !isCompleted else { return }
         let task = Task { [weak self, host] in
             guard let self else { return }
@@ -551,7 +579,8 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
                 let result = try await host.agent(WorkflowAgentInvocation(
                     sequence: UInt32(sequence),
                     prompt: canonicalPrompt,
-                    options: options
+                    options: options,
+                    deliversOnWait: detached
                 ))
                 guard !Task.isCancelled else { throw CancellationError() }
                 switch result {
@@ -580,6 +609,24 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             }
         }
         pendingTasks[requestID] = task
+    }
+
+    private func startWait(requestID: Int32, index: Int32, ordinals: String) {
+        guard pendingTasks[requestID] == nil, !isCompleted else { return }
+        pendingTasks[requestID] = Task { [weak self, host] in
+            guard let self else { return }
+            do {
+                guard index > 0 else { throw WorkflowScriptRuntimeError.invalidArguments("wait index") }
+                let handles = try JSONDecoder().decode([UInt32].self, from: Data(ordinals.utf8))
+                let result = try await host.waitAny(UInt32(index), handles)
+                try Task.checkCancellation()
+                try resolve(requestID: requestID, value: result)
+            } catch is CancellationError {
+                reject(requestID: requestID, error: .cancelled, fatal: true)
+            } catch {
+                reject(requestID: requestID, error: .hostFailure(Self.sanitize(String(describing: error))), fatal: true)
+            }
+        }
     }
 
     private func startBudgetSnapshot(requestID: Int32) {

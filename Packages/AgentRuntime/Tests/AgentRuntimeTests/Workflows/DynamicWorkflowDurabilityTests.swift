@@ -8,6 +8,75 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowDurabilityTests: XCTestCase {
+    func testWaitAnyStartsDependentWorkBeforeUnrelatedSiblingFinishes() async throws {
+        let fixture = try makeFixture(body: """
+        const slow = spawn('slow');
+        const fast = spawn('fast');
+        const first = await waitAny([slow, fast]);
+        const dependent = spawn('dependent on ' + first.value);
+        const second = await waitAny([slow, dependent]);
+        await waitAny([slow, dependent].filter(h => h !== second.handle));
+        return first.value;
+        """)
+        let spawner = WorkflowDependencySpawner()
+        let journal = InMemoryDynamicWorkflowJournal()
+        let engine = DynamicWorkflowEngine(journal: journal, runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        let result: CanonicalJSON
+        do { result = try await engine.runAndWait(runID: fixture.launch.runID) }
+        catch {
+            XCTFail("\(error); dispatches: \(await spawner.starts)")
+            throw error
+        }
+        XCTAssertEqual(try decode(result), .string("fast"))
+        let starts = await spawner.starts
+        XCTAssertEqual(starts, ["slow", "fast", "dependent on fast"])
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(projection?.waits.count, 3)
+        XCTAssertEqual(projection?.waits.first?.selected, projection?.calls[1].callID)
+    }
+
+    func testWaitSelectionReplaysOriginalChoiceAndDoesNotLeakOtherCompletedResults() async throws {
+        let fixture = try makeFixture(body: """
+        const a = spawn('a'); const b = spawn('b');
+        const first = await waitAny([a,b]);
+        const accounting = await budget.snapshot();
+        const last = await waitAny([a,b].filter(h => h !== first.handle));
+        return [first.value, accounting.consumed.toolCalls, last.status];
+        """)
+        let journal = InMemoryDynamicWorkflowJournal()
+        try await journal.saveScript(fixture.saved)
+        var events: [WorkflowRunEventV1] = []
+        try appendEvent(.created(fixture.launch), runID: fixture.launch.runID, to: &events)
+        try appendEvent(.launchApproved(ApprovalID()), runID: fixture.launch.runID, to: &events)
+        try appendEvent(.stateChanged(from: .waitingForLaunchApproval, to: .queued, reason: nil), runID: fixture.launch.runID, to: &events)
+        try appendEvent(.stateChanged(from: .queued, to: .running, reason: nil), runID: fixture.launch.runID, to: &events)
+        let cursor = try WorkflowReplayCursor(launch: fixture.launch)
+        var calls: [WorkflowAgentCallV1] = []
+        for prompt in ["a", "b"] {
+            guard case .execute(let call) = try await cursor.next(prompt: prompt, options: WorkflowAgentOptionsV1()) else { return XCTFail() }
+            calls.append(call)
+            try appendEvent(.agentCallPrepared(call), runID: fixture.launch.runID, to: &events)
+        }
+        try appendEvent(.agentCallSettled(callID: calls[1].callID, outcome: .completed(value: .inline(try CanonicalJSON(.string("b"))),
+            usage: AgentUsage(quantities: BudgetQuantities([.toolInvocations: 1])))), runID: fixture.launch.runID, to: &events)
+        try appendEvent(.waitSelected(try WorkflowWaitSelection(index: 1, candidates: calls.map(\.callID), selected: calls[1].callID)),
+            runID: fixture.launch.runID, to: &events)
+        try appendEvent(.agentCallSettled(callID: calls[0].callID, outcome: .unavailable(reason: "missing provider",
+            usage: AgentUsage(quantities: BudgetQuantities([.toolInvocations: 3])))), runID: fixture.launch.runID, to: &events)
+        _ = try await journal.append(WorkflowEventAppendRequestV1(runID: fixture.launch.runID,
+            expectedSequence: 0, expectedDigest: nil, events: events))
+        let spawner = WorkflowFakeSpawner()
+        let engine = DynamicWorkflowEngine(journal: journal, runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        let result = try await engine.runAndWait(runID: fixture.launch.runID)
+        XCTAssertEqual(try decode(result), .array([.string("b"), .integer(1), .string("unavailable")]))
+        let counts = await spawner.counts()
+        XCTAssertEqual(counts.spawn, 0)
+    }
+
     func testShrinkingAdmissionWaitsForReservedCapacityButNotTrueExhaustion() async throws {
         let fixture = try makeFixture(body: "return null;")
         let created = try event(runID: fixture.launch.runID, sequence: 1, previous: nil, kind: .created(fixture.launch))
@@ -520,6 +589,33 @@ private actor WorkflowFakeSpawner: SubagentSpawning {
     }
 
     func counts() -> (spawn: Int, collect: Int) { (spawnCount, collectCount) }
+}
+
+private actor WorkflowDependencySpawner: SubagentSpawning {
+    private var requests: [AgentExecutionHandleID: SubagentSpawnRequest] = [:]
+    private var slowWaiter: CheckedContinuation<Void, Never>?
+    private var dependentStarted = false
+    private(set) var starts: [String] = []
+
+    func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID {
+        starts.append(request.instruction)
+        if request.instruction.hasPrefix("dependent") {
+            dependentStarted = true
+            slowWaiter?.resume(); slowWaiter = nil
+        }
+        let handle = AgentExecutionHandleID()
+        requests[handle] = request
+        return handle
+    }
+
+    func collect(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult {
+        let request = requests[handleID]!
+        if request.instruction == "slow", !dependentStarted {
+            await withCheckedContinuation { slowWaiter = $0 }
+        }
+        return SubagentResult(runID: request.childRunID, handleID: handleID,
+            outcome: .completed(answer: try AgentAnswer(text: request.instruction), usage: .zero))
+    }
 }
 
 private func workflowChildBudget(parent: AgentBudget) throws -> AgentBudget {

@@ -737,6 +737,7 @@ public enum WorkflowRunEventKindV1: Hashable, Codable, Sendable {
     case agentCallPrepared(WorkflowAgentCallV1)
     case agentChildSubmitted(callID: WorkflowAgentCallID, handleID: AgentExecutionHandleID)
     case agentCallSettled(callID: WorkflowAgentCallID, outcome: WorkflowAgentOutcomeV1)
+    case waitSelected(WorkflowWaitSelection)
     case agentRestartRequested(callID: WorkflowAgentCallID)
     case usageCommitted(AgentUsage)
     case reconciliationRequired(callID: WorkflowAgentCallID?, reason: String)

@@ -33,7 +33,7 @@ public actor WorkflowReplayCursor {
         previousKey = try Self.seed(for: launch)
     }
 
-    public func next(prompt: String, options: WorkflowAgentOptionsV1) throws -> WorkflowReplayDecision {
+    public func next(prompt: String, options: WorkflowAgentOptionsV1, reuseSettledFailures: Bool = false) throws -> WorkflowReplayDecision {
         guard nextOrdinal > 0 else { throw WorkflowScriptRuntimeError.internalInvariant("workflow ordinal overflow") }
         let promptDigest = StableDigest.fingerprint(
             domain: "dynamic-workflow-agent-prompt.v1",
@@ -54,7 +54,7 @@ public actor WorkflowReplayCursor {
            prior.prefixKey == prefixKey,
            !invalidatedCalls.contains(prior.callID)
         {
-            if let outcome = previousOutcomes[prior.callID], case .completed = outcome {
+            if let outcome = previousOutcomes[prior.callID], reuseSettledFailures || Self.isCompleted(outcome) {
                 previousKey = prefixKey
                 if nextOrdinal == UInt32.max { nextOrdinal = 0 } else { nextOrdinal += 1 }
                 return .reuse(call: prior, outcome: outcome)
@@ -93,6 +93,11 @@ public actor WorkflowReplayCursor {
             if nextOrdinal == UInt32.max { nextOrdinal = 0 } else { nextOrdinal += 1 }
         }
         return .execute(call: call)
+    }
+
+    private static func isCompleted(_ outcome: WorkflowAgentOutcomeV1) -> Bool {
+        if case .completed = outcome { return true }
+        return false
     }
 
     private static func seed(for launch: WorkflowLaunchSnapshotV1) throws -> StableDigest {

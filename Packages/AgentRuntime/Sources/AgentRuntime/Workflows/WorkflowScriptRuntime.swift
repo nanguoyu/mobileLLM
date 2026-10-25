@@ -24,11 +24,13 @@ public struct WorkflowAgentInvocation: Hashable, Sendable {
     public let sequence: UInt32
     public let prompt: String
     public let options: WorkflowAgentOptionsV1
+    public let deliversOnWait: Bool
 
-    public init(sequence: UInt32, prompt: String, options: WorkflowAgentOptionsV1) {
+    public init(sequence: UInt32, prompt: String, options: WorkflowAgentOptionsV1, deliversOnWait: Bool = false) {
         self.sequence = sequence
         self.prompt = prompt
         self.options = options
+        self.deliversOnWait = deliversOnWait
     }
 }
 
@@ -59,6 +61,7 @@ public struct WorkflowScriptHost: Sendable {
     /// Bounded, recorded web observations from this workflow's settled children. No new I/O to sites.
     public let webEvidence: @Sendable () async throws -> JSONValue
     public let queryWebEvidence: @Sendable (String) async throws -> JSONValue
+    public let waitAny: @Sendable (UInt32, [UInt32]) async throws -> JSONValue
 
     public init(
         agent: @escaping @Sendable (WorkflowAgentInvocation) async throws -> WorkflowAgentBridgeResult,
@@ -74,7 +77,10 @@ public struct WorkflowScriptHost: Sendable {
         webEvidence: @escaping @Sendable () async throws -> JSONValue = {
             .object(["observations": .array([]), "sources": .array([]), "truncated": .bool(false)])
         },
-        queryWebEvidence: (@Sendable (String) async throws -> JSONValue)? = nil
+        queryWebEvidence: (@Sendable (String) async throws -> JSONValue)? = nil,
+        waitAny: @escaping @Sendable (UInt32, [UInt32]) async throws -> JSONValue = { _, _ in
+            throw WorkflowScriptRuntimeError.unsupportedRequirement
+        }
     ) {
         self.agent = agent
         self.callSavedWorkflow = callSavedWorkflow
@@ -84,6 +90,7 @@ public struct WorkflowScriptHost: Sendable {
         self.settledBudget = settledBudget
         self.webEvidence = webEvidence
         self.queryWebEvidence = queryWebEvidence ?? { _ in try await webEvidence() }
+        self.waitAny = waitAny
     }
 }
 

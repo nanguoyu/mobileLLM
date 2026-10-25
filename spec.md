@@ -2006,3 +2006,20 @@ provider remains optional. General peer messaging and task scheduling remain sep
 
 Focused acceptance covers message idempotency, commit interruption, stale writers, unchanged historical
 runs, steering during generation, pending input after pause/restart, and repeated turns in one session.
+
+
+## 36. Event-driven workflow collaboration
+
+Root orchestration scripts can start a child with `spawn(prompt, options)` and await one selected
+settlement with `waitAny(handles)`. Waiting holds no worker permit or model residency lease and
+spends no model calls. Journal changes wake waiters. The choice commits before delivery and records
+the ordered candidate call identities and chosen call. Recovery uses that choice even when multiple
+children are now settled. Only delivered results enter replay-visible evidence and budget snapshots.
+A failed detached call is a recorded result, so recovery does not silently retry it. A new explicit
+invocation is required for another attempt. Existing awaited calls keep their original replay behavior.
+
+The asynchronous API is scoped to the root script realm, accepts outstanding handles only, and allows
+one active selection at a time. Native admission, cumulative reservations, tool approvals, cancellation
+and reconciliation remain shared with ordinary workflow calls. Wait selection is not task completion.
+A controlled acceptance case starts a dependent worker while an unrelated sibling remains unfinished;
+a replay case verifies original result order and excludes later sibling usage from earlier prompts.

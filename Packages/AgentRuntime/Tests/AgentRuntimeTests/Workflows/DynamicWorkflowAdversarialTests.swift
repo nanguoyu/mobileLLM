@@ -282,7 +282,16 @@ final class DynamicWorkflowAdversarialTests: XCTestCase {
         XCTAssertEqual(cancelled, 4)
         XCTAssertEqual(projection?.state, .failed)
         XCTAssertNil(projection?.reconciliationCallID)
-        XCTAssertEqual(projection?.outcomes.count, 4)
+        XCTAssertEqual(projection?.submittedHandles.count, 4)
+        // Four submitted children settle cancellation; the rejected fifth admission is also a
+        // durable outcome. A resumed append caller must not reinstall a projection that loses it.
+        XCTAssertEqual(projection?.outcomes.count, 5)
+        let rejected = projection?.calls.filter { projection?.submittedHandles[$0.callID] == nil } ?? []
+        XCTAssertEqual(rejected.count, 1)
+        if let call = rejected.first, case .failed(let failure, let usage) = projection?.outcomes[call.callID] {
+            XCTAssertEqual(failure.code, "workflow.child-admission")
+            XCTAssertEqual(usage, .zero)
+        } else { XCTFail("The unsubmitted call must retain its admission failure") }
         XCTAssertEqual(projection?.usage.quantities[.inputTokens], 56)
     }
 

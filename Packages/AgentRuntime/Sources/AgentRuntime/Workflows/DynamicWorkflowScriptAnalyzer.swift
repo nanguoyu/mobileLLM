@@ -98,7 +98,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
         let savedWorkflowNames = try Self.savedWorkflowNames(in: tokens)
         let instrumentation = try Self.instrument(source: body, tokens: tokens)
         let callSites = tokens.reduce(into: UInt32(0)) { count, token in
-            if token.identifier == "agent" { count &+= UInt32(1) }
+            if ["agent", "spawn"].contains(token.identifier ?? "") { count &+= UInt32(1) }
         }
         func calls(_ name: String) -> UInt32 {
             UInt32(tokens.indices.filter {
@@ -123,7 +123,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
     /// Candidate lint for the common `try { return agent(...) } catch` mistake. Returning a
     /// promise bypasses this catch when it later rejects. Strings/comments are already lexed out.
     private static func returnsUnawaitedHostCallFromTry(_ tokens: [JSToken]) -> Bool {
-        let asynchronousHosts: Set<String> = ["agent", "parallel", "pipeline", "workflow", "webEvidence"]
+        let asynchronousHosts: Set<String> = ["agent", "spawn", "waitAny", "parallel", "pipeline", "workflow", "webEvidence"]
         for i in tokens.indices where tokens[i].identifier == "try" {
             guard i + 4 < tokens.count, tokens[i + 1].symbol == "{",
                   tokens[i + 2].identifier == "return",
@@ -160,7 +160,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
     /// them without ever dispatching a child.
     private static func validateAgentOptions(_ tokens: [JSToken]) throws -> UInt32 {
         var explicitlyBudgetedCalls: UInt32 = 0
-        for callIndex in tokens.indices where tokens[callIndex].identifier == "agent" {
+        for callIndex in tokens.indices where ["agent", "spawn"].contains(tokens[callIndex].identifier ?? "") {
             guard callIndex + 1 < tokens.count, tokens[callIndex + 1].symbol == "(" else {
                 continue
             }
@@ -355,7 +355,7 @@ public struct DynamicWorkflowScriptAnalyzer: Sendable {
                         )
                     }
                     if embedded.contains(where: {
-                        ["agent", "parallel", "pipeline", "workflow", "phase", "log", "webEvidence", "unique"]
+                        ["agent", "spawn", "waitAny", "parallel", "pipeline", "workflow", "phase", "log", "webEvidence", "unique"]
                             .contains($0.identifier ?? "")
                     }) {
                         throw WorkflowScriptAnalysisError.unsupportedConstruct(

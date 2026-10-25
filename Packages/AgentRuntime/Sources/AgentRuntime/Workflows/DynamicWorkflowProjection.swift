@@ -33,6 +33,7 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
     public private(set) var calls: [WorkflowAgentCallV1]
     public private(set) var submittedHandles: [WorkflowAgentCallID: AgentExecutionHandleID]
     public private(set) var outcomes: [WorkflowAgentCallID: WorkflowAgentOutcomeV1]
+    public private(set) var waits: [WorkflowWaitSelection]
     public private(set) var preparedAt: [WorkflowAgentCallID: AgentTimestamp]
     public private(set) var submittedAt: [WorkflowAgentCallID: AgentTimestamp]
     public private(set) var settledAt: [WorkflowAgentCallID: AgentTimestamp]
@@ -69,6 +70,7 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
             calls: [],
             submittedHandles: [:],
             outcomes: [:],
+            waits: [],
             preparedAt: [:],
             submittedAt: [:],
             settledAt: [:],
@@ -180,6 +182,14 @@ public struct WorkflowRunProjectionV1: Hashable, Sendable {
                 throw WorkflowProjectionError.unknownAgentCall
             }
             restartRequests.append(callID)
+        case .waitSelected(let receipt):
+            guard Self.acceptsRuntimeActivity(state), receipt.index == waits.count + 1,
+                  !receipt.candidates.isEmpty, receipt.candidates.count <= 1_000,
+                  Set(receipt.candidates).count == receipt.candidates.count,
+                  receipt.candidates.contains(receipt.selected), outcomes[receipt.selected] != nil,
+                  receipt.candidates.allSatisfy({ id in calls.contains { $0.callID == id } })
+            else { throw WorkflowProjectionError.invalidEventForState }
+            waits.append(receipt)
         case .usageCommitted(let nextUsage):
             guard usage.quantities.isComponentwiseAtMost(nextUsage.quantities) else {
                 throw WorkflowProjectionError.usageRegression
