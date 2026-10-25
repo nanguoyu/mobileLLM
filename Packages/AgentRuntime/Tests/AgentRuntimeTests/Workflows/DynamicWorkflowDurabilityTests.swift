@@ -185,6 +185,34 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
         XCTAssertTrue(prompt.contains("dependent:1"), "The continuation receives its prior result")
     }
 
+    func testV5FailedCoordinatorReplaysItsPauseBeforeResumingWithoutRepeatingWorkers() async throws {
+        let plan = v5Decision("work", tasks: [.object(["id": .string("source"), "expectedRevision": .integer(0),
+            "agent": .string("source"), "instruction": .string("Gather the evidence"), "dependencies": .array([]),
+            "required": .bool(true), "maxToolCalls": .integer(0), "model": .string(""), "inputRanges": .array([])])])
+        let args = try CanonicalJSON(.object(["goal": .string("Continue after a coordinator failure."),
+            "plan": plan, "availableTools": .array([]), "runDate": .string("2026-10-26")]))
+        let fixture = try makeFixture(body: "", args: args, source: CollaborativeWorkflow.source)
+        let spawner = V5WorkflowSpawner(failFirstCoordinator: true)
+        let journal = InMemoryDynamicWorkflowJournal()
+        let engine = DynamicWorkflowEngine(journal: journal, runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        do { _ = try await engine.runAndWait(runID: fixture.launch.runID); XCTFail("The failed coordinator must pause") } catch {}
+        let paused = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(paused?.state, .paused)
+        let restored = DynamicWorkflowEngine(journal: journal, runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        try await restored.resume(runID: fixture.launch.runID)
+        _ = try await restored.runAndWait(runID: fixture.launch.runID)
+        let completed = try await restored.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(completed?.state, .completed)
+        let starts = await spawner.starts
+        XCTAssertEqual(starts.filter { $0 == "source" }.count, 1)
+        XCTAssertEqual(starts.filter { $0 == "coordinator" }.count, 2, "One failed original plus one new continuation")
+        for (id, result) in paused?.outcomes ?? [:] { XCTAssertEqual(completed?.outcomes[id], result) }
+    }
+
     func testV5ReassignedAgentConsumesItsInboxWithoutTakingBackTaskOwnership() async throws {
         let plan = v5Decision("work", tasks: [.object(["id": .string("dependent"), "expectedRevision": .integer(0),
             "agent": .string("dependent"), "instruction": .string("Review the candidate"), "dependencies": .array([]),
@@ -966,10 +994,13 @@ private actor V5WorkflowSpawner: SubagentSpawning {
     private(set) var dependentPrompt = ""
     private let lateMessage: Bool
     private let reassignPendingOwner: Bool
+    private let failFirstCoordinator: Bool
+    private var coordinatorFailed = false
     private var inbox: AgentSessionPendingInputs = .init()
     private var injected = false
-    init(lateMessage: Bool = false, reassignPendingOwner: Bool = false) {
+    init(lateMessage: Bool = false, reassignPendingOwner: Bool = false, failFirstCoordinator: Bool = false) {
         self.lateMessage = lateMessage; self.reassignPendingOwner = reassignPendingOwner
+        self.failFirstCoordinator = failFirstCoordinator
     }
     func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs { inbox }
 
@@ -996,6 +1027,14 @@ private actor V5WorkflowSpawner: SubagentSpawning {
         let request = requests[handleID]!
         let answer: AgentAnswer
         if request.role == "workflow-supervisor" {
+            if failFirstCoordinator && !coordinatorFailed {
+                coordinatorFailed = true
+                let failure = try AgentFailure(code: "model.test.invalid-action", classification: .permanent,
+                    safeMessage: "The coordinator produced an invalid action", retryAdvice: .never,
+                    externalEffect: .confirmedNone, requiredUserAction: .none,
+                    redaction: RedactionMetadata(classification: .publicMetadata, policyVersion: 1))
+                return SubagentResult(runID: request.childRunID, handleID: handleID, outcome: .failed(failure: failure, usage: .zero))
+            }
             let text = request.instruction.components(separatedBy: "\nTASK GRAPH:\n")[1].components(separatedBy: "\n")[0]
             let graph = try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [[String: Any]]
             let done = graph.allSatisfy { $0["state"] as? String == "completed" }

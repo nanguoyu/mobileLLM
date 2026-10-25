@@ -706,7 +706,9 @@ private actor DynamicWorkflowSession {
                 // the already-journaled typed child failure so the workflow terminal record uses
                 // only its explicitly safe message and stable code, never debug/error wrapping.
                 let durableChildFailure = projection.calls.reversed().compactMap { call -> AgentFailure? in
-                    guard case .failed(let failure, _) = projection.outcomes[call.callID] else {
+                    guard case .hostFailure(let detail) = error as? WorkflowScriptRuntimeError,
+                          case .failed(let failure, _) = projection.outcomes[call.callID],
+                          detail == Self.sanitize(failure.safeMessage) else {
                         return nil
                     }
                     return failure
@@ -1182,8 +1184,13 @@ private actor DynamicWorkflowSession {
         }
         do {
             try await flushSignals()
+            // A goal's recorded failure belongs to its replay prefix. Re-executing a failed
+            // coordinator here would change control flow before its recorded pause/resume grant.
+            // Legacy scripts without goal sessions keep their existing retry semantics.
+            let replayFailure = invocation.deliversOnWait
+                || (invocation.options.sessionKey != nil && projection.taskGraph != nil)
             let decision = try await replay.next(prompt: invocation.prompt, options: invocation.options,
-                                                 reuseSettledFailures: invocation.deliversOnWait)
+                                                 reuseSettledFailures: replayFailure)
             if invocation.deliversOnWait {
                 let call: WorkflowAgentCallV1
                 switch decision { case .reuse(let value, _), .continue(let value), .execute(let value): call = value }

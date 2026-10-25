@@ -2119,6 +2119,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testV5ReassignedAgentConsumesItsInboxWithoutTakingBackTaskOwnership"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testV5FailedCoordinatorReplaysItsPauseBeforeResumingWithoutRepeatingWorkers"
         }
       ],
       "platforms": [

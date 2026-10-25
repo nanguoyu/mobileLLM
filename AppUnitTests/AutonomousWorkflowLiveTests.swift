@@ -25,7 +25,12 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
               let raw = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_RESUME_ID"], let id = WorkflowRunID(raw) else {
             throw XCTSkip("An explicit retained evaluation and goal ID are required")
         }
-        try await evaluate(.rollout, heldOut: true, resume: (URL(fileURLWithPath: path), id))
+        let root = URL(fileURLWithPath: path)
+        guard let record = try JSONSerialization.jsonObject(with: Data(contentsOf: root.appending(component: "public-result.json"))) as? [String: Any],
+              let name = record["case"] as? String, let task = WorkflowLiveCase(rawValue: name) else {
+            throw LiveEvaluationError("The retained task definition is missing")
+        }
+        try await evaluate(task, heldOut: true, resume: (root, id))
     }
 
     @MainActor func test31AffectedFamiliesAfterRepair() async throws {

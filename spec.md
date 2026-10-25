@@ -2163,3 +2163,10 @@ assignment, `continueInbox` creates one required follow-up in the same session, 
 profile/model and the existing goal allowance. It consumes pending messages without taking ownership
 back from the replacement agent. The transition and resulting task are journaled. Historical scripts
 retain their original control flow; new launches use this continuation rule.
+
+
+Goal-session replay reuses settled failed coordinator outcomes as well as completed outcomes. It must
+reach the recorded pause and explicit resumption grant before starting a new activation. Retrying the
+failed coordinator while reconstructing the prefix would change later collaboration-command identities.
+Non-session archived programs keep their established retry semantics. An unrelated replay or host
+invariant failure retains its own diagnostic instead of being mislabeled with an earlier child failure.
