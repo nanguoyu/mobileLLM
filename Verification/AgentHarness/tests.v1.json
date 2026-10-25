@@ -2111,6 +2111,10 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.ResponsesAPIModelProviderTests/testInvalidNativeArgumentsRejectTheWholeBatchAndRetainMeteredRepairFeedback"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.ResponsesAPIModelProviderTests/testDeepSeekNativeHistoryKeepsExplicitEmptyReasoningAcrossANonThinkingRepair"
         }
       ],
       "platforms": [

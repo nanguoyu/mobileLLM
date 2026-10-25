@@ -706,3 +706,11 @@ redirects, sums usage across fallback attempts, and reduces retry output limits 
 Workflow analysis recognizes exact do/while pairs and instruments expression arrows, callable method
 bodies, and callbacks nested in loop conditions. JavaScriptCore remains a logical realm with cooperative
 termination; the project does not advertise an OS sandbox or a hard heap limit.
+
+
+DeepSeek Chat Completions retains native-call reasoning exactly when replaying tool history. A call
+made during a thinking-disabled repair has no reasoning text; its later wire representation includes
+an explicit empty `reasoning_content` field, as do ordinary historical assistant messages with no
+retained reasoning. This lets an enabled-thinking continuation satisfy the API without inventing text
+or rewriting the original record. Invalid native arguments use the controller's existing metered repair
+path, with the entire rejected batch left unexecuted.

@@ -108,6 +108,30 @@ final class ResponsesAPIModelProviderTests: XCTestCase {
         XCTAssertFalse(synthesisMessages.contains("provider reasoning"), "Opaque tool reasoning is unnecessary in the read-only answer pass")
     }
 
+    func testDeepSeekNativeHistoryKeepsExplicitEmptyReasoningAcrossANonThinkingRepair() throws {
+        let tool = try ModelFixture.tool(name: "lookup")
+        let fixture = try ModelFixture(location: .remote, thinkingMode: .enabled, reasoningEffort: .low,
+            advertisedTools: [tool], providerID: ResponsesAPIModelProvider.providerID, modelID: "deepseek-v4-flash")
+        let native = try NativeToolCallContext(selectionDigest: NativeToolCallContext.digest(for: fixture.request.selection),
+            callID: "repair_without_thinking", name: "lookup", arguments: CanonicalJSON(.object(["q": .string("source")])) )
+        let request = try AgentModelRequest(requestID: fixture.request.requestID, runID: fixture.request.runID,
+            stepID: fixture.request.stepID, selection: fixture.request.selection,
+            compiledManifestDigest: fixture.request.compiledManifestDigest,
+            messages: [AgentModelMessage(role: .assistant, content: "Earlier answer", isUntrustedData: false),
+                AgentModelMessage(role: .tool, content: "Original observation", isUntrustedData: true, nativeToolCall: native)],
+            advertisedTools: fixture.request.advertisedTools, toolSelectionSnapshot: fixture.request.toolSelectionSnapshot,
+            generationParameters: fixture.request.generationParameters, outputRequirement: .text)
+        let data = try ResponsesAPIModelProvider.chatCompletionsRequestBody(request: request)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let assistants = messages.filter { $0["role"] as? String == "assistant" }
+        XCTAssertEqual(assistants.count, 2)
+        XCTAssertTrue(assistants.allSatisfy { $0["reasoning_content"] as? String == "" })
+        XCTAssertNil(native.reasoningText, "Only the wire projection changes; the original record remains exact")
+        XCTAssertEqual(messages.last?["tool_call_id"] as? String, native.callID)
+        XCTAssertEqual(body["reasoning_effort"] as? String, "low")
+    }
+
     func testNativeIdentitySeparatesRepeatedCallsWithEqualArguments() {
         let calls = [
             ResponsesAPIModelProvider.ParsedCall(name: "lookup", argumentsJSON: "{}", callID: "a"),

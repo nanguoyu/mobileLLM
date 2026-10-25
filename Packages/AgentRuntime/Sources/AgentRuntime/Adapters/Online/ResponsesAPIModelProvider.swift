@@ -979,14 +979,19 @@ public final class ResponsesAPIModelProvider: AgentModelProvider, @unchecked Sen
                         "function": .object(["name": .string(native.name), "arguments": .string(native.arguments.string)]),
                     ])]),
                 ]
-                if let reasoning = native.reasoningText { assistant["reasoning_content"] = .string(reasoning) }
+                // A constrained repair may have run with thinking disabled. DeepSeek still
+                // requires this field when thinking is enabled again on the next tool step.
+                // Empty means no reasoning was returned; never synthesize or replace stored text.
+                assistant["reasoning_content"] = .string(native.reasoningText ?? "")
                 result.append(.object(assistant))
                 result.append(.object(["role": .string("tool"), "tool_call_id": .string(native.callID), "content": .string(message.content)]))
             } else {
-                result.append(.object([
+                var ordinary: [String: JSONValue] = [
                     "role": .string(message.role == .tool ? "user" : message.role.rawValue),
                     "content": .string(message.role == .tool ? "Tool result: " + message.content : message.content),
-                ]))
+                ]
+                if message.role == .assistant { ordinary["reasoning_content"] = .string("") }
+                result.append(.object(ordinary))
             }
         }
         return result
