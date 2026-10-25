@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
+// Archived v4 source fixture. Production recovers each saved script from its immutable journal.
 
 import AgentContracts
 import Foundation
 
 /// A supervisor with explicit task results and local artifact reads on the existing durable engine.
 /// Completion means an answer was returned, not that another model certified its correctness.
-public enum CoordinatedWorkflow {
+enum ArchivedCoordinatedWorkflow {
     public static let planningInstruction = """
     MOBILELLM_COORDINATOR_V3
     You own the user's task from investigation to final delivery. Return the decision JSON.

@@ -739,78 +739,7 @@ public struct WorkflowPlan: Hashable, Codable, Sendable {
         return try JSONDecoder().decode(WorkflowPlan.self, from: data)
     }
 
-    /// Deterministic fallback used when the planner model cannot produce valid structured output
-    /// (after the runtime's one bounded repair). Guarantees every goal still gets a reviewable
-    /// multi-phase, multi-subagent plan with the full quality loop:
-    /// explore → plan → audit → revise → verify → deliver.
-    public static func fallback(goal: String) throws -> WorkflowPlan {
-        try WorkflowPlan(
-            goal: goal,
-            phases: [
-                WorkflowPhasePlan(
-                    sequence: 1,
-                    title: "Explore",
-                    acceptanceCriteria: "The key facts and constraints are gathered",
-                    childInstructions: [
-                        "Before answering, run EXACTLY 3 different web_search queries with varied "
-                            + "wording, then use fetch_webpage to READ at least 2 of the linked "
-                            + "pages, so you gather the latest facts, specifications, and constraints "
-                            + "about: \(goal). Summarize what you learned with source URLs "
-                            + "(under 300 words).",
-                    ]
-                ),
-                WorkflowPhasePlan(
-                    sequence: 2,
-                    title: "Plan",
-                    acceptanceCriteria: "A concrete step-by-step plan is written from the findings",
-                    childInstructions: [
-                        "Write a concrete, step-by-step plan for: \(goal), citing the gathered facts "
-                            + "and source URLs. Keep it under 300 words.",
-                    ]
-                ),
-                WorkflowPhasePlan(
-                    sequence: 3,
-                    title: "Audit",
-                    acceptanceCriteria: "The plan is audited from multiple angles and findings listed",
-                    childInstructions: [
-                        "Audit the plan for feasibility, cost, memory, and approval risks. List "
-                            + "concrete findings (under 200 words).",
-                        "Audit the plan for runtime, integration, and UX risks. List concrete "
-                            + "findings (under 200 words).",
-                    ]
-                ),
-                WorkflowPhasePlan(
-                    sequence: 4,
-                    title: "Revise",
-                    acceptanceCriteria: "The plan is revised to address every audit finding",
-                    childInstructions: [
-                        "Revise the plan to address every finding from the previous audit phase. "
-                            + "Output the revised plan (under 300 words).",
-                    ]
-                ),
-                WorkflowPhasePlan(
-                    sequence: 5,
-                    title: "Verify",
-                    acceptanceCriteria: "The revised plan is verified against every finding",
-                    childInstructions: [
-                        "Verify the revised plan resolves every audit finding and is complete and "
-                            + "consistent. List any residual gaps or state that verification passed "
-                            + "(under 150 words).",
-                    ]
-                ),
-                WorkflowPhasePlan(
-                    sequence: 6,
-                    title: "Deliver",
-                    acceptanceCriteria: "The final delivery-ready plan is written",
-                    childInstructions: [
-                        "Write the final delivery-ready plan for: \(goal). This is the answer the "
-                            + "user receives. Include the key facts and source URLs gathered by the "
-                            + "earlier phases. Keep it concise (under 400 words).",
-                    ]
-                ),
-            ]
-        )
-    }
+
 }
 
 /// Draft 2020-12 JSON schema for the workflow-planning model output. Fully enforced by the runtime,

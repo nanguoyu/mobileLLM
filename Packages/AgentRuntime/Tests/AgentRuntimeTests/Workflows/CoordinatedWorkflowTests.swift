@@ -162,12 +162,12 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
     }
 
     func testFrozenProgramAndSchemasPassTheSameAnalyzerAndSchemaEnforcement() throws {
-        let analyzed = try DynamicWorkflowScriptAnalyzer().analyze(WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1, source: CoordinatedWorkflow.source))
+        let analyzed = try DynamicWorkflowScriptAnalyzer().analyze(WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1, source: ArchivedCoordinatedWorkflow.source))
         XCTAssertEqual(analyzed.staticAgentCallSites, analyzed.explicitlyBudgetedAgentCallSites)
         XCTAssertGreaterThan(analyzed.staticParallelCallSites, 0)
         XCTAssertFalse(analyzed.hasUnawaitedHostReturnInCatch)
-        XCTAssertEqual(CoordinatedWorkflow.decisionSchema.enforcement, .fullyEnforced)
-        XCTAssertFalse(try CoordinatedWorkflow.decisionSchema.validates(instance: decision("work", tasks: [task("x", tools: 7)])))
+        XCTAssertEqual(ArchivedCoordinatedWorkflow.decisionSchema.enforcement, .fullyEnforced)
+        XCTAssertFalse(try ArchivedCoordinatedWorkflow.decisionSchema.validates(instance: decision("work", tasks: [task("x", tools: 7)])))
     }
 
     func testStructuredRepairDiagnosticLocatesTheConstraintWithoutEchoingOutput() throws {
@@ -185,7 +185,7 @@ final class CoordinatedWorkflowTests: XCTestCase, @unchecked Sendable {
                                   "consumed": .object(["toolCalls": .integer(0), "modelAttempts": .integer(0)])])
                      },
                      agent: @escaping @Sendable (WorkflowAgentInvocation) async throws -> WorkflowAgentBridgeResult) async throws -> JSONValue {
-        let analyzed = try DynamicWorkflowScriptAnalyzer().analyze(WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1, source: CoordinatedWorkflow.source))
+        let analyzed = try DynamicWorkflowScriptAnalyzer().analyze(WorkflowScriptV1(scriptID: WorkflowScriptID(), version: 1, source: ArchivedCoordinatedWorkflow.source))
         let args = try CanonicalJSON(.object(["goal": .string("Determine the total under supplied constraints."),
             "availableTools": .array(tools.map(JSONValue.string)), "runDate": .string("2026-10-23"), "plan": initial]))
         let result = try await JavaScriptCoreWorkflowRuntime().execute(analyzed, args: args, limits: .iPhoneDefault(), requirement: .init(),
