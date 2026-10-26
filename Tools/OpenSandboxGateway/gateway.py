@@ -88,6 +88,7 @@ class Store:
         return {'operationID': row['id'], 'workspaceID': row['workspace'], 'state': row['state'],
                 'version': row['version'], 'acceptedAtMS': row['accepted'], 'startedAtMS': row['started'],
                 'finishedAtMS': row['finished'], 'error': row['error'],
+                'submitted': row['command'] is not None,
                 'output': json.loads(row['output']) if row['output'] else None}
 
 

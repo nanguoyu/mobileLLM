@@ -66,6 +66,10 @@ public struct OpenSandboxConnection: Hashable, Codable, Sendable, Identifiable {
     public var destination: ExternalDestination {
         try! ExternalDestination(kind: .sandboxProvider, normalizedIdentity: "opensandbox:" + fingerprint.rawValue)
     }
+    /// OpenSandbox's egress policy scopes DNS targets, not HTTP methods or URL paths.
+    public var networkDestinations: [ExternalDestination] {
+        allowedHosts.map { try! ExternalDestination(kind: .networkEndpoint, normalizedIdentity: "sandbox-egress:" + $0) }
+    }
     public static let dataCategory = try! AgentDataCategory(rawValue: "sandbox.workspace")
 }
 
@@ -133,6 +137,7 @@ struct OpenSandboxJob: Codable, Sendable {
     let acceptedAtMS: UInt64
     let startedAtMS: UInt64?
     let finishedAtMS: UInt64?
+    let submitted: Bool
     let error: String?
     let output: JSONValue?
 }
