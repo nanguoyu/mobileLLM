@@ -884,7 +884,7 @@ private final class JSCWorkflowExecution: @unchecked Sendable {
             )
         }
         let schema: JSONSchemaDocument?
-        if let root = object["schema"] {
+        if let root = object["schema"], root != .null {
             do { schema = try JSONSchemaDocument(root: root) }
             catch { throw WorkflowScriptRuntimeError.invalidAgentOptions("schema is not fully supported") }
         } else { schema = nil }
