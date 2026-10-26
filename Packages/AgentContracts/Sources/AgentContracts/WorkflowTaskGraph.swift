@@ -34,17 +34,19 @@ public struct WorkflowTaskUpdate: Hashable, Codable, Sendable {
     public let inputRanges: [WorkflowTaskInputRange]?
     public let artifactInputs: [String]?
     public let profile: WorkflowAgentProfileV1?
+    public let review: WorkflowTaskReview?
 
     public init(id: String, expectedRevision: UInt64, agent: String, instruction: String,
                 dependencies: [String] = [], required: Bool = true, maximumToolCalls: UInt64 = 0, model: String? = nil,
                 inputRanges: [WorkflowTaskInputRange]? = nil, artifactInputs: [String]? = nil,
-                profile: WorkflowAgentProfileV1? = nil) {
+                profile: WorkflowAgentProfileV1? = nil, review: WorkflowTaskReview? = nil) {
         self.id = id; self.expectedRevision = expectedRevision; self.agent = agent
         self.instruction = instruction; self.dependencies = dependencies; self.required = required
         self.maximumToolCalls = maximumToolCalls; self.model = model
         self.inputRanges = inputRanges
         self.artifactInputs = artifactInputs
         self.profile = profile
+        self.review = review
     }
 }
 
@@ -74,6 +76,8 @@ public struct WorkflowTaskNode: Hashable, Codable, Sendable, Identifiable {
     public var artifactInputs: [String]?
     public var profile: WorkflowAgentProfileV1?
     public var outputCorrectionAmendmentCount: Int? = nil
+    public var review: WorkflowTaskReview? = nil
+    public var reviewCorrectionBudget: WorkflowReviewCorrectionBudget? = nil
 }
 
 public struct WorkflowTaskArtifact: Hashable, Codable, Sendable, Identifiable {
@@ -84,6 +88,7 @@ public struct WorkflowTaskArtifact: Hashable, Codable, Sendable, Identifiable {
     public let inputArtifactIDs: [String]
     public let value: WorkflowValueReferenceV1
     public var validationFailure: String? = nil
+    public var reviewResult: WorkflowTaskReviewResult? = nil
 }
 
 public enum WorkflowTaskGraphError: String, Error, Sendable, LocalizedError {
@@ -95,6 +100,8 @@ public enum WorkflowTaskGraphError: String, Error, Sendable, LocalizedError {
     case ownership = "This call does not own the task."
     case incomplete = "Required tasks or running agents remain unfinished."
     case terminal = "The goal has already ended."
+    case invalidReview = "The review must report every declared criterion exactly once with an explanation."
+    case unreviewed = "Required deliverables need a passing independent review of their current versions and human amendments."
     public var errorDescription: String? { rawValue }
 }
 
@@ -149,16 +156,20 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
                   change.artifactInputs?.allSatisfy({ id in artifacts.contains { $0.id == id } }) ?? true,
                   change.model.map({ AgentWireValidation.isNonblankControlFree($0, maximumLength: 256) }) ?? true
             else { throw WorkflowTaskGraphError.invalid }
+            try change.review?.validate()
             if let index = next.tasks.firstIndex(where: { $0.id == change.id }) {
                 let old = next.tasks[index]
                 guard old.revision == change.expectedRevision else { throw WorkflowTaskGraphError.stale }
                 guard old.state != .running else { throw WorkflowTaskGraphError.busy }
                 guard old.required == change.required else { throw WorkflowTaskGraphError.invalid }
+                guard old.review == change.review else { throw WorkflowTaskGraphError.invalid }
                 next.tasks[index] = WorkflowTaskNode(id: old.id, revision: old.revision + 1,
                     agent: change.agent, instruction: change.instruction, dependencies: change.dependencies,
                     required: old.required, maximumToolCalls: change.maximumToolCalls, model: change.model,
                     state: .pending, inputArtifactIDs: [], inputRanges: change.inputRanges, artifactInputs: change.artifactInputs, profile: change.profile)
                 next.tasks[index].outputCorrectionAmendmentCount = old.outputCorrectionAmendmentCount
+                next.tasks[index].review = old.review
+                next.tasks[index].reviewCorrectionBudget = old.reviewCorrectionBudget
                 reopened.insert(old.id)
             } else {
                 guard change.expectedRevision == 0 else { throw WorkflowTaskGraphError.stale }
@@ -166,6 +177,7 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
                     instruction: change.instruction, dependencies: change.dependencies, required: change.required,
                     maximumToolCalls: change.maximumToolCalls, model: change.model, state: .pending, inputArtifactIDs: [],
                     inputRanges: change.inputRanges, artifactInputs: change.artifactInputs, profile: change.profile))
+                next.tasks[next.tasks.count - 1].review = change.review
             }
         }
         try next.validate()
@@ -264,7 +276,8 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
                     instruction: old.instruction + "\n\n[Required output correction]\n" + reason,
                     dependencies: old.dependencies, required: old.required, maximumToolCalls: old.maximumToolCalls,
                     model: old.model, inputRanges: old.inputRanges,
-                    artifactInputs: Self.unique((old.artifactInputs ?? []) + [artifact.id]), profile: old.profile)], expectedRevision: revision)
+                    artifactInputs: Self.unique((old.artifactInputs ?? []) + [artifact.id]), profile: old.profile,
+                    review: old.review)], expectedRevision: revision)
                 tasks[index].outputCorrectionAmendmentCount = amendments.count
                 tasks[index].failure = reason
                 return
@@ -283,6 +296,92 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
         }
         guard reason.map({ $0.utf8.count <= 16_384 }) ?? true else { throw WorkflowTaskGraphError.invalid }
         state = next; self.reason = reason; revision += 1
+    }
+
+    /// Host-only settlement. The model cannot submit a verdict through a coordinator command.
+    /// Failed criteria reopen just their producers and invalidate consumers using ordinary revisions.
+    public mutating func recordReview(callID: WorkflowAgentCallID, report: WorkflowReviewReport,
+                                      toolEvidence: [WorkflowReviewToolEvidence], goalAmendmentCount: Int) throws {
+        guard let artifactIndex = artifacts.firstIndex(where: { $0.callID == callID }),
+              let index = tasks.firstIndex(where: { $0.id == artifacts[artifactIndex].taskID }),
+              let contract = tasks[index].review else { throw WorkflowTaskGraphError.invalidReview }
+        try report.validate(against: contract)
+        let artifact = artifacts[artifactIndex]
+        // An in-flight review of a superseded producer remains historical, never current acceptance.
+        guard tasks[index].state == .completed, tasks[index].outputArtifactID == artifact.id else { return }
+        var next = self
+        let missing = contract.requiredTools.filter { tool in !toolEvidence.contains { $0.toolID == tool } }
+        let review = WorkflowTaskReviewResult(contract: contract, report: report,
+            inputArtifactIDs: artifact.inputArtifactIDs, toolEvidence: toolEvidence,
+            goalAmendmentCount: goalAmendmentCount, missingTools: missing)
+        next.artifacts[artifactIndex].reviewResult = review
+        if goalAmendmentCount != amendments.count {
+            next.tasks[index].state = .needsReview; next.tasks[index].outputArtifactID = nil
+            next.tasks[index].failure = "Review the current human amendments before accepting this result."
+            next.tasks[index].revision += 1; next.revision += 1; self = next
+            return
+        }
+        if review.status != .pass {
+            let findings = report.checks.filter { $0.status != .pass }.map { "\($0.id): \($0.detail)" }
+            let reason = (missing.isEmpty ? findings : ["Required tool execution was not recorded: " + missing.joined(separator: ", ")] + findings)
+                .joined(separator: "\n")
+            next.artifacts[artifactIndex].validationFailure = reason
+            next.tasks[index].state = .failed
+            next.tasks[index].failure = reason
+            next.tasks[index].outputArtifactID = nil
+            if review.status == .revise {
+                let failedIDs = Set(report.checks.filter { $0.status == .revise }.map(\.id))
+                let targets = Set(contract.criteria.filter { failedIDs.contains($0.id) }.flatMap(\.targetTaskIDs))
+                let producers = next.tasks.filter { targets.contains($0.id) }
+                let canCorrect = producers.allSatisfy { task in
+                    task.state == .completed && (task.reviewCorrectionBudget?.goalAmendmentCount != amendments.count
+                        || (task.reviewCorrectionBudget?.attempts ?? 0) < 2)
+                }
+                if canCorrect {
+                    let changes = producers.map { task in
+                        WorkflowTaskUpdate(id: task.id, expectedRevision: task.revision, agent: task.agent,
+                            instruction: task.instruction,
+                            dependencies: task.dependencies, required: task.required, maximumToolCalls: task.maximumToolCalls,
+                            model: task.model, inputRanges: task.inputRanges,
+                            artifactInputs: Self.unique((task.artifactInputs ?? []) + [task.outputArtifactID!, artifact.id]),
+                            profile: task.profile, review: task.review)
+                    }
+                    try next.update(changes, expectedRevision: next.revision)
+                    for producer in producers {
+                        let at = next.tasks.firstIndex { $0.id == producer.id }!
+                        let attempts = producer.reviewCorrectionBudget?.goalAmendmentCount == amendments.count
+                            ? producer.reviewCorrectionBudget!.attempts + 1 : 1
+                        next.tasks[at].reviewCorrectionBudget = WorkflowReviewCorrectionBudget(goalAmendmentCount: amendments.count, attempts: attempts)
+                        next.tasks[at].failure = "Address review \(artifact.id): " + reason
+                    }
+                } else {
+                    next.tasks[index].failure = "Automatic review corrections exhausted or a producer is unavailable. " + reason
+                }
+            }
+        }
+        next.revision += 1
+        self = next
+    }
+
+    /// Covers current required work through actual independent reviews, including their source ancestry.
+    /// A passing review is still a model judgement, not a substitute for domain-specific outcome checks.
+    public func requireAcceptedReviews() throws {
+        var covered: Set<String> = []
+        func include(_ id: String) {
+            guard covered.insert(id).inserted, let task = tasks.first(where: { $0.id == id }) else { return }
+            task.dependencies.forEach(include)
+        }
+        for task in tasks where task.required && task.state == .completed && task.review != nil {
+            guard let artifact = artifacts.first(where: { $0.id == task.outputArtifactID }),
+                  let review = artifact.reviewResult, review.status == .pass,
+                  review.goalAmendmentCount == amendments.count,
+                  review.contract == task.review, review.inputArtifactIDs == task.inputArtifactIDs else { continue }
+            covered.insert(task.id)
+            review.contract.targetTaskIDs.forEach(include)
+        }
+        guard !covered.isEmpty, tasks.filter(\.required).allSatisfy({ covered.contains($0.id) }) else {
+            throw WorkflowTaskGraphError.unreviewed
+        }
     }
 
     /// Trusted human API only. The model-facing command has no amendment or objective setter.
@@ -306,6 +405,15 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
               artifacts.count <= 128, Set(artifacts.map(\.id)).count == artifacts.count else { throw WorkflowTaskGraphError.invalid }
         let ids = Set(tasks.map(\.id))
         guard tasks.allSatisfy({ $0.dependencies.allSatisfy(ids.contains) }) else { throw WorkflowTaskGraphError.unavailableInput }
+        for task in tasks {
+            if let review = task.review {
+                try review.validate()
+                guard task.required, review.targetTaskIDs.isSubset(of: Set(task.dependencies)),
+                      review.targetTaskIDs.allSatisfy({ id in
+                          tasks.contains { $0.id == id && $0.agent != task.agent && $0.review == nil }
+                      }) else { throw WorkflowTaskGraphError.invalid }
+            }
+        }
         var visited: Set<String> = []
         func visit(_ id: String, path: Set<String>) throws {
             guard !path.contains(id) else { throw WorkflowTaskGraphError.cycle }
