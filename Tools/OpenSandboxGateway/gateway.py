@@ -104,10 +104,10 @@ class Gateway:
         self.tasks = {}
         self.closing = False
 
-    def authenticate(self, authorization, server_id):
+    def authenticate(self, authorization, server_id, discovery=False):
         if not authorization or not hmac.compare_digest(authorization, 'Bearer ' + self.config['apiKey']):
             raise HTTPException(401, 'Authentication required')
-        if server_id != self.config['serverID']:
+        if not discovery and server_id != self.config['serverID']:
             raise HTTPException(409, 'Execution environment identity changed; reconnect explicitly')
 
     async def sandbox(self, workspace):
@@ -294,7 +294,8 @@ def create_app(config):
     @app.middleware('http')
     async def guard(request, call_next):
         try:
-            gateway.authenticate(request.headers.get('authorization'), request.headers.get('x-mobilellm-server-id'))
+            gateway.authenticate(request.headers.get('authorization'), request.headers.get('x-mobilellm-server-id'),
+                                 discovery=request.url.path == '/v1/capabilities' and request.method == 'GET')
             if int(request.headers.get('content-length', '0')) > 300000:
                 raise HTTPException(413, 'Request exceeds limit')
         except HTTPException as error:

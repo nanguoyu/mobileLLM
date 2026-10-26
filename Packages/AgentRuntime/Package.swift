@@ -13,6 +13,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../AgentContracts"),
+        .package(path: "../AgentSandboxAPI"),
         .package(path: "../LLMCore"),
     ],
     targets: [
@@ -20,6 +21,7 @@ let package = Package(
             name: "AgentRuntime",
             dependencies: [
                 "AgentContracts",
+                "AgentSandboxAPI",
                 .product(name: "LLMCore", package: "LLMCore"),
             ],
             linkerSettings: [
