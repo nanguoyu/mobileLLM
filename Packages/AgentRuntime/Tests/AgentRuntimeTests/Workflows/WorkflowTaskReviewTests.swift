@@ -88,6 +88,20 @@ final class WorkflowTaskReviewTests: XCTestCase {
         XCTAssertThrowsError(try changed.requireAcceptedReviews())
     }
 
+    func testAnAmendmentInvalidatesAnAlreadyAcceptedReviewWithoutErasingItsEvidence() throws {
+        var graph = try WorkflowTaskGraph(objective: "Use the current policy.")
+        try graph.update([work("a"), review("check-a", target: "a")], expectedRevision: 1)
+        _ = try complete("a", graph: &graph)
+        let checked = try complete("check-a", graph: &graph)
+        try graph.recordReview(callID: checked.callID, report: report(.pass), toolEvidence: [], goalAmendmentCount: 0)
+        XCTAssertNoThrow(try graph.requireAcceptedReviews())
+        let original = graph.artifacts.last
+        try graph.amend(.init(id: MessageID(), text: "Apply the new policy instead.", acceptedAt: AgentTimestamp(rawValue: 2)))
+        XCTAssertEqual(graph.readyTasks.map(\.id), ["check-a"])
+        XCTAssertEqual(graph.artifacts.last, original)
+        XCTAssertThrowsError(try graph.requireAcceptedReviews())
+    }
+
     private func work(_ id: String, revision: UInt64 = 0) -> WorkflowTaskUpdate {
         .init(id: id, expectedRevision: revision, agent: id, instruction: "Produce " + id)
     }

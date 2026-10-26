@@ -2042,7 +2042,7 @@ model-facing operations cannot rewrite the original objective or manufacture a h
 These guards enforce lifecycle facts; independent task outcomes still require evaluation.
 
 
-The `collaborative-workflow-v5` program uses these operations to assign persistent agent identities,
+The `collaborative-workflow-v6` program uses these operations to assign persistent agent identities,
 dispatch ready dependencies, read exact source ranges and keep coordinating after individual results.
 The model may create or revise tasks, read, wait, deliver or record a blocker. Waiting is driven by actual
 results. Repeated decisions without task or evidence progress and exhausted budgets preserve unfinished
@@ -2205,3 +2205,34 @@ one automatic correction per task and human-amendment revision reuses its sessio
 Another invalid result stays failed. Final delivery permits two bounded corrections, then pauses with
 partial work retained. No checker truncates or rewrites the answer. Accepted delivery binds the exact
 answer digest, which is checked again before publishing. Rejected originals remain inspectable in UI.
+
+
+New collaboration launches freeze a native acceptance requirement before execution. The coordinator
+derives tasks and review criteria from the user's goal without requiring the user to name stages or
+agents. Independent tasks can run concurrently at every dependency level. Required review tasks name
+criteria, their direct producer dependencies, and any enabled tools whose execution is necessary. A
+producer cannot review itself under the same persistent agent identity. Existing required review
+contracts cannot be removed or weakened by model task updates.
+
+A review result reports each declared criterion exactly once as pass, revise or blocked with an
+explanation. The host binds this judgement to the actual input artifact versions and human-amendment
+revision. Required tool evidence comes from the reviewer's successful, settled tool journal records,
+with invocation identities and record digests. A model's report cannot create that evidence. Tool
+execution establishes an execution fact; semantic correctness remains the reviewer's assessment or
+a separate domain-specific check. A missing required tool record blocks acceptance.
+
+A revise verdict retains the failed original report and automatically reopens only producers named
+by the failed criteria. Their original outputs and the review become immutable correction inputs.
+Ordinary dependency invalidation schedules fresh reviews of revised outputs while unrelated accepted
+branches remain settled. At most two automatic corrections per producer and human-amendment revision
+share the existing goal budget. Missing capabilities do not trigger blind producer retries. Exhausted
+corrections or blocked reviews remain visible and prevent completion. An amended goal invalidates
+earlier acceptance while retaining its historical records.
+
+Delivery requires passing current reviews covering all required artifacts directly or through their
+reviewed source ancestry, plus the existing input, effect and output-format fences. The published
+answer must match the accepted answer digest. Old launches without the acceptance requirement keep
+their frozen execution semantics. The task detail presents declared criteria, the original assessment,
+and actual tool execution metadata separately. Reading it starts no work. Unavailable file, execution,
+browser or deployment capabilities must be reported as blockers rather than represented by a completed
+outline or invented test run.

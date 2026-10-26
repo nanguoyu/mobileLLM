@@ -397,6 +397,11 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
             guard targets.count <= 1_001, Set(targets).count == targets.count else { throw WorkflowTaskGraphError.invalid }
         }
         amendments.append(amendment)
+        for index in tasks.indices where tasks[index].review != nil && tasks[index].state == .completed {
+            tasks[index].state = .needsReview; tasks[index].outputArtifactID = nil
+            tasks[index].failure = "Review the updated human requirements."
+            tasks[index].revision += 1
+        }
         revision += 1
     }
 

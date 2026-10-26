@@ -4,8 +4,8 @@
   "documentID": "AH-REQUIREMENTS-V1",
   "sourceSpecification": {
     "path": "spec.md",
-    "sha256": "3ebae4a7fb74a538897e0b340dda573a60e6ee4c9cf007b3be578c3de55377bb",
-    "capturedAtUTC": "2026-10-26T02:05:04Z"
+    "sha256": "9bed61a4af9f11ff019c99a97f59ba3d0d15ccf00af17f36a7621328854eb4be",
+    "capturedAtUTC": "2026-10-26T10:36:06Z"
   },
   "requirements": [
     {
@@ -2248,7 +2248,7 @@
       "id": "AH-COLLAB-001",
       "area": "subagents-workflows",
       "title": "Durable collaboration and bounded goal continuation",
-      "statement": "New collaboration launches preserve agent sessions, attributed inboxes, exact dependency versions and cumulative authority/budgets. Goal completion cannot conceal required work or accepted input; continuation, context reduction and scoped profiles remain recoverable.",
+      "statement": "New collaboration launches preserve agent sessions, attributed inboxes, exact dependency versions and cumulative authority/budgets. Goal completion cannot conceal required work or accepted input; continuation, context reduction and scoped profiles remain recoverable. Declared acceptance criteria bind independent reviews to current artifacts and real tool evidence; bounded automatic corrections preserve unaffected work.",
       "status": "active",
       "riskTier": "P0",
       "specAnchors": [
@@ -2256,7 +2256,7 @@
           "section": "36",
           "heading": "Event-driven workflow collaboration",
           "lineStart": 2011,
-          "lineEnd": 2106
+          "lineEnd": 2238
         }
       ],
       "platforms": [
@@ -2272,7 +2272,7 @@
         "AHT-SESSION-002"
       ],
       "requiredEvidence": [
-        "Shared-executor session and tool-boundary checks; event-driven dispatch and exact replay; task/goal completion guards; immutable original-context retrieval; scoped profile and skill checks."
+        "Shared-executor session and tool-boundary checks; event-driven dispatch and exact replay; task/goal completion guards; immutable original-context retrieval; scoped profile and skill checks. Parallel production/review stages; failed-criterion repair; current-version acceptance and unavailable-tool rejection."
       ]
     }
   ]
