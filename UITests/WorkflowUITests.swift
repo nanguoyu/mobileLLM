@@ -140,6 +140,16 @@ final class WorkflowUITests: XCTestCase {
         XCTAssertTrue(taskResult.label.contains("Under the fixture assumptions"), "follow-ups must preserve the saved workflow result")
         app.buttons["Done"].tap()
 
+        let reviewTask = app.buttons["workflow.task.acceptance"]
+        for _ in 0..<8 where !reviewTask.isHittable { app.swipeUp() }
+        XCTAssertTrue(reviewTask.isHittable, "the declared acceptance task must remain inspectable")
+        reviewTask.tap()
+        XCTAssertTrue(app.staticTexts["Acceptance review"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Meets criterion"].waitForExistence(timeout: 8))
+        let inputs = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "workflow.input."))
+        XCTAssertEqual(inputs.count, 3, "acceptance must link all three actual reviewed producer results")
+        app.buttons["Done"].tap()
+
         let executionDetails = app.buttons["Execution details"]
         for _ in 0..<8 where !executionDetails.isHittable { app.swipeUp() }
         XCTAssertTrue(executionDetails.exists)

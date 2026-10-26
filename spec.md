@@ -2236,3 +2236,14 @@ their frozen execution semantics. The task detail presents declared criteria, th
 and actual tool execution metadata separately. Reading it starts no work. Unavailable file, execution,
 browser or deployment capabilities must be reported as blockers rather than represented by a completed
 outline or invented test run.
+
+
+Preparation also declares the requested outcome: an answer, explicitly requested source text, a saved
+workspace artifact, a running application, or a published service. The launch freezes this declaration
+and the execution capabilities actually supplied by the registered environment. A model cannot assert
+provider availability or downgrade a running-application request to source text during execution. The
+host blocks unsupported delivery before worker dispatch and checks the policy again on publication,
+including direct script returns. Source-only and information tasks remain available without a provider.
+Intent classification is model-inferred and must be evaluated against the original human request. The
+current app registers no production workspace/execution provider. Ordinary chat and explicit
+collaboration entry remain distinct; this change does not automatically route every chat into a team.

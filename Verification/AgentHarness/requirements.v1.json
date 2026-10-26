@@ -4,8 +4,8 @@
   "documentID": "AH-REQUIREMENTS-V1",
   "sourceSpecification": {
     "path": "spec.md",
-    "sha256": "9bed61a4af9f11ff019c99a97f59ba3d0d15ccf00af17f36a7621328854eb4be",
-    "capturedAtUTC": "2026-10-26T10:36:06Z"
+    "sha256": "b7bbef9df2976f6517e30cd6f275c879071bf9def48cb974a31d24acdaf6f43c",
+    "capturedAtUTC": "2026-10-26T11:05:04Z"
   },
   "requirements": [
     {
@@ -2256,7 +2256,7 @@
           "section": "36",
           "heading": "Event-driven workflow collaboration",
           "lineStart": 2011,
-          "lineEnd": 2238
+          "lineEnd": 2249
         }
       ],
       "platforms": [
