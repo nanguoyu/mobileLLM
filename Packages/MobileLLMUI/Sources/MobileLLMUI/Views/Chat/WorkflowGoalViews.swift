@@ -71,12 +71,12 @@ struct WorkflowGoalTasks: View {
     var body: some View {
         let levels = WorkflowGoalDisplay.levels(goal)
         let stages = Set(goal.tasks.filter { !excluding.contains($0.id) }.map { levels[$0.id, default: 0] }).sorted()
-        ForEach(stages, id: \.self) { stage in
+        ForEach(Array(stages.enumerated()), id: \.element) { position, stage in
             VStack(alignment: .leading, spacing: Theme.Space.sm) {
                 HStack(spacing: Theme.Space.sm) {
-                    Text("\(stage + 1)").font(.caption.weight(.semibold)).monospacedDigit()
+                    Text("\(position + 1)").font(.caption.weight(.semibold)).monospacedDigit()
                         .padding(.horizontal, 8).padding(.vertical, 4).background(Theme.surface2, in: Capsule()).accessibilityHidden(true)
-                    Text("Stage \(stage + 1)").font(.headline)
+                    Text("Stage \(position + 1)").font(.headline)
                     Spacer()
                     Text(stage == 0 ? "Independent work" : "Uses earlier results").font(.caption).foregroundStyle(Theme.textSecondary)
                 }
