@@ -23,6 +23,9 @@ struct WorkflowTaskDetailView: View {
     private var attached: Bool { store?.executingWorkflowIDs.contains(workflowID) == true }
     private var canInteract: Bool { attached && dynamic?.state == .running }
     private var observationKey: String { "\(call?.handleID?.rawValue.uuidString ?? "none")-\(canInteract)" }
+    private func resultStatus(_ item: DynamicWorkflowChildPresentation) -> String {
+        dynamic?.goal?.results.first(where: { $0.callID == item.callID })?.validationFailure == nil ? item.status.label : "Not accepted"
+    }
     private var history: [DynamicWorkflowChildPresentation] {
         guard let call else { return [] }
         return calls.filter {
@@ -73,7 +76,7 @@ struct WorkflowTaskDetailView: View {
                                     NavigationLink {
                                         WorkflowTaskDetailView(store: store, workflowID: workflowID, callID: item.callID)
                                     } label: {
-                                        Label("Call \(item.ordinal), attempt \(item.attempt) · \(item.status.label)", systemImage: item.status.symbol)
+                                        Label("Call \(item.ordinal), attempt \(item.attempt) · \(resultStatus(item))", systemImage: item.status.symbol)
                                             .font(.callout).frame(minHeight: 44)
                                     }
                                 }
@@ -138,7 +141,12 @@ struct WorkflowTaskDetailView: View {
 
     private func summary(_ call: DynamicWorkflowChildPresentation) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.sm) {
-            WorkflowTaskStateLabel(call: call, state: dynamic?.state ?? .failed, attached: attached)
+            if resultStatus(call) == "Not accepted" {
+                Label("Result not accepted", systemImage: "exclamationmark.triangle.fill")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.fitAmber)
+            } else {
+                WorkflowTaskStateLabel(call: call, state: dynamic?.state ?? .failed, attached: attached)
+            }
             if let submitted = call.submittedAt {
                 WorkflowElapsedLabel(start: submitted.date, end: call.settledAt?.date)
             }
@@ -176,7 +184,7 @@ struct WorkflowTaskDetailView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Label(source.taskTitle, systemImage: "arrow.turn.down.right").font(.callout.weight(.medium))
-                                Text("Call \(source.ordinal) · \(source.status.label)").font(.caption).foregroundStyle(Theme.textSecondary)
+                                Text("Call \(source.ordinal) · \(resultStatus(source))").font(.caption).foregroundStyle(Theme.textSecondary)
                             }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }
                         .accessibilityIdentifier("workflow.input.\(id)")
