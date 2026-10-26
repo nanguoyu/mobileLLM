@@ -2272,7 +2272,8 @@
         "AHT-SESSION-002"
       ],
       "requiredEvidence": [
-        "Shared-executor session and tool-boundary checks; event-driven dispatch and exact replay; task/goal completion guards; immutable original-context retrieval; scoped profile and skill checks. Parallel production/review stages; failed-criterion repair; current-version acceptance and unavailable-tool rejection."
+        "Shared-executor session and tool-boundary checks; event-driven dispatch and exact replay; task/goal completion guards; immutable original-context retrieval; scoped profile and skill checks.",
+        "Parallel production/review stages; failed-criterion repair; current-version acceptance and unavailable-tool rejection."
       ]
     }
   ]
