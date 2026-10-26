@@ -160,7 +160,7 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
             if case .toolOutcomeRecorded(let id, .completed) = event.payload.event { return id == call.invocationID }
             return false
         }
-        XCTAssertEqual(evidence.first?.recordDigest, recorded?.recordDigest)
+        XCTAssertEqual(evidence.first?.recordDigest, recorded?.payload.recordDigest)
         let delays = await clock.recordedDelays()
         XCTAssertEqual(delays, [10])
         let attemptNumbers = events.compactMap { event -> Int? in

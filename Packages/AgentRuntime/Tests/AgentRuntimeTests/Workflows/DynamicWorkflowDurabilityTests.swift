@@ -8,6 +8,43 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowDurabilityTests: XCTestCase {
+    func testWorkingApplicationCannotBeDowngradedToSourceWhenExecutionIsUnavailable() async throws {
+        let policy = WorkflowDeliveryPolicy(requestedOutcome: .runningApplication, availableCapabilities: [])
+        let args = try CanonicalJSON(.object(["goal": .string("Build a working application."),
+            "plan": v5Decision("deliver", answer: "Here is some source text"), "availableTools": .array([]),
+            "runDate": .string("2026-10-26"), "_mobileLLMDeliveryV1": policy.json]))
+        let fixture = try makeFixture(body: "", args: args, source: CollaborativeWorkflow.source)
+        let spawner = WorkflowFakeSpawner()
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        do { _ = try await engine.runAndWait(runID: fixture.launch.runID); XCTFail("Missing execution cannot be satisfied by a source-text answer") } catch {}
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(projection?.state, .paused)
+        XCTAssertEqual(projection?.taskGraph?.state, .blocked)
+        XCTAssertEqual(projection?.taskGraph?.reason, policy.blocker)
+        XCTAssertNil(projection?.output)
+        let count = await spawner.spawnCount
+        XCTAssertEqual(count, 0, "Unavailable implementation must not spend worker calls on a substitute deliverable")
+    }
+
+    func testDeliveryCapabilityGateAlsoChecksDirectScriptReturns() async throws {
+        for outcome in [WorkflowRequestedOutcome.runningApplication, .sourceText] {
+            let args = try CanonicalJSON(.object(["goal": .string("Deliver the requested artifact."),
+                "_mobileLLMDeliveryV1": WorkflowDeliveryPolicy(requestedOutcome: outcome, availableCapabilities: []).json]))
+            let fixture = try makeFixture(body: "return 'source text';", args: args)
+            let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+                spawner: WorkflowFakeSpawner(), requestBuilder: childBuilder())
+            _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+            try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+            do { _ = try await engine.runAndWait(runID: fixture.launch.runID); XCTAssertEqual(outcome, .sourceText) }
+            catch { XCTAssertEqual(outcome, .runningApplication) }
+            let projection = try await engine.projection(runID: fixture.launch.runID)
+            XCTAssertEqual(projection?.state, outcome == .sourceText ? .completed : .failed)
+        }
+    }
+
     func testIndependentReviewsRunConcurrentlyAndRepairOnlyTheRejectedBranch() async throws {
         let fixture = try reviewFixture()
         let spawner = ParallelReviewSpawner()
@@ -241,15 +278,20 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
 
     func testV5PreparationRequiresDelegationOrARealBlocker() throws {
         let schema = CollaborativeWorkflow.preparationSchema
+        func prepared(_ action: String, tasks: [JSONValue] = [], answer: String = "") -> JSONValue {
+            guard case .object(var value) = v5Decision(action, tasks: tasks, answer: answer) else { preconditionFailure() }
+            value["requestedOutcome"] = .string("answer")
+            return .object(value)
+        }
         XCTAssertEqual(schema.enforcement, .fullyEnforced)
-        XCTAssertFalse(try schema.validates(instance: v5Decision("deliver", answer: "Pretend the team finished")))
-        XCTAssertFalse(try schema.validates(instance: v5Decision("work")))
-        XCTAssertTrue(try schema.validates(instance: v5Decision("blocked")))
+        XCTAssertFalse(try schema.validates(instance: prepared("deliver", answer: "Pretend the team finished")))
+        XCTAssertFalse(try schema.validates(instance: prepared("work")))
+        XCTAssertTrue(try schema.validates(instance: prepared("blocked")))
         let task: JSONValue = .object(["id": .string("analysis"), "expectedRevision": .integer(0), "agent": .string("analyst"),
             "instruction": .string("Analyze the supplied evidence"), "dependencies": .array([]), "inputs": .array([]),
             "required": .bool(true), "maxToolCalls": .integer(0), "model": .string(""), "tools": .array([]),
             "skills": .array([]), "effort": .string("inherit"), "review": .null, "inputRanges": .array([])])
-        XCTAssertTrue(try schema.validates(instance: v5Decision("work", tasks: [task])))
+        XCTAssertTrue(try schema.validates(instance: prepared("work", tasks: [task])))
     }
 
     func testV5CannotDeliverWithoutAnyRealWorkerResultEvenAfterPreparation() async throws {

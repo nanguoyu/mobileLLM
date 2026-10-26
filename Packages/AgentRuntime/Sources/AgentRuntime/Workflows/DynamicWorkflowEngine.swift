@@ -656,6 +656,7 @@ private actor DynamicWorkflowSession {
                 try await terminateAsCancelled()
                 throw WorkflowScriptRuntimeError.cancelled
             }
+            if let blocker = try deliveryPolicy()?.blocker { throw WorkflowScriptRuntimeError.invalidResult(blocker) }
             if let graph = projection.taskGraph, try outputLimits(graph) != nil || requiresAcceptedReviews() {
                 guard case .string(let answer) = try JSONDecoder().decode(JSONValue.self, from: result.data),
                       try outputLimits(graph)?.finalRejection(answer) == nil,
@@ -1008,6 +1009,7 @@ private actor DynamicWorkflowSession {
                 observation = .object(excerpt)
             case "deliver":
                 guard decoded.expectedRevision == graph.revision else { throw WorkflowTaskGraphError.stale }
+                if let blocker = try deliveryPolicy()?.blocker { feedback = blocker; break }
                 guard pendingInputs.count == 0 else { throw AgentSessionError.pendingInput }
                 guard graph.unfinishedRequiredTasks.isEmpty, !graph.tasks.contains(where: { $0.state == .running }),
                       projection.submittedHandles.keys.allSatisfy({ projection.outcomes[$0] != nil }),
@@ -1067,6 +1069,7 @@ private actor DynamicWorkflowSession {
             return .object(["id": .string(item.id.description), "recipient": .string(recipient), "preview": .string(item.preview)])
         }
         return .object(["graph": .object(value), "ready": .array(graph.readyTasks.map { .string($0.id) }),
+            "deliveryBlocker": try deliveryPolicy()?.blocker.map(JSONValue.string) ?? .null,
             "pendingInputs": .object(["count": .integer(Int64(pending.count)), "messages": .array(messages)]),
             "feedback": receipt.feedback.map(JSONValue.string) ?? .null, "observation": receipt.observation ?? .null])
     }
@@ -1085,6 +1088,15 @@ private actor DynamicWorkflowSession {
         guard let args = projection.launch.args,
               case .object(let values) = try JSONDecoder().decode(JSONValue.self, from: args.data) else { return false }
         return values["_mobileLLMReviewRequiredV1"] == .bool(true)
+    }
+
+    private func deliveryPolicy() throws -> WorkflowDeliveryPolicy? {
+        guard let args = projection.launch.args,
+              case .object(let values) = try JSONDecoder().decode(JSONValue.self, from: args.data),
+              let policy = values["_mobileLLMDeliveryV1"] else { return nil }
+        let result = try JSONDecoder().decode(WorkflowDeliveryPolicy.self, from: CanonicalJSON(policy).data)
+        guard result.version == 1 else { throw WorkflowScriptRuntimeError.unsupportedRequirement }
+        return result
     }
 
     private func recordedBudget() throws -> JSONValue {

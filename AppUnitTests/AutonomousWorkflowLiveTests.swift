@@ -386,7 +386,10 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             let terminal = try await spawner.terminalResult(handle)
             let output:String?
             let completed:Bool
-            if case .completed(let answer, _) = terminal?.outcome { output = answer.text; completed = true }
+            if case .completed(let answer, _) = terminal?.outcome {
+                output = supervisor ? answer.text : try await assembly.dynamicWorkflows.result(runID: projection.runID, callID: call.callID)
+                completed = true
+            }
             else { output = nil; completed = false }
             var item:[String:Any] = ["ordinal":call.ordinal,"callID":call.callID.description,"label":call.options.label ?? "", "role":request.role,
                 "submittedSequence":submitted[call.callID] ?? 0,"settledSequence":settled[call.callID] ?? 0,

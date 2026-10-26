@@ -587,7 +587,10 @@ extension AgentRuntimeAssembly {
         if result?.status.state == .cancelled { throw CancellationError() }
         guard let result,
               result.status.state == .completed,
-              let plan = result.answer?.structuredOutput
+              let plan = result.answer?.structuredOutput,
+              case .object(let planFields) = plan,
+              case .string(let requestedOutcome)? = planFields["requestedOutcome"],
+              let outcome = WorkflowRequestedOutcome(rawValue: requestedOutcome)
         else {
             throw WorkflowLaunchError.planGenerationFailed("The coordinator did not return an executable plan.")
         }
@@ -600,6 +603,9 @@ extension AgentRuntimeAssembly {
                 "goal": .string(snapshot.text), "plan": plan,
                 "_mobileLLMOutputLimitsV1": WorkflowOutputLimits.detecting(in: snapshot.text).json,
                 "_mobileLLMReviewRequiredV1": .bool(true),
+                // No production workspace/execution provider is registered in this assembly.
+                // Future provider integration must supply its actual negotiated capabilities here.
+                "_mobileLLMDeliveryV1": WorkflowDeliveryPolicy(requestedOutcome: outcome, availableCapabilities: []).json,
                 "runDate": .string(runDate),
                 "availableTools": .array(try availableWorkflowTools(snapshot: snapshot).map(JSONValue.string)),
                 "availableSkills": .array(availableWorkflowSkills(snapshot: snapshot).map(\.catalogEntry)),

@@ -36,6 +36,12 @@ public enum CollaborativeWorkflow {
     running an application, testing it and deploying it are different outcomes. Do not replace a request
     to implement and test something with a plan and call it complete. If a required execution, filesystem,
     browser or deployment capability is unavailable, preserve useful partial work and report that blocker.
+    In preparation, requestedOutcome describes what the USER asked for, even if it is unavailable.
+    Use answer for information/design/planning; sourceText only for explicitly requested source, scripts
+    or snippets for external use; workspaceArtifact for actual saved files; runningApplication for
+    building/developing an app, website or service; publishedService for a live published deployment.
+    An unspecified implementation request means a working application, not a static mockup. Do not
+    choose sourceText to work around missing execution. The host checks actual environment capabilities.
 
     Tasks have stable IDs, an assigned agent identity, revision, instruction and dependency task IDs.
     Dependencies can refer to other tasks in the same work decision. The host dispatches a task when
@@ -149,7 +155,9 @@ public enum CollaborativeWorkflow {
     public static let preparationSchema: JSONSchemaDocument = {
         guard case .object(var root) = decisionSchema.root, case .object(var fields)? = root["properties"] else { preconditionFailure() }
         fields["action"] = .object(["type": .string("string"), "enum": .array([.string("work"), .string("blocked")])])
+        fields["requestedOutcome"] = .object(["type": .string("string"), "enum": .array(WorkflowRequestedOutcome.allCases.map { .string($0.rawValue) })])
         root["properties"] = .object(fields)
+        if case .array(let required)? = root["required"] { root["required"] = .array(required + [.string("requestedOutcome")]) }
         root["anyOf"] = .array([
             .object(["properties": .object(["action": .object(["const": .string("work")]),
                 "tasks": .object(["minItems": .integer(1)])])]),
@@ -184,6 +192,10 @@ public enum CollaborativeWorkflow {
           + '\nACTUAL DATE (UTC): ' + args.runDate;
         const hasWeb = args.availableTools.some(t => t.includes('web_search') || t.includes('fetch_webpage'));
         let packet = await collaborate({action:'snapshot'});
+        if (packet.deliveryBlocker) {
+          await collaborate({action:'pause',reason:packet.deliveryBlocker,reasonCode:'capability'});
+          throw new Error('Goal paused: ' + packet.deliveryBlocker);
+        }
         let decision = args.plan;
         let decisionAmendments = 0;
         let deliveryCorrections = 0;
