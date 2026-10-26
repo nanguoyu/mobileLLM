@@ -22,6 +22,7 @@ import uuid
 from fastapi import FastAPI, Header, HTTPException, Request
 from opensandbox import Sandbox
 from opensandbox.config import ConnectionConfig
+from opensandbox.exceptions import SandboxApiException
 from opensandbox.models import NetworkPolicy, NetworkRule
 from opensandbox.models.execd import RunCommandOpts
 from opensandbox.transport.retry import RetryPolicy
@@ -114,6 +115,9 @@ class Gateway:
         if workspace in self.clients:
             return self.clients[workspace]
         row = self.store.db.execute('SELECT * FROM workspaces WHERE id=?', (workspace,)).fetchone()
+        if row and row['state'] == 'rejected':
+            self.store.db.execute('DELETE FROM workspaces WHERE id=?', (workspace,))
+            row = None
         if row and row['sandbox'] and row['state'] == 'running':
             client = await Sandbox.connect(row['sandbox'], connection_config=self.connection)
         elif row:
@@ -123,12 +127,17 @@ class Gateway:
             if active >= 2:
                 raise RuntimeError('The two-workspace resource limit is reached; close a workspace before creating another')
             self.store.db.execute('INSERT INTO workspaces VALUES(?,NULL,?)', (workspace, 'creating'))
-            client = await Sandbox.create(self.config['image'], connection_config=self.connection,
-                timeout=timedelta(seconds=3600), ready_timeout=timedelta(seconds=90),
-                entrypoint=['/bin/sleep', 'infinity'], resource={'cpu': '2', 'memory': '2Gi'}, secure_access=True,
-                metadata={'mobilellm.owner': self.config['owner'], 'mobilellm.workspace': workspace},
-                network_policy=NetworkPolicy(default_action='deny', egress=[
-                    NetworkRule(action='allow', target=host) for host in self.config.get('allowedHosts', [])]))
+            try:
+                client = await Sandbox.create(self.config['image'], connection_config=self.connection,
+                    timeout=timedelta(seconds=3600), ready_timeout=timedelta(seconds=90),
+                    entrypoint=['/bin/sleep', 'infinity'], resource={'cpu': '2', 'memory': '2Gi'},
+                    metadata={'mobilellm.owner': self.config['owner'], 'mobilellm.workspace': workspace},
+                    network_policy=NetworkPolicy(default_action='deny', egress=[
+                        NetworkRule(action='allow', target=host) for host in self.config.get('allowedHosts', [])]))
+            except SandboxApiException as error:
+                if error.status_code in {400, 401, 403, 404, 422, 429}:
+                    self.store.db.execute('UPDATE workspaces SET state=? WHERE id=?', ('rejected', workspace))
+                raise
             self.store.db.execute('UPDATE workspaces SET sandbox=?,state=? WHERE id=?', (client.id, 'running', workspace))
         self.clients[workspace] = client
         return client
