@@ -146,6 +146,10 @@ final class WorkflowUITests: XCTestCase {
         reviewTask.tap()
         XCTAssertTrue(app.staticTexts["Acceptance review"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["Meets criterion"].waitForExistence(timeout: 8))
+        let reviewScreenshot = XCTAttachment(screenshot: app.screenshot())
+        reviewScreenshot.name = "Acceptance criteria and reviewed inputs"
+        reviewScreenshot.lifetime = .keepAlways
+        add(reviewScreenshot)
         let inputs = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "workflow.input."))
         XCTAssertEqual(inputs.count, 3, "acceptance must link all three actual reviewed producer results")
         app.buttons["Done"].tap()
@@ -172,7 +176,7 @@ final class WorkflowUITests: XCTestCase {
         XCTAssertTrue(source.waitForExistence(timeout: 5))
         let sourceText = (source.value as? String) ?? source.label
         XCTAssertTrue(sourceText.contains("waitAny("))
-        XCTAssertTrue(sourceText.contains("MOBILELLM_COORDINATOR_V5"))
+        XCTAssertTrue(sourceText.contains("MOBILELLM_COORDINATOR_V6"))
         XCTAssertFalse(app.descendants(matching: .any)["workflow.approval"].exists)
         sourceDisclosure.tap()
 
