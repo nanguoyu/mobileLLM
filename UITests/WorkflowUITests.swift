@@ -105,7 +105,7 @@ final class WorkflowUITests: XCTestCase {
         XCTAssertTrue(reviewedPlanning, "the initial coordinator must not hide its approval")
         XCTAssertFalse(reviewedTasks.isEmpty, "a child approval must be handled in its own inspector")
         XCTAssertEqual(state.label, "Completed", "complex workflow did not complete")
-        XCTAssertEqual(app.staticTexts["workflow.task.count"].label, "3 tasks · 3 completed",
+        XCTAssertEqual(app.staticTexts["workflow.task.count"].label, "4 tasks · 4 completed",
                        "coordination calls must not be counted as worker tasks")
         let task = app.buttons["workflow.task.model"]
         for _ in 0..<6 where !task.isHittable { app.swipeUp() }
@@ -146,13 +146,13 @@ final class WorkflowUITests: XCTestCase {
         executionDetails.tap()
         let callsDisclosure = app.buttons["workflow.call.history"]
         for _ in 0..<4 where !callsDisclosure.isHittable { app.swipeUp() }
-        // This fixture has three independent leaf tasks, so each result opens a decision point.
+        // Three independent investigations feed one declared review; only final delivery needs coordination.
         // The separate dependency-chain regression requires one final coordinator for a known chain.
-        XCTAssertEqual(callsDisclosure.value as? String, "6 calls", "all actual invocations remain inspectable")
+        XCTAssertEqual(callsDisclosure.value as? String, "5 calls", "all actual invocations remain inspectable")
         callsDisclosure.tap()
         let calls = app.staticTexts.matching(identifier: "workflow.agent.call")
         XCTAssertTrue(calls.firstMatch.waitForExistence(timeout: 5), "opening history must expose individual calls")
-        XCTAssertEqual(calls.count, 6)
+        XCTAssertEqual(calls.count, 5)
         callsDisclosure.tap()
         let sourceDisclosure = app.buttons["Workflow source"]
         for _ in 0..<4 where !sourceDisclosure.isHittable { app.swipeUp() }

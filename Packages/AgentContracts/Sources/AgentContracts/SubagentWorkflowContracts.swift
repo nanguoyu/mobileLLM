@@ -303,9 +303,15 @@ public struct WorkflowGoalResultLink: Hashable, Codable, Sendable, Identifiable 
     public let callID: WorkflowAgentCallID
     public let inputArtifactIDs: [String]
     public let validationFailure: String?
+    public let review: WorkflowTaskReview?
+    public let reviewStatus: WorkflowReviewStatus?
+    public let reviewToolEvidence: [WorkflowReviewToolEvidence]?
+    public let reviewMissingTools: [String]?
     public init(_ artifact: WorkflowTaskArtifact) {
         id = artifact.id; taskID = artifact.taskID; callID = artifact.callID; inputArtifactIDs = artifact.inputArtifactIDs
         validationFailure = artifact.validationFailure
+        review = artifact.reviewResult?.contract; reviewStatus = artifact.reviewResult?.status
+        reviewToolEvidence = artifact.reviewResult?.toolEvidence; reviewMissingTools = artifact.reviewResult?.missingTools
     }
 }
 

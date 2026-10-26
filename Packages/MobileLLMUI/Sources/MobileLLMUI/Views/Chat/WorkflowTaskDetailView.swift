@@ -61,7 +61,15 @@ struct WorkflowTaskDetailView: View {
                         Label("Result not accepted: " + rejection, systemImage: "exclamationmark.triangle")
                             .font(.callout).foregroundStyle(Theme.fitAmber).studioCard()
                     }
-                    output(call)
+                    if let review = dynamic?.goal?.results.first(where: { $0.callID == call.callID }), review.review != nil {
+                        WorkflowReviewView(result: review, report: result.flatMap {
+                            try? JSONDecoder().decode(WorkflowReviewReport.self, from: Data($0.utf8))
+                        })
+                        DisclosureGroup("Original review report") { output(call) }
+                            .font(.callout).accessibilityIdentifier("workflow.task.review.original")
+                    } else {
+                        output(call)
+                    }
                     inputs(call)
                     assignment(call)
                     agentSettings(call)

@@ -27,7 +27,7 @@ private final class DynamicWorkflowUITestResponsesProtocol: URLProtocol, @unchec
         let text: String
         if body.contains("SESSION_UI_CONTINUATION") {
             text = "SESSION_UI_ACK: This follow-up was received in the existing agent conversation. The original workflow result remains available."
-        } else if body.contains("MOBILELLM_COORDINATOR_V5") && body.contains("ARTIFACT CATALOG:") {
+        } else if body.contains("MOBILELLM_COORDINATOR_V6") && body.contains("ARTIFACT CATALOG:") {
             let unescaped = body.replacingOccurrences(of: #"\""#, with: "\"")
             let pending = unescaped.contains(#""state":"running""#) || unescaped.contains(#""state":"pending""#)
             if pending {
@@ -35,8 +35,10 @@ private final class DynamicWorkflowUITestResponsesProtocol: URLProtocol, @unchec
             } else {
                 text = #"{"action":"deliver","stage":"Deliver","reason":"The fixture investigations are available.","tasks":[],"reads":[],"query":"","notes":"","answer":"EVAL_KIMI_LOCAL: The complete Kimi K3 model as local weights on an iPhone 16 Pro is not feasible under this fixture's assumed memory and storage constraints. Use a smaller local model or a remote API."}"#
             }
-        } else if body.contains("MOBILELLM_COORDINATOR_V5") {
-            text = #"{"action":"work","stage":"Investigate","reason":"Independent constraint tracks.","notes":"","answer":"","reads":[],"query":"","tasks":[{"id":"model","expectedRevision":0,"agent":"model","instruction":"Assess model memory constraints.","dependencies":[],"inputs":[],"required":true,"inputRanges":[],"maxToolCalls":0,"model":"","tools":[],"skills":[],"effort":"inherit"},{"id":"device","expectedRevision":0,"agent":"device","instruction":"Assess phone constraints.","dependencies":[],"inputs":[],"required":true,"inputRanges":[],"maxToolCalls":0,"model":"","tools":[],"skills":[],"effort":"inherit"},{"id":"alternatives","expectedRevision":0,"agent":"alternatives","instruction":"Assess smaller local and remote alternatives.","dependencies":[],"inputs":[],"required":true,"inputRanges":[],"maxToolCalls":0,"model":"","tools":[],"skills":[],"effort":"inherit"}]}"#
+        } else if body.contains("MOBILELLM_COORDINATOR_V6") {
+            text = #"{"action":"work","stage":"Investigate","reason":"Independent constraint tracks.","notes":"","answer":"","reads":[],"query":"","tasks":[{"id":"model","expectedRevision":0,"agent":"model","instruction":"Assess model memory constraints.","dependencies":[],"inputs":[],"required":true,"inputRanges":[],"maxToolCalls":0,"model":"","tools":[],"skills":[],"effort":"inherit","review":null},{"id":"device","expectedRevision":0,"agent":"device","instruction":"Assess phone constraints.","dependencies":[],"inputs":[],"required":true,"inputRanges":[],"maxToolCalls":0,"model":"","tools":[],"skills":[],"effort":"inherit","review":null},{"id":"alternatives","expectedRevision":0,"agent":"alternatives","instruction":"Assess smaller local and remote alternatives.","dependencies":[],"inputs":[],"required":true,"inputRanges":[],"maxToolCalls":0,"model":"","tools":[],"skills":[],"effort":"inherit","review":null},{"id":"acceptance","expectedRevision":0,"agent":"acceptance","instruction":"Review feasibility and alternatives against the supplied fixture assumptions.","dependencies":["model","device","alternatives"],"inputs":[],"required":true,"inputRanges":[],"maxToolCalls":0,"model":"","tools":[],"skills":[],"effort":"inherit","review":{"criteria":[{"id":"feasibility","requirement":"Respect phone memory and storage assumptions and give usable alternatives.","targetTaskIDs":["model","device","alternatives"]}],"requiredTools":[]}}]}"#
+        } else if body.contains("MOBILELLM_REVIEW_V1") {
+            text = #"{"checks":[{"id":"feasibility","status":"pass","detail":"The supplied model and device constraints support the conclusion, and both smaller local and remote options remain available."}]}"#
         } else if body.contains("MOBILELLM_WORKER_V5") {
             text = "Under the fixture assumptions the phone lacks RAM and storage for complete local weights; consider a smaller local model or remote API."
         } else if body.contains("MOBILELLM_COORDINATOR_V3") && body.contains("ARTIFACT CATALOG:") {
