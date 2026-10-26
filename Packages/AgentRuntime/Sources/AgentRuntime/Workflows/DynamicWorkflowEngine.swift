@@ -656,6 +656,16 @@ private actor DynamicWorkflowSession {
                 try await terminateAsCancelled()
                 throw WorkflowScriptRuntimeError.cancelled
             }
+            if let graph = projection.taskGraph, let limits = try outputLimits(graph) {
+                guard case .string(let answer) = try JSONDecoder().decode(JSONValue.self, from: result.data),
+                      limits.finalRejection(answer) == nil,
+                      projection.collaborationReceipts.contains(where: { receipt in
+                          guard receipt.feedback == nil, receipt.graph.state == .completed,
+                                case .object(let value)? = receipt.observation,
+                                case .string(let digest)? = value["acceptedAnswerDigest"] else { return false }
+                          return digest == StableDigest.sha256(Data(answer.utf8)).rawValue
+                      }) else { throw WorkflowScriptRuntimeError.invalidResult("The returned answer does not match the accepted delivery contract.") }
+            }
             let reference = try await valueStore.store(result, runID: projection.runID)
             _ = try await append([
                 .outputCommitted(reference),
@@ -959,19 +969,42 @@ private actor DynamicWorkflowSession {
                 if case .failed(let failure, _) = outcome, failure.code == "workflow.task-admission" {
                     // The call never acquired this task. Return the current graph so dispatch can
                     // use the newer goal/task revision without inventing a failed execution.
-                } else { try graph.settle(call: call, outcome: outcome) }
+                } else {
+                    try graph.settle(call: call, outcome: outcome)
+                    if case .completed(let value, _) = outcome, let limits = try outputLimits(graph),
+                       limits.workerWords != nil || limits.workerCharacters != nil {
+                        let stored = try await valueStore.load(value)
+                        let decoded = try JSONDecoder().decode(JSONValue.self, from: stored.data)
+                        let text: String = if case .string(let text) = decoded { text } else { stored.string }
+                        if let reason = limits.workerRejection(text) { graph.rejectOutput(callID: call.callID, reason: reason) }
+                    }
+                }
             case "read":
                 guard let id = decoded.artifactID, let artifact = graph.artifacts.first(where: { $0.id == id }),
                       let offset = decoded.offset, offset >= 0, let length = decoded.length, (1...12_000).contains(length)
                 else { throw WorkflowTaskGraphError.unavailableInput }
                 let raw = try await valueStore.load(artifact.value)
-                observation = .object(try WorkflowArtifactExcerpt.read(raw, id: id, offset: offset, length: length))
+                var excerpt = try WorkflowArtifactExcerpt.read(raw, id: id, offset: offset, length: length)
+                if let failure = artifact.validationFailure { excerpt["validationFailure"] = .string(failure) }
+                observation = .object(excerpt)
             case "deliver":
                 guard decoded.expectedRevision == graph.revision else { throw WorkflowTaskGraphError.stale }
                 guard pendingInputs.count == 0 else { throw AgentSessionError.pendingInput }
-                guard projection.submittedHandles.keys.allSatisfy({ projection.outcomes[$0] != nil }),
+                guard graph.unfinishedRequiredTasks.isEmpty, !graph.tasks.contains(where: { $0.state == .running }),
+                      projection.submittedHandles.keys.allSatisfy({ projection.outcomes[$0] != nil }),
                       projection.reconciliationCallID == nil else { throw WorkflowTaskGraphError.incomplete }
+                if let limits = try outputLimits(graph) {
+                    guard let answer = decoded.answer else { throw WorkflowTaskGraphError.invalid }
+                    if let rejected = limits.finalRejection(answer) {
+                        feedback = rejected
+                        observation = .object(["outputCorrectionNeeded": .bool(true)])
+                        break
+                    }
+                }
                 try graph.setGoalState(.completed, reason: decoded.reason)
+                if try outputLimits(graph) != nil, let answer = decoded.answer {
+                    observation = .object(["acceptedAnswerDigest": .string(StableDigest.sha256(Data(answer.utf8)).rawValue)])
+                }
             case "pause":
                 guard !graph.tasks.contains(where: { $0.state == .running }) else { throw WorkflowTaskGraphError.incomplete }
                 let next: WorkflowGoalState = decoded.reasonCode == "budget" ? .budgetExhausted : .blocked
@@ -1016,6 +1049,16 @@ private actor DynamicWorkflowSession {
         return .object(["graph": .object(value), "ready": .array(graph.readyTasks.map { .string($0.id) }),
             "pendingInputs": .object(["count": .integer(Int64(pending.count)), "messages": .array(messages)]),
             "feedback": receipt.feedback.map(JSONValue.string) ?? .null, "observation": receipt.observation ?? .null])
+    }
+
+    private func outputLimits(_ graph: WorkflowTaskGraph) throws -> WorkflowOutputLimits? {
+        guard let args = projection.launch.args,
+              case .object(let values) = try JSONDecoder().decode(JSONValue.self, from: args.data),
+              let limitsValue = values["_mobileLLMOutputLimitsV1"] else { return nil }
+        var limits = try JSONDecoder().decode(WorkflowOutputLimits.self, from: CanonicalJSON(limitsValue).data)
+        guard limits.version == 1 else { throw WorkflowScriptRuntimeError.unsupportedRequirement }
+        for amendment in graph.amendments { limits = limits.applying(amendment.text) }
+        return limits
     }
 
     private func recordedBudget() throws -> JSONValue {
@@ -1932,6 +1975,7 @@ private struct WorkflowCollaborationCommand: Decodable, Sendable {
     let reason: String?
     let reasonCode: String?
     let recipient: String?
+    let answer: String?
 }
 
 private func goalAmendmentRecipients(_ projection: WorkflowRunProjectionV1) -> [AgentRunID] {

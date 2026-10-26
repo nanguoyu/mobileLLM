@@ -2188,3 +2188,20 @@ The host advances an already-declared dependency chain without asking the coordi
 every result. A failed result, a result without a planned consumer, a coordinator instruction, or a new
 human amendment returns control to the coordinator. Consumers still start as soon as their own inputs
 arrive, including while unrelated work remains active. Waiting never holds a model or worker permit.
+
+
+New app goals freeze a versioned `_mobileLLMOutputLimitsV1` policy from explicit human formatting
+directives before planning. It recognizes scoped English final/worker word limits, common Chinese
+character-limit directives and a direct JSON-only final-output request. Quoted examples, code and
+blockquotes are excluded. This is a bounded recognizer, not a general natural-language proof checker.
+Only actual human amendments may change these limits. Historical goals without the policy retain
+their original execution semantics.
+
+Checks count the entire returned body, including headings, tables and appendices. Words are
+whitespace-separated tokens containing a Unicode letter/digit; character limits count non-whitespace
+Swift characters. JSON-only output must parse as a complete JSON value. The model cannot exempt an
+appendix or substitute its own claimed count. A rejected worker result remains immutable and labeled;
+one automatic correction per task and human-amendment revision reuses its session and existing budget.
+Another invalid result stays failed. Final delivery permits two bounded corrections, then pauses with
+partial work retained. No checker truncates or rewrites the answer. Accepted delivery binds the exact
+answer digest, which is checked again before publishing. Rejected originals remain inspectable in UI.

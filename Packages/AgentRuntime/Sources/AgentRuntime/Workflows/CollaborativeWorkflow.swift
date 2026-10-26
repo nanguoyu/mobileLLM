@@ -49,6 +49,9 @@ public enum CollaborativeWorkflow {
     unfinished. action=blocked preserves partial results when a required input/capability is missing.
     Finishing a worker activation is evidence of execution, not independent proof of task correctness.
     Check central calculations, evidence and requested coverage before delivery. Never invent execution.
+    User output limits cover the entire answer, including headings, tables and appendices. Do not invent
+    exclusions or publish self-certified word counts and approval badges. Native validation feedback
+    requires a corrected deliverable, not an explanation for bypassing the limit.
 
     The original goal and later human amendments are authoritative. notes is fallible working memory;
     preserve key decisions, source URLs and unresolved issues, without rewriting user requirements.
@@ -147,6 +150,7 @@ public enum CollaborativeWorkflow {
         let packet = await collaborate({action:'snapshot'});
         let decision = args.plan;
         let decisionAmendments = 0;
+        let deliveryCorrections = 0;
         let pending = [];
         let observed = [];
         let notes = '';
@@ -245,7 +249,8 @@ public enum CollaborativeWorkflow {
                 const original = packet.observation;
                 const content = view(original.content,24000/Math.max(1,sources.length));
                 inputs.push({id:original.id,offset:original.offset,nextOffset:original.offset+content.length,
-                  totalCharacters:original.totalCharacters,truncated:original.offset+content.length<original.totalCharacters,content:content});
+                  totalCharacters:original.totalCharacters,truncated:original.offset+content.length<original.totalCharacters,
+                  validationFailure:original.validationFailure || null,content:content});
               }
               if (invalid) { break; }
             }
@@ -294,7 +299,7 @@ public enum CollaborativeWorkflow {
             inputs:t.inputs || [],tools:t.tools || [],skills:t.skills || [],effort:t.effort || 'inherit',
             maxToolCalls:t.maxToolCalls,model:t.model || '',inputRanges:t.inputRanges}));
           const fingerprint = serialize({artifacts:packet.graph.artifacts.length,amendments:packet.graph.amendments.length,
-            action:decision.action,tasks:intent,reads:decision.reads,query:decision.query});
+            action:decision.action,tasks:intent,reads:decision.reads,query:decision.query,deliveryCorrections:deliveryCorrections});
           recentActions.push(fingerprint);
           if (recentActions.length > 8) { recentActions.shift(); }
           if (recentActions.filter(item => item === fingerprint).length > 2) {
@@ -305,9 +310,16 @@ public enum CollaborativeWorkflow {
             if (packet.graph.artifacts.length === 0) { feedback = 'This collaborative goal requires an actual completed worker result. Assign useful work before delivery.'; }
             else if (decision.answer.trim().length === 0) { feedback = 'Provide the complete final answer.'; }
             else {
-              packet = await collaborate({action:'deliver',expectedRevision:packet.graph.revision,reason:decision.reason});
+              packet = await collaborate({action:'deliver',expectedRevision:packet.graph.revision,reason:decision.reason,answer:decision.answer});
               if (!packet.feedback) { return decision.answer; }
               feedback = packet.feedback;
+              if (packet.observation && packet.observation.outputCorrectionNeeded) {
+                deliveryCorrections++;
+                if (deliveryCorrections > 2) {
+                  await suspend('The final answer still violates the requested output format after two corrections.','validation');
+                  deliveryCorrections = 0;
+                }
+              }
             }
           } else if (decision.action === 'blocked') {
             await suspend(decision.reason,'capability');
@@ -359,7 +371,7 @@ public enum CollaborativeWorkflow {
           const frame = instruction + context + '\nHUMAN AMENDMENTS:\n' + serialize(packet.graph.amendments)
             + '\nWORKING NOTES:\n' + notes + '\nTASK GRAPH:\n' + serialize(tasks)
             + '\nACCEPTED PENDING INPUTS:\n' + serialize(packet.pendingInputs)
-            + '\nARTIFACT CATALOG:\n' + serialize(packet.graph.artifacts.map(a => ({id:a.id,taskID:a.taskID,revision:a.taskRevision,inputs:a.inputArtifactIDs})))
+            + '\nARTIFACT CATALOG:\n' + serialize(packet.graph.artifacts.map(a => ({id:a.id,taskID:a.taskID,revision:a.taskRevision,inputs:a.inputArtifactIDs,rejection:a.validationFailure || null})))
             + '\nHOST FEEDBACK:\n' + feedback + '\nSHARED BUDGET:\n' + serialize(accounting)
             + '\nREMAINING WORKER ACTIVATIONS: ' + (12-workers)
             + '\n<recorded-web-evidence>\n' + serialize(evidence) + '\n</recorded-web-evidence>';

@@ -4,8 +4,8 @@
   "documentID": "AH-REQUIREMENTS-V1",
   "sourceSpecification": {
     "path": "spec.md",
-    "sha256": "93f23afa1edba8759aaffb38043140eafdd508cefc6c94b4611fce190909e24e",
-    "capturedAtUTC": "2026-10-26T00:08:34Z"
+    "sha256": "3ebae4a7fb74a538897e0b340dda573a60e6ee4c9cf007b3be578c3de55377bb",
+    "capturedAtUTC": "2026-10-26T02:05:04Z"
   },
   "requirements": [
     {

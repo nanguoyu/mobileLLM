@@ -18,6 +18,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
     @MainActor func test14SourceResearchAndAttribution() async throws { try await evaluate(.research) }
     @MainActor func test15InteractiveCorrectionAndMessaging() async throws { try await evaluate(.correction) }
     @MainActor func test16OriginalContextAndLaterCorrection() async throws { try await evaluate(.longContext) }
+    @MainActor func test17WholeDeliverableAndWorkerLimits() async throws { try await evaluate(.formatting) }
 
     @MainActor func test30ResumeRetainedPausedGoalWithItsOriginalBudget() async throws {
         executionTimeAllowance = 1_200
@@ -207,11 +208,19 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                     failures.append("Resume resubmitted an existing child with a different handle")
                 }
             }
-            if let object = try? JSONSerialization.jsonObject(with:Data(answer.utf8)) as? [String:Any] {
+            if task == .formatting { failures += task.verifyText(answer) }
+            else if let object = try? JSONSerialization.jsonObject(with:Data(answer.utf8)) as? [String:Any] {
                 failures += try task.verify(object, heldOut: heldOut)
             } else { failures.append("Final answer is not the requested JSON artifact") }
             let trace = try await inspectTrace(assembly,projection:projection)
             failures += trace.failures
+            if task == .formatting {
+                let current = Set(projection.taskGraph?.tasks.compactMap(\.outputArtifactID) ?? [])
+                let producers = Set(projection.taskGraph?.artifacts.filter { current.contains($0.id) }.map { $0.callID.description } ?? [])
+                for call in trace.calls where producers.contains(call["callID"] as? String ?? "") {
+                    if (call["outputWords"] as? Int ?? .max) >= 120 { failures.append("An accepted worker result exceeds the requested limit") }
+                }
+            }
             if task.usesCalculator, trace.completedCalculatorCalls == 0 { failures.append("Required Calculator operation was not executed") }
             if task == .correction {
                 if amendmentID == nil { failures.append("The scripted human amendment was never accepted") }
@@ -344,9 +353,13 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             let completed:Bool
             if case .completed(let answer, _) = terminal?.outcome { output = answer.text; completed = true }
             else { output = nil; completed = false }
-            var item:[String:Any] = ["ordinal":call.ordinal,"label":call.options.label ?? "", "role":request.role,
+            var item:[String:Any] = ["ordinal":call.ordinal,"callID":call.callID.description,"label":call.options.label ?? "", "role":request.role,
                 "submittedSequence":submitted[call.callID] ?? 0,"settledSequence":settled[call.callID] ?? 0,
                 "completed":completed]
+            if let output { item["outputWords"] = WorkflowLiveCase.words(output) }
+            if let failure = projection.taskGraph?.artifacts.first(where: { $0.callID == call.callID })?.validationFailure {
+                item["outputValidationFailure"] = failure
+            }
             if !supervisor {
                 artifactCount += 1
                 let label = call.options.label ?? "unnamed"

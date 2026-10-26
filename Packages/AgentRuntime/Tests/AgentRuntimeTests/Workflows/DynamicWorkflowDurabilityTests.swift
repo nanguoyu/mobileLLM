@@ -131,6 +131,71 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
         XCTAssertEqual(count, 0)
     }
 
+    func testV5WorkerOutputLimitRetainsRejectedOriginalAndBoundsCorrection() async throws {
+        for longOutputs in [1, 2] {
+            let task: JSONValue = .object(["id": .string("source"), "expectedRevision": .integer(0), "agent": .string("source"),
+                "instruction": .string("Return a short result"), "dependencies": .array([]), "required": .bool(true),
+                "maxToolCalls": .integer(0), "model": .string(""), "inputRanges": .array([])])
+            let args = try CanonicalJSON(.object(["goal": .string("Keep outputs short."),
+                "plan": v5Decision("work", tasks: [task]), "availableTools": .array([]), "runDate": .string("2026-10-26"),
+                "_mobileLLMOutputLimitsV1": WorkflowOutputLimits(finalWords: 10, workerWords: 3).json]))
+            let fixture = try makeFixture(body: "", args: args, source: CollaborativeWorkflow.source)
+            let spawner = V5WorkflowSpawner(longWorkerOutputs: longOutputs)
+            let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+                spawner: spawner, requestBuilder: childBuilder())
+            _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+            try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+            do { _ = try await engine.runAndWait(runID: fixture.launch.runID); XCTAssertEqual(longOutputs, 1) }
+            catch { XCTAssertEqual(longOutputs, 2) }
+            let projection = try await engine.projection(runID: fixture.launch.runID)
+            XCTAssertEqual(projection?.state, longOutputs == 1 ? .completed : .paused)
+            XCTAssertEqual(projection?.taskGraph?.artifacts.count, 2)
+            XCTAssertNotNil(projection?.taskGraph?.artifacts.first?.validationFailure)
+            let starts = await spawner.starts
+            XCTAssertEqual(starts.filter { $0 == "source" }.count, 2, "At most one automatic correction")
+        }
+    }
+
+    func testFinalOutputCorrectionUsesTheSameGoalAndHasABound() async throws {
+        for longFinals in [1, 3] {
+            let task: JSONValue = .object(["id": .string("source"), "expectedRevision": .integer(0), "agent": .string("source"),
+                "instruction": .string("Gather evidence"), "dependencies": .array([]), "required": .bool(true),
+                "maxToolCalls": .integer(0), "model": .string(""), "inputRanges": .array([])])
+            let args = try CanonicalJSON(.object(["goal": .string("Deliver briefly."), "plan": v5Decision("work", tasks: [task]),
+                "availableTools": .array([]), "runDate": .string("2026-10-26"), "_mobileLLMOutputLimitsV1": WorkflowOutputLimits(finalWords: 3).json]))
+            let fixture = try makeFixture(body: "", args: args, source: CollaborativeWorkflow.source)
+            let spawner = V5WorkflowSpawner(longFinalOutputs: longFinals)
+            let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+                spawner: spawner, requestBuilder: childBuilder())
+            _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+            try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+            do { _ = try await engine.runAndWait(runID: fixture.launch.runID); XCTAssertEqual(longFinals, 1) }
+            catch { XCTAssertEqual(longFinals, 3) }
+            let projection = try await engine.projection(runID: fixture.launch.runID)
+            XCTAssertEqual(projection?.state, longFinals == 1 ? .completed : .paused)
+            let starts = await spawner.starts
+            XCTAssertEqual(starts.filter { $0 == "source" }.count, 1, "Format repair cannot repeat successful workers")
+            XCTAssertEqual(starts.filter { $0 == "coordinator" }.count, longFinals == 1 ? 2 : 3)
+        }
+    }
+
+    func testDeliveryCannotReplaceItsValidatedAnswerWithDifferentText() async throws {
+        let args = try CanonicalJSON(.object(["goal": .string("Return one word."), "_mobileLLMOutputLimitsV1": WorkflowOutputLimits(finalWords: 1).json]))
+        let fixture = try makeFixture(body: """
+        let packet = await collaborate({action:'snapshot'});
+        await collaborate({action:'deliver',expectedRevision:packet.graph.revision,answer:'accepted'});
+        return 'different';
+        """, args: args)
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: WorkflowFakeSpawner(), requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        do { _ = try await engine.runAndWait(runID: fixture.launch.runID); XCTFail("The accepted answer identity is binding") } catch {}
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(projection?.state, .failed)
+        XCTAssertNil(projection?.output)
+    }
+
     func testV5PreparationRequiresDelegationOrARealBlocker() throws {
         let schema = CollaborativeWorkflow.preparationSchema
         XCTAssertEqual(schema.enforcement, .fullyEnforced)
@@ -1048,12 +1113,16 @@ private actor V5WorkflowSpawner: SubagentSpawning {
     private let lateMessage: Bool
     private let reassignPendingOwner: Bool
     private let failFirstCoordinator: Bool
+    private let longWorkerOutputs: Int
+    private let longFinalOutputs: Int
     private var coordinatorFailed = false
     private var inbox: AgentSessionPendingInputs = .init()
     private var injected = false
-    init(lateMessage: Bool = false, reassignPendingOwner: Bool = false, failFirstCoordinator: Bool = false) {
+    init(lateMessage: Bool = false, reassignPendingOwner: Bool = false, failFirstCoordinator: Bool = false, longWorkerOutputs: Int = 0, longFinalOutputs: Int = 0) {
         self.lateMessage = lateMessage; self.reassignPendingOwner = reassignPendingOwner
         self.failFirstCoordinator = failFirstCoordinator
+        self.longWorkerOutputs = longWorkerOutputs
+        self.longFinalOutputs = longFinalOutputs
     }
     func pendingSessionInputs(runIDs: [AgentRunID]) async throws -> AgentSessionPendingInputs { inbox }
 
@@ -1099,13 +1168,20 @@ private actor V5WorkflowSpawner: SubagentSpawning {
                     "expectedRevision": .integer(Int64(failed["revision"] as! Int)), "agent": .string("replacement"),
                     "instruction": .string("Review the candidate"), "dependencies": .array([]), "required": .bool(true),
                     "maxToolCalls": .integer(0), "model": .string(""), "inputRanges": .array([])])])
-            } else { decision = v5Decision(done ? "deliver" : "wait", answer: done ? "All required outputs are available." : "") }
+            } else {
+                let final = longFinalOutputs > 0
+                    ? (starts.filter { $0 == "coordinator" }.count <= longFinalOutputs ? "One two three four five" : "Delivered")
+                    : "All required outputs are available."
+                decision = v5Decision(done ? "deliver" : "wait", answer: done ? final : "")
+            }
             answer = try AgentAnswer(text: CanonicalJSON(decision).string, structuredOutput: decision)
         } else if request.instruction.contains("\nTASK ID: slow\n") {
             if !dependentStarted { await withCheckedContinuation { waiter = $0 } }
             answer = try AgentAnswer(text: "Unrelated slow output")
         } else if request.instruction.contains("\nTASK ID: source\n") {
-            answer = try AgentAnswer(text: String(repeating: "x", count: 40_000) + "EXACT-TAIL-EVIDENCE")
+            answer = try AgentAnswer(text: longWorkerOutputs > 0
+                ? (starts.filter { $0 == "source" }.count <= longWorkerOutputs ? "one two three four" : "one two")
+                : String(repeating: "x", count: 40_000) + "EXACT-TAIL-EVIDENCE")
         } else {
             answer = try AgentAnswer(text: "Reviewed original tail")
             if lateMessage && !injected {

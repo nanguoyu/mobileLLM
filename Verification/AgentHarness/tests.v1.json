@@ -2135,6 +2135,26 @@
         {
           "kind": "xctest",
           "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testV5DeclaredChainRunsWithoutCoordinatorPollingBetweenEveryResult"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.WorkflowOutputLimitsTests/testHumanLimitsCountTheWholeDeliverableAndIgnoreQuotedExamples"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.WorkflowOutputLimitsTests/testChineseCharacterLimitsAndJSONHaveDirectChecks"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testV5WorkerOutputLimitRetainsRejectedOriginalAndBoundsCorrection"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testFinalOutputCorrectionUsesTheSameGoalAndHasABound"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testDeliveryCannotReplaceItsValidatedAnswerWithDifferentText"
         }
       ],
       "platforms": [
@@ -2286,6 +2306,10 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/testPlanningOracleAcceptsAProofWithoutRelaxingCostOrFeasibility"
+        },
+        {
+          "kind": "xctest",
+          "value": "mobileLLMUnitTests.AutonomousWorkflowLiveTests/test17WholeDeliverableAndWorkerLimits"
         }
       ],
       "platforms": [

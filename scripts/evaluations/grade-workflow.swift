@@ -14,7 +14,9 @@ import Foundation
             throw NSError(domain: "Invalid evaluation evidence", code: 1)
         }
         var failures = [String]()
-        if let text = evidence["answer"] as? String,
+        if task == .formatting, let text = evidence["answer"] as? String {
+            failures = task.verifyText(text)
+        } else if let text = evidence["answer"] as? String,
            let answer = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] {
             failures = try task.verify(answer, heldOut: evidence["variant"] as? String == "held-out")
             if task == .research {

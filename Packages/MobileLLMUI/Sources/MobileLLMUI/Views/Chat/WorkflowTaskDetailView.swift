@@ -54,6 +54,10 @@ struct WorkflowTaskDetailView: View {
                        [.paused, .waitingForForeground].contains(run.state) {
                         AgentRunPanel(store: observer, conversationID: conversationID)
                     }
+                    if let rejection = dynamic?.goal?.results.first(where: { $0.callID == call.callID })?.validationFailure {
+                        Label("Result not accepted: " + rejection, systemImage: "exclamationmark.triangle")
+                            .font(.callout).foregroundStyle(Theme.fitAmber).studioCard()
+                    }
                     output(call)
                     inputs(call)
                     assignment(call)

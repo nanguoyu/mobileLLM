@@ -71,6 +71,7 @@ public final class WorkflowAgentToolService: @unchecked Sendable {
         var excerpt = try WorkflowArtifactExcerpt.read(raw, id: artifactID, offset: offset, length: length)
         excerpt["taskID"] = .string(artifact.taskID)
         excerpt["sourceCallID"] = .string(artifact.callID.description)
+        if let failure = artifact.validationFailure { excerpt["validationFailure"] = .string(failure) }
         return try CanonicalJSON(.object(excerpt))
     }
 

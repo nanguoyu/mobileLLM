@@ -6,7 +6,7 @@ import SQLite3
 /// Task outputs are checked by executable invariants, independently of the model's self-assessment.
 /// SQL runs only in an in-memory database with file attachment, extensions and unsafe pragmas denied.
 enum WorkflowLiveCase: String {
-    case migration, rollout, incident, research, correction, longContext
+    case migration, rollout, incident, research, correction, longContext, formatting
 
     var goal: String {
         switch self {
@@ -65,6 +65,8 @@ enum WorkflowLiveCase: String {
         case .research: return researchGoal(heldOut: false)
         case .correction: return correctionGoal(heldOut: false)
         case .longContext: return longContextGoal
+        case .formatting:
+            return "Design an offline museum collection catalogue. Use separate storage and export agents, then an integration agent using both results, then an independent reviewer. Preserve stable object IDs, provenance notes and photos. Export JSON and CSV. No web research or code execution. Keep each worker under 120 words and the final plan under 160 words."
         case .incident:
             return """
             Analyze this distributed-job recovery incident and deliver an implementable decision table.
@@ -116,6 +118,7 @@ enum WorkflowLiveCase: String {
         case .research: return researchFailures(value, heldOut: heldOut)
         case .correction: return correctionFailures(value, heldOut: heldOut)
         case .longContext: return longContextFailures(value, heldOut: heldOut)
+        case .formatting: return ["This case requires plain-text output checking"]
         }
     }
 
@@ -356,10 +359,24 @@ extension WorkflowLiveCase {
         case .research: return researchGoal(heldOut: true)
         case .correction: return correctionGoal(heldOut: true)
         case .longContext: return longContextGoal
+        case .formatting: return goal
         }
     }
 
     var usesWeb: Bool { self == .research }
+    static func words(_ text: String) -> Int {
+        text.split(whereSeparator: \.isWhitespace).filter { $0.rangeOfCharacter(from: .alphanumerics) != nil }.count
+    }
+    func verifyText(_ text: String) -> [String] {
+        let content = text.lowercased()
+        guard Self.words(text) < 160, text.count >= 160,
+              ["json", "csv", "provenance", "photo"].allSatisfy(content.contains),
+              ["stable", "immutable", "permanent"].contains(where: content.contains),
+              content.range(of: #"\b(?:ids?|object_id|identifiers?)\b"#, options: .regularExpression) != nil else {
+            return ["The full answer exceeds its word limit or omits required catalogue content"]
+        }
+        return []
+    }
     func amendment(heldOut: Bool) -> String? {
         guard self == .correction else { return nil }
         return heldOut

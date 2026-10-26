@@ -73,6 +73,7 @@ public struct WorkflowTaskNode: Hashable, Codable, Sendable, Identifiable {
     /// immutable data edges, not a cycle between the current task revisions.
     public var artifactInputs: [String]?
     public var profile: WorkflowAgentProfileV1?
+    public var outputCorrectionAmendmentCount: Int? = nil
 }
 
 public struct WorkflowTaskArtifact: Hashable, Codable, Sendable, Identifiable {
@@ -82,6 +83,7 @@ public struct WorkflowTaskArtifact: Hashable, Codable, Sendable, Identifiable {
     public let callID: WorkflowAgentCallID
     public let inputArtifactIDs: [String]
     public let value: WorkflowValueReferenceV1
+    public var validationFailure: String? = nil
 }
 
 public enum WorkflowTaskGraphError: String, Error, Sendable, LocalizedError {
@@ -156,6 +158,7 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
                     agent: change.agent, instruction: change.instruction, dependencies: change.dependencies,
                     required: old.required, maximumToolCalls: change.maximumToolCalls, model: change.model,
                     state: .pending, inputArtifactIDs: [], inputRanges: change.inputRanges, artifactInputs: change.artifactInputs, profile: change.profile)
+                next.tasks[index].outputCorrectionAmendmentCount = old.outputCorrectionAmendmentCount
                 reopened.insert(old.id)
             } else {
                 guard change.expectedRevision == 0 else { throw WorkflowTaskGraphError.stale }
@@ -245,6 +248,30 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
         tasks[index].activeCallID = nil
         tasks[index].revision += 1
         revision += 1
+    }
+
+    /// Keeps the rejected original, then permits one bounded correction per human requirement
+    /// revision. A second invalid output remains failed; neither the model nor retry widens limits.
+    public mutating func rejectOutput(callID: WorkflowAgentCallID, reason: String) {
+        guard let artifactIndex = artifacts.firstIndex(where: { $0.callID == callID }) else { return }
+        artifacts[artifactIndex].validationFailure = reason
+        let artifact = artifacts[artifactIndex]
+        guard let index = tasks.firstIndex(where: { $0.id == artifact.taskID && $0.outputArtifactID == artifact.id }) else { return }
+        let old = tasks[index]
+        if old.outputCorrectionAmendmentCount != amendments.count {
+            do {
+                try update([WorkflowTaskUpdate(id: old.id, expectedRevision: old.revision, agent: old.agent,
+                    instruction: old.instruction + "\n\n[Required output correction]\n" + reason,
+                    dependencies: old.dependencies, required: old.required, maximumToolCalls: old.maximumToolCalls,
+                    model: old.model, inputRanges: old.inputRanges,
+                    artifactInputs: Self.unique((old.artifactInputs ?? []) + [artifact.id]), profile: old.profile)], expectedRevision: revision)
+                tasks[index].outputCorrectionAmendmentCount = amendments.count
+                tasks[index].failure = reason
+                return
+            } catch { /* Failed correction admission must not make the rejected output acceptable. */ }
+        }
+        tasks[index].state = .failed; tasks[index].outputArtifactID = nil
+        tasks[index].failure = reason; tasks[index].revision += 1; revision += 1
     }
 
     public mutating func setGoalState(_ next: WorkflowGoalState, reason: String?) throws {
