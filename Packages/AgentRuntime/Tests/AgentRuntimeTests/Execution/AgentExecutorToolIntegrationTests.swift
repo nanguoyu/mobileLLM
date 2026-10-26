@@ -152,6 +152,15 @@ final class AgentExecutorToolIntegrationTests: XCTestCase {
         XCTAssertEqual(counts.preparations, 1)
         XCTAssertEqual(counts.executions, 2)
         XCTAssertEqual(counts.boundaries, 0, "localPure work must not enter a protected boundary")
+        let evidence = try await DurableSubagentSpawner(executor: harness.executor, repository: harness.repository)
+            .reviewToolEvidence(handleID)
+        XCTAssertEqual(evidence.map(\.toolID), [definition.descriptor.id.logicalID.description])
+        XCTAssertEqual(evidence.map(\.invocationID), [call.invocationID], "Retried execution produces one settled tool receipt")
+        let recorded = events.first { event in
+            if case .toolOutcomeRecorded(let id, .completed) = event.payload.event { return id == call.invocationID }
+            return false
+        }
+        XCTAssertEqual(evidence.first?.recordDigest, recorded?.recordDigest)
         let delays = await clock.recordedDelays()
         XCTAssertEqual(delays, [10])
         let attemptNumbers = events.compactMap { event -> Int? in

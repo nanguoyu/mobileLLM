@@ -257,7 +257,9 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
         else { throw SubagentSpawnError.resultUnavailable }
         let history = try ExecutionHistory(events: snapshot.events, projection: snapshot.facts.projection)
         return history.toolOutcomes.sorted { $0.value.0.sequence < $1.value.0.sequence }.compactMap { id, recorded in
-            guard case .completed = recorded.1, let plan = history.toolIntents[id]?.1.plan, plan.kind == .tool else { return nil }
+            // The typed tool journal also records localPure, MCP and file adapters. Filtering
+            // by external boundary kind would discard real Calculator and other local execution.
+            guard case .completed = recorded.1, let plan = history.toolIntents[id]?.1.plan else { return nil }
             return WorkflowReviewToolEvidence(toolID: plan.subjectID, invocationID: id, recordDigest: recorded.0.recordDigest)
         }
     }
