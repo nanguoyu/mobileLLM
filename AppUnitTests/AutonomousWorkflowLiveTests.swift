@@ -19,6 +19,23 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
     @MainActor func test15InteractiveCorrectionAndMessaging() async throws { try await evaluate(.correction) }
     @MainActor func test16OriginalContextAndLaterCorrection() async throws { try await evaluate(.longContext) }
     @MainActor func test17WholeDeliverableAndWorkerLimits() async throws { try await evaluate(.formatting) }
+    @MainActor func test18SimpleReservationGoalPlansAndReviewsWithoutAssignedRoles() async throws { try await evaluate(.reservation) }
+    @MainActor func test19WebsiteRequestReportsMissingExecutionInsteadOfClaimingDelivery() async throws { try await evaluate(.website) }
+
+    func testReservationOracleRejectsDoubleBookingAfterHoursAndWrongDeposits() throws {
+        var rows: [[String: Any]] = [
+            ["id":"A","status":"confirmed","tableID":"T1"], ["id":"B","status":"confirmed","tableID":"T2"],
+            ["id":"C","status":"confirmed","tableID":"T3"], ["id":"D","status":"waitlist","tableID":NSNull()],
+            ["id":"E","status":"confirmed","tableID":"T3"], ["id":"F","status":"rejected","tableID":NSNull()]
+        ]
+        XCTAssertTrue(try WorkflowLiveCase.reservation.verify(["allocations":rows,"depositEUR":90]).isEmpty)
+        XCTAssertFalse(try WorkflowLiveCase.reservation.verify(["allocations":rows,"depositEUR":95]).isEmpty)
+        rows[3] = ["id":"D","status":"confirmed","tableID":"T2"]
+        XCTAssertFalse(try WorkflowLiveCase.reservation.verify(["allocations":rows,"depositEUR":90]).isEmpty)
+        rows[3] = ["id":"D","status":"waitlist","tableID":NSNull()]
+        rows[5] = ["id":"F","status":"confirmed","tableID":"T3"]
+        XCTAssertFalse(try WorkflowLiveCase.reservation.verify(["allocations":rows,"depositEUR":90]).isEmpty)
+    }
 
     @MainActor func test30ResumeRetainedPausedGoalWithItsOriginalBudget() async throws {
         executionTimeAllowance = 1_200
@@ -196,7 +213,13 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             }
             if let output = try await assembly.dynamicWorkflows.resolvedOutput(runID:runID),
                case .string(let text) = try JSONDecoder().decode(JSONValue.self,from:output.data) { answer = text }
-            if projection.state != .completed { failures.append("Workflow state \(projection.state): \(projection.failure ?? projection.taskGraph?.reason ?? "no final output")") }
+            if task == .website {
+                let reason = projection.taskGraph?.reason?.lowercased() ?? ""
+                if projection.state != .paused || projection.taskGraph?.state != .blocked || projection.output != nil
+                    || !["execution", "filesystem", "workspace", "browser", "sandbox", "file", "运行", "执行", "文件", "浏览器", "沙盒", "工作区"].contains(where: reason.contains) {
+                    failures.append("The website request did not retain an explicit execution-capability blocker")
+                }
+            } else if projection.state != .completed { failures.append("Workflow state \(projection.state): \(projection.failure ?? projection.taskGraph?.reason ?? "no final output")") }
             if let beforeResume {
                 if projection.launch.budget != beforeResume.launch.budget || projection.preparationUsage != beforeResume.preparationUsage {
                     failures.append("Resume changed the original allowance or preparation accounting")
@@ -208,12 +231,17 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                     failures.append("Resume resubmitted an existing child with a different handle")
                 }
             }
-            if task == .formatting { failures += task.verifyText(answer) }
+            if task == .website { /* Capability refusal is the expected outcome, not a completed website. */ }
+            else if task == .formatting { failures += task.verifyText(answer) }
             else if let object = try? JSONSerialization.jsonObject(with:Data(answer.utf8)) as? [String:Any] {
                 failures += try task.verify(object, heldOut: heldOut)
             } else { failures.append("Final answer is not the requested JSON artifact") }
-            let trace = try await inspectTrace(assembly,projection:projection)
+            let trace = try await inspectTrace(assembly,projection:projection,requiresStages:task.requiresStages)
             failures += trace.failures
+            if task == .reservation {
+                if let graph = projection.taskGraph { do { try graph.requireAcceptedReviews() } catch { failures.append(error.localizedDescription) } }
+                else { failures.append("No native review graph was recorded") }
+            }
             if task == .formatting {
                 let current = Set(projection.taskGraph?.tasks.compactMap(\.outputArtifactID) ?? [])
                 let producers = Set(projection.taskGraph?.artifacts.filter { current.contains($0.id) }.map { $0.callID.description } ?? [])
@@ -251,6 +279,13 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                 "successfulToolCalls":trace.completedToolCalls,"workerWaves":trace.waves,"dependentWorkers":trace.dependencies,"distinctWorkerIDs":trace.workerIDs.sorted(),
                 "successfulCalculatorCalls":trace.completedCalculatorCalls,"successfulTools":trace.successfulToolNames,"originalContextReads":trace.originalContextReads,
                 "calls":trace.calls,"checksPassed":failures.isEmpty,"failures":failures,"answer":answer,
+                "goalState":projection.taskGraph?.state.rawValue ?? "unavailable", "blocker":projection.taskGraph?.reason ?? "",
+                "reviews": try (projection.taskGraph?.artifacts ?? []).compactMap { artifact -> [String:Any]? in
+                    guard let review = artifact.reviewResult else { return nil }
+                    var record = try JSONSerialization.jsonObject(with: JSONEncoder().encode(review)) as! [String:Any]
+                    record["artifactID"] = artifact.id; record["status"] = review.status.rawValue
+                    return record
+                },
                 "intervention":resume != nil ? "Explicit resume of a retained paused goal, in a copy of its original journal and artifacts. No corrective prompt or answer supplied. Original allowance, preparation usage, settled outcomes and handles are checked unchanged."
                     : task.amendment(heldOut:heldOut).map { "Scripted human amendment after first worker submission: " + $0 } ?? "Original task only. No corrective external prompts or model-output fixtures."
             ]
@@ -293,7 +328,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
     }
 
     @MainActor
-    private func inspectTrace(_ assembly:AgentRuntimeAssembly,projection:WorkflowRunProjectionV1) async throws -> Trace {
+    private func inspectTrace(_ assembly:AgentRuntimeAssembly,projection:WorkflowRunProjectionV1,requiresStages:Bool = true) async throws -> Trace {
         var result = Trace()
         let calculatorID = try AgentToolLogicalID(providerID: "builtin", name: "calculator").description
         let spawner = DurableSubagentSpawner(executor:assembly.executor,repository:assembly.repository)
@@ -398,7 +433,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             result.calls.append(item)
         }
         result.waves = (completedDepths.max() ?? -1) + 1
-        if result.waves < 3 || result.dependencies < 2 || result.workerIDs.count < 3 {
+        if requiresStages && (result.waves < 3 || result.dependencies < 2 || result.workerIDs.count < 3) {
             result.failures.append("Requested staged collaboration missing: \(result.waves) dependency stages, \(result.dependencies) dependent workers, \(result.workerIDs.count) distinct agent identities")
         }
         return result

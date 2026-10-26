@@ -6,10 +6,21 @@ import SQLite3
 /// Task outputs are checked by executable invariants, independently of the model's self-assessment.
 /// SQL runs only in an in-memory database with file attachment, extensions and unsafe pragmas denied.
 enum WorkflowLiveCase: String {
-    case migration, rollout, incident, research, correction, longContext, formatting
+    case migration, rollout, incident, research, correction, longContext, formatting, reservation, website
 
     var goal: String {
         switch self {
+        case .website:
+            return "开发一个中餐馆网站，支持在线订台。"
+        case .reservation:
+            return """
+            为一家中餐馆制定今晚的订台安排并核对订金。营业时间 18:00–22:00，T1 为 2 人桌，T2 为 4 人桌，T3 为 6 人桌，不能拼桌。
+            按以下请求顺序处理，每次选择全时段可用且足够大的最小桌型，相同桌型按桌号排序。预约时段左闭右开。
+            A：2 人，18:00–19:30；B：4 人，18:00–19:30；C：6 人，18:00–19:30；D：3 人，19:00–20:00；
+            E：6 人，19:30–21:00；F：6 人，21:00–22:30。营业时间内无合适空桌则 waitlist，超出营业时间则 rejected，其余 confirmed。
+            已分配的桌位不能被后来请求挤占。仅 confirmed 按每人 5 欧元收订金，用计算器核对总额。
+            只返回 JSON，字段为 allocations（按请求顺序，每项 id、status、tableID，未确认的 tableID 为 null）、depositEUR 和 explanation。
+            """
         case .migration:
             return """
             Deliver a production SQLite 3.45+ migration script for this legacy help-desk database.
@@ -104,10 +115,13 @@ enum WorkflowLiveCase: String {
         }
     }
 
-    var usesCalculator: Bool { self == .rollout }
+    var usesCalculator: Bool { self == .rollout || self == .reservation }
+    var requiresStages: Bool { self != .reservation && self != .website }
 
     func verify(_ value: [String: Any], heldOut: Bool = false) throws -> [String] {
         switch self {
+        case .reservation: return ReservationOracle.verify(value)
+        case .website: return ["Website delivery is checked against the unavailable execution capability"]
         case .migration:
             guard value["marker"] as? String == "EVAL_MIGRATION", let sql = value["sql"] as? String, !sql.isEmpty else {
                 return ["Missing migration JSON/script"]
@@ -359,7 +373,7 @@ extension WorkflowLiveCase {
         case .research: return researchGoal(heldOut: true)
         case .correction: return correctionGoal(heldOut: true)
         case .longContext: return longContextGoal
-        case .formatting: return goal
+        case .formatting, .reservation, .website: return goal
         }
     }
 
@@ -538,5 +552,37 @@ struct WorkflowLiveEvidence: Codable {
             _ = id
             return nil
         }
+    }
+}
+
+/// Outcome check for ordinary reservation rules; it supplies no agent roles or intermediate answers.
+private enum ReservationOracle {
+    static func verify(_ value: [String: Any]) -> [String] {
+        let tables = [("T1", 2), ("T2", 4), ("T3", 6)]
+        let requests = [("A",2,0,90), ("B",4,0,90), ("C",6,0,90), ("D",3,60,120), ("E",6,90,180), ("F",6,180,270)]
+        guard let rows = value["allocations"] as? [[String: Any]], rows.count == requests.count else {
+            return ["Missing or duplicate reservation decisions"]
+        }
+        var occupied: [String: [(Int, Int)]] = [:]
+        var total = 0
+        var failures: [String] = []
+        for (index, request) in requests.enumerated() {
+            let (id, people, start, end) = request
+            let row = rows[index]
+            let available = tables.first { table in
+                table.1 >= people && !(occupied[table.0] ?? []).contains { max(start, $0.0) < min(end, $0.1) }
+            }
+            let selected = end <= 240 ? available?.0 : nil
+            let status = end > 240 ? "rejected" : selected == nil ? "waitlist" : "confirmed"
+            if row["id"] as? String != id || row["status"] as? String != status {
+                failures.append("Incorrect reservation decision for " + id)
+            }
+            if let selected {
+                if row["tableID"] as? String != selected { failures.append("Wrong smallest available table for " + id) }
+                occupied[selected, default: []].append((start,end)); total += people * 5
+            } else if !(row["tableID"] is NSNull) { failures.append("Unconfirmed reservation has a table: " + id) }
+        }
+        if value["depositEUR"] as? Int != total { failures.append("Incorrect deposit total") }
+        return failures
     }
 }
