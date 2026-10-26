@@ -656,9 +656,9 @@ private actor DynamicWorkflowSession {
                 try await terminateAsCancelled()
                 throw WorkflowScriptRuntimeError.cancelled
             }
-            if let graph = projection.taskGraph, let limits = try outputLimits(graph) {
+            if let graph = projection.taskGraph, try outputLimits(graph) != nil || requiresAcceptedReviews() {
                 guard case .string(let answer) = try JSONDecoder().decode(JSONValue.self, from: result.data),
-                      limits.finalRejection(answer) == nil,
+                      try outputLimits(graph)?.finalRejection(answer) == nil,
                       projection.collaborationReceipts.contains(where: { receipt in
                           guard receipt.feedback == nil, receipt.graph.state == .completed,
                                 case .object(let value)? = receipt.observation,
@@ -978,6 +978,22 @@ private actor DynamicWorkflowSession {
                         let text: String = if case .string(let text) = decoded { text } else { stored.string }
                         if let reason = limits.workerRejection(text) { graph.rejectOutput(callID: call.callID, reason: reason) }
                     }
+                    if case .completed(let value, _) = outcome,
+                       let task = graph.tasks.first(where: { $0.id == call.options.task?.taskID }),
+                       task.review != nil, task.state == .completed, task.outputArtifactID == call.options.task?.outputArtifactID {
+                        let stored = try await valueStore.load(value)
+                        let raw = try JSONDecoder().decode(JSONValue.self, from: stored.data)
+                        let bytes: Data = if case .string(let text) = raw { Data(text.utf8) } else { stored.data }
+                        if let report = try? JSONDecoder().decode(WorkflowReviewReport.self, from: bytes),
+                           (try? report.validate(against: task.review!)) != nil {
+                            guard let submitted = projection.submittedHandles[call.callID] else { throw WorkflowTaskGraphError.ownership }
+                            let evidence = try await spawner.reviewToolEvidence(submitted)
+                            try graph.recordReview(callID: call.callID, report: report, toolEvidence: evidence,
+                                goalAmendmentCount: call.options.task?.goalAmendmentCount ?? 0)
+                        } else {
+                            graph.rejectOutput(callID: call.callID, reason: WorkflowTaskGraphError.invalidReview.localizedDescription)
+                        }
+                    }
                 }
             case "read":
                 guard let id = decoded.artifactID, let artifact = graph.artifacts.first(where: { $0.id == id }),
@@ -986,6 +1002,9 @@ private actor DynamicWorkflowSession {
                 let raw = try await valueStore.load(artifact.value)
                 var excerpt = try WorkflowArtifactExcerpt.read(raw, id: id, offset: offset, length: length)
                 if let failure = artifact.validationFailure { excerpt["validationFailure"] = .string(failure) }
+                if let review = artifact.reviewResult {
+                    excerpt["reviewResult"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(review))
+                }
                 observation = .object(excerpt)
             case "deliver":
                 guard decoded.expectedRevision == graph.revision else { throw WorkflowTaskGraphError.stale }
@@ -993,6 +1012,7 @@ private actor DynamicWorkflowSession {
                 guard graph.unfinishedRequiredTasks.isEmpty, !graph.tasks.contains(where: { $0.state == .running }),
                       projection.submittedHandles.keys.allSatisfy({ projection.outcomes[$0] != nil }),
                       projection.reconciliationCallID == nil else { throw WorkflowTaskGraphError.incomplete }
+                if try requiresAcceptedReviews() { try graph.requireAcceptedReviews() }
                 if let limits = try outputLimits(graph) {
                     guard let answer = decoded.answer else { throw WorkflowTaskGraphError.invalid }
                     if let rejected = limits.finalRejection(answer) {
@@ -1002,7 +1022,7 @@ private actor DynamicWorkflowSession {
                     }
                 }
                 try graph.setGoalState(.completed, reason: decoded.reason)
-                if try outputLimits(graph) != nil, let answer = decoded.answer {
+                if try outputLimits(graph) != nil || requiresAcceptedReviews(), let answer = decoded.answer {
                     observation = .object(["acceptedAnswerDigest": .string(StableDigest.sha256(Data(answer.utf8)).rawValue)])
                 }
             case "pause":
@@ -1059,6 +1079,12 @@ private actor DynamicWorkflowSession {
         guard limits.version == 1 else { throw WorkflowScriptRuntimeError.unsupportedRequirement }
         for amendment in graph.amendments { limits = limits.applying(amendment.text) }
         return limits
+    }
+
+    private func requiresAcceptedReviews() throws -> Bool {
+        guard let args = projection.launch.args,
+              case .object(let values) = try JSONDecoder().decode(JSONValue.self, from: args.data) else { return false }
+        return values["_mobileLLMReviewRequiredV1"] == .bool(true)
     }
 
     private func recordedBudget() throws -> JSONValue {

@@ -72,6 +72,9 @@ public final class WorkflowAgentToolService: @unchecked Sendable {
         excerpt["taskID"] = .string(artifact.taskID)
         excerpt["sourceCallID"] = .string(artifact.callID.description)
         if let failure = artifact.validationFailure { excerpt["validationFailure"] = .string(failure) }
+        if let review = artifact.reviewResult {
+            excerpt["reviewResult"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(review))
+        }
         return try CanonicalJSON(.object(excerpt))
     }
 

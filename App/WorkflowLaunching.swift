@@ -599,6 +599,7 @@ extension AgentRuntimeAssembly {
             args: try CanonicalJSON(.object([
                 "goal": .string(snapshot.text), "plan": plan,
                 "_mobileLLMOutputLimitsV1": WorkflowOutputLimits.detecting(in: snapshot.text).json,
+                "_mobileLLMReviewRequiredV1": .bool(true),
                 "runDate": .string(runDate),
                 "availableTools": .array(try availableWorkflowTools(snapshot: snapshot).map(JSONValue.string)),
                 "availableSkills": .array(availableWorkflowSkills(snapshot: snapshot).map(\.catalogEntry)),

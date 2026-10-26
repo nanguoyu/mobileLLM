@@ -8,6 +8,49 @@ import XCTest
 // TEST-ID: AHT-DYNAMIC-001
 
 final class DynamicWorkflowDurabilityTests: XCTestCase {
+    func testIndependentReviewsRunConcurrentlyAndRepairOnlyTheRejectedBranch() async throws {
+        let fixture = try reviewFixture()
+        let spawner = ParallelReviewSpawner()
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        let result = try await engine.runAndWait(runID: fixture.launch.runID)
+        XCTAssertEqual(try decode(result), .string("Checked both artifacts."))
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        let graph = try XCTUnwrap(projection?.taskGraph)
+        XCTAssertNoThrow(try graph.requireAcceptedReviews())
+        XCTAssertEqual(graph.artifacts.count, 6)
+        XCTAssertEqual(graph.artifacts.filter { $0.reviewResult?.status == .revise }.count, 1)
+        let starts = await spawner.starts
+        XCTAssertEqual(starts.filter { $0 == "a" }.count, 2)
+        XCTAssertEqual(starts.filter { $0 == "b" }.count, 1)
+        XCTAssertEqual(starts.filter { $0 == "check-a" }.count, 2)
+        XCTAssertEqual(starts.filter { $0 == "check-b" }.count, 1)
+        XCTAssertEqual(starts.filter { $0 == "coordinator" }.count, 1, "Automatic repair does not need a model to repeat the review")
+        let parallelStages = await spawner.parallelStages
+        XCTAssertEqual(parallelStages, ["produce", "review"], "Both stages execute two distinct agents concurrently")
+        let correction = await spawner.correctionPrompt
+        XCTAssertTrue(correction.contains("Correct the missing field"))
+        XCTAssertTrue(correction.contains("check-a:1"))
+    }
+
+    func testReviewCannotClaimToolExecutionWithoutARecordedSuccessfulInvocation() async throws {
+        let fixture = try reviewFixture(requireTool: true)
+        let spawner = ParallelReviewSpawner(requireTool: true)
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        do { _ = try await engine.runAndWait(runID: fixture.launch.runID); XCTFail("An unexecuted required check cannot pass") } catch {}
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(projection?.state, .paused)
+        XCTAssertNil(projection?.output)
+        XCTAssertEqual(projection?.taskGraph?.artifacts.last(where: { $0.taskID == "check-a" })?.reviewResult?.missingTools, ["builtin.calculator"])
+        let starts = await spawner.starts
+        XCTAssertEqual(starts.filter { $0 == "a" }.count, 1)
+    }
+
     func testRejectedTaskClaimIsDurableAndRetryDoesNotContinueAnUnsubmittedSeed() async throws {
         let fixture = try makeFixture(body: """
         let state = await collaborate({action:'snapshot'});
@@ -205,7 +248,7 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
         let task: JSONValue = .object(["id": .string("analysis"), "expectedRevision": .integer(0), "agent": .string("analyst"),
             "instruction": .string("Analyze the supplied evidence"), "dependencies": .array([]), "inputs": .array([]),
             "required": .bool(true), "maxToolCalls": .integer(0), "model": .string(""), "tools": .array([]),
-            "skills": .array([]), "effort": .string("inherit"), "inputRanges": .array([])])
+            "skills": .array([]), "effort": .string("inherit"), "review": .null, "inputRanges": .array([])])
         XCTAssertTrue(try schema.validates(instance: v5Decision("work", tasks: [task])))
     }
 
@@ -867,6 +910,67 @@ private func fullCapacityRequest(_ launch: WorkflowLaunchSnapshotV1, _ call: Wor
         instruction: "Exercise admission only", outputRequirement: .text, modelPolicy: launch.defaultModelPolicy,
         capabilityCeiling: RunCapabilityCeiling(capabilities: AgentCapabilitySet([])), budget: budget,
         source: .workflow, approvalMode: launch.approvalMode)
+}
+
+private func reviewFixture(requireTool: Bool = false) throws -> WorkflowFixture {
+    let tasks: [JSONValue] = ["a", "b", "check-a", "check-b"].map { id in
+        let target = String(id.suffix(1))
+        let review: JSONValue = id.hasPrefix("check-") ? .object([
+            "criteria": .array([.object(["id": .string("complete"), "requirement": .string("Include every required field"),
+                "targetTaskIDs": .array([.string(target)])])]),
+            "requiredTools": .array(requireTool && target == "a" ? [.string("builtin.calculator")] : [])
+        ]) : .null
+        return .object(["id": .string(id), "expectedRevision": .integer(0), "agent": .string(id),
+            "instruction": .string("Complete " + id), "dependencies": .array(id.hasPrefix("check-") ? [.string(target)] : []),
+            "required": .bool(true), "maxToolCalls": .integer(0), "model": .string(""), "inputRanges": .array([]), "review": review])
+    }
+    return try makeFixture(body: "", args: CanonicalJSON(.object(["goal": .string("Deliver two correct artifacts."),
+        "plan": v5Decision("work", tasks: tasks), "availableTools": .array([]), "runDate": .string("2026-10-26"),
+        "_mobileLLMReviewRequiredV1": .bool(true)])), source: CollaborativeWorkflow.source)
+}
+
+private actor ParallelReviewSpawner: SubagentSpawning {
+    private var requests: [AgentExecutionHandleID: SubagentSpawnRequest] = [:]
+    private var waits: [String: CheckedContinuation<Void, Never>] = [:]
+    private var reached: [String: Set<String>] = [:]
+    private(set) var starts: [String] = []
+    private(set) var parallelStages: Set<String> = []
+    private(set) var correctionPrompt = ""
+    private let requireTool: Bool
+    init(requireTool: Bool = false) { self.requireTool = requireTool }
+
+    func spawn(_ request: SubagentSpawnRequest) async throws -> AgentExecutionHandleID {
+        let handle = AgentExecutionHandleID(); requests[handle] = request
+        let id = taskID(request); starts.append(id)
+        if id == "a", starts.filter({ $0 == "a" }).count == 2 { correctionPrompt = request.instruction }
+        return handle
+    }
+    func spawn(_ request: SubagentSpawnRequest, continuing: AgentRunID, senderRunID: AgentRunID) async throws -> AgentExecutionHandleID {
+        try await spawn(request)
+    }
+    func collect(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult {
+        let request = requests[handleID]!, id = taskID(request)
+        if id != "coordinator", starts.filter({ $0 == id }).count == 1 {
+            let stage = id.hasPrefix("check-") ? "review" : "produce"
+            reached[stage, default: []].insert(id)
+            if reached[stage]!.count < 2 { await withCheckedContinuation { waits[stage] = $0 } }
+            else { parallelStages.insert(stage); waits.removeValue(forKey: stage)?.resume() }
+        }
+        let answer: AgentAnswer
+        if id == "coordinator" {
+            let decision = v5Decision(requireTool ? "blocked" : "deliver", answer: "Checked both artifacts.")
+            answer = try AgentAnswer(text: CanonicalJSON(decision).string, structuredOutput: decision)
+        } else if id.hasPrefix("check-") {
+            let revise = !requireTool && id == "check-a" && starts.filter { $0 == id }.count == 1
+            let value: JSONValue = .object(["checks": .array([.object(["id": .string("complete"),
+                "status": .string(revise ? "revise" : "pass"), "detail": .string(revise ? "Correct the missing field" : "The supplied fields meet the criterion")])])])
+            answer = try AgentAnswer(text: CanonicalJSON(value).string, structuredOutput: value)
+        } else { answer = try AgentAnswer(text: "Artifact " + id) }
+        return SubagentResult(runID: request.childRunID, handleID: handleID, outcome: .completed(answer: answer, usage: .zero))
+    }
+    private func taskID(_ request: SubagentSpawnRequest) -> String {
+        request.role == "workflow-supervisor" ? "coordinator" : request.instruction.components(separatedBy: "\nTASK ID: ").last!.components(separatedBy: "\n")[0]
+    }
 }
 
 private func makeFixture(body: String, args: CanonicalJSON? = nil, source suppliedSource: String? = nil) throws -> WorkflowFixture {

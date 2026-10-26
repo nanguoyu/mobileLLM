@@ -25,6 +25,7 @@ public protocol SubagentSpawning: Sendable {
     func withSessionInputBarrier(runIDs: [AgentRunID],
                                  operation: @Sendable () async throws -> JSONValue) async throws -> JSONValue
     func webObservations(_ handleID: AgentExecutionHandleID) async throws -> [WorkflowWebObservation]
+    func reviewToolEvidence(_ handleID: AgentExecutionHandleID) async throws -> [WorkflowReviewToolEvidence]
     /// Read a committed terminal result without starting or resuming a child.
     func terminalResult(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult?
     /// Submits one child run under a reserved parent identity and returns its execution handle.
@@ -67,6 +68,7 @@ public extension SubagentSpawning {
         throw AgentSessionError.unavailable
     }
     func webObservations(_: AgentExecutionHandleID) async throws -> [WorkflowWebObservation] { [] }
+    func reviewToolEvidence(_: AgentExecutionHandleID) async throws -> [WorkflowReviewToolEvidence] { [] }
     func terminalResult(_: AgentExecutionHandleID) async throws -> SubagentResult? { nil }
     func collect(_ handleID: AgentExecutionHandleID,
                  onProgress: @escaping @Sendable () async -> Void) async throws -> SubagentResult {
@@ -248,6 +250,16 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
     public func terminalResult(_ handleID: AgentExecutionHandleID) async throws -> SubagentResult? {
         let handle = try await executor.attach(to: handleID)
         return try await handle.result().map(Self.normalize)
+    }
+
+    public func reviewToolEvidence(_ handleID: AgentExecutionHandleID) async throws -> [WorkflowReviewToolEvidence] {
+        guard let snapshot = try await repository.loadRunSnapshot(for: handleID), snapshot.facts.projection.isTerminal
+        else { throw SubagentSpawnError.resultUnavailable }
+        let history = try ExecutionHistory(events: snapshot.events, projection: snapshot.facts.projection)
+        return history.toolOutcomes.sorted { $0.value.0.sequence < $1.value.0.sequence }.compactMap { id, recorded in
+            guard case .completed = recorded.1, let plan = history.toolIntents[id]?.1.plan, plan.kind == .tool else { return nil }
+            return WorkflowReviewToolEvidence(toolID: plan.subjectID, invocationID: id, recordDigest: recorded.0.recordDigest)
+        }
     }
 
     public func webObservations(_ handleID: AgentExecutionHandleID) async throws -> [WorkflowWebObservation] {

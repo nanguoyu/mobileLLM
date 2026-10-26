@@ -6,13 +6,36 @@ import Foundation
 /// New launches use the durable task graph. The v4 source remains unchanged for archived replay.
 public enum CollaborativeWorkflow {
     public static let planningInstruction = """
-    MOBILELLM_COORDINATOR_V5
+    MOBILELLM_COORDINATOR_V6
     Own the user's original goal through actual delivery. Return the host decision JSON.
     This is an executable delegation protocol. A work decision creates real independently executing
     agents even if no worker tools are enabled. Fulfil explicit requests for multiple agents or stages
     through actual assignments and dependency handoffs. This explicit collaboration entry point must
     begin with real worker assignments, or explain a blocking capability/input. Use the smallest useful
     team. There is no mandatory planner/writer/reviewer sequence.
+
+    Infer a useful plan and acceptance criteria from the goal; the user need not name roles or stages.
+    Independent tasks may run concurrently in EVERY phase, including implementation and review.
+    Dependencies express data needs, not a serial list of phases. Planning belongs to this coordinator;
+    do not pay for a separate planning agent just to repeat the goal.
+
+    Declare review contracts on tasks that check produced artifacts. A review has criteria with stable
+    id, requirement and targetTaskIDs, plus requiredTools (exact enabled tool IDs, or []). Targets must
+    be direct dependencies produced by other agents. Ordinary tasks use review=null. Every required
+    deliverable must be covered by a required review, directly or through its source ancestry.
+    One useful integration/review task may cover several outputs. Do not add serial review layers.
+    Reviews return the host's check schema. A revise verdict automatically reopens only affected producers,
+    preserves the failed review as input, and reruns dependent checks. Do not manually duplicate that
+    repair. Two automatic repairs per producer and human amendment are allowed within the shared budget.
+    Review criteria cannot be silently removed or weakened to finish. Report a real blocker when a
+    criterion is no longer attainable. Passing a review is a model judgement, not proof of tool execution.
+    requiredTools demand actual successful tool records from that reviewer. Do not substitute an agent's
+    statement that it ran tests. Use existing available tools to check calculations or evidence where useful.
+
+    Distinguish requested delivery from an outline: designing, generating source text, writing files,
+    running an application, testing it and deploying it are different outcomes. Do not replace a request
+    to implement and test something with a plan and call it complete. If a required execution, filesystem,
+    browser or deployment capability is unavailable, preserve useful partial work and report that blocker.
 
     Tasks have stable IDs, an assigned agent identity, revision, instruction and dependency task IDs.
     Dependencies can refer to other tasks in the same work decision. The host dispatches a task when
@@ -93,6 +116,17 @@ public enum CollaborativeWorkflow {
     private static func number(_ max: Int) -> JSONValue {
         .object(["type": .string("integer"), "minimum": .integer(0), "maximum": .integer(Int64(max))])
     }
+    private static let reviewContractSchema = object([
+        "criteria": .object(["type": .string("array"), "minItems": .integer(1), "maxItems": .integer(12),
+            "items": object(["id": string(48, min: 1), "requirement": string(2_000, min: 1),
+                "targetTaskIDs": .object(["type": .string("array"), "minItems": .integer(1), "maxItems": .integer(8), "items": string(48, min: 1)])])]),
+        "requiredTools": array(6, string(256, min: 1))
+    ])
+    public static let reviewResultSchema = try! JSONSchemaDocument(root: object([
+        "checks": .object(["type": .string("array"), "minItems": .integer(1), "maxItems": .integer(12),
+            "items": object(["id": string(48, min: 1), "detail": string(4_000, min: 1),
+                "status": .object(["type": .string("string"), "enum": .array(["pass", "revise", "blocked"].map(JSONValue.string))])])])
+    ]))
     public static let decisionSchema = try! JSONSchemaDocument(root: object([
         "action": .object(["type": .string("string"), "enum": .array(["work", "wait", "read", "deliver", "blocked"].map(JSONValue.string))]),
         "stage": string(80, min: 1), "reason": string(1_000, min: 1), "notes": string(8_000),
@@ -104,6 +138,7 @@ public enum CollaborativeWorkflow {
             "required": .object(["type": .string("boolean")]), "maxToolCalls": number(6), "model": string(256),
             "tools": array(32, string(256, min: 1)), "skills": array(8, string(128, min: 1)),
             "effort": .object(["type": .string("string"), "enum": .array(["inherit", "low", "medium", "high"].map(JSONValue.string))]),
+            "review": .object(["anyOf": .array([reviewContractSchema, .object(["type": .string("null")])])]),
             "inputRanges": array(8, object(["taskID": string(128, min: 1), "offset": number(10_000_000), "length": number(12_000)])),
         ])),
         "reads": array(4, object(["id": string(128, min: 1), "offset": number(10_000_000), "length": number(12_000)])),
@@ -126,13 +161,14 @@ public enum CollaborativeWorkflow {
     public static var source: String {
         #"""
         export const meta = {
-          name:'collaborative-workflow-v5',
-          description:'Persistent agents with versioned dependencies, individual results and a durable goal.',
+          name:'collaborative-workflow-v6',
+          description:'Persistent agents, concurrent dependencies and evidence-bound review and revision.',
           whenToUse:'Complex work requiring complementary agents, dependent artifacts and corrections.',
           phases:[{title:'Work',detail:'Ready tasks start as their inputs arrive.'},{title:'Coordinate'}]
         };
         const instruction = \#(try! CanonicalJSON(.string(planningInstruction)).string);
         const schema = \#(try! CanonicalJSON(decisionSchema.root).string);
+        const reviewSchema = \#(try! CanonicalJSON(reviewResultSchema.root).string);
         const workerInstruction = 'MOBILELLM_WORKER_V5\nComplete your assigned task with actual findings or the requested artifact. '
           + 'Preserve facts, calculations and source URLs needed downstream. State missing evidence. '
           + 'Do not claim the whole goal passed, invent tool calls, or role-play other agents. '
@@ -220,7 +256,7 @@ public enum CollaborativeWorkflow {
             packet = await collaborate({action:'update',expectedRevision:packet.graph.revision,tasks:[{
               id:task.id,expectedRevision:task.revision,agent:task.agent,instruction:task.instruction,
               dependencies:task.dependencies,required:task.required,maximumToolCalls:task.maximumToolCalls,
-              model:task.model || null,profile:task.profile || null,inputRanges:task.inputRanges || [],artifactInputs:inputs
+              model:task.model || null,profile:task.profile || null,inputRanges:task.inputRanges || [],artifactInputs:inputs,review:task.review || null
             }]});
             if (packet.feedback) { feedback += packet.feedback; }
           }
@@ -258,9 +294,13 @@ public enum CollaborativeWorkflow {
             const outputID = task.id + ':' + task.revision;
             const prompt = workerInstruction + context + '\nHUMAN AMENDMENTS:\n' + serialize(packet.graph.amendments)
               + '\nASSIGNED TASK:\n' + task.instruction + '\nTASK ID: ' + task.id
+              + '\nREQUIRED CORRECTION:\n' + (task.failure || '')
+              + (task.review ? '\nMOBILELLM_REVIEW_V1\n' + serialize(task.review)
+                + '\nCheck every declared criterion against the current source artifacts and current human amendments. Return checks with exact criterion IDs, status pass/revise/blocked and concrete detail. Use revise for fixable content defects, naming what must change; use blocked for missing capabilities or evidence. A tool record proves execution only, not correctness. Use requiredTools yourself and inspect their results. Never claim tests or effects without actual execution. Return only the review JSON.\n' : '')
               + '\n<original-dependency-artifacts>\n' + serialize(inputs) + '\n</original-dependency-artifacts>';
             const handle = spawn(prompt,{label:task.agent,agentType:'workflow-worker',session:task.agent,
               maxToolCalls:task.maximumToolCalls,model:task.model || null,profile:task.profile || null,
+              schema:task.review ? reviewSchema : null,
               task:{taskID:task.id,instruction:task.instruction,expectedRevision:task.revision,
                 inputArtifactIDs:ids,outputArtifactID:outputID,goalAmendmentCount:packet.graph.amendments.length}});
             pending.push({handle:handle,taskID:task.id,agent:task.agent,outputID:outputID});
@@ -284,7 +324,8 @@ public enum CollaborativeWorkflow {
           } else {
             feedback += 'Task ' + item.taskID + ' ended as ' + result.status + ': ' + (result.error || 'No usable output') + '. ';
           }
-          return {taskID:item.taskID,status:result.status};
+          const settledTask = packet.graph.tasks.find(t => t.id === item.taskID);
+          return {taskID:item.taskID,status:settledTask && settledTask.state === 'failed' ? 'failed' : result.status};
         }
         async function suspend(reason, code) {
           while (pending.length > 0) { await consumeOne(); }
@@ -297,7 +338,7 @@ public enum CollaborativeWorkflow {
           notes = decision.notes;
           const intent = decision.tasks.map(t => ({id:t.id,agent:t.agent,instruction:t.instruction,dependencies:t.dependencies,
             inputs:t.inputs || [],tools:t.tools || [],skills:t.skills || [],effort:t.effort || 'inherit',
-            maxToolCalls:t.maxToolCalls,model:t.model || '',inputRanges:t.inputRanges}));
+            maxToolCalls:t.maxToolCalls,model:t.model || '',inputRanges:t.inputRanges,review:t.review || null}));
           const fingerprint = serialize({artifacts:packet.graph.artifacts.length,amendments:packet.graph.amendments.length,
             action:decision.action,tasks:intent,reads:decision.reads,query:decision.query,deliveryCorrections:deliveryCorrections});
           recentActions.push(fingerprint);
@@ -327,6 +368,7 @@ public enum CollaborativeWorkflow {
             const changes = decision.tasks.map(t => ({id:t.id,expectedRevision:t.expectedRevision,agent:t.agent,
               instruction:t.instruction,dependencies:t.dependencies,required:t.required,maximumToolCalls:t.maxToolCalls,
               model:t.model || null,inputRanges:t.inputRanges,artifactInputs:t.inputs || [],
+              review:t.review || null,
               profile:{toolNames:t.tools || [],skillIDs:t.skills || [],reasoningEffort:t.effort && t.effort !== 'inherit' ? t.effort : null}}));
             packet = await collaborate({action:'update',expectedRevision:packet.graph.revision,tasks:changes});
             feedback = packet.feedback || '';
@@ -352,7 +394,9 @@ public enum CollaborativeWorkflow {
             // a result opens an unplanned frontier, work fails, or actual instructions arrive.
             // This keeps dependent dispatch immediate without buying model calls to say 'wait'.
             const planned = packet.graph.tasks.some(t => t.dependencies.includes(finished.taskID) && t.state !== 'completed')
-              || pending.some(p => p.taskID === finished.taskID);
+              || pending.some(p => p.taskID === finished.taskID)
+              || packet.graph.tasks.some(t => t.id === finished.taskID && t.review
+                && t.state !== 'failed' && (pending.length > 0 || packet.ready.length > 0));
             const instructionWaiting = packet.pendingInputs.messages.some(m => m.recipient === 'coordinator');
             if (finished.status !== 'completed' || !planned || instructionWaiting
               || packet.graph.amendments.length !== decisionAmendments) { break; }
@@ -366,12 +410,12 @@ public enum CollaborativeWorkflow {
           phase('Coordinate');
           const tasks = packet.graph.tasks.map(t => ({id:t.id,revision:t.revision,agent:t.agent,state:t.state,
             instruction:view(t.instruction,512),dependencies:t.dependencies,required:t.required,
-            profile:t.profile || null,
+            profile:t.profile || null,review:t.review || null,
             inputs:t.inputArtifactIDs,output:t.outputArtifactID || null,failure:t.failure || null}));
           const frame = instruction + context + '\nHUMAN AMENDMENTS:\n' + serialize(packet.graph.amendments)
             + '\nWORKING NOTES:\n' + notes + '\nTASK GRAPH:\n' + serialize(tasks)
             + '\nACCEPTED PENDING INPUTS:\n' + serialize(packet.pendingInputs)
-            + '\nARTIFACT CATALOG:\n' + serialize(packet.graph.artifacts.map(a => ({id:a.id,taskID:a.taskID,revision:a.taskRevision,inputs:a.inputArtifactIDs,rejection:a.validationFailure || null})))
+            + '\nARTIFACT CATALOG:\n' + serialize(packet.graph.artifacts.map(a => ({id:a.id,taskID:a.taskID,revision:a.taskRevision,inputs:a.inputArtifactIDs,rejection:a.validationFailure || null,review:a.reviewResult || null})))
             + '\nHOST FEEDBACK:\n' + feedback + '\nSHARED BUDGET:\n' + serialize(accounting)
             + '\nREMAINING WORKER ACTIVATIONS: ' + (12-workers)
             + '\n<recorded-web-evidence>\n' + serialize(evidence) + '\n</recorded-web-evidence>';
