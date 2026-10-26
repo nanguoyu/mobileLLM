@@ -1,10 +1,15 @@
-# Agent harness delivery and qualification
+# Agent harness implementation and evaluation
 
 The sandbox-independent collaboration runtime is implemented on `main`. It keeps persistent agents,
 routes durable messages, schedules dependent work, preserves original evidence, accepts human goal
 updates, and resumes from saved work. Tests exposed failures in these paths, and the fixes below were
-implemented and checked through the production executor. An iOS agent execution sandbox is still a
-separate capability; this work does not add one.
+implemented and checked through the production executor.
+
+Capability qualification remains open. The frozen diagnostic predates the later repairs, and no complete
+six-family batch has been run on one version incorporating those repairs. The reference DSH runs also
+have different budget/profile semantics. The evidence below supports the recorded implementation and
+task outcomes; [remaining qualification](../AGENT_HARNESS_PLAN.md#remaining-capability-qualification)
+is still required to assess the owner's DSH-level capability goal.
 
 ## What the runtime now does
 
@@ -114,7 +119,24 @@ separately from the successful lifecycle interaction.
 [Recovery evidence](evidence/2026-10-26-simulator-recovery.json) and
 [the real goal-update recording](../../assets/demo/goal-update.gif) retain that distinction.
 
-## Reference implementation and scope
+## Outstanding qualification
+
+Research coverage needs its own outcome checks. The research family's three passing runs checked
+source-backed facts and citations. They do not resolve the earlier
+[Europe discovery failure](2026-10-23-autonomous-coordination.md), which omitted ELSS, or establish
+complete coverage of an open research field. Expected groups must remain outside runtime prompts.
+
+Native acceptance checks cover required work, supported output constraints and the exact accepted
+answer. SQL execution and other task-specific semantic checks belong to the evaluator. Product-level
+detection and correction of content errors require separate evaluation using the tools actually available
+to agents. Efficiency at equal outcome quality and reliability over longer tasks also remain open;
+the individual timings and token counts above are not a controlled comparison.
+
+Current-version six-family evaluation, a matched DSH comparison, research coverage, semantic outcome
+checks and efficiency measurements can proceed with Simulator and online models. No new task runs were
+performed for this documentation clarification; all recorded outcomes keep their original revisions.
+
+## Reference implementation and execution boundary
 
 Design decisions were checked against DeepSeek Harness source at
 [`22ddee3792402c3e70ec5f86a63c3e3e895a2f60`](https://github.com/deepseek-ai/deepseek-harness/tree/22ddee3792402c3e70ec5f86a63c3e3e895a2f60).

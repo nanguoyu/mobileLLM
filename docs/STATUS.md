@@ -1,18 +1,20 @@
 # Current implementation and validation status
 
-Updated **2026-10-26** after the sandbox-independent harness delivery on `main`. The dated model evaluations below
-retain their original tested versions and outcomes; interface changes do not rerun or recertify them.
+Updated **2026-10-26**. Core harness features are implemented on `main`; capability qualification remains
+open. The dated model evaluations below retain their original tested versions and outcomes.
 [spec.md](../spec.md) defines requirements, [ARCHITECTURE.md](ARCHITECTURE.md) describes the code,
 and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
 
 ## Current harness qualification
 
-The planned sandbox-independent runtime is implemented. [The delivery report](evaluations/2026-10-26-agent-harness.md)
+Persistent sessions, durable team messages, task dependencies, goal continuation, context retrieval,
+agent profiles and the mobile workspace are implemented. [The evaluation report](evaluations/2026-10-26-agent-harness.md)
 records the design, checks, failures and limits. The frozen six-family sample at `1c37dec` completed
-15/18 tasks. Three pauses exposed invalid-argument and inbox/replay problems; they remain failures in
-that sample. Targeted follow-ups at later revisions verified the fixes, including two real saved-goal
+15/18 tasks. Three pauses exposed invalid-argument and reassigned-inbox failures; follow-up recovery
+also exposed a replay defect. Targeted follow-ups at later revisions verified the fixes, including two real saved-goal
 resumptions with unchanged budgets/results, three planning cases and one SQL case, and the final
-four-worker SQL path. Revisions are not pooled into a single success-rate claim.
+four-worker SQL path. A complete six-family evaluation on one version incorporating the later fixes
+has not been run. The 15/18 result belongs to the earlier checkpoint; later passes do not replace it.
 
 Actual Simulator interaction verified goal updates, approvals, result/history navigation and cold
 relaunch without automatic work. A formatting failure found during that UI run led to native checks
@@ -20,9 +22,22 @@ for explicit supported word/character limits and JSON-only delivery. The real re
 oversized worker outputs, corrected them within the same goal and returned a 123-word final answer.
 Rejected originals retain their validation reason and are labeled separately from accepted results.
 
-The reference DSH reproduction has different budget/profile semantics and is retained as a diagnostic,
-not evidence of general parity or superiority. Arbitrary code/workspace execution still requires the
-owner's separate sandbox provider. Physical-device performance and OS background grants are separate.
+## Remaining harness qualification
+
+DeepSeek Harness-level capability remains an open acceptance goal.
+The following work can proceed with Simulator and online models:
+
+| Open item | Current evidence and work remaining |
+| --- | --- |
+| Current-version reliability | Freeze a version incorporating the repairs and evaluate all six task families under one configuration. Preserve the earlier batch and every new failure. |
+| Comparable DeepSeek Harness results | The reference reproduction differs in budget accounting and profiles. Align the model, common tools, task inputs, budgets and outcome checks before comparing results. |
+| Open research coverage | The earlier Europe answer missed ELSS. Later source/citation checks do not establish complete group discovery. Evaluate independently defined coverage and omissions without adding group-specific runtime rules. |
+| Semantic outcome checks | The product enforces required work, supported output limits and accepted-answer identity. SQL execution and other task-specific correctness checks run in the evaluator. Evaluate content errors and the checks available to agents separately from format acceptance. |
+| Efficiency and longer tasks | A later SQL run took 260.7 seconds and recorded 81,760 input plus 55,248 output tokens. There is no controlled cost/latency comparison at equal outcome quality, or broad evidence of reliability over longer tasks. |
+
+[The implementation plan](AGENT_HARNESS_PLAN.md#remaining-capability-qualification) gives the acceptance
+steps. These items do not depend on the separate iOS sandbox. Arbitrary code/workspace execution needs
+that provider; local-inference performance and OS background scheduling need separate hardware checks.
 
 ## Task workspaces and interface
 
@@ -128,7 +143,8 @@ inspection. Its xcresult is `/tmp/mobilellm-harness-20261025/V5Cutover.xcresult`
 runtime and interaction behavior. Peer messages and artifact reads now cross the ordinary Tool V2 authorization boundary and use actual
 sender identities. The coordinator continues a durable session under shared reservations. Focused tests
 cover model-authored message acceptance, later inclusion and the message/goal-completion race. The iOS
-build passes. Context retrieval, per-agent profiles and the goal workspace are implemented. The frozen qualification and targeted follow-ups are recorded in the [delivery report](evaluations/2026-10-26-agent-harness.md).
+build passes. Context retrieval, per-agent profiles and the goal workspace are implemented. The earlier
+frozen diagnostic and targeted follow-ups are recorded in the [evaluation report](evaluations/2026-10-26-agent-harness.md).
 The separate iOS sandbox remains optional; earlier autonomous outcome evidence retains its tested version.
 
 ### Long conversations
@@ -163,8 +179,8 @@ six-family qualification or a reliability estimate.
 
 ### Earlier autonomous engineering tasks
 
-The general supervisor now completes independently checked multi-stage engineering tasks. Real online
-runs on the iPhone 17 / iOS 27 Simulator passed three different task types:
+At the earlier revisions recorded below, real online runs on the iPhone 17 / iOS 27 Simulator passed
+independent outcome checks for three multi-stage engineering task types:
 
 | Task | Work and validation | Native time |
 | --- | --- | ---: |
@@ -189,13 +205,13 @@ was repeated for prose.
 
 The earlier [research evaluation](evaluations/2026-10-23-autonomous-coordination.md) remains historical:
 its API comparison passed core checks, while the Europe answer missed ELSS. No ELSS-specific runtime rule
-was added. Research coverage and broad repeated-run reliability remain open measurements. Autonomous session
-reuse, asynchronous peer messaging and production code-execution tools remain separate gaps.
+was added. Research coverage and broad repeated-run reliability remain open measurements. Persistent
+session reuse and asynchronous peer messaging have since been implemented and checked as described
+above. Production code-execution tools still require the separate sandbox provider.
 
-The [agent harness implementation plan](AGENT_HARNESS_PLAN.md) sequences persistent child sessions,
-durable messaging, dynamic task dependencies, goal continuation and long-context work. The near-term
-milestone uses available tools and does not depend on the owner's separate iOS sandbox project.
-Production code execution and workspace qualification remain a later provider integration.
+The [agent harness implementation plan](AGENT_HARNESS_PLAN.md) records the implemented stages and
+remaining capability qualification. The open collaboration checks use available tools and online
+models. Production code execution and workspace qualification remain a later provider integration.
 
 ## DeepSeek Search and Fetch integration
 

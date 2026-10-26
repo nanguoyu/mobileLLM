@@ -1,21 +1,24 @@
 # Agent harness implementation plan
 
-Date: 2026-10-24. Implementation baseline: `0c4578e` on `main`.
+Created: 2026-10-24. Status updated: 2026-10-26. Implementation baseline: `0c4578e` on `main`.
 
-The next milestone is a general collaboration runtime that can keep working on a goal,
+The goal is a general collaboration runtime that can keep working on a goal,
 continue individual agents, exchange messages, revise dependencies, and recover after interruption.
 DeepSeek Harness supplies the main architectural reference. OpenMinis supplies useful mobile
-interaction and continuation examples. Quality will be assessed through actual task outcomes.
+interaction and continuation examples. Its capability must be assessed through actual task outcomes.
 
-The sandbox-independent milestone is delivered. Persistent sessions, durable messaging, versioned task
+The core implementation is delivered. Persistent sessions, durable messaging, versioned task
 dependencies, explicit continuation, context retrieval, agent profiles and the mobile workspace are
 implemented. The frozen six-family diagnostic, subsequent repairs, real saved-goal recovery and final
-UI checks are recorded in [the qualification report](evaluations/2026-10-26-agent-harness.md). The first
-sample completed 15/18 tasks; its failures are retained. Later focused results do not rewrite that sample.
-A matched DSH-level outcome claim remains unestablished because the reproduced reference configuration
-has different budget/profile semantics.
-The owner's separate iOS agent sandbox is unavailable for near-term integration. The harness
-milestone therefore has no dependency on that project's delivery.
+UI checks are recorded in [the evaluation report](evaluations/2026-10-26-agent-harness.md). The first
+sample completed 15/18 tasks at `1c37dec`; its failures are retained. Later focused results do not
+provide a complete six-family result for the current version.
+
+Capability qualification remains open, including a comparable DSH evaluation, research coverage,
+semantic outcome checks, and efficiency over longer tasks. These are unfinished parts of the owner's
+goal. [The remaining work](#remaining-capability-qualification) can proceed with Simulator and online
+models. The owner's separate iOS agent sandbox is unavailable for near-term integration and is needed
+only for the execution capabilities listed below.
 
 ## Sandbox boundary
 
@@ -31,7 +34,7 @@ do not supply a general agent execution environment.
 
 | Work | Near-term capability and acceptance |
 | --- | --- |
-| Persistent agents, messages, task dependencies, goal continuation, budgets and recovery | Implement and verify using the existing runtime. |
+| Persistent agents, messages, task dependencies, goal continuation, budgets and recovery | Implemented through the existing runtime; focused checks and real recovery runs are recorded. Current-version capability qualification remains open. |
 | Research, comparisons, planning, calculations and evidence analysis | Exercise real online models and currently enabled Search, Fetch, Calculator, Memory or configured tool adapters. Each case declares its actual tool set. |
 | Producing code or a proposed SQL migration | Evaluate the generated artifact externally, as existing tests do. Record that execution belongs to the evaluator. |
 | Running arbitrary generated code, installing packages, shell processes, or editing an execution workspace | Requires a suitable execution provider. Product execution and repair acceptance remains deferred. |
@@ -99,6 +102,9 @@ Explicit requests for collaboration and dependent stages must be fulfilled throu
 and handoffs. Writer and reviewer roles are created only when they contribute necessary work.
 
 ## Delivery sequence
+
+The stages below describe the implemented design and its acceptance criteria. Their implementation
+does not close the remaining capability qualification listed at the end of this plan.
 
 Each stage includes its relevant checks and a usable product path. Later stages do not defer
 correctness checks for earlier ones. Deliver small behavior changes directly to `main`, with a
@@ -194,7 +200,7 @@ failed compaction, preserve source attribution, and prevent disabled tools or sk
 in new requests. Measure context bytes, tokens and repeated reads on long cases. Prompt changes
 alone cannot count as a completed capability.
 
-### Stage 5 Mobile interaction and recovery qualification
+### Stage 5 Mobile interaction and recovery
 
 Extend the existing task workspace and observer stores instead of adding another dashboard.
 Expose pending and consumed messages, assignment changes, dependency blockers, partial outputs,
@@ -266,7 +272,7 @@ intervention, unsupported or invented execution, failures, model/tool calls, tok
 time. App navigation and human waiting are separate from execution time. Results from different
 revisions do not form a single success-rate estimate.
 
-The near-term milestone requires all deterministic lifecycle and authority cases to pass, successful
+Harness acceptance requires all deterministic lifecycle and authority cases to pass, successful
 independent outcomes across the six families, and repeated-run evidence that identifies remaining
 failures. A DSH-level outcome claim requires the comparable task results to support it. Coding,
 terminal and arbitrary workspace parity cannot be claimed from this sandbox-free qualification.
@@ -289,15 +295,43 @@ production code-edit/run/fix, data processing, document generation and workspace
 Validate actual artifacts and confinement with that provider. Existing sandbox contract fakes
 remain contract evidence only.
 
-## Delivered boundary
+## Current implementation
 
-Stages 1–5 are implemented using the existing executor, tool pipeline, journals and UI. Real tests
-also drove typed notices, caught-failure replay, original tool-evidence reads, explicit collaboration
+The runtime and UI implementations for stages 1–5 use the existing executor, tool pipeline and journals.
+Real tests also drove typed notices, caught-failure replay, original tool-evidence reads, explicit collaboration
 admission and native output checks. Declared dependency chains no longer require coordinator polling.
 The frozen task matrix, failures, targeted follow-ups and Simulator interactions are in
-[the qualification report](evaluations/2026-10-26-agent-harness.md).
+[the evaluation report](evaluations/2026-10-26-agent-harness.md).
 
-The remaining external execution integration is the owner's separate sandbox project. Model/search
-quality, broader task reliability and physical-device behavior remain measurable product limits, not
-capabilities inferred from this initial diagnostic. The current evidence does not justify a general
-SOTA or DSH-parity claim.
+## Remaining capability qualification
+
+These items are open. They can use the existing production Simulator assembly and online models;
+they do not wait for the sandbox project.
+
+1. **Evaluate one current version across the six task families.** At the next capability checkpoint,
+   freeze the runtime, model settings, prompts, corrected outcome checks and budgets after the repairs.
+   Use the planned three runs per family and retain every attempt. Keep the `1c37dec` diagnostic and
+   later focused runs separate. Resolve runtime defects exposed by the new batch with affected checks;
+   documentation edits and routine commits do not trigger another matrix.
+2. **Make the DSH comparison reproducible and comparable.** Pin the executable build actually used,
+   align the common tool behavior and budget accounting, and use the same model settings, task inputs
+   and outcome checks. Record model aliases and any service-version uncertainty. Compare completion,
+   intervention, failures and resource use only under those matched conditions.
+3. **Measure research coverage as well as citation support.** Keep independently established eligibility
+   and coverage expectations in evaluation code. Check omitted groups, duplicate identities, exclusions
+   and source support on held-out research tasks. Do not add ELSS or any other expected group to runtime
+   prompts or rules. Existing citation checks alone do not close the earlier discovery failure.
+4. **Evaluate semantic mistakes and available correction mechanisms.** State which requirements the
+   product checks, which agents can check with enabled tools, and which need external evaluation.
+   Exercise incorrect content as well as invalid formatting, and inspect whether available checks lead
+   to correction or an explicit unresolved result. Keep expected answers outside the runtime. Executing
+   generated SQL in the evaluator remains separate from an app-side execution capability.
+5. **Establish efficiency and longer-task evidence.** At equal outcome quality, compare elapsed execution
+   time, model/tool calls, tokens and repeated context reads for matched tasks and model settings. Use
+   longer dependency chains to examine progress, budget exhaustion and recovery. Retain failed attempts
+   and human waiting separately. The recorded 260.7-second SQL run is an observation, not a performance
+   baseline or evidence of an improvement.
+
+DSH-level capability remains an open acceptance goal. Arbitrary code/workspace execution awaits the
+separate provider. Local GPU performance, thermal behavior and OS background scheduling require their
+own hardware measurements; they do not block the collaboration qualification above.

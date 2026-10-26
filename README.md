@@ -140,11 +140,16 @@ See [SECURITY.md](SECURITY.md) for credential storage and network permissions.
 
 ## Project status and documentation
 
-The app is under active development. Multi-stage workflows have completed real online-model tasks
-covering SQL migration, maintenance scheduling, and incident recovery. Research coverage and
-repeated-run reliability still need work; native persistent worker conversations and app-side
-terminal/SQL execution are not implemented. [Current status](docs/STATUS.md) links the results,
-failed attempts, and remaining work.
+Persistent agent conversations, team messaging, task dependencies and recovery after interruption
+are implemented. Multi-stage workflows have completed real online-model tasks covering research,
+planning, SQL migration and incident recovery.
+
+Capability qualification is still open. An earlier six-family diagnostic passed 15 of 18 tasks;
+later fixes have focused checks, but the current version has no complete six-family result yet.
+Research coverage, semantic correctness, efficiency and a comparable DeepSeek Harness evaluation
+remain unfinished. [Current status](docs/STATUS.md#remaining-harness-qualification) records the evidence
+and next steps. App-side terminal, SQL and arbitrary workspace execution require the separate sandbox
+provider, which is not yet integrated.
 
 - [Architecture](docs/ARCHITECTURE.md): packages, model routing, tools, and agent execution.
 - [Development guide](CONTRIBUTING.md): builds and validation for the behavior you change.

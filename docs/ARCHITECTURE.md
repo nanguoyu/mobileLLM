@@ -171,7 +171,9 @@ The v5 coordinator runs a versioned task graph. Ready consumers start after thei
 while unrelated siblings may continue. Each agent has a persistent session whose activations use the
 same cumulative goal budget, including initial planning. Durable input distinguishes acceptance from
 inclusion. Late input for a completed agent reopens its task, retains the prior artifact and invalidates
-its consumers. A goal cannot finish with required tasks, pending messages or uncertain effects unresolved.
+its consumers. A goal cannot finish with required tasks, mandatory input or uncertain effects unresolved.
+Informational notices stay durable and can remain unread without starting another activation or blocking
+completion; human instructions cannot be downgraded to notices.
 
 Bounded context retains the original user goal, amendments, current graph and recent work. Exact earlier
 session content remains available through `agent.read_context`. Shared results and their original tool
@@ -202,7 +204,9 @@ safe failure. Completed history remains accessible, and unchanged projections do
 or bump conversation activity times.
 
 The program permits at most 12 worker activations, 24 actual tool calls and 24 coordination decisions.
-All model steps, including preparation and tools-related follow-ups, share the 32-request goal limit. `await budget.snapshot()` reports actual usage only from settled
+All normalized model steps, including preparation and tool-related follow-ups, share the 32-step goal
+limit. Provider protocol retries consume recorded tokens within a step, so the limit is not a raw HTTP
+request count. `await budget.snapshot()` reports actual usage only from settled
 calls reached by replay. Unused worker tool allowances become available to later stages, while the durable
 runtime ledger still enforces admission and all real consumption. The supervisor writes the final answer itself. Separate writer,
 reviewer and consolidation roles are no longer mandatory. A model saying “approved” never established
@@ -210,10 +214,12 @@ correctness in the previous design; external task oracles and primary-source aud
 Blocked work and runtime exhaustion fail visibly. Reconciliation still prevents dispatch or completion
 until an uncertain effect is resolved. Saved v1 programs retain their exact source and replay semantics.
 
-See the [source comparison](evaluations/2026-10-23-autonomous-coordination.md) and
-[native multi-stage evaluation](evaluations/2026-10-23-multistage-native.md) for the rationale, actual
-execution evidence and remaining limitations. Earlier supervised reports do not establish
-autonomous research coverage.
+See the [current evaluation report](evaluations/2026-10-26-agent-harness.md) for the frozen diagnostic,
+subsequent repairs and recorded Simulator outcomes. Current-version six-family qualification and a
+matched DSH comparison remain open, along with research coverage, semantic outcome checks and efficiency.
+The [source comparison](evaluations/2026-10-23-autonomous-coordination.md) and
+[native multi-stage evaluation](evaluations/2026-10-23-multistage-native.md) retain the earlier rationale
+and outcomes at their tested revisions.
 
 The JavaScript bridge trims only outer prompt whitespace before host dispatch, prefix hashing and
 child construction. Interior newlines and indentation remain intact. Safe host errors are recorded even
@@ -730,3 +736,9 @@ The coordinator has at most two final-format corrections before a pause. Accepte
 answer digest, checked again before publication. No validator edits or truncates the answer. Older goals
 without this policy retain their original contract. The UI distinguishes completed generation from a
 result that was rejected by these checks.
+
+These checks enforce supported output constraints and delivery consistency. Factual correctness,
+research coverage and artifact semantics require separate outcome checks. In the recorded SQL tasks,
+the evaluator executes the generated SQL; the app has no production SQL execution tool without the
+separate provider. Implementation status and open qualification are tracked in
+[STATUS.md](STATUS.md#remaining-harness-qualification).
