@@ -1,0 +1,130 @@
+{
+  "purpose": "Configuration-specific reference diagnostic, NOT a matched harness benchmark or parity/superiority result.",
+  "reference": "@deepseek-ai/dsh@0.2.1-rc.3",
+  "npmIntegrity": "sha512-H+E9HLnHf7fJqzen84Z9Bq8ggb5xbrcbyhZjXTJLE9NabHr3zteGvTRvdvGkxPl4ov80is4WLglFmSo+/olJjg==",
+  "designSourceReference": "22ddee3792402c3e70ec5f86a63c3e3e895a2f60",
+  "requestedModel": "deepseek-v4-flash",
+  "reasoningEffort": "low",
+  "contextTokens": 32768,
+  "maximumOutputTokens": 24576,
+  "maximumConcurrentChildren": 4,
+  "profile": "headless, in-process spawn, shell/filesystem/web tools disabled",
+  "scopeCaveats": [
+    "Published package behavior differs from the pinned design-source checkout.",
+    "The reference wrapper caps HTTP requests, whereas mobileLLM counts generation steps and bounds protocol-retry token use inside a step. Budget semantics are not identical.",
+    "Only the two tasks requiring no external domain tools were reproduced; interactive/history-seeded cases were not compared.",
+    "Runs overlapped other API evaluation; elapsed times are not a controlled speed comparison."
+  ],
+  "attempts": [
+    {
+      "case": "incident",
+      "repetition": 1,
+      "exitCode": 1,
+      "answer": "",
+      "admittedHTTPRequests": 32,
+      "rejectedHTTPRequests": 3,
+      "elapsedSeconds": 143.223,
+      "lastTurnReason": {
+        "kind": "error",
+        "error": {
+          "message": "400: {\"message\":\"Shared evaluation limit of 32 model requests reached\",\"type\":\"invalid_request_error\"}",
+          "code": "INVALID_REQUEST"
+        }
+      },
+      "rootToolCalls": 24,
+      "rootRosterPolls": 10,
+      "rootDelegations": 5,
+      "goalSHA256": "e66612baa566f6edf325c97e7d8890a48e0473926c3b5885f2bd00a7db50fb30"
+    },
+    {
+      "case": "incident",
+      "repetition": 2,
+      "exitCode": 1,
+      "answer": "",
+      "admittedHTTPRequests": 32,
+      "rejectedHTTPRequests": 5,
+      "elapsedSeconds": 205.306,
+      "lastTurnReason": {
+        "kind": "error",
+        "error": {
+          "message": "400: {\"message\":\"Shared evaluation limit of 32 model requests reached\",\"type\":\"invalid_request_error\"}",
+          "code": "INVALID_REQUEST"
+        }
+      },
+      "rootToolCalls": 25,
+      "rootRosterPolls": 12,
+      "rootDelegations": 4,
+      "goalSHA256": "e66612baa566f6edf325c97e7d8890a48e0473926c3b5885f2bd00a7db50fb30"
+    },
+    {
+      "case": "incident",
+      "repetition": 3,
+      "exitCode": 1,
+      "answer": "",
+      "admittedHTTPRequests": 32,
+      "rejectedHTTPRequests": 1,
+      "elapsedSeconds": 152.738,
+      "lastTurnReason": {
+        "kind": "error",
+        "error": {
+          "message": "400: {\"message\":\"Shared evaluation limit of 32 model requests reached\",\"type\":\"invalid_request_error\"}",
+          "code": "INVALID_REQUEST"
+        }
+      },
+      "rootToolCalls": 23,
+      "rootRosterPolls": 13,
+      "rootDelegations": 4,
+      "goalSHA256": "e66612baa566f6edf325c97e7d8890a48e0473926c3b5885f2bd00a7db50fb30"
+    },
+    {
+      "case": "migration",
+      "repetition": 1,
+      "exitCode": 1,
+      "answer": "",
+      "admittedHTTPRequests": 19,
+      "rejectedHTTPRequests": 0,
+      "elapsedSeconds": 164.203,
+      "lastTurnReason": {
+        "kind": "max-tokens"
+      },
+      "rootToolCalls": 16,
+      "rootRosterPolls": 7,
+      "rootDelegations": 2,
+      "goalSHA256": "20e2305092b8e04b6a8494b42e718334c3afd3b9329820462bacdd3e79861fff"
+    },
+    {
+      "case": "migration",
+      "repetition": 2,
+      "exitCode": 1,
+      "answer": "",
+      "admittedHTTPRequests": 30,
+      "rejectedHTTPRequests": 0,
+      "elapsedSeconds": 194.707,
+      "lastTurnReason": {
+        "kind": "max-tokens"
+      },
+      "rootToolCalls": 23,
+      "rootRosterPolls": 12,
+      "rootDelegations": 3,
+      "goalSHA256": "20e2305092b8e04b6a8494b42e718334c3afd3b9329820462bacdd3e79861fff"
+    },
+    {
+      "case": "migration",
+      "repetition": 3,
+      "exitCode": 1,
+      "answer": "",
+      "admittedHTTPRequests": 14,
+      "rejectedHTTPRequests": 0,
+      "elapsedSeconds": 205.05,
+      "lastTurnReason": {
+        "kind": "max-tokens"
+      },
+      "rootToolCalls": 9,
+      "rootRosterPolls": 4,
+      "rootDelegations": 3,
+      "goalSHA256": "20e2305092b8e04b6a8494b42e718334c3afd3b9329820462bacdd3e79861fff"
+    }
+  ],
+  "installedPackageSHA256": "11831849c0a40031562e07b6b650e6b417bf4741d15bac896f73397cf8606a91",
+  "installationLockSHA256": "324f9b3e3f5121282df98afd6b0e28ef98e9e7554d2a576e0b04e6f55afd95dc"
+}

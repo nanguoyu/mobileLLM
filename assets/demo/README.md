@@ -42,3 +42,15 @@ completed in 113.919 seconds; later idle time in the recording is excluded. `goa
 The earlier PNG captures retain their original resolution. The runtime was `998b944`, with response
 fixtures disabled. The failed earlier attempt and the successful fresh launch are both documented in
 [the public evidence](../../docs/evaluations/evidence/2026-10-25-live-goal-update.json).
+
+October 26 captures use the real museum-catalogue task. `goal-paused.png` shows a paused goal before
+app termination; cold relaunch preserved call identities and usage until Resume. That earlier run's
+content exceeded its word limit and is recorded as a format failure, not a successful outcome.
+`validated-plan.png` shows a later real run after native output checks: its complete final answer has
+123 words. The rejected-result capture and task graph show the same later run's preserved originals
+and current dependencies. These new PNG files are original 1206 × 2622 Simulator captures.
+
+`goal-tasks.png` and `goal-rejected.png` were inspected after the final UI changes at `5c65c69`.
+Visible groups are numbered in dependency order, with historical inputs available through links.
+The rejected original is labeled “Result not accepted”, including in source/history navigation.
+These views read the already-completed `9bc79be` task and do not regenerate its results.

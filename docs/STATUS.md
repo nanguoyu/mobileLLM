@@ -1,9 +1,28 @@
 # Current implementation and validation status
 
-Updated **2026-10-25** for the v5 collaboration runtime and app launch path on `main`. The dated model evaluations below
+Updated **2026-10-26** after the sandbox-independent harness delivery on `main`. The dated model evaluations below
 retain their original tested versions and outcomes; interface changes do not rerun or recertify them.
 [spec.md](../spec.md) defines requirements, [ARCHITECTURE.md](ARCHITECTURE.md) describes the code,
 and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
+
+## Current harness qualification
+
+The planned sandbox-independent runtime is implemented. [The delivery report](evaluations/2026-10-26-agent-harness.md)
+records the design, checks, failures and limits. The frozen six-family sample at `1c37dec` completed
+15/18 tasks. Three pauses exposed invalid-argument and inbox/replay problems; they remain failures in
+that sample. Targeted follow-ups at later revisions verified the fixes, including two real saved-goal
+resumptions with unchanged budgets/results, three planning cases and one SQL case, and the final
+four-worker SQL path. Revisions are not pooled into a single success-rate claim.
+
+Actual Simulator interaction verified goal updates, approvals, result/history navigation and cold
+relaunch without automatic work. A formatting failure found during that UI run led to native checks
+for explicit supported word/character limits and JSON-only delivery. The real rerun rejected two
+oversized worker outputs, corrected them within the same goal and returned a 123-word final answer.
+Rejected originals retain their validation reason and are labeled separately from accepted results.
+
+The reference DSH reproduction has different budget/profile semantics and is retained as a diagnostic,
+not evidence of general parity or superiority. Arbitrary code/workspace execution still requires the
+owner's separate sandbox provider. Physical-device performance and OS background grants are separate.
 
 ## Task workspaces and interface
 
@@ -109,7 +128,7 @@ inspection. Its xcresult is `/tmp/mobilellm-harness-20261025/V5Cutover.xcresult`
 runtime and interaction behavior. Peer messages and artifact reads now cross the ordinary Tool V2 authorization boundary and use actual
 sender identities. The coordinator continues a durable session under shared reservations. Focused tests
 cover model-authored message acceptance, later inclusion and the message/goal-completion race. The iOS
-build passes. Context retrieval, per-agent profiles and the goal workspace are implemented. The six-family frozen real-model qualification remains in progress under the [implementation plan](AGENT_HARNESS_PLAN.md).
+build passes. Context retrieval, per-agent profiles and the goal workspace are implemented. The frozen qualification and targeted follow-ups are recorded in the [delivery report](evaluations/2026-10-26-agent-harness.md).
 The separate iOS sandbox remains optional; earlier autonomous outcome evidence retains its tested version.
 
 ### Long conversations

@@ -7,10 +7,13 @@ continue individual agents, exchange messages, revise dependencies, and recover 
 DeepSeek Harness supplies the main architectural reference. OpenMinis supplies useful mobile
 interaction and continuation examples. Quality will be assessed through actual task outcomes.
 
-This roadmap remains active. Human steering and durable follow-ups are implemented. New app launches now
-use the v5 coordinator with shared-budget session reuse, recorded result selection, versioned dependencies,
-source invalidation and explicit goal continuation. Focused runtime tests and the existing Simulator
-interaction case pass. Peer messaging uses the ordinary tool pipeline and durable inbox. Bounded original-context retrieval and per-agent capability profiles are implemented. The goal/task workspace is integrated. Diverse repeated real-model qualification and final cleanup remain. [STATUS.md](STATUS.md) records the observed results.
+The sandbox-independent milestone is delivered. Persistent sessions, durable messaging, versioned task
+dependencies, explicit continuation, context retrieval, agent profiles and the mobile workspace are
+implemented. The frozen six-family diagnostic, subsequent repairs, real saved-goal recovery and final
+UI checks are recorded in [the qualification report](evaluations/2026-10-26-agent-harness.md). The first
+sample completed 15/18 tasks; its failures are retained. Later focused results do not rewrite that sample.
+A matched DSH-level outcome claim remains unestablished because the reproduced reference configuration
+has different budget/profile semantics.
 The owner's separate iOS agent sandbox is unavailable for near-term integration. The harness
 milestone therefore has no dependency on that project's delivery.
 
@@ -215,9 +218,9 @@ prefix identities and saved artifacts retain their original semantics. Do not re
 record as a new task graph or recompute its outputs. Historical display metadata must not invent
 messages, instructions or task states that were never recorded.
 
-Move new launches to the session-based path after its focused acceptance gates pass. The current
-`CoordinatedWorkflow` program and archived `WorkflowOrchestrator` then remain reachable only where
-their persisted versions require them. Reuse the same executor, tool adapters, approval policy,
+New launches use the session-based path. The v4 `CoordinatedWorkflow` source now exists only as a
+compatibility test fixture; persisted scripts carry their exact source. `WorkflowOrchestrator` remains
+for archived staged records. The unused fixed six-stage fallback has been removed. Reuse the same executor, tool adapters, approval policy,
 budget accounting and storage. Do not keep a second planner or special evaluator orchestration
 as an alternative production path. Remove transitional launch switches after cutover; retain
 versioned readers and replay code only while records depend on them.
@@ -286,13 +289,15 @@ production code-edit/run/fix, data processing, document generation and workspace
 Validate actual artifacts and confinement with that provider. Existing sandbox contract fakes
 remain contract evidence only.
 
-## Current implementation boundary
+## Delivered boundary
 
-The shared-budget session path, asynchronous result delivery, versioned task graph and bounded goal
-continuation are implemented. New app launches use the v5 program; archived v4 records keep their original
-semantics. The Simulator interaction regression passes on the new launch path.
+Stages 1–5 are implemented using the existing executor, tool pipeline, journals and UI. Real tests
+also drove typed notices, caught-failure replay, original tool-evidence reads, explicit collaboration
+admission and native output checks. Declared dependency chains no longer require coordinator polling.
+The frozen task matrix, failures, targeted follow-ups and Simulator interactions are in
+[the qualification report](evaluations/2026-10-26-agent-harness.md).
 
-Authorized peer messaging and parent inbox delivery now use the same durable input mechanism. Continue
-with diverse real-model qualification and final cleanup. Context reduction retains exact sources
-and supports on-demand reads; it does not add a speculative summarizer loop when those mechanisms suffice. Small commits
-are delivery checkpoints, not reasons to stop before the owner's requested milestone is complete.
+The remaining external execution integration is the owner's separate sandbox project. Model/search
+quality, broader task reliability and physical-device behavior remain measurable product limits, not
+capabilities inferred from this initial diagnostic. The current evidence does not justify a general
+SOTA or DSH-parity claim.

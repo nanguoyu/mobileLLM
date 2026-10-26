@@ -1,0 +1,272 @@
+{
+  "runtimeRevision": "9bc79be",
+  "environment": "Real Simulator UI, fixtures disabled, Safe preset, low effort",
+  "goal": "Design an offline museum collection catalogue. Use separate storage and export agents, then an integration agent using both results, then an independent reviewer. Preserve stable object IDs, provenance notes and photos. Export JSON and CSV. No web research or code execution. Keep each worker under 120 words and the final plan under 160 words.",
+  "state": "completed",
+  "elapsedSeconds": 73.705,
+  "usage": {
+    "elapsedMilliseconds": 73705,
+    "inputTokens": 84370,
+    "outputTokens": 11596,
+    "subagentCount": 4,
+    "toolInvocationCount": 4
+  },
+  "finalWordCount": 123,
+  "answer": "**Offline Museum Catalogue — Final Plan**\n\n**Storage.** Immutable IDs `PREFIX-NNNNNN` from a monotonic counter; never reused or edited, retired IDs tombstoned. SQLite with append-only `provenance` rows (event_type, event_date, date_precision, source_document, uncertainty_flag, note); corrections are new rows. Triggers ABORT any ID update or delete; read-only permissions after ingest.\n\n**Photos.** Binaries copied into local `photos/<object_id>/<object_id>_001.jpg`; records store `relative_path`, caption, credit, sha256. No absolute or external references.\n\n**Export.** JSON is authoritative: `schema_version`, `objects` keyed by ID, fixed key order, ordered provenance and photo arrays. CSV is derived, RFC 4180, three sidecars whose column names match the JSON keys exactly:\n- `objects.csv`: object_id, title, condition, date_text, date_precision\n- `provenance.csv`: object_id, seq, event_type, event_date, date_precision, source_document, uncertainty_flag, note\n- `photos.csv`: object_id, relative_path, caption, credit, sha256\n\nRe-import rebuilds JSON; round-trip validated. Fully offline.",
+  "taskStates": [
+    {
+      "id": "storage-spec",
+      "agent": "storage-architect",
+      "state": "completed",
+      "dependencies": [],
+      "revision": 3,
+      "outputArtifactID": "storage-spec:1"
+    },
+    {
+      "id": "export-spec",
+      "agent": "export-architect",
+      "state": "completed",
+      "dependencies": [],
+      "revision": 6,
+      "outputArtifactID": "export-spec:4"
+    },
+    {
+      "id": "integration",
+      "agent": "integrator",
+      "state": "completed",
+      "dependencies": [
+        "storage-spec",
+        "export-spec"
+      ],
+      "revision": 10,
+      "outputArtifactID": "integration:8"
+    },
+    {
+      "id": "review",
+      "agent": "reviewer",
+      "state": "completed",
+      "dependencies": [
+        "integration"
+      ],
+      "revision": 8,
+      "outputArtifactID": "review:6"
+    }
+  ],
+  "resultChecks": [
+    {
+      "callID": "cca2af77-1f7c-598e-8916-04836b775812",
+      "id": "export-spec:1",
+      "inputArtifactIDs": [],
+      "taskID": "export-spec",
+      "validationFailure": "Worker output contains 123 words; the human's limit is 119. Condense the entire result, including headings, tables and appendices. Preserve the required facts."
+    },
+    {
+      "callID": "2700d357-ecdd-5ba8-be1e-508a82464086",
+      "id": "storage-spec:1",
+      "inputArtifactIDs": [],
+      "taskID": "storage-spec"
+    },
+    {
+      "callID": "c38760d0-cfb8-5cf0-aad9-2c965286e08b",
+      "id": "export-spec:4",
+      "inputArtifactIDs": [
+        "export-spec:1"
+      ],
+      "taskID": "export-spec"
+    },
+    {
+      "callID": "07c0469f-711a-5a30-a1aa-7acf22cd102b",
+      "id": "integration:2",
+      "inputArtifactIDs": [
+        "storage-spec:1",
+        "export-spec:4"
+      ],
+      "taskID": "integration",
+      "validationFailure": "Worker output contains 136 words; the human's limit is 119. Condense the entire result, including headings, tables and appendices. Preserve the required facts."
+    },
+    {
+      "callID": "8c719942-7549-5722-8baa-4bac684a8073",
+      "id": "integration:5",
+      "inputArtifactIDs": [
+        "storage-spec:1",
+        "export-spec:4",
+        "integration:2"
+      ],
+      "taskID": "integration"
+    },
+    {
+      "callID": "fa2473a6-4a50-51fa-b215-c97f7fb49cbd",
+      "id": "review:3",
+      "inputArtifactIDs": [
+        "integration:5"
+      ],
+      "taskID": "review"
+    },
+    {
+      "callID": "5154e836-231a-5567-b18a-fcb6e027edd6",
+      "id": "integration:8",
+      "inputArtifactIDs": [
+        "storage-spec:1",
+        "export-spec:4",
+        "integration:5",
+        "review:3"
+      ],
+      "taskID": "integration"
+    },
+    {
+      "callID": "7c544916-9b5a-5bb2-b193-0af42e3db958",
+      "id": "review:6",
+      "inputArtifactIDs": [
+        "integration:8"
+      ],
+      "taskID": "review"
+    }
+  ],
+  "childCalls": [
+    {
+      "callID": "2700d357-ecdd-5ba8-be1e-508a82464086",
+      "ordinal": 1,
+      "status": "completed",
+      "sessionKey": "storage-architect",
+      "task": {
+        "expectedRevision": 1,
+        "goalAmendmentCount": 0,
+        "inputArtifactIDs": [],
+        "instruction": "Design the offline storage model only. Define immutable object IDs (accession number: prefix plus zero-padded sequence, never reused, never edited), core record fields, controlled vocabularies, and a provenance-note structure (acquisition, custody chain, dates, source document, uncertainty flag). For photos: local file paths named from the object ID, plus checksum, caption and credit; no cloud, no network. Specify a SQLite schema or plain-file layout and rules blocking ID edits or deletion. No web research, no code execution. Output a spec under 120 words.",
+        "outputArtifactID": "storage-spec:1",
+        "taskID": "storage-spec"
+      }
+    },
+    {
+      "callID": "cca2af77-1f7c-598e-8916-04836b775812",
+      "ordinal": 2,
+      "status": "completed",
+      "sessionKey": "export-architect",
+      "task": {
+        "expectedRevision": 1,
+        "goalAmendmentCount": 0,
+        "inputArtifactIDs": [],
+        "instruction": "Specify export only, for the same offline catalogue. JSON: UTF-8, stable key order, object ID as key, provenance and photo arrays nested, schema-version field. CSV: RFC 4180 quoting, one row per object, fixed column order, photo filenames either as a delimited field or a separate photos.csv keyed by object ID. Guarantee lossless round-trip of IDs, provenance notes and photo references, and state which representation is authoritative. No web research, no code execution. Output under 120 words.",
+        "outputArtifactID": "export-spec:1",
+        "taskID": "export-spec"
+      }
+    },
+    {
+      "callID": "c38760d0-cfb8-5cf0-aad9-2c965286e08b",
+      "ordinal": 3,
+      "status": "completed",
+      "sessionKey": "export-architect",
+      "task": {
+        "expectedRevision": 4,
+        "goalAmendmentCount": 0,
+        "inputArtifactIDs": [
+          "export-spec:1"
+        ],
+        "instruction": "Specify export only, for the same offline catalogue. JSON: UTF-8, stable key order, object ID as key, provenance and photo arrays nested, schema-version field. CSV: RFC 4180 quoting, one row per object, fixed column order, photo filenames either as a delimited field or a separate photos.csv keyed by object ID. Guarantee lossless round-trip of IDs, provenance notes and photo references, and state which representation is authoritative. No web research, no code execution. Output under 120 words.\n\n[Required output correction]\nWorker output contains 123 words; the human's limit is 119. Condense the entire result, including headings, tables and appendices. Preserve the required facts.",
+        "outputArtifactID": "export-spec:4",
+        "taskID": "export-spec"
+      }
+    },
+    {
+      "callID": "07c0469f-711a-5a30-a1aa-7acf22cd102b",
+      "ordinal": 4,
+      "status": "completed",
+      "sessionKey": "integrator",
+      "task": {
+        "expectedRevision": 2,
+        "goalAmendmentCount": 0,
+        "inputArtifactIDs": [
+          "storage-spec:1",
+          "export-spec:4"
+        ],
+        "instruction": "Combine the storage and export specs into one coherent catalogue design. Resolve conflicts explicitly (CSV flattening of photos, field naming, ID format) and say which spec wins and why. Confirm object IDs stay stable and immutable across store and export, provenance notes and photo references survive both JSON and CSV, and the whole system works fully offline. Produce the final plan in under 160 words, ready for review. No web research, no code execution.",
+        "outputArtifactID": "integration:2",
+        "taskID": "integration"
+      }
+    },
+    {
+      "callID": "8c719942-7549-5722-8baa-4bac684a8073",
+      "ordinal": 5,
+      "status": "completed",
+      "sessionKey": "integrator",
+      "task": {
+        "expectedRevision": 5,
+        "goalAmendmentCount": 0,
+        "inputArtifactIDs": [
+          "storage-spec:1",
+          "export-spec:4",
+          "integration:2"
+        ],
+        "instruction": "Combine the storage and export specs into one coherent catalogue design. Resolve conflicts explicitly (CSV flattening of photos, field naming, ID format) and say which spec wins and why. Confirm object IDs stay stable and immutable across store and export, provenance notes and photo references survive both JSON and CSV, and the whole system works fully offline. Produce the final plan in under 160 words, ready for review. No web research, no code execution.\n\n[Required output correction]\nWorker output contains 136 words; the human's limit is 119. Condense the entire result, including headings, tables and appendices. Preserve the required facts.",
+        "outputArtifactID": "integration:5",
+        "taskID": "integration"
+      }
+    },
+    {
+      "callID": "fa2473a6-4a50-51fa-b215-c97f7fb49cbd",
+      "ordinal": 6,
+      "status": "completed",
+      "sessionKey": "reviewer",
+      "task": {
+        "expectedRevision": 3,
+        "goalAmendmentCount": 0,
+        "inputArtifactIDs": [
+          "integration:5"
+        ],
+        "instruction": "Independently check the integrated plan against the brief: stable immutable object IDs, provenance notes preserved, photos preserved with offline file paths, JSON and CSV both specified and mutually consistent, fully offline with no web research or code execution, and the final plan under 160 words. Report concrete defects with the fix needed, or approve. Do not rewrite the plan. Under 120 words.",
+        "outputArtifactID": "review:3",
+        "taskID": "review"
+      }
+    },
+    {
+      "callID": "e926444a-d580-5c1b-8778-3a76f7539635",
+      "ordinal": 7,
+      "status": "completed",
+      "sessionKey": "coordinator",
+      "task": null
+    },
+    {
+      "callID": "5154e836-231a-5567-b18a-fcb6e027edd6",
+      "ordinal": 8,
+      "status": "completed",
+      "sessionKey": "integrator",
+      "task": {
+        "expectedRevision": 8,
+        "goalAmendmentCount": 0,
+        "inputArtifactIDs": [
+          "storage-spec:1",
+          "export-spec:4",
+          "integration:5",
+          "review:3"
+        ],
+        "instruction": "Revise the integrated plan (your prior output integration:5) to fix the two defects in reviewer artifact review:3. D1: photos must carry offline relative paths, not bare filenames — use relative_path such as photos/<object_id>/<object_id>_001.jpg, and state image files are copied into a local photos/ directory with no absolute or external references. D2: enumerate objects.csv columns and the corresponding JSON keys explicitly, asserting identical names, so the JSON-to-CSV mapping is verifiable. Keep the rest: immutable monotonic PREFIX-NNNNNN IDs (never reused, tombstoned), append-only provenance notes, three RFC 4180 sidecars, JSON authoritative. Fully offline; no web research, no code execution. Output the final plan in under 160 words.",
+        "outputArtifactID": "integration:8",
+        "taskID": "integration"
+      }
+    },
+    {
+      "callID": "7c544916-9b5a-5bb2-b193-0af42e3db958",
+      "ordinal": 9,
+      "status": "completed",
+      "sessionKey": "reviewer",
+      "task": {
+        "expectedRevision": 6,
+        "goalAmendmentCount": 0,
+        "inputArtifactIDs": [
+          "integration:8"
+        ],
+        "instruction": "Independently re-check the revised integrated plan against the brief: stable immutable object IDs; provenance notes preserved; photos preserved with offline relative paths (your D1); objects.csv columns and JSON keys enumerated and mutually consistent (your D2); JSON and CSV both specified; fully offline with no web research or code execution; final plan under 160 words. Report concrete remaining defects with the fix needed, or approve. Do not rewrite the plan. Under 120 words.",
+        "outputArtifactID": "review:6",
+        "taskID": "review"
+      }
+    },
+    {
+      "callID": "cebe0690-82f6-5844-be9e-dc2e2de5a996",
+      "ordinal": 10,
+      "status": "completed",
+      "sessionKey": "coordinator",
+      "task": null
+    }
+  ],
+  "intervention": "Original task entered through the real composer. No corrections or intermediate answers supplied."
+}

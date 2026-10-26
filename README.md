@@ -82,6 +82,15 @@ This October 25 recording shows a human update during a real online run. The cli
 the final result is a separate screenshot. The run completed in 114 seconds.
 [Original task, update and result](docs/evaluations/evidence/2026-10-25-live-goal-update.json).
 
+The harness checks supported explicit output limits before accepting results. An oversized result
+stays in history with its rejection reason while the agent corrects it. [Validated final plan](assets/demo/validated-plan.png)
+· [Paused goal](assets/demo/goal-paused.png) · [Task results and limits](docs/evaluations/2026-10-26-agent-harness.md).
+
+<p align="center">
+  <a href="assets/demo/goal-tasks.png"><img src="assets/demo/goal-tasks.png" width="300" alt="Current tasks in dependency order, with source and saved-feedback links." /></a>
+  <a href="assets/demo/goal-rejected.png"><img src="assets/demo/goal-rejected.png" width="300" alt="An actual rejected original stays available with its validation reason." /></a>
+</p>
+
 Open a task and choose **Message this agent** to update it while it works, or continue its
 conversation after the workflow finishes. The agent keeps its earlier context across app restarts.
 

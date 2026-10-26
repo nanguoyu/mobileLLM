@@ -714,3 +714,19 @@ an explicit empty `reasoning_content` field, as do ordinary historical assistant
 retained reasoning. This lets an enabled-thinking continuation satisfy the API without inventing text
 or rewriting the original record. Invalid native arguments use the controller's existing metered repair
 path, with the entire rejected batch left unexecuted.
+
+
+## Delivery checks
+
+New app goals freeze `_mobileLLMOutputLimitsV1` before planning. It detects explicit supported English
+final/worker word limits, common Chinese character limits and direct JSON-only output requests from
+human instructions. Quoted examples and code are excluded. Human amendments can change these bounds;
+model notes cannot. The recognizer does not claim to interpret every natural-language condition.
+
+Checks include the whole deliverable, including headings, tables and appendices. A rejected worker
+result remains in the artifact history with its validation failure. One automatic correction per task
+and human-amendment revision uses the same agent session and budget; another failure stays unfinished.
+The coordinator has at most two final-format corrections before a pause. Accepted delivery records an
+answer digest, checked again before publication. No validator edits or truncates the answer. Older goals
+without this policy retain their original contract. The UI distinguishes completed generation from a
+result that was rejected by these checks.

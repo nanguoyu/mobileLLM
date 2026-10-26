@@ -1,0 +1,1513 @@
+{
+  "scope": "Targeted follow-ups at separate revisions. Do not pool these with the frozen diagnostic or erase the earlier failures.",
+  "attempts": [
+    {
+      "answer": "{\"marker\":\"EVAL_MIGRATION\",\"sql\":\"BEGIN IMMEDIATE;\\n\\nDROP TABLE IF EXISTS temp.contact_merge;\\nCREATE TEMP TABLE contact_merge(\\n  loser_id INTEGER PRIMARY KEY,\\n  winner_id INTEGER NOT NULL\\n);\\n\\nUPDATE contacts\\nSET email = NULL\\nWHERE email IS NOT NULL\\n  AND trim(email) = '';\\n\\nINSERT INTO temp.contact_merge(loser_id, winner_id)\\nSELECT id, winner_id\\nFROM (\\n  SELECT id,\\n         FIRST_VALUE(id) OVER (\\n           PARTITION BY tenant_id, lower(trim(email))\\n           ORDER BY updated_at, id\\n         ) AS winner_id,\\n         ROW_NUMBER() OVER (\\n           PARTITION BY tenant_id, lower(trim(email))\\n           ORDER BY updated_at, id\\n         ) AS rn\\n  FROM contacts\\n  WHERE email IS NOT NULL\\n    AND trim(email) <> ''\\n)\\nWHERE rn > 1;\\n\\nUPDATE tickets\\nSET contact_id = (\\n  SELECT m.winner_id\\n  FROM temp.contact_merge AS m\\n  WHERE m.loser_id = tickets.contact_id\\n)\\nWHERE contact_id IN (SELECT loser_id FROM temp.contact_merge);\\n\\nDELETE FROM contacts\\nWHERE id IN (SELECT loser_id FROM temp.contact_merge);\\n\\nUPDATE contacts\\nSET email = lower(trim(email))\\nWHERE email IS NOT NULL\\n  AND trim(email) <> '';\\n\\nCREATE UNIQUE INDEX IF NOT EXISTS ux_contacts_tenant_normalized_email\\nON contacts(tenant_id, lower(trim(email)))\\nWHERE email IS NOT NULL\\n  AND trim(email) <> '';\\n\\nDROP TABLE IF EXISTS temp.contact_merge;\\n\\nCOMMIT;\",\"rationale\":\"Uses one BEGIN IMMEDIATE transaction. Missing emails are normalized to NULL first. A temp mapping table uses ROW_NUMBER and FIRST_VALUE over tenant_id plus lower(trim(email)), ordered by updated_at then id, to map every loser to its winner. Tickets are repointed before losers are deleted. Retained nonmissing emails are normalized. A partial unique expression index enforces future nonmissing uniqueness only, so NULL/empty/all-space missing emails remain non-unique. CREATE UNIQUE INDEX is inside the transaction, and IF NOT EXISTS makes reruns idempotent. No triggers, table rebuilds, or FK disabling are used. No execution is claimed.\"}",
+      "calls": [],
+      "case": "migration",
+      "checksPassed": false,
+      "codeRevision": "bc9e110",
+      "dependentWorkers": 0,
+      "distinctWorkerIDs": [],
+      "elapsedSeconds": 45.81456506252289,
+      "failures": [
+        "Requested staged collaboration missing: 0 dependency stages, 0 dependent workers, 0 distinct agent identities"
+      ],
+      "goal": "Deliver a production SQLite 3.45+ migration script for this legacy help-desk database.\nExisting schema, with foreign_keys=ON:\nCREATE TABLE contacts(id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL,\n  email TEXT, display_name TEXT NOT NULL, updated_at INTEGER NOT NULL);\nCREATE TABLE tickets(id INTEGER PRIMARY KEY, contact_id INTEGER NOT NULL\n  REFERENCES contacts(id), subject TEXT NOT NULL);\nLegacy contacts may duplicate an email within one tenant. Identity is tenant_id plus\nlower(trim(email)), where trim removes ordinary ASCII spaces. Missing means email IS NULL or\ntrim(email)='': this includes empty strings and all-space strings. Preserve each missing\ncontact separately and normalize its email to NULL.\nFor each nonmissing duplicate identity, keep the row with least updated_at, breaking\nties by least id. Preserve that winner's id, display_name, tenant_id and updated_at.\nRepoint every ticket to the winning contact before deleting losers. Preserve all ticket\nIDs and subjects. Normalize retained nonmissing emails. Enforce this same normalized\nuniqueness rule for FUTURE INSERTs and UPDATEs, without merging across tenants or making\nmissing emails unique. Add a unique index, without triggers or rebuilding the tables.\nNever disable foreign-key enforcement.\nThe script must be atomic, including creation of the uniqueness constraint. If a statement\nfails before COMMIT the transaction must still be rollbackable. Running the script twice\nmust produce the same data and constraints. Do not assume a particular row count or IDs.\nOrganize the work in dependent stages: have independent agents analyze data/FK invariants\nand transaction/retry hazards; use their findings for an implementation agent; then have\na separate agent inspect that candidate for concrete counterexamples before delivery.\nCorrect any issue they identify within this run. You do not have a SQL execution tool,\nso do not claim execution; deliver the script for an external SQLite evaluator.\nReturn ONLY JSON: {\"marker\":\"EVAL_MIGRATION\",\"sql\":\"complete script\", \"rationale\":\"...\"}.",
+      "inputTokens": 3359,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 9432,
+      "repetition": 1,
+      "sourceSHA256": "5aa9fbbfd73078d75c4e8be51f231c6fc6338a43a5b86a09c5aa0a74c4449da3",
+      "state": "completed",
+      "successfulCalculatorCalls": 0,
+      "successfulToolCalls": 0,
+      "successfulTools": {},
+      "toolCalls": 0,
+      "variant": "held-out",
+      "workerWaves": 0,
+      "runtimeRevision": "bc9e110",
+      "evaluationGroup": "postfix-bc9e110"
+    },
+    {
+      "answer": "",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "scheduler",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "cost",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "sched:1"
+          ],
+          "label": "scheduler",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 36,
+          "submittedSequence": 34
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 38,
+          "submittedSequence": 35
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "sched:1",
+            "sched:4"
+          ],
+          "label": "scheduler",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 52,
+          "submittedSequence": 50
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 54,
+          "submittedSequence": 51
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "sched:4",
+            "cost:1"
+          ],
+          "label": "adapter",
+          "ordinal": 8,
+          "role": "workflow-worker",
+          "settledSequence": 70,
+          "submittedSequence": 62
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 9,
+          "role": "workflow-supervisor",
+          "settledSequence": 68,
+          "submittedSequence": 67
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 3,
+          "inputArtifactIDs": [
+            "adapt:4",
+            "sched:4",
+            "cost:1"
+          ],
+          "label": "verifier",
+          "ordinal": 10,
+          "role": "workflow-worker",
+          "settledSequence": 85,
+          "submittedSequence": 79
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 11,
+          "role": "workflow-supervisor",
+          "settledSequence": 83,
+          "submittedSequence": 82
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 12,
+          "role": "workflow-supervisor",
+          "settledSequence": 92,
+          "submittedSequence": 91
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 4,
+          "inputArtifactIDs": [
+            "adapt:4",
+            "sched:4",
+            "cost:1",
+            "verify:4"
+          ],
+          "label": "verifier",
+          "ordinal": 13,
+          "role": "workflow-worker",
+          "settledSequence": 103,
+          "submittedSequence": 102
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 14,
+          "role": "workflow-supervisor",
+          "settledSequence": 110,
+          "submittedSequence": 109
+        }
+      ],
+      "case": "rollout",
+      "checksPassed": false,
+      "codeRevision": "bc9e110",
+      "dependentWorkers": 5,
+      "distinctWorkerIDs": [
+        "adapter",
+        "cost",
+        "scheduler",
+        "verifier"
+      ],
+      "elapsedSeconds": 131.1146810054779,
+      "failures": [
+        "Workflow state paused: The model request budget was used; remaining work and partial results are saved.",
+        "Final answer is not the requested JSON artifact"
+      ],
+      "goal": "Create an executable maintenance staffing plan and then adapt it to a resource outage.\nTime is integer hours from zero. Tasks cannot be split. Each task occupies its stated\nresource for its entire duration. One DB engineer, one App engineer and one QA engineer\nare available, each doing at most one task at a time. All dependencies must finish first.\nTasks (ID, duration, resource, dependencies):\nA,3,DB,none (snapshot); B,2,App,none (warm pool); C,2,DB,A (schema change);\nD,2,App,B+C (API rollout); E,4,DB,C (backfill); F,2,DB,E (index build);\nG,3,QA,D+E (end-to-end verification); H,1,App,F+G (cutover).\nLabor rates are DB=90, App=75, QA=80 EUR/hour. Only active task time is billed, not idle\nor outage time. Total labor must stay within EUR1700. Use the Calculator tool for the cost.\nFirst minimize baseline makespan. Then the QA engineer becomes unavailable in [10,13);\nadapt the ACTUAL baseline schedule, first minimizing revised makespan, then minimizing\nthe number of tasks whose start time changes. Half-open intervals sharing an endpoint\ndo not overlap. Give a valid lower bound proving each makespan optimal.\nUse independent scheduling and resource/cost agents first. Once their results exist,\ndelegate the outage adaptation using that baseline to another agent. Have a later agent\nverify the proposed schedules, changes and constraints, and repair errors before delivery.\nReturn ONLY JSON with marker=\"EVAL_ROLLOUT\", baseline and revised objects containing\nmakespan and tasks (array of {id,start,end,resource}), changedStartIDs, laborCostEUR,\nlowerBounds={baseline:...,outage:...}, and explanation.",
+      "inputTokens": 288061,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 28496,
+      "repetition": 3,
+      "sourceSHA256": "5aa9fbbfd73078d75c4e8be51f231c6fc6338a43a5b86a09c5aa0a74c4449da3",
+      "state": "paused",
+      "successfulCalculatorCalls": 8,
+      "successfulToolCalls": 17,
+      "successfulTools": {
+        "calculator": 8,
+        "read_artifact": 3,
+        "read_context": 2,
+        "send_message": 4
+      },
+      "toolCalls": 18,
+      "variant": "held-out",
+      "workerWaves": 5,
+      "runtimeRevision": "bc9e110",
+      "evaluationGroup": "postfix-bc9e110"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_ROLLOUT\",\"baseline\":{\"makespan\":13,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":9,\"end\":12,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":12,\"end\":13,\"resource\":\"App\"}]},\"revised\":{\"makespan\":17,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":13,\"end\":16,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":16,\"end\":17,\"resource\":\"App\"}]},\"changedStartIDs\":[\"G\",\"H\"],\"laborCostEUR\":1605,\"lowerBounds\":{\"baseline\":13,\"outage\":17},\"explanation\":\"Baseline (makespan 13): the DB-only chain A->C->E->F takes 3+2+4+2=11 h, so F ends no earlier than 11; E cannot end before 9 and G needs 3 QA hours after D and E, so G cannot end before 12; H needs both F and G plus 1 hour, so makespan >= max(11,12)+1 = 13. The schedule attains 13 (A 0-3, C 3-5, E 5-9, F 9-11 on DB; B 0-2, D 5-7, H 12-13 on App; G 9-12 on QA), so 13 is optimal. Outage (QA unavailable [10,13)): the DB chain still forces E to end no earlier than 9, so G cannot start before 9; its non-splittable 3-hour block cannot fit in [9,10) before the outage, so G cannot start before 13 and cannot finish before 16; H depends on G and takes 1 hour, so H cannot finish before 17 and revised makespan >= 17. The revised schedule attains 17 with only G (13-16, QA) and H (16-17, App) moved; G's interval does not overlap the half-open outage [10,13), and all dependencies and single-resource constraints hold. Changed-start minimality: G must change (baseline G 9-12 overlaps [10,13)) and H must change (baseline H starts at 12, before G's earliest finish 16), so at least 2 starts must change; exactly 2 do, which is optimal. Labor cost: 11 DB h x EUR90 + 5 App h x EUR75 + 3 QA h x EUR80 = 990 + 375 + 240 = EUR1605 (Calculator-verified), within the EUR1700 cap with EUR95 headroom; idle and outage time are not billed, and the cost is unchanged by rescheduling since durations and resources are fixed.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "scheduler",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "cost",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "baseline_schedule:1",
+            "cost_baseline:1"
+          ],
+          "label": "adapter",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 37,
+          "submittedSequence": 33
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 39,
+          "submittedSequence": 36
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "baseline_schedule:1",
+            "cost_baseline:1",
+            "outage_adapt:1"
+          ],
+          "label": "verifier",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 52,
+          "submittedSequence": 48
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 54,
+          "submittedSequence": 51
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 61,
+          "submittedSequence": 60
+        }
+      ],
+      "case": "rollout",
+      "checksPassed": true,
+      "codeRevision": "bc9e110",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "adapter",
+        "cost",
+        "scheduler",
+        "verifier"
+      ],
+      "elapsedSeconds": 81.92918694019318,
+      "failures": [],
+      "goal": "Create an executable maintenance staffing plan and then adapt it to a resource outage.\nTime is integer hours from zero. Tasks cannot be split. Each task occupies its stated\nresource for its entire duration. One DB engineer, one App engineer and one QA engineer\nare available, each doing at most one task at a time. All dependencies must finish first.\nTasks (ID, duration, resource, dependencies):\nA,3,DB,none (snapshot); B,2,App,none (warm pool); C,2,DB,A (schema change);\nD,2,App,B+C (API rollout); E,4,DB,C (backfill); F,2,DB,E (index build);\nG,3,QA,D+E (end-to-end verification); H,1,App,F+G (cutover).\nLabor rates are DB=90, App=75, QA=80 EUR/hour. Only active task time is billed, not idle\nor outage time. Total labor must stay within EUR1700. Use the Calculator tool for the cost.\nFirst minimize baseline makespan. Then the QA engineer becomes unavailable in [10,13);\nadapt the ACTUAL baseline schedule, first minimizing revised makespan, then minimizing\nthe number of tasks whose start time changes. Half-open intervals sharing an endpoint\ndo not overlap. Give a valid lower bound proving each makespan optimal.\nUse independent scheduling and resource/cost agents first. Once their results exist,\ndelegate the outage adaptation using that baseline to another agent. Have a later agent\nverify the proposed schedules, changes and constraints, and repair errors before delivery.\nReturn ONLY JSON with marker=\"EVAL_ROLLOUT\", baseline and revised objects containing\nmakespan and tasks (array of {id,start,end,resource}), changedStartIDs, laborCostEUR,\nlowerBounds={baseline:...,outage:...}, and explanation.",
+      "inputTokens": 166397,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 17626,
+      "repetition": 2,
+      "sourceSHA256": "5aa9fbbfd73078d75c4e8be51f231c6fc6338a43a5b86a09c5aa0a74c4449da3",
+      "state": "completed",
+      "successfulCalculatorCalls": 5,
+      "successfulToolCalls": 11,
+      "successfulTools": {
+        "calculator": 5,
+        "read_artifact": 5,
+        "read_context": 1
+      },
+      "toolCalls": 11,
+      "variant": "held-out",
+      "workerWaves": 3,
+      "runtimeRevision": "bc9e110",
+      "evaluationGroup": "postfix-bc9e110"
+    },
+    {
+      "answer": "",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "scheduler",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "cost",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "baseline_schedule:1",
+            "baseline_cost:1"
+          ],
+          "label": "adapter",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 35,
+          "submittedSequence": 32
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 37,
+          "submittedSequence": 34
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "baseline_schedule:1",
+            "baseline_cost:1",
+            "outage_adapt:1"
+          ],
+          "label": "verifier",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 52,
+          "submittedSequence": 46
+        },
+        {
+          "completed": false,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 50,
+          "submittedSequence": 49
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 66,
+          "submittedSequence": 65
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 71,
+          "submittedSequence": 70
+        }
+      ],
+      "case": "rollout",
+      "checksPassed": false,
+      "codeRevision": "bc9e110",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "adapter",
+        "cost",
+        "scheduler",
+        "verifier"
+      ],
+      "elapsedSeconds": 20.849506974220276,
+      "failures": [
+        "Workflow state failed: The online model called send_message with invalid arguments.",
+        "Final answer is not the requested JSON artifact"
+      ],
+      "goal": "Create an executable maintenance staffing plan and then adapt it to a resource outage.\nTime is integer hours from zero. Tasks cannot be split. Each task occupies its stated\nresource for its entire duration. One DB engineer, one App engineer and one QA engineer\nare available, each doing at most one task at a time. All dependencies must finish first.\nTasks (ID, duration, resource, dependencies):\nA,3,DB,none (snapshot); B,2,App,none (warm pool); C,2,DB,A (schema change);\nD,2,App,B+C (API rollout); E,4,DB,C (backfill); F,2,DB,E (index build);\nG,3,QA,D+E (end-to-end verification); H,1,App,F+G (cutover).\nLabor rates are DB=90, App=75, QA=80 EUR/hour. Only active task time is billed, not idle\nor outage time. Total labor must stay within EUR1700. Use the Calculator tool for the cost.\nFirst minimize baseline makespan. Then the QA engineer becomes unavailable in [10,13);\nadapt the ACTUAL baseline schedule, first minimizing revised makespan, then minimizing\nthe number of tasks whose start time changes. Half-open intervals sharing an endpoint\ndo not overlap. Give a valid lower bound proving each makespan optimal.\nUse independent scheduling and resource/cost agents first. Once their results exist,\ndelegate the outage adaptation using that baseline to another agent. Have a later agent\nverify the proposed schedules, changes and constraints, and repair errors before delivery.\nReturn ONLY JSON with marker=\"EVAL_ROLLOUT\", baseline and revised objects containing\nmakespan and tasks (array of {id,start,end,resource}), changedStartIDs, laborCostEUR,\nlowerBounds={baseline:...,outage:...}, and explanation.",
+      "inputTokens": 166068,
+      "intervention": "Explicit resume of a retained paused goal, in a copy of its original journal and artifacts. No corrective prompt or answer supplied. Original allowance, preparation usage, settled outcomes and handles are checked unchanged.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 18099,
+      "repetition": 1,
+      "sourceSHA256": "fb7f6269ff1c525f8c9ce1c46527d7469e61043c7b357b1e2e605679b033ab1b",
+      "state": "failed",
+      "successfulCalculatorCalls": 5,
+      "successfulToolCalls": 13,
+      "successfulTools": {
+        "calculator": 5,
+        "read_artifact": 5,
+        "read_context": 1,
+        "send_message": 2
+      },
+      "toolCalls": 13,
+      "variant": "held-out",
+      "workerWaves": 3,
+      "runtimeRevision": "bc9e110",
+      "evaluationGroup": "postfix-bc9e110"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_ROLLOUT\",\"baseline\":{\"makespan\":13,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":9,\"end\":12,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":12,\"end\":13,\"resource\":\"App\"}]},\"revised\":{\"makespan\":17,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":13,\"end\":16,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":16,\"end\":17,\"resource\":\"App\"}]},\"changedStartIDs\":[\"G\",\"H\"],\"laborCostEUR\":1605,\"lowerBounds\":{\"baseline\":13,\"outage\":17},\"explanation\":\"Baseline (verified): all starts integer; durations/resources match the table; dependencies hold (C after A@3; D after B@2 and C@5; E after C@5; F after E@9; G after D@7 and E@9; H after F@11 and G@12); per-resource intervals are nonoverlapping (DB 0-3, 3-5, 5-9, 9-11; App 0-2, 5-7, 12-13; QA 9-12). Baseline optimality: precedence chain A-C-E-G-H has length 3+2+4+3+1 = 13, so makespan cannot be below 13, and the schedule attains 13; the schedule is therefore optimal (resource workloads DB 11, App 5, QA 3 are weaker bounds). Outage adaptation (QA unavailable on [10,13)): E finishes at 9 and D at 7, so G cannot start before 9; G is indivisible with duration 3, and a start in [9,10) would run into [10,13) while a start inside [10,13) is impossible, so G must start at or after 13 and finish no earlier than 16. H depends on G and lasts 1 hour, so makespan >= 17; the revised plan attains 17, hence it is optimal. Secondary objective: baseline G (9-12) overlaps the outage and must move; because revised G ends at 16, H cannot keep its baseline start of 12, so at least G and H must change — exactly those two change, making the change count 2 minimal. Labor cost (Calculator): (3+2+4+2)*90 + (2+2+1)*75 + 3*80 = 11*90 + 5*75 + 3*80 = 990 + 375 + 240 = EUR1605, within the EUR1700 budget; only active task time is billed, and idle/outage time adds no cost.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "scheduler",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "cost_auditor",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "T1_baseline_schedule:1",
+            "T2_cost_resource_audit:1"
+          ],
+          "label": "outage_adapter",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 35,
+          "submittedSequence": 31
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 37,
+          "submittedSequence": 34
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "T1_baseline_schedule:1",
+            "T2_cost_resource_audit:1",
+            "T3_outage_adaptation:1"
+          ],
+          "label": "verifier",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 51,
+          "submittedSequence": 47
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 53,
+          "submittedSequence": 50
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 3,
+          "inputArtifactIDs": [
+            "T1_baseline_schedule:1",
+            "T2_cost_resource_audit:1",
+            "T3_outage_adaptation:1",
+            "T4_verify_and_repair:1"
+          ],
+          "label": "verifier",
+          "ordinal": 8,
+          "role": "workflow-worker",
+          "settledSequence": 68,
+          "submittedSequence": 65
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 9,
+          "role": "workflow-supervisor",
+          "settledSequence": 70,
+          "submittedSequence": 67
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 10,
+          "role": "workflow-supervisor",
+          "settledSequence": 78,
+          "submittedSequence": 77
+        }
+      ],
+      "case": "rollout",
+      "checksPassed": true,
+      "codeRevision": "bc9e110",
+      "dependentWorkers": 3,
+      "distinctWorkerIDs": [
+        "cost_auditor",
+        "outage_adapter",
+        "scheduler",
+        "verifier"
+      ],
+      "elapsedSeconds": 76.9536030292511,
+      "failures": [],
+      "goal": "Create an executable maintenance staffing plan and then adapt it to a resource outage.\nTime is integer hours from zero. Tasks cannot be split. Each task occupies its stated\nresource for its entire duration. One DB engineer, one App engineer and one QA engineer\nare available, each doing at most one task at a time. All dependencies must finish first.\nTasks (ID, duration, resource, dependencies):\nA,3,DB,none (snapshot); B,2,App,none (warm pool); C,2,DB,A (schema change);\nD,2,App,B+C (API rollout); E,4,DB,C (backfill); F,2,DB,E (index build);\nG,3,QA,D+E (end-to-end verification); H,1,App,F+G (cutover).\nLabor rates are DB=90, App=75, QA=80 EUR/hour. Only active task time is billed, not idle\nor outage time. Total labor must stay within EUR1700. Use the Calculator tool for the cost.\nFirst minimize baseline makespan. Then the QA engineer becomes unavailable in [10,13);\nadapt the ACTUAL baseline schedule, first minimizing revised makespan, then minimizing\nthe number of tasks whose start time changes. Half-open intervals sharing an endpoint\ndo not overlap. Give a valid lower bound proving each makespan optimal.\nUse independent scheduling and resource/cost agents first. Once their results exist,\ndelegate the outage adaptation using that baseline to another agent. Have a later agent\nverify the proposed schedules, changes and constraints, and repair errors before delivery.\nReturn ONLY JSON with marker=\"EVAL_ROLLOUT\", baseline and revised objects containing\nmakespan and tasks (array of {id,start,end,resource}), changedStartIDs, laborCostEUR,\nlowerBounds={baseline:...,outage:...}, and explanation.",
+      "inputTokens": 208233,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 18860,
+      "repetition": 1,
+      "sourceSHA256": "5aa9fbbfd73078d75c4e8be51f231c6fc6338a43a5b86a09c5aa0a74c4449da3",
+      "state": "completed",
+      "successfulCalculatorCalls": 6,
+      "successfulToolCalls": 13,
+      "successfulTools": {
+        "calculator": 6,
+        "read_artifact": 5,
+        "send_message": 2
+      },
+      "toolCalls": 14,
+      "variant": "held-out",
+      "workerWaves": 4,
+      "runtimeRevision": "bc9e110",
+      "evaluationGroup": "postfix-bc9e110"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_CONTEXT\",\"region\":\"eu-north-1\",\"retentionDays\":5,\"exportLimitMiB\":48,\"encryptionRequired\":true,\"releaseCode\":\"MAPLE-641\",\"sources\":[\"R01\",\"R14\",\"R30\"],\"explanation\":\"R01 (original approved baseline) supplied region=eu-west-3, retentionDays=21, encryptionRequired=true, and releaseCode=MAPLE-641, and set no export limit. R14 (approved export rule) supplied exportLimitMiB=48 and explicitly stated the rule is independent of trash retention, so it did not alter retentionDays. R30 (latest approved correction) changed exactly two fields: region to eu-north-1 and retentionDays to 5, and instructed that all other baseline and export decisions be preserved. Retained unchanged: exportLimitMiB=48 (from R14), encryptionRequired=true and releaseCode=MAPLE-641 (from R01). Intermediate records R02-R13 and R15-R29 are design discussions that each disclaim setting any release-contract field and contribute no values.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "baseline-history",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "change-control",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "baseline:1",
+            "change:1"
+          ],
+          "label": "integrator",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 35,
+          "submittedSequence": 33
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 37,
+          "submittedSequence": 34
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "integrate:1"
+          ],
+          "label": "reviewer",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 50,
+          "submittedSequence": 46
+        },
+        {
+          "completed": false,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 48,
+          "submittedSequence": 47
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 66,
+          "submittedSequence": 65
+        }
+      ],
+      "case": "longContext",
+      "checksPassed": true,
+      "codeRevision": "aaa4d84",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "baseline-history",
+        "change-control",
+        "integrator",
+        "reviewer"
+      ],
+      "elapsedSeconds": 9.698482990264893,
+      "failures": [],
+      "goal": "Synthesize the current release contract from our earlier project records. Those records include\nan original baseline R01, an export rule R14, and a later correction R30. Their exact contents\nremain in your original session context even if the current window omitted them. Retrieve those\noriginal records through agent.read_context; do not infer values from general knowledge.\nUse separate baseline/history and change-control agents to extract evidence. An integration\nagent must consume both results, then a separate reviewer must check the candidate against the\noriginal records. Preserve unchanged requirements and apply the latest correction only to fields\nit changes. Do not execute code or fetch the web. Return ONLY JSON with marker=\"EVAL_CONTEXT\",\nregion, retentionDays, exportLimitMiB, encryptionRequired, releaseCode, sources (array of source\nlabels such as R01), and explanation identifying which fields changed and which were retained.",
+      "inputTokens": 264215,
+      "intervention": "Explicit resume of a retained paused goal, in a copy of its original journal and artifacts. No corrective prompt or answer supplied. Original allowance, preparation usage, settled outcomes and handles are checked unchanged.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 8,
+      "outputTokens": 7717,
+      "repetition": 1,
+      "sourceSHA256": "fb7f6269ff1c525f8c9ce1c46527d7469e61043c7b357b1e2e605679b033ab1b",
+      "state": "completed",
+      "successfulCalculatorCalls": 0,
+      "successfulToolCalls": 13,
+      "successfulTools": {
+        "read_context": 13
+      },
+      "toolCalls": 13,
+      "variant": "held-out",
+      "workerWaves": 3,
+      "runtimeRevision": "aaa4d84",
+      "evaluationGroup": "replay-recovery"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_ROLLOUT\",\"baseline\":{\"makespan\":13,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":9,\"end\":12,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":12,\"end\":13,\"resource\":\"App\"}]},\"revised\":{\"makespan\":17,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":13,\"end\":16,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":16,\"end\":17,\"resource\":\"App\"}]},\"changedStartIDs\":[\"G\",\"H\"],\"laborCostEUR\":1605,\"lowerBounds\":{\"baseline\":\"DB chain A->C->E->F lasts 3+2+4+2=11. C ends >=5, so E ends >=9; D (after B and C) ends >=max(2,5)+2=7. Hence G starts >=max(7,9)=9 and ends >=12. H depends on F (ends >=9+2=11) and G, so H starts >=max(11,12)=12 and ends >=13. Therefore makespan >=13, attained by the baseline schedule.\",\"outage\":\"Unchanged dependency bounds give G start >=max(7,9)=9. G needs 3 contiguous QA hours but QA is unavailable on [10,13); the run 9-12 overlaps the outage, and no split is allowed, so G must start >=13 and ends >=16. H depends on F (ends >=11) and G, so H starts >=max(11,16)=16 and ends >=17. The revised schedule attains 17, so it is optimal. Minimal change: G's start must change (its 9-12 run hits the outage and cannot move earlier), and H's start must change because it must follow G, which now ends >=16; no other task's start is forced, so exactly 2 changes is minimal and the schedule achieves it.\"},\"explanation\":\"Baseline: the single DB engineer runs the critical chain A(0-3), C(3-5), E(5-9), F(9-11) back-to-back; App runs B(0-2), D(5-7) after B and C, then H(12-13) after F and G; QA runs G(9-12) after D and E. All dependencies and one-task-per-resource constraints hold, and makespan 13 matches the lower bound. Outage adaptation: with QA unavailable on the half-open interval [10,13), G's 3-hour run cannot fit at 9-12, and dependencies forbid an earlier start, so G moves to 13-16; H must then follow G and F, moving to 16-17 for a revised makespan of 17, which equals the lower bound. Only G and H change start times, which is provably minimal. Labor cost is schedule-independent (only active time is billed): DB 11h*90=990, App 5h*75=375, QA 3h*80=240, total EUR1605, within the EUR1700 cap and unchanged by the outage.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "scheduler",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "cost",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "baseline_schedule:1",
+            "baseline_cost:1"
+          ],
+          "label": "adapter",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 35,
+          "submittedSequence": 32
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 37,
+          "submittedSequence": 34
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "baseline_schedule:1",
+            "baseline_cost:1",
+            "outage_adapt:1"
+          ],
+          "label": "verifier",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 52,
+          "submittedSequence": 46
+        },
+        {
+          "completed": false,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 50,
+          "submittedSequence": 49
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 68,
+          "submittedSequence": 67
+        }
+      ],
+      "case": "rollout",
+      "checksPassed": true,
+      "codeRevision": "replay-recovery-checkpoint",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "adapter",
+        "cost",
+        "scheduler",
+        "verifier"
+      ],
+      "elapsedSeconds": 9.235177040100098,
+      "failures": [],
+      "goal": "Create an executable maintenance staffing plan and then adapt it to a resource outage.\nTime is integer hours from zero. Tasks cannot be split. Each task occupies its stated\nresource for its entire duration. One DB engineer, one App engineer and one QA engineer\nare available, each doing at most one task at a time. All dependencies must finish first.\nTasks (ID, duration, resource, dependencies):\nA,3,DB,none (snapshot); B,2,App,none (warm pool); C,2,DB,A (schema change);\nD,2,App,B+C (API rollout); E,4,DB,C (backfill); F,2,DB,E (index build);\nG,3,QA,D+E (end-to-end verification); H,1,App,F+G (cutover).\nLabor rates are DB=90, App=75, QA=80 EUR/hour. Only active task time is billed, not idle\nor outage time. Total labor must stay within EUR1700. Use the Calculator tool for the cost.\nFirst minimize baseline makespan. Then the QA engineer becomes unavailable in [10,13);\nadapt the ACTUAL baseline schedule, first minimizing revised makespan, then minimizing\nthe number of tasks whose start time changes. Half-open intervals sharing an endpoint\ndo not overlap. Give a valid lower bound proving each makespan optimal.\nUse independent scheduling and resource/cost agents first. Once their results exist,\ndelegate the outage adaptation using that baseline to another agent. Have a later agent\nverify the proposed schedules, changes and constraints, and repair errors before delivery.\nReturn ONLY JSON with marker=\"EVAL_ROLLOUT\", baseline and revised objects containing\nmakespan and tasks (array of {id,start,end,resource}), changedStartIDs, laborCostEUR,\nlowerBounds={baseline:...,outage:...}, and explanation.",
+      "inputTokens": 101203,
+      "intervention": "Explicit resume of a retained paused goal, in a copy of its original journal and artifacts. No corrective prompt or answer supplied. Original allowance, preparation usage, settled outcomes and handles are checked unchanged.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 17003,
+      "repetition": 1,
+      "sourceSHA256": "fb7f6269ff1c525f8c9ce1c46527d7469e61043c7b357b1e2e605679b033ab1b",
+      "state": "completed",
+      "successfulCalculatorCalls": 5,
+      "successfulToolCalls": 9,
+      "successfulTools": {
+        "calculator": 5,
+        "read_artifact": 2,
+        "read_context": 1,
+        "send_message": 1
+      },
+      "toolCalls": 9,
+      "variant": "held-out",
+      "workerWaves": 3,
+      "runtimeRevision": "aaa4d84",
+      "evaluationGroup": "replay-recovery"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_MIGRATION\",\"sql\":\"PRAGMA foreign_keys=ON;\\n\\nBEGIN IMMEDIATE;\\n\\n-- Stage 0: drop any prior migration index inside the transaction so a wrong\\n-- pre-existing definition cannot block normalization or persist.\\nDROP INDEX IF EXISTS main.ux_contacts_tenant_email_norm;\\n\\n-- Stage 1: normalize missing emails (NULL, '', all-ASCII-space) to NULL.\\n-- Each missing contact remains a separate row.\\nUPDATE main.contacts\\nSET email = NULL\\nWHERE email IS NOT NULL AND trim(email) = '';\\n\\n-- Stage 2: normalize retained nonmissing emails to lower(trim(email)).\\nUPDATE main.contacts\\nSET email = lower(trim(email))\\nWHERE email IS NOT NULL;\\n\\n-- Stage 3: build loser -> winner map for nonmissing duplicate identities.\\n-- Winner = least updated_at, tie-break least id. Missing (NULL) rows excluded.\\nDROP TABLE IF EXISTS temp._contact_winner;\\nCREATE TEMP TABLE _contact_winner AS\\nSELECT id AS loser_id, winner_id\\nFROM (\\n  SELECT id,\\n         first_value(id) OVER (\\n           PARTITION BY tenant_id, email\\n           ORDER BY updated_at ASC, id ASC\\n         ) AS winner_id\\n  FROM main.contacts\\n  WHERE email IS NOT NULL\\n)\\nWHERE id <> winner_id;\\n\\n-- Stage 4: repoint tickets from losers to winners BEFORE deleting losers.\\nUPDATE main.tickets\\nSET contact_id = (\\n  SELECT w.winner_id FROM temp._contact_winner AS w\\n  WHERE w.loser_id = main.tickets.contact_id\\n)\\nWHERE contact_id IN (SELECT loser_id FROM temp._contact_winner);\\n\\n-- Stage 5: delete losing contacts (tickets already repointed).\\nDELETE FROM main.contacts\\nWHERE id IN (SELECT loser_id FROM temp._contact_winner);\\n\\nDROP TABLE IF EXISTS temp._contact_winner;\\n\\n-- Stage 6: enforce normalized uniqueness for future INSERT/UPDATE.\\n-- Partial expression index: missing emails (NULL/''/all-space) are excluded,\\n-- so they are never forced unique; tenant_id keeps tenants separate.\\nCREATE UNIQUE INDEX main.ux_contacts_tenant_email_norm\\nON contacts(tenant_id, lower(trim(email)))\\nWHERE email IS NOT NULL AND trim(email) <> '';\\n\\nCOMMIT;\",\"rationale\":\"Delivered for external SQLite 3.45+ evaluation; no SQL was executed in this run. PRAGMA foreign_keys=ON is set strictly before BEGIN IMMEDIATE (the pragma is a no-op inside a transaction) and enforcement is never disabled. BEGIN IMMEDIATE takes the write lock up front so no concurrent writer can insert a duplicate between cleanup and index creation. All data changes plus DROP/CREATE INDEX are inside one transaction, so any failure before COMMIT is rollbackable, including index DDL. Missing = email IS NULL OR trim(email)='' (covers '' and all-ASCII-space); those rows are normalized to NULL and preserved individually, and the partial index predicate excludes them so missing emails are never unique-constrained. Nonmissing emails are normalized to lower(trim(email)) (SQLite trim removes only ASCII spaces) before dedupe, so case/space variants collapse. Winner selection uses first_value partitioned by (tenant_id, normalized email) ordered by updated_at ASC, id ASC; the winner's id/display_name/tenant_id/updated_at are never modified. Tickets are repointed via the temp loser->winner map before DELETE, preserving ticket id/subject; with foreign_keys=ON, deleting a still-referenced loser would otherwise fail, so this ordering is required. The expression partial unique index enforces the same tenant-scoped normalized identity for future INSERT/UPDATE without triggers or table rebuilds and without cross-tenant merging. Idempotent on rerun: normalization no-ops, no losers remain, and the index is dropped/recreated with an identical definition. Main tables are schema-qualified to avoid TEMP shadowing; the temp map is created and dropped inside the transaction. Correction applied at delivery: the reviewer-approved candidate had `CREATE UNIQUE INDEX main.ux_... ON main.contacts(...)`, which is invalid SQLite syntax (the table name in CREATE INDEX cannot be schema-qualified; only the index name may be), so the final script uses `ON contacts(...)` with the index schema-qualified as main.ux_contacts_tenant_email_norm, and DROP INDEX IF EXISTS now precedes the normalization stages inside the same transaction. Caller must use a pinned connection in autocommit mode with no open transaction; on COMMIT busy or an ambiguous commit, roll back if still active and retry the whole script. Known limitation consistent with the constraints: the index enforces uniqueness but cannot coerce future empty/all-space emails to NULL, so such values remain missing for uniqueness purposes while stored as-is (no triggers/rebuild allowed).\"}",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "data_fk_analyst",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "txn_hazard_analyst",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "data_fk_analysis:1",
+            "txn_retry_analysis:1"
+          ],
+          "label": "migration_implementer",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 38,
+          "submittedSequence": 32
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 36,
+          "submittedSequence": 35
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "implementation:1"
+          ],
+          "label": "adversarial_reviewer",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 51,
+          "submittedSequence": 45
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 49,
+          "submittedSequence": 48
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 3,
+          "inputArtifactIDs": [
+            "implementation:1",
+            "review:1"
+          ],
+          "label": "migration_implementer",
+          "ordinal": 8,
+          "role": "workflow-worker",
+          "settledSequence": 65,
+          "submittedSequence": 60
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 9,
+          "role": "workflow-supervisor",
+          "settledSequence": 63,
+          "submittedSequence": 62
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 10,
+          "role": "workflow-supervisor",
+          "settledSequence": 72,
+          "submittedSequence": 71
+        }
+      ],
+      "case": "migration",
+      "checksPassed": true,
+      "codeRevision": "c5835ae",
+      "dependentWorkers": 3,
+      "distinctWorkerIDs": [
+        "adversarial_reviewer",
+        "data_fk_analyst",
+        "migration_implementer",
+        "txn_hazard_analyst"
+      ],
+      "elapsedSeconds": 577.3986300230026,
+      "failures": [],
+      "goal": "Deliver a production SQLite 3.45+ migration script for this legacy help-desk database.\nExisting schema, with foreign_keys=ON:\nCREATE TABLE contacts(id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL,\n  email TEXT, display_name TEXT NOT NULL, updated_at INTEGER NOT NULL);\nCREATE TABLE tickets(id INTEGER PRIMARY KEY, contact_id INTEGER NOT NULL\n  REFERENCES contacts(id), subject TEXT NOT NULL);\nLegacy contacts may duplicate an email within one tenant. Identity is tenant_id plus\nlower(trim(email)), where trim removes ordinary ASCII spaces. Missing means email IS NULL or\ntrim(email)='': this includes empty strings and all-space strings. Preserve each missing\ncontact separately and normalize its email to NULL.\nFor each nonmissing duplicate identity, keep the row with least updated_at, breaking\nties by least id. Preserve that winner's id, display_name, tenant_id and updated_at.\nRepoint every ticket to the winning contact before deleting losers. Preserve all ticket\nIDs and subjects. Normalize retained nonmissing emails. Enforce this same normalized\nuniqueness rule for FUTURE INSERTs and UPDATEs, without merging across tenants or making\nmissing emails unique. Add a unique index, without triggers or rebuilding the tables.\nNever disable foreign-key enforcement.\nThe script must be atomic, including creation of the uniqueness constraint. If a statement\nfails before COMMIT the transaction must still be rollbackable. Running the script twice\nmust produce the same data and constraints. Do not assume a particular row count or IDs.\nOrganize the work in dependent stages: have independent agents analyze data/FK invariants\nand transaction/retry hazards; use their findings for an implementation agent; then have\na separate agent inspect that candidate for concrete counterexamples before delivery.\nCorrect any issue they identify within this run. You do not have a SQL execution tool,\nso do not claim execution; deliver the script for an external SQLite evaluator.\nReturn ONLY JSON: {\"marker\":\"EVAL_MIGRATION\",\"sql\":\"complete script\", \"rationale\":\"...\"}.",
+      "inputTokens": 284402,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 133470,
+      "repetition": 1,
+      "sourceSHA256": "2784f7b5da3ad84e5e6c1d2b13ad91185f5ffb98081336efcc3bd8e901323add",
+      "state": "completed",
+      "successfulCalculatorCalls": 0,
+      "successfulToolCalls": 6,
+      "successfulTools": {
+        "read_artifact": 3,
+        "read_context": 1,
+        "send_message": 2
+      },
+      "toolCalls": 6,
+      "variant": "held-out",
+      "workerWaves": 4,
+      "runtimeRevision": "c5835ae",
+      "evaluationGroup": "notice-delegation-c5835ae"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_ROLLOUT\",\"baseline\":{\"makespan\":13,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":9,\"end\":12,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":12,\"end\":13,\"resource\":\"App\"}]},\"revised\":{\"makespan\":17,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":13,\"end\":16,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":16,\"end\":17,\"resource\":\"App\"}]},\"changedStartIDs\":[\"G\",\"H\"],\"laborCostEUR\":1605,\"lowerBounds\":{\"baseline\":13,\"outage\":17},\"explanation\":\"BASELINE (makespan 13). Schedule: A 0-3 DB, B 0-2 App, C 3-5 DB, D 5-7 App, E 5-9 DB, F 9-11 DB, G 9-12 QA, H 12-13 App. Checks: durations/resources exact; dependencies hold (C after A@3; D after B@2 and C@5; E after C@5; F after E@9; G after D@7 and E@9; H after F@11 and G@12); no same-resource overlap (DB 0-3,3-5,5-9,9-11; App 0-2,5-7,12-13; QA 9-12). Lower bound 13: the dependency chain A->C->E->G->H has length 3+2+4+3+1=13, so no schedule can finish H before hour 13; the schedule attains 13, hence 13 is optimal. COST: active hours DB=3+2+4+2=11 at 90 = 990; App=2+2+1=5 at 75 = 375; QA=3 at 80 = 240; total 990+375+240 = 1605 EUR <= 1700 EUR (Calculator-verified in T2/T4). Only active task time is billed, so idle time is free and the total is schedule-invariant (every task runs exactly once). OUTAGE (QA unavailable in [10,13), half-open, endpoints may touch). The baseline G 9-12 overlaps the outage, so it is invalid. G depends on E, and E cannot finish before 3+2+4=9 (A,C,E on the DB chain), so G cannot start before 9; a 3-hour G starting at 9 ends at 12 and overlaps [10,13), and the pre-outage window [0,10) would require G to start by 7, which is infeasible. Therefore G must start at or after 13 (the outage endpoint, permitted since intervals share only an endpoint), end at or after 16, and H (1h, dependent on G) cannot end before 17. Lower bound for the outage makespan: 17. The adapted schedule attains it: keep every non-QA task at its baseline start (A 0-3, B 0-2, C 3-5, D 5-7, E 5-9, F 9-11), shift G to 13-16 and H to 16-17. Dependencies still hold (G after D@7 and E@9; H after F@11 and G@16) and no resource overlaps occur (App 0-2,5-7,16-17; DB 0-3,3-5,5-9,9-11; QA 13-16). Changed start times: exactly G (9->13) and H (12->16). This is minimal: G must move because its baseline start violates the outage, and any valid G ends at >=16, forcing H to move from 12 to >=16; so at least two tasks must change, and exactly those two change. Labor cost is unchanged at 1605 EUR (<=1700) because the set and duration of active tasks is identical.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "scheduler",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "cost",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "T1:1",
+            "T2:1"
+          ],
+          "label": "adapter",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 38,
+          "submittedSequence": 32
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 36,
+          "submittedSequence": 35
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "T1:1",
+            "T2:1",
+            "T3:1"
+          ],
+          "label": "verifier",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 53,
+          "submittedSequence": 47
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 51,
+          "submittedSequence": 50
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 60,
+          "submittedSequence": 59
+        }
+      ],
+      "case": "rollout",
+      "checksPassed": true,
+      "codeRevision": "c5835ae",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "adapter",
+        "cost",
+        "scheduler",
+        "verifier"
+      ],
+      "elapsedSeconds": 85.10871005058289,
+      "failures": [],
+      "goal": "Create an executable maintenance staffing plan and then adapt it to a resource outage.\nTime is integer hours from zero. Tasks cannot be split. Each task occupies its stated\nresource for its entire duration. One DB engineer, one App engineer and one QA engineer\nare available, each doing at most one task at a time. All dependencies must finish first.\nTasks (ID, duration, resource, dependencies):\nA,3,DB,none (snapshot); B,2,App,none (warm pool); C,2,DB,A (schema change);\nD,2,App,B+C (API rollout); E,4,DB,C (backfill); F,2,DB,E (index build);\nG,3,QA,D+E (end-to-end verification); H,1,App,F+G (cutover).\nLabor rates are DB=90, App=75, QA=80 EUR/hour. Only active task time is billed, not idle\nor outage time. Total labor must stay within EUR1700. Use the Calculator tool for the cost.\nFirst minimize baseline makespan. Then the QA engineer becomes unavailable in [10,13);\nadapt the ACTUAL baseline schedule, first minimizing revised makespan, then minimizing\nthe number of tasks whose start time changes. Half-open intervals sharing an endpoint\ndo not overlap. Give a valid lower bound proving each makespan optimal.\nUse independent scheduling and resource/cost agents first. Once their results exist,\ndelegate the outage adaptation using that baseline to another agent. Have a later agent\nverify the proposed schedules, changes and constraints, and repair errors before delivery.\nReturn ONLY JSON with marker=\"EVAL_ROLLOUT\", baseline and revised objects containing\nmakespan and tasks (array of {id,start,end,resource}), changedStartIDs, laborCostEUR,\nlowerBounds={baseline:...,outage:...}, and explanation.",
+      "inputTokens": 134456,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 17089,
+      "repetition": 2,
+      "sourceSHA256": "2784f7b5da3ad84e5e6c1d2b13ad91185f5ffb98081336efcc3bd8e901323add",
+      "state": "completed",
+      "successfulCalculatorCalls": 6,
+      "successfulToolCalls": 12,
+      "successfulTools": {
+        "calculator": 6,
+        "read_artifact": 2,
+        "read_context": 1,
+        "send_message": 3
+      },
+      "toolCalls": 12,
+      "variant": "held-out",
+      "workerWaves": 3,
+      "runtimeRevision": "c5835ae",
+      "evaluationGroup": "notice-delegation-c5835ae"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_ROLLOUT\",\"baseline\":{\"makespan\":13,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":9,\"end\":12,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":12,\"end\":13,\"resource\":\"App\"}]},\"revised\":{\"makespan\":17,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":13,\"end\":16,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":16,\"end\":17,\"resource\":\"App\"}]},\"changedStartIDs\":[\"G\",\"H\"],\"laborCostEUR\":1605,\"lowerBounds\":{\"baseline\":13,\"outage\":17},\"explanation\":\"BASELINE: The DB tasks form a serial chain A(3)+C(2)+E(4)+F(2)=11h, so F cannot end before 11. G needs D and E; E cannot end before A+C+E=9, and G lasts 3h, so G cannot end before 12. H needs F and G, so H cannot end before max(11,12)+1=13. Schedule: A 0-3, B 0-2, C 3-5, E 5-9, D 5-7 (after B end 2 and C end 5), F 9-11, G 9-12 (after D end 7 and E end 9), H 12-13. Attains 13, proving optimality; DB intervals 0-3,3-5,5-9,9-11, App 0-2,5-7,12-13, QA 9-12 are pairwise non-overlapping and all dependencies satisfied. OUTAGE: QA unavailable [10,13). G cannot start before E finishes at 9, but any start in 9..12 would overlap the outage, so earliest G start is 13, ending 16. H also requires F (ends 11) and G, so H ends no earlier than 16+1=17. Revised schedule keeps all baseline starts except G (9 to 13) and H (12 to 16), attaining 17. G runs 13-16, sharing the endpoint 13 with the outage as permitted. Both G and H must change (G cannot stay at 9 without overlapping the outage; H must follow G at 16), so exactly two changed starts is minimal. COST: active durations DB 11h, App 5h, QA 3h give 11*90+5*75+3*80 = 990+375+240 = 1605 EUR, within the 1700 EUR cap; idle and outage time are not billed.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "scheduler",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "cost",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "S1:1",
+            "C1:1"
+          ],
+          "label": "adapter",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 36,
+          "submittedSequence": 32
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 38,
+          "submittedSequence": 35
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "S1:1",
+            "C1:1",
+            "A1:1"
+          ],
+          "label": "verifier",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 52,
+          "submittedSequence": 48
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 54,
+          "submittedSequence": 51
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 61,
+          "submittedSequence": 60
+        }
+      ],
+      "case": "rollout",
+      "checksPassed": true,
+      "codeRevision": "c5835ae",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "adapter",
+        "cost",
+        "scheduler",
+        "verifier"
+      ],
+      "elapsedSeconds": 89.15306210517883,
+      "failures": [],
+      "goal": "Create an executable maintenance staffing plan and then adapt it to a resource outage.\nTime is integer hours from zero. Tasks cannot be split. Each task occupies its stated\nresource for its entire duration. One DB engineer, one App engineer and one QA engineer\nare available, each doing at most one task at a time. All dependencies must finish first.\nTasks (ID, duration, resource, dependencies):\nA,3,DB,none (snapshot); B,2,App,none (warm pool); C,2,DB,A (schema change);\nD,2,App,B+C (API rollout); E,4,DB,C (backfill); F,2,DB,E (index build);\nG,3,QA,D+E (end-to-end verification); H,1,App,F+G (cutover).\nLabor rates are DB=90, App=75, QA=80 EUR/hour. Only active task time is billed, not idle\nor outage time. Total labor must stay within EUR1700. Use the Calculator tool for the cost.\nFirst minimize baseline makespan. Then the QA engineer becomes unavailable in [10,13);\nadapt the ACTUAL baseline schedule, first minimizing revised makespan, then minimizing\nthe number of tasks whose start time changes. Half-open intervals sharing an endpoint\ndo not overlap. Give a valid lower bound proving each makespan optimal.\nUse independent scheduling and resource/cost agents first. Once their results exist,\ndelegate the outage adaptation using that baseline to another agent. Have a later agent\nverify the proposed schedules, changes and constraints, and repair errors before delivery.\nReturn ONLY JSON with marker=\"EVAL_ROLLOUT\", baseline and revised objects containing\nmakespan and tasks (array of {id,start,end,resource}), changedStartIDs, laborCostEUR,\nlowerBounds={baseline:...,outage:...}, and explanation.",
+      "inputTokens": 153696,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 19193,
+      "repetition": 3,
+      "sourceSHA256": "2784f7b5da3ad84e5e6c1d2b13ad91185f5ffb98081336efcc3bd8e901323add",
+      "state": "completed",
+      "successfulCalculatorCalls": 7,
+      "successfulToolCalls": 11,
+      "successfulTools": {
+        "calculator": 7,
+        "read_artifact": 3,
+        "send_message": 1
+      },
+      "toolCalls": 13,
+      "variant": "held-out",
+      "workerWaves": 3,
+      "runtimeRevision": "c5835ae",
+      "evaluationGroup": "notice-delegation-c5835ae"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_ROLLOUT\",\"baseline\":{\"makespan\":13,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":9,\"end\":12,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":12,\"end\":13,\"resource\":\"App\"}]},\"revised\":{\"makespan\":17,\"tasks\":[{\"id\":\"A\",\"start\":0,\"end\":3,\"resource\":\"DB\"},{\"id\":\"B\",\"start\":0,\"end\":2,\"resource\":\"App\"},{\"id\":\"C\",\"start\":3,\"end\":5,\"resource\":\"DB\"},{\"id\":\"D\",\"start\":5,\"end\":7,\"resource\":\"App\"},{\"id\":\"E\",\"start\":5,\"end\":9,\"resource\":\"DB\"},{\"id\":\"F\",\"start\":9,\"end\":11,\"resource\":\"DB\"},{\"id\":\"G\",\"start\":13,\"end\":16,\"resource\":\"QA\"},{\"id\":\"H\",\"start\":16,\"end\":17,\"resource\":\"App\"}]},\"changedStartIDs\":[\"G\",\"H\"],\"laborCostEUR\":1605,\"lowerBounds\":{\"baseline\":13,\"outage\":17},\"explanation\":\"Baseline feasibility: A 0-3 (DB), B 0-2 (App), C 3-5 after A, D 5-7 after B and C, E 5-9 after C, F 9-11 after E, G 9-12 after D and E, H 12-13 after F and G. No resource has overlapping tasks (DB A,C,E,F sequential; App B,D,H sequential; QA only G), no task is split, and all dependencies finish first; makespan is 13. Baseline optimality: A,C,E form a single DB chain of 3+2+4=9 hours, so E cannot finish before hour 9; G needs E plus 3 QA hours, so G cannot finish before 12; H needs G plus 1 App hour, so the makespan is at least 13. The schedule attains 13, so 13 is optimal. Outage adaptation: the QA engineer is unavailable in [10,13). In the baseline, G occupies QA 9-12, which overlaps [10,12) inside the outage, so G must move. Since E finishes no earlier than 9 and a 3-hour non-preemptive QA task starting at 9 would run to 12 (crossing the outage), and no start inside [10,13) is permitted, G must start at or after 13; hence G runs 13-16 and dependent H runs 16-17. Outage optimality: E still cannot finish before 9, so G cannot start before 9; the only feasible non-overlapping placement is start >=13, giving G finish >=16 and, with H's 1 App hour, makespan >=17. The revised schedule attains 17, so 17 is optimal. Minimal start changes: G must change because its baseline interval overlaps the outage, and H must change because it depends on G; every other task (A,B,C,D,E,F) keeps its baseline start and remains feasible, so exactly 2 start times change, the minimum possible. Labor cost (confirmed with the Calculator): DB 11h*90=990, App 5h*75=375, QA 3h*80=240, total 1605 EUR <= 1700 EUR; idle time and outage time are not billed.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "scheduler",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "cost_resource",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 21,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 3,
+          "role": "workflow-supervisor",
+          "settledSequence": 23,
+          "submittedSequence": 20
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "baseline_schedule:1",
+            "baseline_cost:1"
+          ],
+          "label": "outage_adapt",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 39,
+          "submittedSequence": 32
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 36,
+          "submittedSequence": 35
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "baseline_schedule:1",
+            "baseline_cost:1",
+            "outage_adapt:1"
+          ],
+          "label": "verifier",
+          "ordinal": 6,
+          "role": "workflow-worker",
+          "settledSequence": 55,
+          "submittedSequence": 49
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 7,
+          "role": "workflow-supervisor",
+          "settledSequence": 53,
+          "submittedSequence": 52
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 8,
+          "role": "workflow-supervisor",
+          "settledSequence": 62,
+          "submittedSequence": 61
+        }
+      ],
+      "case": "rollout",
+      "checksPassed": true,
+      "codeRevision": "c5835ae",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "cost_resource",
+        "outage_adapt",
+        "scheduler",
+        "verifier"
+      ],
+      "elapsedSeconds": 91.54569709300995,
+      "failures": [],
+      "goal": "Create an executable maintenance staffing plan and then adapt it to a resource outage.\nTime is integer hours from zero. Tasks cannot be split. Each task occupies its stated\nresource for its entire duration. One DB engineer, one App engineer and one QA engineer\nare available, each doing at most one task at a time. All dependencies must finish first.\nTasks (ID, duration, resource, dependencies):\nA,3,DB,none (snapshot); B,2,App,none (warm pool); C,2,DB,A (schema change);\nD,2,App,B+C (API rollout); E,4,DB,C (backfill); F,2,DB,E (index build);\nG,3,QA,D+E (end-to-end verification); H,1,App,F+G (cutover).\nLabor rates are DB=90, App=75, QA=80 EUR/hour. Only active task time is billed, not idle\nor outage time. Total labor must stay within EUR1700. Use the Calculator tool for the cost.\nFirst minimize baseline makespan. Then the QA engineer becomes unavailable in [10,13);\nadapt the ACTUAL baseline schedule, first minimizing revised makespan, then minimizing\nthe number of tasks whose start time changes. Half-open intervals sharing an endpoint\ndo not overlap. Give a valid lower bound proving each makespan optimal.\nUse independent scheduling and resource/cost agents first. Once their results exist,\ndelegate the outage adaptation using that baseline to another agent. Have a later agent\nverify the proposed schedules, changes and constraints, and repair errors before delivery.\nReturn ONLY JSON with marker=\"EVAL_ROLLOUT\", baseline and revised objects containing\nmakespan and tasks (array of {id,start,end,resource}), changedStartIDs, laborCostEUR,\nlowerBounds={baseline:...,outage:...}, and explanation.",
+      "inputTokens": 133463,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 20316,
+      "repetition": 1,
+      "sourceSHA256": "2784f7b5da3ad84e5e6c1d2b13ad91185f5ffb98081336efcc3bd8e901323add",
+      "state": "completed",
+      "successfulCalculatorCalls": 5,
+      "successfulToolCalls": 11,
+      "successfulTools": {
+        "calculator": 5,
+        "read_artifact": 5,
+        "send_message": 1
+      },
+      "toolCalls": 11,
+      "variant": "held-out",
+      "workerWaves": 3,
+      "runtimeRevision": "c5835ae",
+      "evaluationGroup": "notice-delegation-c5835ae"
+    },
+    {
+      "answer": "{\"marker\":\"EVAL_MIGRATION\",\"sql\":\"-- ============================================================================\\n-- contacts identity migration: dedupe by (tenant_id, lower(trim(email))),\\n-- repoint tickets, normalize emails, add future-enforcement unique index.\\n-- Target: SQLite 3.45+  |  No triggers, no table rebuild, FK enforcement ON.\\n--\\n-- CALLER CONTRACT:\\n--   * Run with no outer transaction open (autocommit), because this script\\n--     owns its transaction with BEGIN IMMEDIATE.\\n--   * On any error the script stops with the transaction still OPEN so the\\n--     caller can ROLLBACK; no implicit-commit statement is used anywhere.\\n--   * sqlite3 CLI users: enable \\\".bail on\\\" so a failing statement stops the\\n--     script instead of falling through to COMMIT.\\n-- ============================================================================\\n\\nPRAGMA busy_timeout = 10000;   -- non-transactional; only affects lock waiting\\nPRAGMA foreign_keys = ON;      -- enforcement stays ON (never OFF)\\n\\nBEGIN IMMEDIATE;               -- write lock up front: stable snapshot\\n\\n-- Stage 0: retry safety - drop any leftover map from an interrupted attempt.\\nDROP TABLE IF EXISTS temp._mig_contacts_dedupe_map;\\n\\n-- Stage 1: normalize MISSING emails to NULL.\\n--   missing := email IS NULL OR trim(email) = ''  (empty and all-space forms;\\n--   one-argument trim() strips only ordinary ASCII spaces U+0020).\\n--   Each missing contact keeps its own row; nothing is merged or made unique.\\nUPDATE contacts\\n   SET email = NULL\\n WHERE email IS NOT NULL\\n   AND trim(email) = '';\\n\\n-- Stage 2: normalize retained NONMISSING emails to lower(trim(email)).\\n--   Idempotent. Only the email column is written; id/display_name/tenant_id/\\n--   updated_at are never modified.\\nUPDATE contacts\\n   SET email = lower(trim(email))\\n WHERE email IS NOT NULL\\n   AND email <> lower(trim(email));\\n\\n-- Stage 3: freeze the loser -> winner map for each nonmissing identity.\\n--   identity = (tenant_id, lower(trim(email)))\\n--   winner   = greatest updated_at, ties broken by greatest id\\n--   (updated_at, id) is a total order (id is INTEGER PRIMARY KEY), so the\\n--   winner is unique per identity. Missing rows never enter the partition.\\nCREATE TEMP TABLE _mig_contacts_dedupe_map (\\n  loser_id  INTEGER PRIMARY KEY,\\n  winner_id INTEGER NOT NULL\\n);\\n\\nINSERT INTO temp._mig_contacts_dedupe_map (loser_id, winner_id)\\nSELECT id, winner_id\\n  FROM (SELECT id,\\n               first_value(id) OVER (\\n                   PARTITION BY tenant_id, lower(trim(email))\\n                   ORDER BY updated_at DESC, id DESC) AS winner_id,\\n               row_number() OVER (\\n                   PARTITION BY tenant_id, lower(trim(email))\\n                   ORDER BY updated_at DESC, id DESC) AS rn\\n          FROM contacts\\n         WHERE email IS NOT NULL\\n           AND trim(email) <> '')\\n WHERE rn > 1;\\n\\n-- Stage 4: repoint every ticket that references a loser, BEFORE any delete.\\n--   tickets.contact_id is NOT NULL REFERENCES contacts(id) with no ON DELETE\\n--   action, enforced immediately while foreign_keys=ON.\\n--   Ticket id and subject are never written.\\nUPDATE tickets\\n   SET contact_id = (SELECT m.winner_id\\n                       FROM temp._mig_contacts_dedupe_map AS m\\n                      WHERE m.loser_id = tickets.contact_id)\\n WHERE contact_id IN (SELECT loser_id FROM temp._mig_contacts_dedupe_map);\\n\\n-- Stage 5: delete the losers (now unreferenced by tickets).\\nDELETE FROM contacts\\n WHERE id IN (SELECT loser_id FROM temp._mig_contacts_dedupe_map);\\n\\n-- Stage 6: drop the map (temp objects are not part of the delivered schema).\\nDROP TABLE temp._mig_contacts_dedupe_map;\\n\\n-- Stage 7: uniqueness constraint for FUTURE INSERT/UPDATE, created inside the\\n--   same transaction (DDL is transactional in SQLite, so it rolls back too).\\n--   * key expression is identical to the dedupe identity above;\\n--   * partial predicate excludes missing emails (NULL, '', '   ', ...), so any\\n--     number of missing contacts may coexist per tenant;\\n--   * tenant_id leads the key, so tenants are never merged;\\n--   * drop+recreate guarantees the exact definition on every run.\\nDROP INDEX IF EXISTS main.contacts_tenant_email_norm_uq;\\n\\nCREATE UNIQUE INDEX main.contacts_tenant_email_norm_uq\\n    ON contacts (tenant_id, lower(trim(email)))\\n WHERE email IS NOT NULL\\n   AND trim(email) <> '';\\n\\nCOMMIT;\",\"rationale\":\"Single atomic transaction (BEGIN IMMEDIATE ... COMMIT) in strict dependency order: defensive drop of any leftover temp map, missing emails -> NULL, retained nonmissing emails -> lower(trim(email)), freeze loser->winner map in a TEMP table, repoint tickets, delete losers, drop temp map, drop+recreate the partial unique index, COMMIT. Tickets are repointed before any contact delete because tickets.contact_id is NOT NULL REFERENCES contacts(id) with no ON DELETE action and is enforced immediately while foreign_keys=ON; PRAGMA foreign_keys is only ever set to ON, never OFF, and appears before BEGIN. Winner selection uses first_value/row_number over PARTITION BY (tenant_id, lower(trim(email))) ORDER BY updated_at DESC, id DESC - a total order because id is the integer primary key - so only rn>1 rows are deleted; the winner's id, display_name, tenant_id and updated_at are never written, and ticket id/subject never appear in any SET list. The unique index key lower(trim(email)) is character-identical to the dedupe expression, scoped by tenant_id, and its partial predicate WHERE email IS NOT NULL AND trim(email) <> '' excludes NULL, empty and all-space emails so missing contacts stay non-unique; expression/partial indexes are maintained on INSERT and UPDATE, giving future enforcement with no triggers and no table rebuild. Idempotency: on a second run stages 1-2 match zero rows, the map is empty so the UPDATE/DELETE are no-ops, and the index is dropped and recreated with an identical definition, so data and constraints converge to the same state; no row counts or IDs are assumed. Atomicity: no VACUUM, no journal_mode change, no ATTACH, no implicit-commit statement; a failing statement leaves the transaction open and rollbackable, and no ROLLBACK is appended so the success path is not broken. RESIDUAL UNCERTAINTY (not verified by execution - no SQL execution tool was available in this run): (a) stock SQLite lower() is ASCII-only, so non-ASCII case variants (e.g. 'A-umlaut@x' vs its lowercase form) remain distinct - acceptable because dedupe and the index use the same expression; (b) one-argument trim() strips only U+0020, so tab/newline/NBSP padding is neither trimmed nor treated as missing; (c) without triggers, future rows are only checked for normalized uniqueness, not rewritten to lower(trim(email)) or NULL - legacy rows are normalized, future ''/'   ' values remain storable and non-unique; (d) the script assumes tickets is the only child table referencing contacts(id); any other child makes the DELETE fail loudly and the whole transaction roll back; (e) the script requires being started outside any open transaction (otherwise BEGIN IMMEDIATE errors); (f) pre-existing orphan tickets (possible only if the DB was loaded with FK off) are neither created nor repaired - PRAGMA foreign_key_check can be run by the evaluator afterwards.\"}",
+      "calls": [
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "data_fk_analyst",
+          "ordinal": 1,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 12
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "tx_analyst",
+          "ordinal": 2,
+          "role": "workflow-worker",
+          "settledSequence": 18,
+          "submittedSequence": 13
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "analyze-data-fk:1",
+            "analyze-tx:1"
+          ],
+          "label": "migration_implementer",
+          "ordinal": 3,
+          "role": "workflow-worker",
+          "settledSequence": 27,
+          "submittedSequence": 26
+        },
+        {
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "implement-migration:1"
+          ],
+          "label": "migration_reviewer",
+          "ordinal": 4,
+          "role": "workflow-worker",
+          "settledSequence": 35,
+          "submittedSequence": 34
+        },
+        {
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 42,
+          "submittedSequence": 41
+        }
+      ],
+      "case": "migration",
+      "checksPassed": true,
+      "codeRevision": "44c0c2f",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "data_fk_analyst",
+        "migration_implementer",
+        "migration_reviewer",
+        "tx_analyst"
+      ],
+      "elapsedSeconds": 260.7134829759598,
+      "failures": [],
+      "goal": "Deliver a production SQLite 3.45+ migration script for this legacy help-desk database.\nExisting schema, with foreign_keys=ON:\nCREATE TABLE contacts(id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL,\n  email TEXT, display_name TEXT NOT NULL, updated_at INTEGER NOT NULL);\nCREATE TABLE tickets(id INTEGER PRIMARY KEY, contact_id INTEGER NOT NULL\n  REFERENCES contacts(id), subject TEXT NOT NULL);\nLegacy contacts may duplicate an email within one tenant. Identity is tenant_id plus\nlower(trim(email)), where trim removes ordinary ASCII spaces. Missing means email IS NULL or\ntrim(email)='': this includes empty strings and all-space strings. Preserve each missing\ncontact separately and normalize its email to NULL.\nFor each nonmissing duplicate identity, keep the row with greatest updated_at, breaking\nties by greatest id. Preserve that winner's id, display_name, tenant_id and updated_at.\nRepoint every ticket to the winning contact before deleting losers. Preserve all ticket\nIDs and subjects. Normalize retained nonmissing emails. Enforce this same normalized\nuniqueness rule for FUTURE INSERTs and UPDATEs, without merging across tenants or making\nmissing emails unique. Add a unique index, without triggers or rebuilding the tables.\nNever disable foreign-key enforcement.\nThe script must be atomic, including creation of the uniqueness constraint. If a statement\nfails before COMMIT the transaction must still be rollbackable. Running the script twice\nmust produce the same data and constraints. Do not assume a particular row count or IDs.\nOrganize the work in dependent stages: have independent agents analyze data/FK invariants\nand transaction/retry hazards; use their findings for an implementation agent; then have\na separate agent inspect that candidate for concrete counterexamples before delivery.\nCorrect any issue they identify within this run. You do not have a SQL execution tool,\nso do not claim execution; deliver the script for an external SQLite evaluator.\nReturn ONLY JSON: {\"marker\":\"EVAL_MIGRATION\",\"sql\":\"complete script\", \"rationale\":\"...\"}.",
+      "inputTokens": 81760,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 55248,
+      "repetition": 1,
+      "sourceSHA256": "377494e04d6c17ac25c09a9cc1c7126988f94f96eebee10afe202ad7c3b5e04e",
+      "state": "completed",
+      "successfulCalculatorCalls": 0,
+      "successfulToolCalls": 2,
+      "successfulTools": {
+        "read_artifact": 1,
+        "send_message": 1
+      },
+      "toolCalls": 2,
+      "variant": "development",
+      "workerWaves": 3,
+      "runtimeRevision": "44c0c2f",
+      "evaluationGroup": "final-dispatch-44c0c2f"
+    },
+    {
+      "answer": "Offline catalogue. SQLite stores immutable, never-reused object IDs (MUSE-000123), core metadata, append-only provenance (dates, sources, notes), and photo records with relative paths, captions, rights, SHA-256. Originals are read-only `<ObjectID>_<seq>.<ext>`; derivatives separate. Validate required fields, unique IDs, checksums, foreign keys, vocabularies. Export one validated UTF-8 dataset: stable-key-order JSON (schema_version, objects, provenance_notes, photos) and RFC 4180 CSV files for objects, provenance, and photos, each keyed by object ID, with filenames and checksums. Reject invalid records. Back up database, photos, and manifest to two offline media; test restores quarterly. Review: compliant.",
+      "calls": [
+        {
+          "callID": "fbf21c9f-9069-5598-89a1-9b241808b9b6",
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "storage",
+          "ordinal": 1,
+          "outputWords": 87,
+          "role": "workflow-worker",
+          "settledSequence": 18,
+          "submittedSequence": 12
+        },
+        {
+          "callID": "cfe31a70-f140-5e44-b86e-1fab5db21124",
+          "completed": true,
+          "dependencyDepth": 0,
+          "inputArtifactIDs": [],
+          "label": "export",
+          "ordinal": 2,
+          "outputWords": 86,
+          "role": "workflow-worker",
+          "settledSequence": 14,
+          "submittedSequence": 13
+        },
+        {
+          "callID": "198cf25f-f354-51db-9999-2c0647f5ae16",
+          "completed": true,
+          "dependencyDepth": 1,
+          "inputArtifactIDs": [
+            "storage-design:1",
+            "export-design:1"
+          ],
+          "label": "integration",
+          "ordinal": 3,
+          "outputWords": 87,
+          "role": "workflow-worker",
+          "settledSequence": 27,
+          "submittedSequence": 26
+        },
+        {
+          "callID": "0e39119b-23f7-5ef7-9c86-d5cb3c2f58cb",
+          "completed": true,
+          "dependencyDepth": 2,
+          "inputArtifactIDs": [
+            "integrate-plan:1"
+          ],
+          "label": "reviewer",
+          "ordinal": 4,
+          "outputWords": 88,
+          "role": "workflow-worker",
+          "settledSequence": 35,
+          "submittedSequence": 34
+        },
+        {
+          "callID": "ad3d61d4-825b-5fb9-91fa-8915e6ce992c",
+          "completed": true,
+          "label": "coordinator",
+          "ordinal": 5,
+          "role": "workflow-supervisor",
+          "settledSequence": 42,
+          "submittedSequence": 41
+        }
+      ],
+      "case": "formatting",
+      "checksPassed": true,
+      "codeRevision": "native-output-contract-checkpoint",
+      "dependentWorkers": 2,
+      "distinctWorkerIDs": [
+        "export",
+        "integration",
+        "reviewer",
+        "storage"
+      ],
+      "elapsedSeconds": 38.855152010917664,
+      "failures": [],
+      "goal": "Design an offline museum collection catalogue. Use separate storage and export agents, then an integration agent using both results, then an independent reviewer. Preserve stable object IDs, provenance notes and photos. Export JSON and CSV. No web research or code execution. Keep each worker under 120 words and the final plan under 160 words.",
+      "inputTokens": 32113,
+      "intervention": "Original task only. No corrective external prompts or model-output fixtures.",
+      "model": "deepseek-v4-flash",
+      "originalContextReads": 0,
+      "outputTokens": 6144,
+      "repetition": 1,
+      "sourceSHA256": "b4c9f3bf638b1b98f1828dc689b798ebeb415f5fb35eaaea2fdefaf545011b54",
+      "state": "completed",
+      "successfulCalculatorCalls": 0,
+      "successfulToolCalls": 2,
+      "successfulTools": {
+        "read_artifact": 2
+      },
+      "toolCalls": 2,
+      "variant": "development",
+      "workerWaves": 3,
+      "runtimeRevision": "9bc79be",
+      "evaluationGroup": "native-output-limits"
+    }
+  ]
+}
