@@ -144,6 +144,23 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
         XCTAssertTrue(try schema.validates(instance: v5Decision("work", tasks: [task])))
     }
 
+    func testV5CannotDeliverWithoutAnyRealWorkerResultEvenAfterPreparation() async throws {
+        let args = try CanonicalJSON(.object(["goal": .string("Use actual agents."),
+            "plan": v5Decision("deliver", answer: "Imagined collaboration"), "availableTools": .array([]), "runDate": .string("2026-10-26")]))
+        let fixture = try makeFixture(body: "", args: args, source: CollaborativeWorkflow.source)
+        let spawner = V5WorkflowSpawner()
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        do { _ = try await engine.runAndWait(runID: fixture.launch.runID); XCTFail("Empty collaboration cannot finish") } catch {}
+        let projection = try await engine.projection(runID: fixture.launch.runID)
+        XCTAssertEqual(projection?.state, .paused)
+        XCTAssertNil(projection?.output)
+        let starts = await spawner.starts
+        XCTAssertTrue(starts.allSatisfy { $0 == "coordinator" })
+    }
+
     func testV5DeclaredChainRunsWithoutCoordinatorPollingBetweenEveryResult() async throws {
         let tasks: [JSONValue] = ["source", "dependent"].map { id in
             .object(["id": .string(id), "expectedRevision": .integer(0), "agent": .string(id),

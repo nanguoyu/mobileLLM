@@ -302,7 +302,8 @@ public enum CollaborativeWorkflow {
           }
           feedback = '';
           if (decision.action === 'deliver') {
-            if (decision.answer.trim().length === 0) { feedback = 'Provide the complete final answer.'; }
+            if (packet.graph.artifacts.length === 0) { feedback = 'This collaborative goal requires an actual completed worker result. Assign useful work before delivery.'; }
+            else if (decision.answer.trim().length === 0) { feedback = 'Provide the complete final answer.'; }
             else {
               packet = await collaborate({action:'deliver',expectedRevision:packet.graph.revision,reason:decision.reason});
               if (!packet.feedback) { return decision.answer; }
