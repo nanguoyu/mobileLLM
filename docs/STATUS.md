@@ -7,6 +7,18 @@ and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
 
 ## Current harness qualification
 
+New goals use `collaborative-workflow-v6` with declared acceptance criteria, artifact-bound independent
+reviews and bounded automatic corrections. Two producers followed by two reviewers run concurrently
+in a production-engine regression; a failed branch is repaired without repeating its accepted sibling.
+Human amendments invalidate earlier reviews. Tool receipts are read from actual settled executor records.
+Preparation also records the requested delivery type and checks the configured environment's capabilities.
+
+The [acceptance-loop evaluation](evaluations/2026-10-26-acceptance-loops.md) retains two initial real
+failures and their follow-ups. A reservation task without assigned roles or stages completed in
+73.6 seconds and passed independent allocation/deposit checks. The brief website-development request
+now remains blocked for missing execution capabilities; it did not produce a working website. The
+Simulator acceptance-details interaction passed. Ordinary chat is not automatically routed into a team.
+
 Persistent sessions, durable team messages, task dependencies, goal continuation, context retrieval,
 agent profiles and the mobile workspace are implemented. [The evaluation report](evaluations/2026-10-26-agent-harness.md)
 records the design, checks, failures and limits. The frozen six-family sample at `1c37dec` completed
@@ -32,7 +44,7 @@ The following work can proceed with Simulator and online models:
 | Current-version reliability | Freeze a version incorporating the repairs and evaluate all six task families under one configuration. Preserve the earlier batch and every new failure. |
 | Comparable DeepSeek Harness results | The reference reproduction differs in budget accounting and profiles. Align the model, common tools, task inputs, budgets and outcome checks before comparing results. |
 | Open research coverage | The earlier Europe answer missed ELSS. Later source/citation checks do not establish complete group discovery. Evaluate independently defined coverage and omissions without adding group-specific runtime rules. |
-| Semantic outcome checks | The product enforces required work, supported output limits and accepted-answer identity. SQL execution and other task-specific correctness checks run in the evaluator. Evaluate content errors and the checks available to agents separately from format acceptance. |
+| Semantic outcome checks | The product records criterion-level reviews, real tool receipts and bounded repair, and blocks unsupported delivery types. Reviews and intent classification remain model judgements. Broader content correctness and SQL execution still need independent outcome checks. |
 | Efficiency and longer tasks | A later SQL run took 260.7 seconds and recorded 81,760 input plus 55,248 output tokens. There is no controlled cost/latency comparison at equal outcome quality, or broad evidence of reliability over longer tasks. |
 
 [The implementation plan](AGENT_HARNESS_PLAN.md#remaining-capability-qualification) gives the acceptance
@@ -128,7 +140,7 @@ interaction separately found and fixed missing automatic scrolling to new replie
 UI-store checks, iOS and macOS builds, and the static specification verifier passed. Evidence is retained under
 `/tmp/mobilellm-harness-session-20261024/`, including `TaskSessionUI.xcresult`.
 
-New app launches now use `collaborative-workflow-v5`. It reuses agent sessions under the shared workflow
+The v5 cutover introduced the session-based path, now extended by v6 acceptance. It reuses agent sessions under the shared workflow
 budget, records actual sending coordinator identities, dispatches dependencies after individual results,
 and persists versioned tasks and goal continuation. Reopening a source invalidates consumers without
 replacing historical artifacts. Delivery cannot conceal required unfinished tasks. A blocked goal retains

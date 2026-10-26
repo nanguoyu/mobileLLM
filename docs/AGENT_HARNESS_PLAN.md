@@ -303,6 +303,12 @@ admission and native output checks. Declared dependency chains no longer require
 The frozen task matrix, failures, targeted follow-ups and Simulator interactions are in
 [the evaluation report](evaluations/2026-10-26-agent-harness.md).
 
+The October 26 follow-up adds native criterion-level reviews, exact artifact/tool receipt binding,
+bounded producer correction and re-review, and a requested-delivery capability gate. Multi-agent
+parallelism works at successive dependency levels. [The follow-up evaluation](evaluations/2026-10-26-acceptance-loops.md)
+records the controlled revision-loop checks, real reservation result, missing-execution blocker and
+Simulator acceptance UI. These targeted checks do not close the qualification items below.
+
 ## Remaining capability qualification
 
 These items are open. They can use the existing production Simulator assembly and online models;
@@ -321,8 +327,9 @@ they do not wait for the sandbox project.
    and coverage expectations in evaluation code. Check omitted groups, duplicate identities, exclusions
    and source support on held-out research tasks. Do not add ELSS or any other expected group to runtime
    prompts or rules. Existing citation checks alone do not close the earlier discovery failure.
-4. **Evaluate semantic mistakes and available correction mechanisms.** State which requirements the
-   product checks, which agents can check with enabled tools, and which need external evaluation.
+4. **Evaluate semantic mistakes and available correction mechanisms.** Native review records, tool
+   receipts, bounded correction and delivery-capability checks are implemented. Extend outcome evidence
+   for content errors, model-inferred criteria and delivery intent using the tools actually available.
    Exercise incorrect content as well as invalid formatting, and inspect whether available checks lead
    to correction or an explicit unresolved result. Keep expected answers outside the runtime. Executing
    generated SQL in the evaluator remains separate from an app-side execution capability.

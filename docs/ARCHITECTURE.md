@@ -133,7 +133,7 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   The `/workflow` marker may appear anywhere in the message; the remaining text is the goal. `WorkflowLauncher`
   (App) calls the shared `AgentRuntimeAssembly.prepareCoordinatedWorkflow` entry point, also used by
   opt-in native evaluation. It first submits a durable, schema-constrained supervisor decision. It saves the exact
-  `CollaborativeWorkflow` v5 program with the original goal, decision, enabled tool IDs and allowed skill catalog in immutable args.
+  `CollaborativeWorkflow` v6 program with the original goal, decision, enabled tool IDs and allowed skill catalog in immutable args.
   The supervisor delegates work, reads stored results, continues logical tasks and returns the answer.
   Host delegation remains available when workers have no external tools; explicit user stage requirements
   cannot be replaced by a direct answer solely to minimize agent count.
@@ -167,7 +167,7 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   design — is retained for `WorkflowLauncher.resume` of legacy summaries that carry a `WorkflowPlan`, and
   for `MultiAgentWorkflowIntegrationTests`. New launches never use it.
 
-The v5 coordinator runs a versioned task graph. Ready consumers start after their own source settles,
+The v6 coordinator runs a versioned task graph. Ready consumers start after their own source settles,
 while unrelated siblings may continue. Each agent has a persistent session whose activations use the
 same cumulative goal budget, including initial planning. Durable input distinguishes acceptance from
 inclusion. Late input for a completed agent reopens its task, retains the prior artifact and invalidates
@@ -724,6 +724,24 @@ path, with the entire rejected batch left unexecuted.
 
 ## Delivery checks
 
+New app launches freeze `_mobileLLMDeliveryV1` and `_mobileLLMReviewRequiredV1`. Preparation declares
+whether the user requested information, source text, saved files, a running application or publication.
+`WorkflowDeliveryPolicy` checks this declaration against host-supplied environment capabilities before
+dispatch and at delivery. The current assembly registers no workspace/execution provider. Requested
+outcome classification is model-inferred; it cannot grant capabilities. Existing launches retain their
+original policy. Ordinary chat still enters collaboration through Work with agents or `/workflow`.
+
+`WorkflowTaskReview` freezes criteria and producer dependencies on a required task. Its agent must be
+independent of those producers. The native engine binds criterion results to current input artifacts
+and the human-amendment revision. `DurableSubagentSpawner` supplies successful tool receipts from the
+typed tool journal, including local operations. A claimed invocation cannot replace an actual receipt.
+`WorkflowTaskGraph.recordReview` retains failed reviews, reopens affected producers with original and
+feedback artifacts, and invalidates dependent reviews. Unaffected branches remain settled. At most two
+automatic corrections per producer and human-amendment revision share the goal budget; a blocked review
+does not automatically retry its producer. Completion requires passing current reviews covering required
+work. Human amendments invalidate prior acceptance. The UI loads original report details on demand and
+shows criterion assessments separately from tool execution metadata.
+
 New app goals freeze `_mobileLLMOutputLimitsV1` before planning. It detects explicit supported English
 final/worker word limits, common Chinese character limits and direct JSON-only output requests from
 human instructions. Quoted examples and code are excluded. Human amendments can change these bounds;
@@ -737,8 +755,8 @@ answer digest, checked again before publication. No validator edits or truncates
 without this policy retain their original contract. The UI distinguishes completed generation from a
 result that was rejected by these checks.
 
-These checks enforce supported output constraints and delivery consistency. Factual correctness,
-research coverage and artifact semantics require separate outcome checks. In the recorded SQL tasks,
+The format checks enforce supported output constraints and delivery consistency; review verdicts remain
+model assessments. Factual correctness, research coverage and artifact semantics need independent checks. In the recorded SQL tasks,
 the evaluator executes the generated SQL; the app has no production SQL execution tool without the
 separate provider. Implementation status and open qualification are tracked in
 [STATUS.md](STATUS.md#remaining-harness-qualification).

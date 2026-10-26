@@ -1,7 +1,8 @@
 # README captures
 
 Refreshed through 2026-10-25 from the redesigned mobileLLM UI on the iPhone 17 Simulator with iOS 27.
-The app used separate real stores for this demo. No fixed-response transport was enabled.
+The app used separate real stores for these demos. The online captures below used no fixed-response
+transport. The separately labeled acceptance regression capture at the end uses controlled responses.
 
 | File | What it shows |
 | --- | --- |
@@ -34,6 +35,13 @@ as specified above. These are interface demonstrations; task-quality evaluations
 
 To refresh, capture the real app with a separate demo conversation, check every frame for private
 content, and replace these files. Keep the provider, capture date, and playback speed accurate.
+
+`acceptance-review-fixture.png` was captured on October 26 from the passing Simulator UI regression
+at `bbf6401`. It uses controlled model responses in isolated stores and shows criterion-level assessment,
+the original-report disclosure and links to three actual fixture producer results. It is an original
+1206 × 2622 screenshot, exported from `AcceptanceUIFixed.xcresult`, not real-model task-quality evidence.
+The corresponding real model runs and all failures are recorded in
+[the acceptance evaluation](../../docs/evaluations/2026-10-26-acceptance-loops.md).
 
 The October 25 `goal-update.gif` is a continuous excerpt from seconds 15–53 of the original 326.8-second
 Simulator recording, played at 2× speed. It shows a live goal update, not a simulated response. The task

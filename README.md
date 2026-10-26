@@ -66,6 +66,9 @@ APIs, select your configured DeepSeek account under **Choose tools → Web servi
 **Multi-agent work.** Choose **+ → Work with agents**, or start a message with `/workflow`,
 and describe the goal and constraints.
 The supervisor assigns work, passes results to dependent agents, and returns the final answer.
+You can describe the goal without naming roles or stages. Independent tasks can run concurrently
+at each dependency level. Declared reviews check current results; requested corrections return to the
+affected agents and trigger fresh reviews within the same budget.
 Open the workflow card to follow tasks and their source results, review requests, or pause and resume
 work. Completed workflows remain available from the conversation menu.
 
@@ -85,6 +88,11 @@ the final result is a separate screenshot. The run completed in 114 seconds.
 The harness checks supported explicit output limits before accepting results. An oversized result
 stays in history with its rejection reason while the agent corrects it. [Validated final plan](assets/demo/validated-plan.png)
 · [Paused goal](assets/demo/goal-paused.png) · [Task results and limits](docs/evaluations/2026-10-26-agent-harness.md).
+
+Task details also show acceptance criteria, the agent's assessment and recorded tool executions.
+[Review and revision evidence](docs/evaluations/2026-10-26-acceptance-loops.md) includes both failures and
+successful checks. Building or testing a working application requires an execution provider, which is
+not yet integrated. Such a request stays blocked instead of being marked complete with source text.
 
 <p align="center">
   <a href="assets/demo/goal-tasks.png"><img src="assets/demo/goal-tasks.png" width="300" alt="Current tasks in dependency order, with source and saved-feedback links." /></a>

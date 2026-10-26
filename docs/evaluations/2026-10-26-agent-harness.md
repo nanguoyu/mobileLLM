@@ -5,6 +5,9 @@ routes durable messages, schedules dependent work, preserves original evidence, 
 updates, and resumes from saved work. Tests exposed failures in these paths, and the fixes below were
 implemented and checked through the production executor.
 
+The later [acceptance-loop follow-up](2026-10-26-acceptance-loops.md) adds criterion-level review,
+bounded revision and delivery-capability checks. The outcomes in this report keep their tested revisions.
+
 Capability qualification remains open. The frozen diagnostic predates the later repairs, and no complete
 six-family batch has been run on one version incorporating those repairs. The reference DSH runs also
 have different budget/profile semantics. The evidence below supports the recorded implementation and
