@@ -258,11 +258,12 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
     }
 
     static func failure(_ message: String, uncertain: Bool = false, cancelled: Bool = false, occurred: Bool = false) throws -> AgentFailure {
-        let safe = String(message.prefix(900)).replacingOccurrences(of: #"[\x00-\x1f\x7f]"#, with: " ", options: .regularExpression)
+        let safe = String(String.UnicodeScalarView(message.unicodeScalars.prefix(400)))
+            .replacingOccurrences(of: #"[\x00-\x1f\x7f]"#, with: " ", options: .regularExpression)
         return try AgentFailure(code: "sandbox.opensandbox.execution",
             classification: uncertain ? .potentiallySideEffecting : cancelled ? .cancelled : .permanent,
             safeMessage: safe.isEmpty ? "Sandbox execution failed" : safe, retryAdvice: .never,
-            externalEffect: uncertain ? .uncertain : occurred ? .confirmedOccurred : .confirmedNone,
+            externalEffect: uncertain ? .uncertain : occurred ? .confirmedApplied : .confirmedNone,
             requiredUserAction: uncertain ? .reconcile : .none,
             redaction: RedactionMetadata(classification: .sensitive, policyVersion: 1))
     }
