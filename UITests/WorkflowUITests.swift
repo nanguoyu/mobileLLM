@@ -146,11 +146,13 @@ final class WorkflowUITests: XCTestCase {
         executionDetails.tap()
         let callsDisclosure = app.buttons["workflow.call.history"]
         for _ in 0..<4 where !callsDisclosure.isHittable { app.swipeUp() }
-        XCTAssertEqual(callsDisclosure.value as? String, "4 calls", "three declared workers plus final coordination; no intermediate polling")
+        // This fixture has three independent leaf tasks, so each result opens a decision point.
+        // The separate dependency-chain regression requires one final coordinator for a known chain.
+        XCTAssertEqual(callsDisclosure.value as? String, "6 calls", "all actual invocations remain inspectable")
         callsDisclosure.tap()
         let calls = app.staticTexts.matching(identifier: "workflow.agent.call")
         XCTAssertTrue(calls.firstMatch.waitForExistence(timeout: 5), "opening history must expose individual calls")
-        XCTAssertEqual(calls.count, 4)
+        XCTAssertEqual(calls.count, 6)
         callsDisclosure.tap()
         let sourceDisclosure = app.buttons["Workflow source"]
         for _ in 0..<4 where !sourceDisclosure.isHittable { app.swipeUp() }
