@@ -146,11 +146,11 @@ final class WorkflowUITests: XCTestCase {
         executionDetails.tap()
         let callsDisclosure = app.buttons["workflow.call.history"]
         for _ in 0..<4 where !callsDisclosure.isHittable { app.swipeUp() }
-        XCTAssertEqual(callsDisclosure.value as? String, "6 calls", "all actual invocations remain inspectable")
+        XCTAssertEqual(callsDisclosure.value as? String, "4 calls", "three declared workers plus final coordination; no intermediate polling")
         callsDisclosure.tap()
         let calls = app.staticTexts.matching(identifier: "workflow.agent.call")
         XCTAssertTrue(calls.firstMatch.waitForExistence(timeout: 5), "opening history must expose individual calls")
-        XCTAssertEqual(calls.count, 6)
+        XCTAssertEqual(calls.count, 4)
         callsDisclosure.tap()
         let sourceDisclosure = app.buttons["Workflow source"]
         for _ in 0..<4 where !sourceDisclosure.isHittable { app.swipeUp() }

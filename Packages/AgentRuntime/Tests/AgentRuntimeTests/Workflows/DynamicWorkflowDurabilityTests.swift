@@ -144,6 +144,25 @@ final class DynamicWorkflowDurabilityTests: XCTestCase {
         XCTAssertTrue(try schema.validates(instance: v5Decision("work", tasks: [task])))
     }
 
+    func testV5DeclaredChainRunsWithoutCoordinatorPollingBetweenEveryResult() async throws {
+        let tasks: [JSONValue] = ["source", "dependent"].map { id in
+            .object(["id": .string(id), "expectedRevision": .integer(0), "agent": .string(id),
+                "instruction": .string("Complete " + id), "dependencies": .array(id == "source" ? [] : [.string("source")]),
+                "required": .bool(true), "maxToolCalls": .integer(0), "model": .string(""), "inputRanges": .array([])])
+        }
+        let args = try CanonicalJSON(.object(["goal": .string("Complete the declared dependency chain."),
+            "plan": v5Decision("work", tasks: tasks), "availableTools": .array([]), "runDate": .string("2026-10-26")]))
+        let fixture = try makeFixture(body: "", args: args, source: CollaborativeWorkflow.source)
+        let spawner = V5WorkflowSpawner()
+        let engine = DynamicWorkflowEngine(journal: InMemoryDynamicWorkflowJournal(), runtime: JavaScriptCoreWorkflowRuntime(),
+            spawner: spawner, requestBuilder: childBuilder())
+        _ = try await engine.prepareLaunch(script: fixture.saved, snapshot: fixture.launch)
+        try await engine.approveLaunch(runID: fixture.launch.runID, approvalID: ApprovalID())
+        _ = try await engine.runAndWait(runID: fixture.launch.runID)
+        let starts = await spawner.starts
+        XCTAssertEqual(starts, ["source", "dependent", "coordinator"], "Only final synthesis needs a new model decision")
+    }
+
     func testV5CoordinatorRunsDeclaredDependenciesAndExactSourceRangesThroughProductionEngine() async throws {
         func task(_ id: String, dependencies: [String] = [], ranges: [JSONValue] = []) -> JSONValue {
             .object(["id": .string(id), "expectedRevision": .integer(0), "agent": .string(id),

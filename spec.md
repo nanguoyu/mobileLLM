@@ -2182,3 +2182,9 @@ New Work with agents preparation admits only actual nonempty assignments or an e
 It cannot report a final answer without delegation. Later coordination still permits delivery when
 required work is complete. Artifact catalogs contain references and provenance, not duplicate full
 result bodies beside selected previews. Ordinary chat and historical workflows retain their paths.
+
+
+The host advances an already-declared dependency chain without asking the coordinator to poll between
+every result. A failed result, a result without a planned consumer, a coordinator instruction, or a new
+human amendment returns control to the coordinator. Consumers still start as soon as their own inputs
+arrive, including while unrelated work remains active. Waiting never holds a model or worker permit.

@@ -146,6 +146,7 @@ public enum CollaborativeWorkflow {
         const hasWeb = args.availableTools.some(t => t.includes('web_search') || t.includes('fetch_webpage'));
         let packet = await collaborate({action:'snapshot'});
         let decision = args.plan;
+        let decisionAmendments = 0;
         let pending = [];
         let observed = [];
         let notes = '';
@@ -278,6 +279,7 @@ public enum CollaborativeWorkflow {
           } else {
             feedback += 'Task ' + item.taskID + ' ended as ' + result.status + ': ' + (result.error || 'No usable output') + '. ';
           }
+          return {taskID:item.taskID,status:result.status};
         }
         async function suspend(reason, code) {
           while (pending.length > 0) { await consumeOne(); }
@@ -327,12 +329,20 @@ public enum CollaborativeWorkflow {
           }
           await continueIdleInboxes();
           await dispatchReady();
-          if (pending.length > 0) {
-            await consumeOne();
+          while (pending.length > 0) {
+            const finished = await consumeOne();
             // Dependencies start before asking the supervisor another question. A slow unrelated
             // sibling cannot form a batch barrier or occupy the waiting coordinator's resources.
             await continueIdleInboxes();
             await dispatchReady();
+            // Existing dependency edges already authorize this work. Ask the coordinator when
+            // a result opens an unplanned frontier, work fails, or actual instructions arrive.
+            // This keeps dependent dispatch immediate without buying model calls to say 'wait'.
+            const planned = packet.graph.tasks.some(t => t.dependencies.includes(finished.taskID) && t.state !== 'completed')
+              || pending.some(p => p.taskID === finished.taskID);
+            const instructionWaiting = packet.pendingInputs.messages.some(m => m.recipient === 'coordinator');
+            if (finished.status !== 'completed' || !planned || instructionWaiting
+              || packet.graph.amendments.length !== decisionAmendments) { break; }
           }
           let accounting = await budget.snapshot();
           if (accounting.consumed.modelAttempts >= accounting.limits.modelAttempts) {
@@ -353,8 +363,10 @@ public enum CollaborativeWorkflow {
             + '\nREMAINING WORKER ACTIVATIONS: ' + (12-workers)
             + '\n<recorded-web-evidence>\n' + serialize(evidence) + '\n</recorded-web-evidence>';
           try {
+            const observedAmendments = packet.graph.amendments.length;
             decision = await agent(frame + '\n<original-results>\n' + serialize(observations(Math.max(0,60000-bytes(frame)))) + '\n</original-results>',
               {label:'coordinator',agentType:'workflow-supervisor',session:'coordinator',maxToolCalls:2,schema:schema});
+            decisionAmendments = observedAmendments;
             if (decision === null) { throw new Error('Coordinator unavailable'); }
           } catch (error) {
             await suspend('The coordinator could not continue: ' + error.message.slice(0,1000),'model');

@@ -2131,6 +2131,10 @@
         {
           "kind": "xctest",
           "value": "mobileLLMUnitTests.ToolV2AdapterTests/testTeamCatalogRetainsTheOldMessageAdapterWithoutAdvertisingDuplicateTools"
+        },
+        {
+          "kind": "xctest",
+          "value": "AgentRuntimeTests.DynamicWorkflowDurabilityTests/testV5DeclaredChainRunsWithoutCoordinatorPollingBetweenEveryResult"
         }
       ],
       "platforms": [
