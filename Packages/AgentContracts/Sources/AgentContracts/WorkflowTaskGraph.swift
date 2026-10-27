@@ -310,7 +310,7 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
         // An in-flight review of a superseded producer remains historical, never current acceptance.
         guard tasks[index].state == .completed, tasks[index].outputArtifactID == artifact.id else { return }
         var next = self
-        let missing = contract.requiredTools.filter { tool in !toolEvidence.contains { $0.toolID == tool } }
+        let missing = contract.requiredTools.filter { tool in !toolEvidence.contains { $0.toolID == tool && $0.succeeded != false } }
         let review = WorkflowTaskReviewResult(contract: contract, report: report,
             inputArtifactIDs: artifact.inputArtifactIDs, toolEvidence: toolEvidence,
             goalAmendmentCount: goalAmendmentCount, missingTools: missing)

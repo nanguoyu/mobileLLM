@@ -68,9 +68,32 @@ public struct WorkflowReviewToolEvidence: Hashable, Codable, Sendable {
     public let toolID: String
     public let invocationID: ToolInvocationID
     public let recordDigest: StableDigest
+    public let execution: WorkflowSandboxEvidence?
+    public let completedAt: AgentTimestamp?
+    /// Older evidence records contain only successful invocations.
+    public let succeeded: Bool?
 
-    public init(toolID: String, invocationID: ToolInvocationID, recordDigest: StableDigest) {
+    public init(toolID: String, invocationID: ToolInvocationID, recordDigest: StableDigest,
+                execution: WorkflowSandboxEvidence? = nil, completedAt: AgentTimestamp? = nil, succeeded: Bool? = nil) {
         self.toolID = toolID; self.invocationID = invocationID; self.recordDigest = recordDigest
+        self.execution = execution; self.completedAt = completedAt; self.succeeded = succeeded
+    }
+}
+
+/// Host-attested facts from a sandbox tool result. No model-authored review can create these.
+public struct WorkflowSandboxEvidence: Hashable, Codable, Sendable {
+    public let workspaceID: SandboxWorkspaceHandleID
+    public let sourceDigest: StableDigest?
+    public let operation: String
+    public let port: Int?
+    public let processID: String?
+    public let running: Bool?
+    public let artifacts: [ArtifactReference]
+
+    public init(workspaceID: SandboxWorkspaceHandleID, sourceDigest: StableDigest?, operation: String,
+                port: Int? = nil, processID: String? = nil, running: Bool? = nil, artifacts: [ArtifactReference] = []) {
+        self.workspaceID = workspaceID; self.sourceDigest = sourceDigest; self.operation = operation
+        self.port = port; self.processID = processID; self.running = running; self.artifacts = artifacts
     }
 }
 

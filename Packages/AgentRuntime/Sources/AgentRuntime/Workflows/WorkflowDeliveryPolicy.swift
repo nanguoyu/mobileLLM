@@ -48,6 +48,39 @@ public struct WorkflowDeliveryPolicy: Codable, Sendable, Equatable {
             + ". No configured execution provider supplies these capabilities. The goal remains unfinished; a plan or source text cannot satisfy this delivery requirement."
     }
 
+    /// Compare execution receipts with the latest observed source, including failed commands that
+    /// changed files. Review prose, old revisions and unrelated goal workspaces cannot satisfy this.
+    public func completionBlocker(workspaceID: SandboxWorkspaceHandleID,
+                                  evidence: [WorkflowReviewToolEvidence],
+                                  acceptedReviewEvidence: [WorkflowReviewToolEvidence]) -> String? {
+        if let blocker { return blocker }
+        guard requestedOutcome == .workspaceArtifact || requestedOutcome == .runningApplication else { return nil }
+        let records = evidence.filter { $0.execution?.workspaceID == workspaceID }
+            .sorted { ($0.completedAt?.rawValue ?? 0) < ($1.completedAt?.rawValue ?? 0) }
+        guard let source = records.last(where: { $0.execution?.sourceDigest != nil })?.execution?.sourceDigest else {
+            return "Execute the requested work in this goal's workspace before delivering it."
+        }
+        let current = records.filter { $0.succeeded != false && $0.execution?.sourceDigest == source }
+        let reviews = acceptedReviewEvidence.filter { $0.succeeded != false && $0.execution?.workspaceID == workspaceID
+            && $0.execution?.sourceDigest == source }
+        guard reviews.contains(where: { $0.execution?.operation == "sandbox_export" &&
+            $0.execution?.artifacts.contains(where: { $0.semanticType == "sandbox.project-source" && $0.mimeType == "application/zip" }) == true }) else {
+            return "An accepted reviewer must export the current source with sandbox_export. The archive must match the latest executed source version."
+        }
+        guard requestedOutcome == .runningApplication else { return nil }
+        guard let inspection = reviews.last(where: { $0.execution?.operation == "sandbox_browser" &&
+            $0.execution?.artifacts.contains(where: { $0.semanticType == "sandbox.browser-screenshot" }) == true }),
+              let port = inspection.execution?.port,
+              let start = current.last(where: { $0.execution?.operation == "sandbox_start" && $0.execution?.port == port && $0.execution?.running == true }),
+              let process = start.execution?.processID,
+              (start.completedAt?.rawValue ?? 0) <= (inspection.completedAt?.rawValue ?? 0),
+              !records.contains(where: { $0.execution?.processID == process && $0.execution?.running == false
+                  && ($0.completedAt?.rawValue ?? 0) > (start.completedAt?.rawValue ?? 0) }) else {
+            return "Start the current source with sandbox_start, then have the accepted reviewer test it with sandbox_browser. Source changes require a fresh start and browser check."
+        }
+        return nil
+    }
+
     public var json: JSONValue {
         .object(["version": .integer(1), "requestedOutcome": .string(requestedOutcome.rawValue),
             "availableCapabilities": .array(availableCapabilities.map { .string($0.rawValue) })])

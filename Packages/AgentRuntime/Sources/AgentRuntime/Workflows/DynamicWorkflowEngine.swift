@@ -656,7 +656,7 @@ private actor DynamicWorkflowSession {
                 try await terminateAsCancelled()
                 throw WorkflowScriptRuntimeError.cancelled
             }
-            if let blocker = try deliveryPolicy()?.blocker { throw WorkflowScriptRuntimeError.invalidResult(blocker) }
+            if let blocker = try await deliveryCompletionBlocker() { throw WorkflowScriptRuntimeError.invalidResult(blocker) }
             if let graph = projection.taskGraph, try outputLimits(graph) != nil || requiresAcceptedReviews() {
                 guard case .string(let answer) = try JSONDecoder().decode(JSONValue.self, from: result.data),
                       try outputLimits(graph)?.finalRejection(answer) == nil,
@@ -1015,6 +1015,7 @@ private actor DynamicWorkflowSession {
                       projection.submittedHandles.keys.allSatisfy({ projection.outcomes[$0] != nil }),
                       projection.reconciliationCallID == nil else { throw WorkflowTaskGraphError.incomplete }
                 if try requiresAcceptedReviews() { try graph.requireAcceptedReviews() }
+                if let blocker = try await deliveryCompletionBlocker(graph: graph) { feedback = blocker; break }
                 if let limits = try outputLimits(graph) {
                     guard let answer = decoded.answer else { throw WorkflowTaskGraphError.invalid }
                     if let rejected = limits.finalRejection(answer) {
@@ -1088,6 +1089,28 @@ private actor DynamicWorkflowSession {
         guard let args = projection.launch.args,
               case .object(let values) = try JSONDecoder().decode(JSONValue.self, from: args.data) else { return false }
         return values["_mobileLLMReviewRequiredV1"] == .bool(true)
+    }
+
+    private func deliveryCompletionBlocker(graph: WorkflowTaskGraph? = nil) async throws -> String? {
+        guard let policy = try deliveryPolicy() else { return nil }
+        if let blocker = policy.blocker { return blocker }
+        guard policy.requestedOutcome == .runningApplication || policy.requestedOutcome == .workspaceArtifact else { return nil }
+        var evidence: [WorkflowReviewToolEvidence] = []
+        for call in projection.calls where projection.outcomes[call.callID] != nil {
+            if let handle = projection.submittedHandles[call.callID] {
+                evidence += try await spawner.reviewToolEvidence(handle)
+            }
+        }
+        let graph = graph ?? projection.taskGraph
+        let accepted = graph?.tasks.filter { $0.required && $0.state == .completed && $0.review != nil }.flatMap { task in
+            guard let artifact = graph?.artifacts.first(where: { $0.id == task.outputArtifactID }),
+                  let review = artifact.reviewResult, review.status == .pass,
+                  review.goalAmendmentCount == graph?.amendments.count,
+                  review.inputArtifactIDs == task.inputArtifactIDs else { return [WorkflowReviewToolEvidence]() }
+            return review.toolEvidence
+        } ?? []
+        return policy.completionBlocker(workspaceID: SandboxWorkspaceHandleID(rawValue: projection.runID.rawValue),
+            evidence: evidence, acceptedReviewEvidence: accepted)
     }
 
     private func deliveryPolicy() throws -> WorkflowDeliveryPolicy? {

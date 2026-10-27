@@ -259,8 +259,12 @@ public struct DurableSubagentSpawner: SubagentSpawning, Sendable {
         return history.toolOutcomes.sorted { $0.value.0.sequence < $1.value.0.sequence }.compactMap { id, recorded in
             // The typed tool journal also records localPure, MCP and file adapters. Filtering
             // by external boundary kind would discard real Calculator and other local execution.
-            guard case .completed = recorded.1, let plan = history.toolIntents[id]?.1.plan else { return nil }
-            return WorkflowReviewToolEvidence(toolID: plan.subjectID, invocationID: id, recordDigest: recorded.0.recordDigest)
+            guard let prepared = history.toolIntents[id]?.1 else { return nil }
+            let execution = WorkflowSandboxEvidence.read(recorded.1, prepared: prepared)
+            let succeeded: Bool = if case .completed = recorded.1 { true } else { false }
+            guard succeeded || execution != nil else { return nil }
+            return WorkflowReviewToolEvidence(toolID: prepared.plan.subjectID, invocationID: id,
+                recordDigest: recorded.0.recordDigest, execution: execution, completedAt: recorded.0.timestamp, succeeded: succeeded)
         }
     }
 

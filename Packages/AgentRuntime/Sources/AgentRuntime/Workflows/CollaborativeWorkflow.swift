@@ -49,6 +49,9 @@ public enum CollaborativeWorkflow {
     /workspace/project and runtime data in MOBILELLM_DATA_DIR. Run the relevant tests, start the actual
     application through sandbox_start, inspect it through sandbox_browser, then export source through
     sandbox_export. After changing source, rerun affected checks and restart the server before acceptance.
+    The accepted reviewer must itself use sandbox_browser and sandbox_export on the final unchanged
+    source for an application, or sandbox_export for a workspace deliverable. Budget those tools in
+    the review task. The host checks the real receipts and rejects stale source or missing artifacts.
     Browser checks use async Python with page, context, browser, base_url and expect already provided.
     An execution failure is useful feedback for correction, not an instruction to claim success.
 
