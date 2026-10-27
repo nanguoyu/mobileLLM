@@ -658,6 +658,10 @@ public final class ChatStore {
             try? AgentToolLogicalID(providerID: "builtin", name: id.rawValue)
         }
         allowed.append(contentsOf: agentMCPToolLogicalIDs?() ?? [])
+        if settings.sandboxEnabled, let connection = settings.sandboxConnection,
+           let tools = try? OpenSandboxTool.descriptors(connection: connection) {
+            allowed.append(contentsOf: tools.map(\.id.logicalID))
+        }
         let deduped = Array(Set(allowed)).sorted()
         return try? ConversationToolPolicy(
             masterEnabled: settings.toolsEnabled,

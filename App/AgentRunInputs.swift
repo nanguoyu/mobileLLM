@@ -71,6 +71,7 @@ public struct AgentRunRequestSnapshot: Sendable {
     /// Per-conversation reasoning effort (nil = service default; medium is the product default).
     public let onlineReasoningEffort: ReasoningEffort?
     public let deepSeekWebServiceID: String?
+    public let executionEnvironment: OpenSandboxConnection?
 
     public init(
         conversationID: UUID,
@@ -110,7 +111,8 @@ public struct AgentRunRequestSnapshot: Sendable {
         approvalMode: AgentApprovalMode,
         onlineReasoningEffort: ReasoningEffort?,
         deepSeekWebServiceID: String? = nil,
-        availableSkills: [Skill] = []
+        availableSkills: [Skill] = [],
+        executionEnvironment: OpenSandboxConnection? = nil
     ) {
         self.conversationID = conversationID
         self.userTurnID = userTurnID
@@ -121,6 +123,7 @@ public struct AgentRunRequestSnapshot: Sendable {
         self.memoryFacts = memoryFacts
         self.activeSkill = activeSkill
         self.availableSkills = availableSkills
+        self.executionEnvironment = executionEnvironment
         self.model = model
         self.variant = variant
         self.weightsDirectory = weightsDirectory
@@ -203,7 +206,8 @@ extension AgentRunRequestSnapshot {
             approvalMode: approvalMode,
             onlineReasoningEffort: onlineReasoningEffort,
             deepSeekWebServiceID: deepSeekWebServiceID,
-            availableSkills: availableSkills
+            availableSkills: availableSkills,
+            executionEnvironment: executionEnvironment
         )
     }
 }
@@ -419,7 +423,8 @@ struct AppFrozenInputBuilder: Sendable {
             eventSeamAvailable: snapshot.eventSeamAvailable,
             locationSeamAvailable: snapshot.locationSeamAvailable,
             mcpDescriptors: snapshot.toolsEnabled ? snapshot.mcpToolDescriptors : [],
-            deepSeekWebServiceID: snapshot.deepSeekWebServiceID
+            deepSeekWebServiceID: snapshot.deepSeekWebServiceID,
+            sandboxConnection: snapshot.toolsEnabled ? snapshot.executionEnvironment : nil
         )
         let policy = try snapshot.toolPolicy ?? ConversationToolPolicy(
             masterEnabled: snapshot.toolsEnabled,
@@ -446,9 +451,11 @@ struct AppFrozenInputBuilder: Sendable {
             // behind exact-approval receipts (web/MCP).
             availableToolCapabilities: AgentCapabilitySet([
                 .networkRead, .localRead, .localWrite, .unknownExternal,
-            ]),
+            ] + (snapshot.executionEnvironment != nil && snapshot.toolsEnabled ? [.codeExecution] : [])),
             activeSkillToolHints: [],
-            explicitlyRequestedToolIDs: [],
+            explicitlyRequestedToolIDs: toolCatalog.descriptors.filter {
+                $0.id.logicalID.providerID == "sandbox" && policy.allowedToolIDs.contains($0.id.logicalID)
+            }.map(\.id.logicalID),
             maximumAdvertisedTools: online ? 16 : 8,
             contextPolicyVersion: 2,
             approvalPolicyVersion: 1,
@@ -459,7 +466,8 @@ struct AppFrozenInputBuilder: Sendable {
     func request(
         snapshot: AgentRunRequestSnapshot,
         artifactReferences: [ArtifactReference],
-        responseMessageID: UUID? = nil
+        responseMessageID: UUID? = nil,
+        sandboxWorkspaceID: SandboxWorkspaceHandleID? = nil
     ) throws -> AgentRequest {
         let selection = try selection(snapshot: snapshot)
         let online = Self.isOnline(snapshot: snapshot)
@@ -564,10 +572,18 @@ struct AppFrozenInputBuilder: Sendable {
                 normalizedIdentity: stableID.uuidString
             ))
         }
+        var workspaceIDs: [SandboxWorkspaceHandleID] = []
+        if snapshot.toolsEnabled, let environment = snapshot.executionEnvironment {
+            ceilingCapabilities = AgentCapabilitySet(ceilingCapabilities.values + [.codeExecution])
+            ceilingDestinations += [environment.destination] + environment.networkDestinations
+            ceilingDataCategories.append(OpenSandboxConnection.dataCategory)
+            workspaceIDs = [sandboxWorkspaceID ?? SandboxWorkspaceHandleID(rawValue: snapshot.conversationID)]
+        }
         let ceilingAuthority = try AgentAuthorityScope(
             capabilities: ceilingCapabilities,
             destinations: ceilingDestinations,
-            dataCategories: ceilingDataCategories
+            dataCategories: ceilingDataCategories,
+            workspaceIDs: workspaceIDs
         )
         return try AgentRequest(
             id: AgentRequestID(rawValue: UUID()),

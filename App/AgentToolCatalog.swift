@@ -21,6 +21,7 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
     private let mcpCache: MCPDiscoveryCache
     private let session: URLSession
     private let deepSeekAPIKey: DeepSeekAPIKeyResolver
+    private let sandboxTools: OpenSandboxToolService?
 
     static func catalog(
         enabledToolNames: [String],
@@ -29,7 +30,8 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
         locationSeamAvailable: Bool,
         mcpDescriptors: [AgentToolDescriptor] = [],
         trustRevision: String = "builtin.v1",
-        deepSeekWebServiceID: String? = nil
+        deepSeekWebServiceID: String? = nil,
+        sandboxConnection: OpenSandboxConnection? = nil
     ) throws -> ToolCatalogSnapshot {
         let builtIns = ToolRegistry.standard.tools
         var descriptors: [AgentToolDescriptor] = []
@@ -157,6 +159,7 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
             }
         }
         descriptors.append(contentsOf: mcpDescriptors.sorted { $0.id.description < $1.id.description })
+        if let sandboxConnection { descriptors += try OpenSandboxTool.descriptors(connection: sandboxConnection) }
         return try ToolCatalogSnapshot(
             revision: 1,
             descriptors: descriptors,
@@ -172,10 +175,12 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
         mcpCache: MCPDiscoveryCache,
         session: URLSession = .shared,
         deepSeekAPIKey: @escaping DeepSeekAPIKeyResolver = { _ in nil },
-        workflowAgents: WorkflowAgentToolService? = nil
+        workflowAgents: WorkflowAgentToolService? = nil,
+        sandboxTools: OpenSandboxToolService? = nil
     ) throws {
         self.session = session
         self.deepSeekAPIKey = deepSeekAPIKey
+        self.sandboxTools = sandboxTools
         let enabled = Set(enabledToolNames)
         var adapters: [AgentToolDescriptorID: any ToolV2] = [:]
         func register(_ adapter: any ToolV2) {
@@ -328,6 +333,7 @@ final class AppToolCatalog: ExecutableToolCatalog, @unchecked Sendable {
 
     func tool(for descriptorID: AgentToolDescriptorID) async throws -> (any ToolV2)? {
         if let adapter = adapters[descriptorID] { return adapter }
+        if descriptorID.logicalID.providerID == "sandbox" { return try await sandboxTools?.adapter(for: descriptorID) }
         if let serviceID = AppDeepSeekWebToolAdapter.serviceID(from: descriptorID),
            let operation = [DeepSeekWebOperation.search, .fetch].first(where: { $0.toolName == descriptorID.logicalID.name }) {
             let adapter = try AppDeepSeekWebToolAdapter(operation: operation, serviceID: serviceID,

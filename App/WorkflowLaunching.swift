@@ -579,7 +579,8 @@ extension AgentRuntimeAssembly {
             )
         }
         let runDate = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
-        let coordinator = try makeWorkflowCoordinator(snapshot: snapshot, runDate: runDate)
+        let coordinator = try makeWorkflowCoordinator(snapshot: snapshot, runDate: runDate,
+            sandboxWorkspaceID: SandboxWorkspaceHandleID(rawValue: runID.rawValue))
         let handleID = try await executor.submit(coordinator, commandID: AgentCommandID())
         let handle = try await executor.attach(to: handleID)
         onCoordinatorPrepared?(coordinator.runID, handleID)
@@ -603,9 +604,9 @@ extension AgentRuntimeAssembly {
                 "goal": .string(snapshot.text), "plan": plan,
                 "_mobileLLMOutputLimitsV1": WorkflowOutputLimits.detecting(in: snapshot.text).json,
                 "_mobileLLMReviewRequiredV1": .bool(true),
-                // No production workspace/execution provider is registered in this assembly.
-                // Future provider integration must supply its actual negotiated capabilities here.
-                "_mobileLLMDeliveryV1": WorkflowDeliveryPolicy(requestedOutcome: outcome, availableCapabilities: []).json,
+                "_mobileLLMDeliveryV1": WorkflowDeliveryPolicy(requestedOutcome: outcome,
+                    availableCapabilities: try executionCapabilities(snapshot: snapshot)).json,
+                "sandboxTools": .array(try sandboxToolIDs(snapshot: snapshot).map(JSONValue.string)),
                 "runDate": .string(runDate),
                 "availableTools": .array(try availableWorkflowTools(snapshot: snapshot).map(JSONValue.string)),
                 "availableSkills": .array(availableWorkflowSkills(snapshot: snapshot).map(\.catalogEntry)),
@@ -615,6 +616,28 @@ extension AgentRuntimeAssembly {
             initiatingRunID: coordinator.runID,
             runID: runID
         )
+    }
+
+    private func executionCapabilities(snapshot: AgentRunRequestSnapshot) throws -> [WorkflowDeliveryCapability] {
+        guard snapshot.toolsEnabled, let connection = snapshot.executionEnvironment else { return [] }
+        let available = Set(try availableWorkflowTools(snapshot: snapshot))
+        func allows(_ operation: OpenSandboxToolOperation) -> Bool {
+            available.contains(try! AgentToolLogicalID(providerID: "sandbox", name: operation.rawValue).description)
+        }
+        return connection.capabilities.filter {
+            switch $0 {
+            case .workspaceFiles: allows(.write) && allows(.read) && allows(.export)
+            case .codeExecution: allows(.run) && allows(.start)
+            case .applicationInspection: allows(.browser)
+            case .publication: false
+            }
+        }
+    }
+
+    private func sandboxToolIDs(snapshot: AgentRunRequestSnapshot) throws -> [String] {
+        guard snapshot.toolsEnabled, let connection = snapshot.executionEnvironment else { return [] }
+        let available = Set(try availableWorkflowTools(snapshot: snapshot))
+        return try OpenSandboxTool.descriptors(connection: connection).map { $0.id.logicalID.description }.filter(available.contains)
     }
 
     private func waitForTerminalResult(

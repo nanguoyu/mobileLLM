@@ -248,6 +248,13 @@ struct MobileLLMApp: App {
             maximumOutputTokens: container.settings.onlineActiveService?.maximumOutputTokens,
             credentials: container.openAICredentials
         )
+        let sandboxConfigBox = OpenSandboxConfigurationBox()
+        container.settings.onSandboxConfigurationChanged = { [weak container] in
+            guard let container else { return }
+            sandboxConfigBox.update(connection: container.settings.sandboxConnection,
+                key: try? container.settings.sandboxAPIKey())
+        }
+        container.settings.onSandboxConfigurationChanged?()
         #if DEBUG
         // Local OpenAI-compatible service config: the developer stores it once at
         // ~/.mobilellm/openai.json (outside the repo); the macOS DEBUG app reads it directly, and the
@@ -369,7 +376,8 @@ struct MobileLLMApp: App {
                                   }) else { return nil }
                             return try container.openAICredentials.loadAPIKey(serviceID: serviceID)
                         }
-                    }
+                    },
+                    sandboxCredentials: { sandboxConfigBox.credentials(for: $0) }
                 )
                 container.attachAgentRuns(assembly.runStore)
                 // Production outbox projector (spec §9.1/§33 gap 2): claims journal outbox rows and
@@ -736,7 +744,8 @@ func makeAgentSnapshot(
         approvalMode: conversation.approvalMode ?? .safePreset,
         onlineReasoningEffort: conversation.reasoningEffort ?? .medium,
         deepSeekWebServiceID: deepSeekWebServiceID,
-        availableSkills: container.skills.skills.filter { $0.isBuiltIn || $0.id == conversation.skillID }
+        availableSkills: container.skills.skills.filter { $0.isBuiltIn || $0.id == conversation.skillID },
+        executionEnvironment: container.settings.sandboxEnabled ? container.settings.sandboxConnection : nil
     )
 }
 

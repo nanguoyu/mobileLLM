@@ -176,7 +176,7 @@ final class WorkflowUITests: XCTestCase {
         XCTAssertTrue(source.waitForExistence(timeout: 5))
         let sourceText = (source.value as? String) ?? source.label
         XCTAssertTrue(sourceText.contains("waitAny("))
-        XCTAssertTrue(sourceText.contains("MOBILELLM_COORDINATOR_V6"))
+        XCTAssertTrue(sourceText.contains("MOBILELLM_COORDINATOR_V7"))
         XCTAssertFalse(app.descendants(matching: .any)["workflow.approval"].exists)
         sourceDisclosure.tap()
 

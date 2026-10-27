@@ -366,9 +366,11 @@ final class AppDynamicWorkflowChildRequestBuilder: WorkflowChildRequestBuilding,
         )
         let role = call.options.requestedAgentType ?? "workflow-agent"
         let roleInputs = try parent.frozen.applying(profile: call.options.profile, online: !modelPolicy.localOnly)
+        let sandboxGoal = roleInputs.toolCatalog.descriptors.contains { $0.id.logicalID.providerID == "sandbox" }
         var permitted = roleInputs.toolPolicy.allowedToolIDs.filter { id in
             guard let descriptor = roleInputs.toolCatalog.descriptor(for: id) else { return false }
-            return call.options.requiresIsolatedWorkspace || !descriptor.effects.contains(.localWrite)
+            // Guest writes never enable changes to canonical app memory or calendar data.
+            return !descriptor.effects.contains(.localWrite) || (call.options.requiresIsolatedWorkspace && !sandboxGoal)
         }
         if role == "workflow-supervisor" {
             permitted = permitted.filter {
@@ -718,6 +720,7 @@ public final class AgentRuntimeAssembly {
     public let executor: DurableAgentExecutor
     public let dynamicWorkflowJournal: SQLiteDynamicWorkflowJournal
     public let dynamicWorkflows: AppDynamicWorkflowService
+    public let sandboxTools: OpenSandboxToolService
     let requestBuilder: AppAgentRunRequestBuilder
     let inputFreezer: AppAgentRunInputFreezer
     let frozenBuilder: AppFrozenInputBuilder
@@ -744,7 +747,8 @@ public final class AgentRuntimeAssembly {
         mcpDiscovery: MCPDiscoveryCache = MCPDiscoveryCache(),
         session: URLSession = .shared,
         onlineConfiguration: @escaping @Sendable (AgentModelSelection) -> ResponsesAPIConfiguration? = { _ in nil },
-        deepSeekAPIKey: @escaping DeepSeekAPIKeyResolver = { _ in nil }
+        deepSeekAPIKey: @escaping DeepSeekAPIKeyResolver = { _ in nil },
+        sandboxCredentials: @escaping @Sendable (String) -> OpenSandboxCredentials? = { _ in nil }
     ) throws {
         let fileManager = FileManager.default
         let support = conversationDirectory.appending(component: "agent")
@@ -819,6 +823,8 @@ public final class AgentRuntimeAssembly {
         let providerCatalog = try StaticAgentModelProviderCatalog(providers: providers)
         let dynamicValueStore = try ContentAddressedWorkflowValueStore(store: artifactStore)
         let workflowAgents = WorkflowAgentToolService(repository: repository, journal: dynamicWorkflowJournal, values: dynamicValueStore)
+        sandboxTools = OpenSandboxToolService(repository: repository,
+            directory: support.appending(component: "sandbox-executions"), sanitizer: sanitizer, credentials: sandboxCredentials)
         let toolCatalog = try AppToolCatalog(
             enabledToolNames: AppToolCatalog.adaptedToolNames,
             memoryStore: memoryStore,
@@ -827,7 +833,8 @@ public final class AgentRuntimeAssembly {
             mcpCache: mcpDiscovery,
             session: session,
             deepSeekAPIKey: deepSeekAPIKey,
-            workflowAgents: workflowAgents
+            workflowAgents: workflowAgents,
+            sandboxTools: sandboxTools
         )
         frozenBuilder = AppFrozenInputBuilder(
             capabilityVersion: capabilityVersion
@@ -912,10 +919,11 @@ public final class AgentRuntimeAssembly {
 
     /// The first supervisor decision starts a durable conversation with explicit task results.
     /// The app executes a versioned program, not model-generated control flow.
-    public func makeWorkflowCoordinator(snapshot: AgentRunRequestSnapshot, runDate: String? = nil) throws -> AgentRequest {
+    public func makeWorkflowCoordinator(snapshot: AgentRunRequestSnapshot, runDate: String? = nil,
+                                        sandboxWorkspaceID: SandboxWorkspaceHandleID? = nil) throws -> AgentRequest {
         let tools = try availableWorkflowTools(snapshot: snapshot)
         let availableSkills = availableWorkflowSkills(snapshot: snapshot)
-        let source = try frozenBuilder.request(snapshot: snapshot, artifactReferences: [])
+        let source = try frozenBuilder.request(snapshot: snapshot, artifactReferences: [], sandboxWorkspaceID: sandboxWorkspaceID)
         let date = runDate ?? String(ISO8601DateFormatter().string(from: Date()).prefix(10))
         let instruction = CollaborativeWorkflow.planningInstruction
             + "\nWORKER TOOL IDS (host delegation remains available when this list is empty):\n" + tools.joined(separator: ", ")
