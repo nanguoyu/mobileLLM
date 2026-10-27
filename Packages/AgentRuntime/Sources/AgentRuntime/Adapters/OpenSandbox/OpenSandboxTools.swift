@@ -11,6 +11,11 @@ public struct OpenSandboxCredentials: Sendable {
     public init(connection: OpenSandboxConnection, apiKey: String) { self.connection = connection; self.apiKey = apiKey }
 }
 
+private struct OpenSandboxToolReply: Codable, Sendable {
+    let result: SandboxExecutionResult
+    let diagnosticOutput: JSONValue?
+}
+
 public enum OpenSandboxToolOperation: String, CaseIterable, Sendable {
     case write = "sandbox_write_files", read = "sandbox_read_file", list = "sandbox_list_files"
     case run = "sandbox_run", start = "sandbox_start", process = "sandbox_process", stop = "sandbox_stop"
@@ -174,7 +179,7 @@ public struct OpenSandboxTool: ToolV2 {
                 + " processID must be the 36-character identity returned by sandbox_start, not an operating-system PID."
         case .browser:
             fields = ["script": string(32_768), "port": integer(1024, 32767)]
-            summary = "Run async Python Playwright checks on a started app port. page, context, browser, base_url, expect, json and asyncio.sleep/gather are provided; imports/introspection are not allowed. Use assertions. Exceptions fail the check. Returns actual page text, controls, browser errors, script stdout, optional returned JSON, and a retained screenshot."
+            summary = "Run async Python Playwright checks on a started app port. page, context, browser, base_url, expect, json, datetime and asyncio.sleep/gather are provided. Imports of these helpers and Playwright expect are supported; OS/process work belongs in sandbox_run. Use assertions. Exceptions fail the check and retain page text, control visibility, browser errors, script output and a screenshot."
         case .export:
             fields = [:]; summary = "Export the current project source as an immutable ZIP artifact, excluding dependency caches and internal logs. The compressed archive is limited to 512 KiB."
         }
@@ -259,13 +264,29 @@ public struct OpenSandboxTool: ToolV2 {
                         } catch is CancellationError {
                             result = try await Task.detached { try await Self.cancelAndCollect(handle) }.value
                         }
-                        let encoded = try CanonicalJSON(JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(result)))
+                        let diagnostic: JSONValue? = if result.terminalStatus.failure == nil { nil }
+                            else { try await binding.provider.diagnosticOutput(id) }
+                        let reply = OpenSandboxToolReply(result: result, diagnosticOutput: diagnostic)
+                        let encoded = try CanonicalJSON(JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(reply)))
                         return ExternalOperationBoundaryCompletion(value: .canonicalJSON(encoded))
                         }
                     })
                     guard case .canonicalJSON(let raw) = boundary.value else { throw OpenSandboxError.invalidResponse }
-                    let result = try JSONDecoder().decode(SandboxExecutionResult.self, from: raw.data)
-                    if let failure = result.terminalStatus.failure {
+                    let reply = try JSONDecoder().decode(OpenSandboxToolReply.self, from: raw.data)
+                    let result = reply.result
+                    if var failure = result.terminalStatus.failure {
+                        if case .object(let value)? = reply.diagnosticOutput,
+                           case .string(let encoded)? = value["screenshotBase64"], let bytes = Data(base64Encoded: encoded) {
+                            guard value["screenshotSHA256"] == .string(StableDigest.sha256(bytes).rawValue) else { throw OpenSandboxError.invalidResponse }
+                            let artifact = try await context.artifactWriter.commit(data: bytes, mimeType: "image/jpeg",
+                                semanticType: "sandbox.browser-failure", retention: .run, sensitivity: .sensitive)
+                            var details = failure.details
+                            details["sandbox.screenshotReference"] = try CanonicalJSON(JSONDecoder().decode(JSONValue.self,
+                                from: JSONEncoder().encode(artifact))).string
+                            failure = try AgentFailure(code: failure.code, classification: failure.classification,
+                                safeMessage: failure.safeMessage, retryAdvice: failure.retryAdvice, externalEffect: failure.externalEffect,
+                                requiredUserAction: failure.requiredUserAction, details: details, redaction: failure.redaction)
+                        }
                         continuation.yield(.failed(failure)); continuation.finish(); return
                     }
                     guard let output = result.structuredOutput,

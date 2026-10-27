@@ -193,6 +193,12 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
         return nil
     }
 
+    func diagnosticOutput(_ id: SandboxExecutionHandleID) throws -> JSONValue? {
+        let record = try load(id)
+        guard let failure = record.events.last?.status.failure, failure.externalEffect != .uncertain else { return nil }
+        return record.remote?.output
+    }
+
     func events(_ id: SandboxExecutionHandleID, after cursor: AgentEventCursor?) async throws -> [SandboxEventRecord] {
         try await refresh(id)
         let record = try load(id)
@@ -237,6 +243,7 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
         }
         if let state {
             var details: [String: String] = ["sandbox.workspace": workspaceID.description, "sandbox.operation": id.description]
+            if state != .completed { details.merge(OpenSandboxDiagnostics.details(job.output), uniquingKeysWith: { old, _ in old }) }
             if case .object(let value)? = job.output, case .string(let digest)? = value["sourceDigest"],
                (try? StableDigest(rawValue: digest)) != nil { details["sandbox.source"] = digest }
             let failure = state == .completed ? nil : try Self.failure(job.error ?? "Sandbox execution did not complete",

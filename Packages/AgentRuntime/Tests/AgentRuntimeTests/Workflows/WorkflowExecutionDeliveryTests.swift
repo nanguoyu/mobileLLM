@@ -51,6 +51,9 @@ final class WorkflowExecutionDeliveryTests: XCTestCase {
         XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [changed]))
         let stop = try receipt("sandbox_stop", 4, running: false)
         XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [stop]))
+        let failedBrowser = try receipt("sandbox_browser", 4, success: false)
+        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [failedBrowser]),
+            "An earlier successful screenshot cannot hide a later failed check on the same application")
         let unknown = WorkflowReviewToolEvidence(toolID: "sandbox_run", invocationID: ToolInvocationID(), recordDigest: source,
             execution: WorkflowSandboxEvidence(workspaceID: scope, sourceDigest: nil, operation: "sandbox_run"),
             completedAt: AgentTimestamp(rawValue: 4), succeeded: false)

@@ -25,6 +25,10 @@ struct WorkflowSavedFilesView: View {
             ForEach(files) { file in
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     if file.reference.mimeType == "image/jpeg" {
+                        if file.reference.semanticType == "sandbox.browser-failure" {
+                            Label("Failed browser check", systemImage: "exclamationmark.triangle")
+                                .font(.callout).foregroundStyle(Theme.danger)
+                        }
                         #if os(iOS)
                         if let image = UIImage(data: file.data) {
                             Image(uiImage: image).resizable().scaledToFit().accessibilityLabel("Screenshot from the application check")

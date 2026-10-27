@@ -453,7 +453,8 @@ extension AgentRunController {
             case .completed:
                 try ExecutionEncoding.encode(pair.1)
             case .failed(let failure):
-                try Self.safeToolFailureContext(failure, status: "failed")
+                try Self.safeToolFailureContext(failure, status: "failed",
+                    diagnostics: OpenSandboxDiagnostics.read(failure, prepared: history.toolIntents[invocationID]?.1))
             case .uncertain(let failure):
                 try Self.safeToolFailureContext(failure, status: "uncertain")
             }
@@ -604,16 +605,19 @@ extension AgentRunController {
 
     private static func safeToolFailureContext(
         _ failure: AgentFailure,
-        status: String
+        status: String,
+        diagnostics: JSONValue? = nil
     ) throws -> Data {
-        try CanonicalJSON(.object([
+        var value: [String: JSONValue] = [
             "type": .string("tool-resolution"),
             "status": .string(status),
             "code": .string(failure.code),
             "classification": .string(failure.classification.rawValue),
             "externalEffect": .string(failure.externalEffect.rawValue),
             "safeMessage": .string(failure.safeMessage),
-        ])).data
+        ]
+        if let diagnostics { value["diagnostics"] = diagnostics }
+        return try CanonicalJSON(.object(value)).data
     }
 
     private func compiledContext(

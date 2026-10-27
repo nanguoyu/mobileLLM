@@ -77,6 +77,13 @@ final class OpenSandboxToolPipelineTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(failure.code, "sandbox.opensandbox.execution")
         guard case .completed = records[3].1 else { return XCTFail("The byte-identical test command must run after the source changes") }
         XCTAssertEqual(calls[1].arguments, calls[3].arguments)
+        let requests = await modelProvider.script.capturedRequests()
+        XCTAssertGreaterThanOrEqual(requests.count, 3)
+        if requests.count >= 3 {
+            let context = requests[2].messages.map(\.content).joined()
+            XCTAssertTrue(context.contains("diagnostics") && context.contains("stderr") && context.contains("AssertionError"),
+                "The next edit must receive the actual bounded failed-command output")
+        }
         XCTAssertFalse(events.contains { if case .statusChanged(let state) = $0.payload.event { return state.state == .waitingForReconciliation }; return false })
     }
 }

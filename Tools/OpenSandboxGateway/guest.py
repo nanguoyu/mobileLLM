@@ -5,6 +5,7 @@ import asyncio
 import ast
 import base64
 import contextlib
+import datetime
 import hashlib
 import io
 import json
@@ -203,11 +204,6 @@ async def inspect_browser(script, operation_id, port):
     if len(script.encode()) > 32768:
         raise ValueError('Browser script exceeds 32 KiB')
     forbidden = {'eval','exec','compile','open','input','globals','locals','vars','getattr','setattr','delattr','__import__','exit','quit','breakpoint'}
-    for node in ast.walk(ast.parse(script)):
-        if isinstance(node, (ast.Import, ast.ImportFrom, ast.ClassDef)) or (
-            isinstance(node, ast.Name) and (node.id.startswith('_') or node.id in forbidden)) or (
-            isinstance(node, ast.Attribute) and node.attr.startswith('_')):
-            raise ValueError('Use the provided Playwright objects; imports, introspection and OS operations belong in sandbox_run')
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True, args=['--no-sandbox'])
         context = await browser.new_context(viewport={'width': 1280, 'height': 900})
@@ -221,22 +217,55 @@ async def inspect_browser(script, operation_id, port):
         page.set_default_timeout(10000)
         base_url = 'http://127.0.0.1:' + str(port)
         before = source_digest()
-        response = await page.goto(base_url)
-        if response is None or response.status >= 400:
-            raise ValueError('The application page did not load successfully')
         # The supplied script is authorized code running only in the guest, like shell execution.
+        pure_modules = {
+            'json': SimpleNamespace(dumps=json.dumps, loads=json.loads, JSONDecodeError=json.JSONDecodeError),
+            'asyncio': SimpleNamespace(sleep=asyncio.sleep, gather=asyncio.gather),
+            'datetime': SimpleNamespace(datetime=datetime.datetime, date=datetime.date,
+                timedelta=datetime.timedelta, timezone=datetime.timezone),
+            'playwright.async_api': SimpleNamespace(expect=expect)
+        }
         namespace = {'page': page, 'context': context, 'browser': browser, 'base_url': base_url, 'expect': expect,
-                     'asyncio': SimpleNamespace(sleep=asyncio.sleep,gather=asyncio.gather),
-                     'json': SimpleNamespace(dumps=json.dumps,loads=json.loads)}
-        exec('async def user_check():\n' + '\n'.join('    ' + line for line in script.splitlines()), namespace)
+                     'asyncio': pure_modules['asyncio'], 'json': pure_modules['json'], 'datetime': pure_modules['datetime']}
+        class ProvidedImports(ast.NodeTransformer):
+            def visit_Import(self, node):
+                for alias in node.names:
+                    if alias.name not in {'json', 'asyncio', 'datetime'}:
+                        raise ValueError('OS, process and package imports belong in sandbox_run')
+                    namespace[alias.asname or alias.name] = pure_modules[alias.name]
+                return ast.copy_location(ast.Pass(), node)
+
+            def visit_ImportFrom(self, node):
+                module = pure_modules.get(node.module) if node.level == 0 else None
+                for alias in node.names:
+                    if module is None or alias.name.startswith('_') or not hasattr(module, alias.name):
+                        raise ValueError('Use provided json, asyncio, datetime and Playwright expect helpers')
+                    namespace[alias.asname or alias.name] = getattr(module, alias.name)
+                return ast.copy_location(ast.Pass(), node)
+
         stdout, stderr = BoundedCapture(), BoundedCapture()
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            result = await namespace['user_check']()
-        location = urlsplit(page.url)
-        if location.hostname not in {'localhost', '127.0.0.1'} or location.port != port:
-            raise ValueError('Browser checks must finish on the selected workspace application')
-        if source_digest() != before:
-            raise ValueError('Project files changed during browser checks; store runtime data in MOBILELLM_DATA_DIR and retest')
+        result, failure = None, None
+        try:
+            response = await page.goto(base_url)
+            if response is None or response.status >= 400:
+                raise ValueError('The application page did not load successfully')
+            tree = ProvidedImports().visit(ast.parse(script))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef) or (
+                    isinstance(node, ast.Name) and (node.id.startswith('__') or node.id in forbidden)) or (
+                    isinstance(node, ast.Attribute) and node.attr.startswith('_')):
+                    raise ValueError('Introspection and OS operations belong in sandbox_run')
+            normalized = ast.unparse(ast.fix_missing_locations(tree))
+            exec('async def user_check():\n' + '\n'.join('    ' + line for line in normalized.splitlines()), namespace)
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                result = await namespace['user_check']()
+            location = urlsplit(page.url)
+            if location.hostname not in {'localhost', '127.0.0.1'} or location.port != port:
+                raise ValueError('Browser checks must finish on the selected workspace application')
+            if source_digest() != before:
+                raise ValueError('Project files changed during browser checks; store runtime data in MOBILELLM_DATA_DIR and retest')
+        except Exception as error:
+            failure = str(error)[:4000] or type(error).__name__
         folder = ROOT / '.mobilellm' / 'screenshots'
         folder.mkdir(parents=True, exist_ok=True)
         screenshot = folder / (operation_id + '.jpg')
@@ -247,16 +276,22 @@ async def inspect_browser(script, operation_id, port):
             data = screenshot.read_bytes()
         if len(data) > 512 * 1024:
             raise ValueError('Browser screenshot exceeds 512 KiB')
-        response = {'scriptCompleted': True, 'url': page.url, 'port': port, 'title': await page.title(),
+        response = {'scriptCompleted': failure is None, 'exitCode': 0 if failure is None else 1,
+                    'url': page.url, 'port': port, 'title': await page.title(),
                     'result': result, 'stdout': stdout.value(), 'stderr': stderr.value(),
                     'outputTruncated': stdout.truncated or stderr.truncated,
                     'pageText': (await page.locator('body').inner_text())[:12000], 'browserErrors': browser_errors,
                     'controls': await page.locator('input,select,textarea,button').evaluate_all("""nodes => nodes.slice(0,40).map(n => ({
                         tag:n.tagName.toLowerCase(),type:n.type || '',name:(n.name || '').slice(0,128),
-                        id:(n.id || '').slice(0,128),label:(n.getAttribute('aria-label') || n.labels?.[0]?.innerText || n.innerText || '').slice(0,256)
+                        id:(n.id || '').slice(0,128),label:(n.getAttribute('aria-label') || n.labels?.[0]?.innerText || n.innerText || '').slice(0,256),
+                        visible:!!(n.getBoundingClientRect().width && n.getBoundingClientRect().height)
+                            && getComputedStyle(n).visibility !== 'hidden' && getComputedStyle(n).display !== 'none',
+                        disabled:!!n.disabled
                     }))"""),
                     'screenshot': str(screenshot.relative_to(ROOT)),
                     'screenshotBase64': base64.b64encode(data).decode(), 'screenshotSHA256': hashlib.sha256(data).hexdigest()}
+        if failure is not None:
+            response['error'] = failure
         await browser.close()
         return response
 

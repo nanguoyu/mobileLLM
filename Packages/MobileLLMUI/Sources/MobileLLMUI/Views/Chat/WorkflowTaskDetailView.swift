@@ -141,7 +141,7 @@ struct WorkflowTaskDetailView: View {
             }
         }
         .navigationTitle(call?.taskTitle ?? "Task")
-        .task(id: "\(callID.description)-\(call?.hasResult == true)") {
+        .task(id: "\(callID.description)-\(call?.status.rawValue ?? "unknown")-\(call?.hasResult == true)") {
             result = nil; files = []; copied = false; readError = nil
             await loadResult()
         }
@@ -273,7 +273,7 @@ struct WorkflowTaskDetailView: View {
     }
 
     private func loadResult() async {
-        guard call?.hasResult == true, let store else { return }
+        guard let call, call.hasResult == true || [.failed, .unavailable, .stopped].contains(call.status), let store else { return }
         let token = UUID()
         readToken = token
         loading = true

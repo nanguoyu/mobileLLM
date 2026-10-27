@@ -76,6 +76,8 @@ public struct WorkflowDeliveryPolicy: Codable, Sendable, Equatable {
               let start = current.last(where: { $0.execution?.operation == "sandbox_start" && $0.execution?.port == port && $0.execution?.running == true }),
               let process = start.execution?.processID,
               (start.completedAt?.rawValue ?? 0) <= (inspection.completedAt?.rawValue ?? 0),
+              !records.contains(where: { $0.succeeded == false && $0.execution?.operation == "sandbox_browser"
+                  && $0.execution?.port == port && ($0.completedAt?.rawValue ?? 0) > (inspection.completedAt?.rawValue ?? 0) }),
               !records.contains(where: { $0.execution?.processID == process && $0.execution?.running == false
                   && ($0.completedAt?.rawValue ?? 0) > (start.completedAt?.rawValue ?? 0) }) else {
             return "Start the current source with sandbox_start, then test it with sandbox_browser. Reuse existing receipts for unchanged source; source changes require a fresh start and browser check."
