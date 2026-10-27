@@ -35,7 +35,7 @@ App (mobileLLM.app, Xcode target)
 │                                                policy, budgets, recovery, subagents,       sqlite3 +
 │                                                parallel tool batches, dynamic workflow      JavaScriptCore)
 │                                                engine + JS runtime, online Responses provider
-├─▶ AgentSandboxAPI ──▶ AgentContracts           protocol-only sandbox seam (no provider     (MLX-free)
+├─▶ AgentSandboxAPI ──▶ AgentContracts           protocol-only sandbox seam (adapter in runtime     (MLX-free)
 │                                                ships in the open-source build)
 ├─▶ MobileLLMUI ──▶ AppUI, AppRuntime, LLMCore,  SwiftUI surface + @Observable stores,        (MLX-free)
 │                   AgentContracts, AgentRuntime agent run/approval/workflow UI
@@ -133,7 +133,7 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   The `/workflow` marker may appear anywhere in the message; the remaining text is the goal. `WorkflowLauncher`
   (App) calls the shared `AgentRuntimeAssembly.prepareCoordinatedWorkflow` entry point, also used by
   opt-in native evaluation. It first submits a durable, schema-constrained supervisor decision. It saves the exact
-  `CollaborativeWorkflow` v6 program with the original goal, decision, enabled tool IDs and allowed skill catalog in immutable args.
+  `CollaborativeWorkflow` v7 program with the original goal, decision, enabled tool IDs and allowed skill catalog in immutable args.
   The supervisor delegates work, reads stored results, continues logical tasks and returns the answer.
   Host delegation remains available when workers have no external tools; explicit user stage requirements
   cannot be replaced by a direct answer solely to minimize agent count.
@@ -167,7 +167,7 @@ function calling; provider-hosted tools in spec §15.5 remain deferred.
   design — is retained for `WorkflowLauncher.resume` of legacy summaries that carry a `WorkflowPlan`, and
   for `MultiAgentWorkflowIntegrationTests`. New launches never use it.
 
-The v6 coordinator runs a versioned task graph. Ready consumers start after their own source settles,
+The v7 coordinator runs a versioned task graph. Ready consumers start after their own source settles,
 while unrelated siblings may continue. Each agent has a persistent session whose activations use the
 same cumulative goal budget, including initial planning. Durable input distinguishes acceptance from
 inclusion. Late input for a completed agent reopens its task, retains the prior artifact and invalidates
@@ -285,7 +285,8 @@ Online children share one admitted root family but use independent attempt lanes
 sixteen siblings to overlap requests. Local children retain the shared residency/decode arbiter.
 `stallMs` bounds child inactivity with a monotonic deadline reset by durable or streamed progress;
 nil or zero disables it. A timeout cancels and settles the durable child. Isolation options requiring
-worktrees or a sandbox cannot be fulfilled by this build.
+worktrees remain unavailable. Sandbox isolation requires the explicitly configured OpenSandbox adapter,
+whose native tools receive a goal-scoped workspace and frozen authority.
 
 Workflows inherit the initiating conversation's exact tool policy without force-enabling tools or imposing a web
 requirement, and child ceilings remain strictly attenuated (spec §33 gap 1, closed 2026-08-08). Interrupted
@@ -760,3 +761,12 @@ model assessments. Factual correctness, research coverage and artifact semantics
 the evaluator executes the generated SQL; the app has no production SQL execution tool without the
 separate provider. Implementation status and open qualification are tracked in
 [STATUS.md](STATUS.md#remaining-harness-qualification).
+
+## Optional execution environment
+
+The [OpenSandbox integration](OPENSANDBOX.md) keeps the Swift protocol package independent. AgentRuntime
+implements authenticated, bounded HTTP transport, durable execution handles and Tool V2 adapters. The
+external gateway uses the pinned official OpenSandbox SDK and runs code in an isolated Linux guest.
+The app never executes model-generated host commands. One workspace belongs to one goal; workers
+share files through that scope. Executable delivery compares native startup, browser and archive receipts
+against the current source digest and accepted review. Task details expose the original verified files.

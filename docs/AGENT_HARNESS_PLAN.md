@@ -17,8 +17,8 @@ provide a complete six-family result for the current version.
 Capability qualification remains open, including a comparable DSH evaluation, research coverage,
 semantic outcome checks, and efficiency over longer tasks. These are unfinished parts of the owner's
 goal. [The remaining work](#remaining-capability-qualification) can proceed with Simulator and online
-models. The owner's separate iOS agent sandbox is unavailable for near-term integration and is needed
-only for the execution capabilities listed below.
+models. The owner's separate iOS agent sandbox remains independent. The owner selected optional
+OpenSandbox execution on 2026-10-27; setup and current limits are in [OPENSANDBOX.md](OPENSANDBOX.md).
 
 ## Sandbox boundary
 
@@ -37,12 +37,12 @@ do not supply a general agent execution environment.
 | Persistent agents, messages, task dependencies, goal continuation, budgets and recovery | Implemented through the existing runtime; focused checks and real recovery runs are recorded. Current-version capability qualification remains open. |
 | Research, comparisons, planning, calculations and evidence analysis | Exercise real online models and currently enabled Search, Fetch, Calculator, Memory or configured tool adapters. Each case declares its actual tool set. |
 | Producing code or a proposed SQL migration | Evaluate the generated artifact externally, as existing tests do. Record that execution belongs to the evaluator. |
-| Running arbitrary generated code, installing packages, shell processes, or editing an execution workspace | Requires a suitable execution provider. Product execution and repair acceptance remains deferred. |
+| Running arbitrary generated code, installing packages, shell processes, or editing an execution workspace | Optional OpenSandbox tools now provide these operations. Real development and repair evaluations use the production path; see current evidence in STATUS.md. |
 | Local model speed, thermal behavior and sustained iOS background execution | Separate hardware and OS measurements. These are not prerequisites for online-model collaboration tests on Simulator. |
 
 Do not import the OpenMinis sandbox, build a substitute shell, or ship a fake execution provider.
-Remote execution is an optional future adapter, not an assumed workaround or a new near-term
-dependency. A test provider may verify contract behavior but never establishes product capability.
+OpenSandbox is an explicitly configured optional adapter, not a dependency of ordinary chat or
+coordination. A test provider may verify contract behavior but never establishes product capability.
 Unsupported tools remain absent from the model's catalog. A task requiring one records the missing
 capability and any useful partial results. It does not invent successful execution.
 

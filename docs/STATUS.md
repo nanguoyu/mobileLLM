@@ -1,13 +1,13 @@
 # Current implementation and validation status
 
-Updated **2026-10-26**. Core harness features are implemented on `main`; capability qualification remains
+Updated **2026-10-27**. Core harness features are implemented on `main`; capability qualification remains
 open. The dated model evaluations below retain their original tested versions and outcomes.
 [spec.md](../spec.md) defines requirements, [ARCHITECTURE.md](ARCHITECTURE.md) describes the code,
 and [CONTRIBUTING.md](../CONTRIBUTING.md) gives validation commands.
 
 ## Current harness qualification
 
-New goals use `collaborative-workflow-v6` with declared acceptance criteria, artifact-bound independent
+New goals use `collaborative-workflow-v7` with declared acceptance criteria, artifact-bound independent
 reviews and bounded automatic corrections. Two producers followed by two reviewers run concurrently
 in a production-engine regression; a failed branch is repaired without repeating its accepted sibling.
 Human amendments invalidate earlier reviews. Tool receipts are read from actual settled executor records.
@@ -16,7 +16,7 @@ Preparation also records the requested delivery type and checks the configured e
 The [acceptance-loop evaluation](evaluations/2026-10-26-acceptance-loops.md) retains two initial real
 failures and their follow-ups. A reservation task without assigned roles or stages completed in
 73.6 seconds and passed independent allocation/deposit checks. The brief website-development request
-now remains blocked for missing execution capabilities; it did not produce a working website. The
+in that evaluation remained blocked for missing execution capabilities; it did not produce a working website. The
 Simulator acceptance-details interaction passed. Ordinary chat is not automatically routed into a team.
 
 Persistent sessions, durable team messages, task dependencies, goal continuation, context retrieval,
@@ -48,8 +48,17 @@ The following work can proceed with Simulator and online models:
 | Efficiency and longer tasks | A later SQL run took 260.7 seconds and recorded 81,760 input plus 55,248 output tokens. There is no controlled cost/latency comparison at equal outcome quality, or broad evidence of reliability over longer tasks. |
 
 [The implementation plan](AGENT_HARNESS_PLAN.md#remaining-capability-qualification) gives the acceptance
-steps. These items do not depend on the separate iOS sandbox. Arbitrary code/workspace execution needs
-that provider; local-inference performance and OS background scheduling need separate hardware checks.
+steps. These items do not depend on the separate iOS sandbox. Optional OpenSandbox now provides
+code/workspace execution; local-inference performance and OS background scheduling need separate hardware checks.
+
+## Optional OpenSandbox execution
+
+[Setup and cleanup](OPENSANDBOX.md) use the existing Docker runtime and a task-owned temporary directory.
+No global Python/npm install or host workspace mount is required. The native provider's real-container
+contract passed duplicate-start, reconnect, failure-output, cursor replay and cancellation checks.
+The Simulator app compiled successfully. Focused delivery counterexamples reject stale sources,
+unreviewed exports, another workspace and a stopped application. Real development evaluations are
+in progress; these component checks do not establish autonomous task success.
 
 ## Task workspaces and interface
 
@@ -219,7 +228,7 @@ The earlier [research evaluation](evaluations/2026-10-23-autonomous-coordination
 its API comparison passed core checks, while the Europe answer missed ELSS. No ELSS-specific runtime rule
 was added. Research coverage and broad repeated-run reliability remain open measurements. Persistent
 session reuse and asynchronous peer messaging have since been implemented and checked as described
-above. Production code-execution tools still require the separate sandbox provider.
+above. Optional OpenSandbox tools now provide code execution through the native authorization boundary.
 
 The [agent harness implementation plan](AGENT_HARNESS_PLAN.md) records the implemented stages and
 remaining capability qualification. The open collaboration checks use available tools and online
@@ -408,9 +417,10 @@ background scheduling. The historical physical-device matrix remains **23 pass /
 those dated outcomes were not promoted by simulator results. Continued-processing device outcomes,
 clean-install/upgrade acceptance, and the complete real-model exploratory matrix remain open.
 
-Files and Terminal deliberately show empty states. `AgentSandboxAPI` has no production provider,
-and the JavaScriptCore workflow realm has cooperative limits rather than an OS sandbox or hard heap
-limit. General-purpose `run_js` and provider-hosted native tools in spec §15.5 remain unavailable.
+Files and Terminal remain empty-state tabs. Verified OpenSandbox source archives and browser screenshots
+are available from task details. `AgentSandboxAPI` remains protocol-only; AgentRuntime supplies the optional
+OpenSandbox HTTP adapter. The JavaScriptCore orchestration realm still has cooperative limits, distinct
+from the external guest environment. General-purpose `run_js` and provider-hosted native tools in spec §15.5 remain unavailable.
 The legacy ToolLoop is still used by compatibility paths, previews, tests, and smoke executables;
 WorkflowOrchestrator remains necessary for old records. Removing them wholesale would break those uses.
 

@@ -2,11 +2,11 @@
 
 **Status:** Durable agents, Dynamic Workflows, and production Memory integration implemented; release evidence remains open
 
-**Date:** 2026-10-22
+**Date:** 2026-10-27
 
 **Scope:** Full-featured iOS agent harness, local-first with optional online providers
 
-**Out of scope:** the private Agent Sandbox Runtime implementation, visual graph editing, and remote/cross-device execution
+**Out of scope:** the private Agent Sandbox Runtime implementation, visual graph editing, and remote/cross-device agent orchestration
 
 ## 1. Executive summary
 
@@ -20,11 +20,11 @@ resources, preserve a complete operational record, and remain responsive in the 
 The current release is local-first, supports explicitly configured online providers, and retains the iOS 17 target.
 Local and online providers share run semantics. The runtime implements bounded subagents and reserves a seam
 for a separately developed, commercial Agent Sandbox Runtime, without linking or imitating that
-private runtime today.
+private runtime today. An optional OpenSandbox HTTP adapter executes isolated guest code on a user-configured server.
 
 iOS is the product and acceptance scope. Because the repository shares packages and `ChatStore` with macOS, the
 MLX-free runtime must continue to compile on macOS and existing Mac chat behavior must not regress; Mac-specific agent
-features and sandbox integration are not part of this release.
+features beyond the shared runtime remain outside the acceptance scope. The optional execution adapter uses the same HTTP contract on both platforms.
 
 The staged workflow orchestrator and Dynamic Workflows runtime both coordinate bounded instances of the same
 `AgentExecutor`. The former remains a compatibility path; the latter executes analyzed, approved JavaScript
@@ -45,8 +45,8 @@ The following decisions are requirements, not open questions:
    and budgets. Recursive self-delegation and unbounded agent teams are prohibited.
 6. Chat and agent execution share one UI. Simple answers remain visually simple; execution detail is progressively
    disclosed when a run performs work.
-7. The open-source target exposes a versioned Agent Sandbox API but includes no sandbox implementation. A future
-   private module may supply that implementation through dependency injection.
+7. AgentSandboxAPI remains implementation-neutral. AgentRuntime includes an optional OpenSandbox HTTP provider;
+   a future private iOS runtime can use the same seam. No host shell or private-runtime implementation ships in the app.
 8. A bounded staged workflow orchestrator remains for compatibility. Full Dynamic Workflows use the Claude-style
    JavaScript ABI in §34, saved immutable versions, durable replay, and one fair parallel-subagent scheduler.
 9. App launch must not load a model, reopen the previous conversation, or silently resume a suspended run. Pending
@@ -104,7 +104,7 @@ The current release must not implement:
 - recursive delegation, unbounded agent teams, or child-created approval authority;
 - parallel local-model decoding presented as parallel agents;
 - silent cloud fallback or online requests outside the prepared authorization boundary;
-- the commercial Agent Sandbox Runtime or a production substitute for it;
+- the commercial Agent Sandbox Runtime, an embedded iOS VM, or a host-shell substitute for isolation;
 - arbitrary shell, process, or unrestricted filesystem access;
 - cross-device task distribution or synchronization;
 - KV-cache serialization as a recovery mechanism;
@@ -1050,7 +1050,9 @@ available under Execution details. History reads do not reorder conversations or
 
 ### 21.1 Isolation from the private implementation
 
-The open-source repository defines only `AgentSandboxAPI`. It must compile and function with no sandbox provider.
+`AgentSandboxAPI` defines implementation-neutral contracts. The app must compile and function with no configured provider.
+The optional `AgentRuntime/Adapters/OpenSandbox` implementation talks to a configured gateway, which uses the official
+OpenSandbox SDK. The SDK and guest processes run outside the app, never as an app-host shell.
 The future commercial runtime may be integrated as a private Swift package, binary XCFramework, or another adapter,
 but the harness must not depend on its concrete types, implementation details, storage, or entitlements.
 
@@ -1106,10 +1108,38 @@ Commands are explicitly targeted and idempotent. A sandbox execution receives an
 cannot request broader authority. Its output and self-described capabilities are untrusted until checked against the
 locally registered provider policy.
 
-Mount representation, snapshot mechanics, process model, transport, resource accounting implementation, binary ABI,
-and distribution remain deferred until the real private provider is integrated. The current contract fake verifies
-versioning, authority attenuation, idempotent start/commands, detach/reattach, event cursors, and typed outcomes only;
-no placeholder production sandbox is built.
+The private runtime's mounts, snapshots, process model, binary ABI and distribution remain deferred.
+Contract fakes establish contract behavior only. The OpenSandbox adapter is validated separately against actual
+containers. It does not advertise checkpoints or arbitrary process-limit negotiation.
+
+### 21.3 Optional OpenSandbox execution
+
+A user explicitly connects an endpoint in Settings. HTTPS is required except for loopback development. Discovery is
+authenticated, redirects are rejected, responses are bounded, and the exact non-secret server identity, image,
+capabilities and egress allowlist are frozen into the tool trust revision. Credentials remain in Keychain and never
+enter guest environments, model inputs or durable execution requests. Ordinary app launch does not probe the server.
+
+Tool V2 prepares and authorizes every operation. One workflow owns one opaque workspace shared by its workers;
+model arguments cannot select another workspace, image or host mount. File replacement checks the observed SHA-256.
+Commands, service startup, browser assertions and exports run inside OpenSandbox. The Docker development deployment
+binds lifecycle, gateway and guest ports to loopback, denies guest egress except configured package hosts, and limits
+CPU, memory, processes, job duration and workspace lifetime. Docker secureAccess is unsupported and is not claimed.
+
+Provider handles persist before submission. Reattachment observes an existing command and does not replay uncertain
+submission. Detaching an observer does not cancel the command. Explicit cancellation stops its child process group.
+Confirmed test failures retain bounded diagnostic output and the complete guest result. They allow another edit;
+rerunning an identical command requires an observed source change and still consumes the original cumulative budget.
+
+Executable deliverables require native receipts from the goal's workspace and latest source digest. An accepted
+reviewer exports the immutable source ZIP. A running application also requires a successful service start followed
+by the accepted reviewer's browser check with a retained screenshot. Source changes invalidate older execution
+receipts. These receipts prove execution; independent task-specific outcome checks establish correctness.
+Task details read verified artifact bytes and allow saving source and screenshots without rerunning tools.
+Stop and data erase close only scopes recorded by this app. A disconnected service retains its bounded server TTL.
+
+The development setup and cleanup procedure is documented in `docs/OPENSANDBOX.md`. It reuses a locally installed
+Docker runtime and isolates downloads, Python packages, credentials, logs and service state under a task-owned
+temporary directory. Cleanup never prunes unrelated containers, images, volumes or build caches.
 
 ## 22. Subagent compatibility seam
 
@@ -1700,7 +1730,8 @@ Implementation checkpoints and remaining gaps:
    Memory screen or invoking a recall tool. `AH-CONTEXT-002` and `AHT-CONTEXT-APP-001` are active.
 10. **Product surfaces:** `stallMs` now enforces child inactivity with progress resets and durable
     cancellation. The conversation Tools menu supports up to eight allowed-tool pins. Files and Terminal
-    remain explicit empty-state pages; no sandbox provider or general-purpose `run_js` tool is present.
+    remain explicit empty-state pages. Optional OpenSandbox tools expose workspace execution and verified files
+    through task details; no general-purpose host `run_js` tool is present.
     Provider-hosted native tools remain deferred under §15.5. Client-executed native function calls now
     retain provider identities and reasoning state across durable call/result continuation.
 11. **Current evidence:** `docs/STATUS.md` separates the original `82933a0` package baseline from the

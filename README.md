@@ -156,8 +156,9 @@ Capability qualification is still open. An earlier six-family diagnostic passed 
 later fixes have focused checks, but the current version has no complete six-family result yet.
 Research coverage, semantic correctness, efficiency and a comparable DeepSeek Harness evaluation
 remain unfinished. [Current status](docs/STATUS.md#remaining-harness-qualification) records the evidence
-and next steps. App-side terminal, SQL and arbitrary workspace execution require the separate sandbox
-provider, which is not yet integrated.
+and next steps. Optional [OpenSandbox execution](docs/OPENSANDBOX.md) provides isolated project files,
+commands, application servers, browser checks and source archives. Configure it explicitly in Settings.
+The separate on-device iOS sandbox remains independent.
 
 - [Architecture](docs/ARCHITECTURE.md): packages, model routing, tools, and agent execution.
 - [Development guide](CONTRIBUTING.md): builds and validation for the behavior you change.

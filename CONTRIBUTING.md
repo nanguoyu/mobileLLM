@@ -44,7 +44,7 @@ eight are MLX-free and test under plain SwiftPM without any Metal toolchain or t
 | `LLMCore` | Catalog + schema, `RoutingEngine`, memory governor, context policy, tools/MCP, Explore, `ThinkSplitter`, the `LLMEngine` protocol + a mock | MLX-free — `swift test` |
 | `AgentContracts` | Versioned run/step/request/approval/budget/workflow contracts shared by runtime, sandbox API, and UI | MLX-free — `swift test` |
 | `AgentRuntime` | Durable agent executor, SQLite journal, approval policy, budgets, recovery, subagents, parallel tools, dynamic workflows, legacy staged recovery, online provider | MLX-free — `swift test` (links sqlite3 and JavaScriptCore) |
-| `AgentSandboxAPI` | Protocol-only sandbox seam; no provider ships in the open-source build | MLX-free — `swift test` |
+| `AgentSandboxAPI` | Protocol-only sandbox seam; the optional OpenSandbox adapter lives in AgentRuntime | MLX-free — `swift test` |
 | `MobileLLMUI` | SwiftUI chat / models / settings + `@Observable` stores, agent run/approval/workflow UI (codes against `LLMEngine` + `AgentRuntime` contracts) | MLX-free — `swift test` |
 | `LLMEngineApple` | The Apple Intelligence engine — weak-linked `FoundationModels`, no weights of ours | MLX-free — `swift test` |
 | `LLMEngineMLX` | The MLX engine — resident weights, PrismML 1-bit fork | Metal — `xcodebuild` |
@@ -139,6 +139,15 @@ xcodebuild -skipMacroValidation -scheme DeviceE2E \
   MTL_COMPILER_FLAGS='$(inherited) -Wno-c++17-extensions -Wno-c++20-extensions' \
   CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
 ```
+
+### OpenSandbox development
+
+Use [the isolated setup and cleanup workflow](docs/OPENSANDBOX.md) when validating real code execution.
+The optional native provider contract uses `MOBILELLM_LIVE_SANDBOX_CONFIG` pointing at the setup's private
+client configuration. `SandboxWorkflowLiveTests` in the existing app unit-test scheme additionally requires
+`MOBILELLM_LIVE_WORKFLOWS=1`. It freezes Full Access for explicitly authorized autonomous execution and
+runs the production coordinator, workers, Tool V2 and acceptance path. Seed fixtures and independent
+outcome assertions stay in evaluation code. Ordinary runs skip the live cases.
 
 ### Selecting collaboration evaluations
 
