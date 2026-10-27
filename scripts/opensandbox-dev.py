@@ -6,6 +6,7 @@ import datetime
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import shutil
 import signal
@@ -100,24 +101,52 @@ class Environment:
             self.save()
         return value['Id']
 
-    def record_build_cache(self):
-        # Docker identifies the dependency graph of each build layer. Select our guest-helper
-        # vertices and only ancestors created after this environment was started. Other builds
-        # may share an ancestor, so never sweep its unrelated descendants.
+    def record_build_cache(self, before, metadata):
+        # Attribute the full build, including context records and final WORKDIR leaves. A
+        # before/after difference alone could adopt cache produced by a concurrent project.
         rows = [json.loads(line) for line in self.run(['docker','buildx','du','--format','{{json .}}']).splitlines() if line.strip()]
-        started = datetime.datetime.fromisoformat(self.state['createdUTC'])
-        def recent(row):
-            stamp = datetime.datetime.fromisoformat(row['CreatedAt'][:19]).replace(tzinfo=datetime.timezone.utc)
-            return stamp >= started
-        records = {row['ID']:row for row in rows if recent(row)}
-        owned = {key for key,row in records.items() if '/opt/mobilellm/guest.py' in row.get('Description','')}
-        for _ in range(len(records)):
-            before = set(owned)
-            for key in list(owned):
-                owned.update(parent for parent in records.get(key,{}).get('Parents',[]) or [] if parent in records)
-            if owned == before:break
+        reference = json.loads(metadata.read_text()).get('buildx.build.ref') if metadata.exists() else None
+        history = [json.loads(line) for line in self.run(['docker','buildx','history','ls','--format','json']).splitlines() if line.strip()]
+        build = next((row for row in history if row['ref'] == reference), None)
+        if not build or not build.get('completed_at'):
+            self.state.setdefault('cacheTrackingWarnings',[]).append('Build identity unavailable; inspect cache before removing this environment')
+            self.save()
+            return
+        self.state['ownedBuildHistoryRefs'] = sorted(set(self.state.get('ownedBuildHistoryRefs',[])) | {reference})
+        start = datetime.datetime.fromisoformat(build['created_at'])
+        end = datetime.datetime.fromisoformat(build['completed_at'])
+        concurrent = any(row['ref'] != reference and datetime.datetime.fromisoformat(row['created_at']) <= end
+            and (not row.get('completed_at') or datetime.datetime.fromisoformat(row['completed_at']) >= start) for row in history)
+        if concurrent:
+            self.state.setdefault('cacheTrackingWarnings',[]).append('Concurrent build detected; cache ownership requires manual inspection')
+            self.save()
+            return
+        owned = {row['ID'] for row in rows if row['ID'] not in before and
+            start <= datetime.datetime.fromisoformat(row['CreatedAt'].removesuffix(' +0000 UTC')).replace(tzinfo=datetime.timezone.utc) <= end}
         self.state['ownedBuildCache'] = sorted(set(self.state.get('ownedBuildCache',[])) | owned)
         self.save()
+
+    def clean_build_cache(self):
+        errors = list(self.state.get('cacheTrackingWarnings',[]))
+        history = [json.loads(line) for line in self.run(['docker','buildx','history','ls','--format','json']).splitlines() if line.strip()]
+        existing = {row['ref'] for row in history}
+        for reference in self.state.get('ownedBuildHistoryRefs',[]):
+            if reference not in existing:continue
+            # history ls returns builder/node/id; rm expects the record id in this builder.
+            try:self.run(['docker','buildx','history','rm',reference.rsplit('/',1)[-1]])
+            except subprocess.CalledProcessError:errors.append('Build history retained: '+reference)
+        identifiers = self.state.get('ownedBuildCache',[])
+        if not identifiers:return errors
+        if any(not re.fullmatch(r'[a-zA-Z0-9]{10,40}', value) for value in identifiers):
+            raise RuntimeError('Invalid owned build-cache identity')
+        # A single exact-ID union lets BuildKit remove leaves and their parents together.
+        # Separate --filter arguments are AND, and pruning parents first leaves them pinned.
+        selector = 'id~=^(' + '|'.join(sorted(set(identifiers))) + ')$'
+        try:self.run(['docker','buildx','prune','--all','--force','--filter',selector], log='cache-cleanup.log')
+        except subprocess.CalledProcessError:errors.append('Build cache cleanup command failed')
+        remaining = set(self.run(['docker','buildx','du','--format','{{.ID}}']).splitlines()) & set(identifiers)
+        errors.extend('Build cache retained: '+value for value in sorted(remaining))
+        return errors
 
     def setup(self, rebuild=False):
         self.docker_ready()
@@ -138,10 +167,14 @@ class Environment:
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if probe.returncode != 0:existing_image = None
         if rebuild or not existing_image:
-            self.run(['docker','buildx','build','--load','--progress','plain','--label','org.mobilellm.owner='+self.state['ownerLabel'],
-                      '-t',tag,'Tools/OpenSandboxGateway'], log='image-build.log', timeout=600)
+            before = set(self.run(['docker','buildx','du','--format','{{.ID}}']).splitlines())
+            metadata = self.root / ('build-metadata-' + uuid.uuid4().hex + '.json')
+            try:
+                self.run(['docker','buildx','build','--load','--progress','plain','--metadata-file',str(metadata),
+                    '--label','org.mobilellm.owner='+self.state['ownerLabel'], '-t',tag,'Tools/OpenSandboxGateway'], log='image-build.log', timeout=600)
+            finally:
+                self.record_build_cache(before, metadata)
             self.state['runtimeImageID'] = self.record_image(tag)
-            self.record_build_cache()
             self.save()
         print('Prepared pinned SDK and tool image; all environment files are under ' + str(self.root))
 
@@ -244,7 +277,7 @@ class Environment:
         raise RuntimeError('Services did not become ready; inspect this environment\'s logs')
 
     def down(self, remove_directory=False):
-        if self.state.get('cleanup',{}).get('retained') == []:
+        if self.state.get('cleanup',{}).get('verified') is True:
             if remove_directory:shutil.rmtree(self.root)
             print('This environment has already been cleaned.')
             return
@@ -273,15 +306,11 @@ class Environment:
                 errors.append('Image now has another reference and was retained: '+image['id']);continue
             try:self.run(['docker','image','rm',image['id']])
             except subprocess.CalledProcessError:errors.append('Image retained: '+image['id'])
-        for identifier in self.state.get('ownedBuildCache',[]):
-            if not identifier.isalnum() or not 10 <= len(identifier) <= 40:
-                raise RuntimeError('Invalid owned build-cache identity')
-            try:self.run(['docker','buildx','prune','--force','--filter','id='+identifier], log='cache-cleanup-'+identifier+'.log')
-            except subprocess.CalledProcessError:errors.append('Build cache retained: '+identifier)
+        errors.extend(self.clean_build_cache())
         current=set(self.run(['docker','ps','-q']).splitlines())
         if self.state.get('orbstackWasRunning') is False and current.issubset(set(before.get('containers',[]))):
             self.run(['orbctl','stop'],timeout=60)
-        self.state['cleanup']={'atUTC':datetime.datetime.now(datetime.timezone.utc).isoformat(),'retained':errors}
+        self.state['cleanup']={'atUTC':datetime.datetime.now(datetime.timezone.utc).isoformat(),'retained':errors,'verified':not errors}
         self.save()
         print(json.dumps(self.state['cleanup'],indent=2))
         if remove_directory and not errors:
