@@ -14,7 +14,16 @@ extension WorkflowSandboxEvidence {
               }) else { return nil }
         let source = SandboxSourceObservation.read(outcome, prepared: prepared)?.digest
         guard case .completed(let values) = outcome else {
-            return source.map { Self(workspaceID: workspace, sourceDigest: $0, operation: operation.rawValue) }
+            if let source { return Self(workspaceID: workspace, sourceDigest: source, operation: operation.rawValue) }
+            // The authenticated gateway can reject an owned operation before submitting a command.
+            // Bind that rejection to this scope; arbitrary tool/provider claims remain untrusted.
+            if case .failed(let failure) = outcome, failure.code == "sandbox.opensandbox.execution",
+               failure.externalEffect == .confirmedNone,
+               failure.details["sandbox.workspace"] == workspace.description,
+               let id = failure.details["sandbox.operation"], UUID(uuidString: id) != nil {
+                return Self(workspaceID: workspace, sourceDigest: nil, operation: operation.rawValue)
+            }
+            return nil
         }
         for value in values {
             guard case .structured(let data) = value,

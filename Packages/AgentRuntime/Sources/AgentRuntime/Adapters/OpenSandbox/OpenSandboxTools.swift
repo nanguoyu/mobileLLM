@@ -169,7 +169,8 @@ public struct OpenSandboxTool: ToolV2 {
             fields = ["command": string(32_768), "port": integer(1024, 32767)]
             summary = "Start a long-running application server in this workspace and check its HTTP port. Returns an actual process identity; this does not mean the application passed its tests."
         case .process, .stop:
-            fields = ["processID": string(36)]
+            fields = ["processID": .object(["type": .string("string"), "maxLength": .integer(36),
+                "pattern": .string("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")])]
             summary = operation == .stop ? "Stop a previously started process in this goal's workspace." : "Read the actual running/exit state of a process started in this workspace."
         case .browser:
             fields = ["script": string(32_768), "port": integer(1024, 32767)]

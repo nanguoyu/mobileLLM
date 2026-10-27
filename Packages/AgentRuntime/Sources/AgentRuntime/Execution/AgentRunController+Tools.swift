@@ -145,10 +145,11 @@ extension AgentRunController {
     static func canContinueAfterToolDiagnostic(_ failure: AgentFailure, plan: ExternalOperationPlan?) -> Bool {
         if let plan, plan.kind == .sandbox, plan.effects == [.codeExecution], plan.executionConstraintDigest != nil,
            failure.code == "sandbox.opensandbox.execution", failure.classification == .permanent,
-           failure.externalEffect == .confirmedApplied, failure.requiredUserAction == .none,
-           failure.retryAdvice == .never, let source = failure.details["sandbox.source"],
-           (try? StableDigest(rawValue: source)) != nil,
+           failure.requiredUserAction == .none, failure.retryAdvice == .never,
+           (failure.externalEffect == .confirmedNone || (failure.externalEffect == .confirmedApplied
+               && failure.details["sandbox.source"].flatMap { try? StableDigest(rawValue: $0) } != nil)),
            let workspace = failure.details["sandbox.workspace"], UUID(uuidString: workspace) != nil,
+           let operation = failure.details["sandbox.operation"], UUID(uuidString: operation) != nil,
            OpenSandboxToolOperation.allCases.contains(where: {
                (try? AgentToolLogicalID(providerID: "sandbox", name: $0.rawValue).description) == plan.subjectID
            }) { return true }

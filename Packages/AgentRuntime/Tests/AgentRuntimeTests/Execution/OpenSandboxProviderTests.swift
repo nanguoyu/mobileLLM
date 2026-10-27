@@ -57,6 +57,9 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
         fields["endpoint"] = "http://untrusted.example"
         XCTAssertThrowsError(try JSONDecoder().decode(OpenSandboxConnection.self, from: JSONSerialization.data(withJSONObject: fields)))
         XCTAssertThrowsError(try OpenSandboxConnection.validatedEndpoint("https://user:secret@execution.example"))
+        let process = try XCTUnwrap(OpenSandboxTool.descriptors(connection: value).first { $0.id.logicalID.name == "sandbox_process" })
+        XCTAssertFalse(try process.inputSchema.validates(instance: .object(["processID": .string("12345")])))
+        XCTAssertTrue(try process.inputSchema.validates(instance: .object(["processID": .string(UUID().uuidString)])))
         fields["endpoint"] = "https://execution.example"
         fields["capabilities"] = ["publication"]
         XCTAssertThrowsError(try JSONDecoder().decode(OpenSandboxConnection.self, from: JSONSerialization.data(withJSONObject: fields)))
