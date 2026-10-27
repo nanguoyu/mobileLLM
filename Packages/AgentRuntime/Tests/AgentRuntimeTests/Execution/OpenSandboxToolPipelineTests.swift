@@ -22,7 +22,7 @@ final class OpenSandboxToolPipelineTests: XCTestCase, @unchecked Sendable {
         let model = try ExecutorTestModelDefinition(offset: 686)
         let check = "python3 -c \"assert open('value.txt').read() == 'fixed'\""
         func call(_ index: Int, _ command: String) throws -> ProposedToolCall {
-            try ProposedToolCall(invocationID: ExecutorTestID.tool(index), toolID: descriptor.id.logicalID,
+            try ProposedToolCall(invocationID: ExecutorTestID.invocation(index), toolID: descriptor.id.logicalID,
                 arguments: CanonicalJSON(.object(["command": .string(command), "timeoutSeconds": .integer(20)])))
         }
         let calls = try [call(686, "printf broken > value.txt"), call(687, check),
