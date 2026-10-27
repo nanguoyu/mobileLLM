@@ -10,7 +10,9 @@ enum OpenSandboxDiagnostics {
         var fields: [String: JSONValue] = [:]
         for (key, limit) in [("error", 384), ("stdout", 768), ("stderr", 1024), ("pageText", 1280),
                              ("url", 192), ("title", 96)] {
-            if case .string(let value)? = raw[key] { fields[key] = .string(text(value, limit: limit)) }
+            if case .string(let value)? = raw[key] {
+                fields[key] = .string(text(value, limit: limit, keepTail: key == "stderr" || key == "stdout"))
+            }
         }
         if case .array(let controls)? = raw["controls"] {
             var kept: [JSONValue] = []
@@ -62,11 +64,12 @@ enum OpenSandboxDiagnostics {
         return try? JSONDecoder().decode(JSONValue.self, from: data)
     }
 
-    private static func text(_ value: String, limit: Int) -> String {
+    private static func text(_ value: String, limit: Int, keepTail: Bool = false) -> String {
         let safe = String(String.UnicodeScalarView(value.unicodeScalars.map {
             CharacterSet.controlCharacters.contains($0) ? UnicodeScalar(32)! : $0
         }))
         if safe.utf8.count <= limit { return safe }
+        if keepTail { return "[truncated] " + String(decoding: safe.utf8.suffix(max(0, limit - 16)), as: UTF8.self) }
         return String(decoding: safe.utf8.prefix(max(0, limit - 16)), as: UTF8.self) + " [truncated]"
     }
 }

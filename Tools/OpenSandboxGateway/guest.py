@@ -14,6 +14,7 @@ import re
 from pathlib import Path, PurePosixPath
 import selectors
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -78,8 +79,11 @@ def source_digest():
 
 def components(path):
     value = PurePosixPath(path)
-    if value.is_absolute() or '..' in value.parts or '\x00' in path or len(path) > 512:
-        raise ValueError('Use a relative path inside the workspace')
+    if '..' in value.parts or '\x00' in path or len(path) > 512:
+        raise ValueError('Use a path inside the project workspace')
+    if value.is_absolute():
+        try: value = value.relative_to(PurePosixPath(str(ROOT)))
+        except ValueError: raise ValueError('The absolute path is outside the project workspace')
     return [p for p in value.parts if p != '.']
 
 
@@ -323,7 +327,7 @@ def execute(payload):
         if not directory.resolve().is_relative_to(ROOT) or directory.is_symlink():
             raise ValueError('Directory escapes workspace')
         entries = sorted(directory.iterdir(), key=lambda p: p.name)
-        return {'entries': [{'name': p.name, 'directory': p.is_dir(), 'symlink': p.is_symlink(),
+        return {'path': str(PurePosixPath(*parts)), 'entries': [{'name': p.name, 'directory': p.is_dir(), 'symlink': p.is_symlink(),
                              'bytes': p.lstat().st_size} for p in entries[:200]], 'truncated': len(entries) > 200}
     if action == 'download':
         data = read_file(payload['path'])
@@ -353,6 +357,11 @@ def execute(payload):
         raise ValueError('The started process did not serve HTTP on its declared port')
     if action == 'digest':
         return {}
+    if action == 'port-check':
+        with socket.socket() as connection:
+            connection.settimeout(.25)
+            occupied = connection.connect_ex(('127.0.0.1', payload['port'])) == 0
+        return {'port': payload['port'], 'occupied': occupied}
     if action == 'export':
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', compression=zipfile.ZIP_DEFLATED) as archive:

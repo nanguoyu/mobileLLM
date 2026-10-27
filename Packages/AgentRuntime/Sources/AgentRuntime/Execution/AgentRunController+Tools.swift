@@ -167,6 +167,7 @@ extension AgentRunController {
     ) async throws {
         let frozen = try await frozenInputsForTools(facts)
         let selected = try frozen.selectedTools(latestUserRequest: frozen.currentUser.frozen.content)
+        let latestIntent = history.toolIntents.values.map { $0.0.sequence }.max()
         var sourceVersions: [SandboxWorkspaceHandleID: StableDigest] = [:]
         for (id, outcome) in history.toolOutcomes.sorted(by: { $0.value.0.sequence < $1.value.0.sequence }) {
             if let prepared = history.toolIntents[id]?.1,
@@ -175,6 +176,13 @@ extension AgentRunController {
             }
         }
         let previous: Set<StableDigest> = Set(history.toolIntents.compactMap { id, intent in
+            if intent.1.plan.kind == .sandbox, intent.1.plan.executionConstraintDigest != nil,
+               intent.1.capabilityGrant.authority.workspaceIDs.count == 1, intent.0.sequence != latestIntent {
+                // An intervening operation can change service state, dependencies or runtime data
+                // without changing source bytes. Reject immediate identical loops, not legitimate
+                // stateful calls after other work. Invocation identities still prevent replay.
+                return nil
+            }
             if let outcome = history.toolOutcomes[id]?.1,
                let source = SandboxSourceObservation.read(outcome, prepared: intent.1),
                let latest = sourceVersions[source.workspace], latest != source.digest {

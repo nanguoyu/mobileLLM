@@ -161,7 +161,7 @@ public struct OpenSandboxTool: ToolV2 {
             fields = ["files": .object(["type": .string("array"), "minItems": .integer(1), "maxItems": .integer(8),
                 "items": object(["path": string(512), "content": string(131_072),
                     "expectedSHA256": .object(["anyOf": .array([string(64), .object(["type": .string("null")])])])])])]
-            summary = "Write up to eight project files in this goal's isolated workspace. Paths are relative. For a new file use expectedSHA256=null; to replace an existing file, first read its current SHA256. Batch limit 128 KiB."
+            summary = "Write up to eight project files in this goal's isolated workspace. Use relative paths or absolute paths under /workspace/project. For a new file use expectedSHA256=null; to replace an existing file, first read its current SHA256. Batch limit 128 KiB."
         case .read:
             fields = ["path": string(512), "offset": integer(0, 8_388_608)]
             summary = "Read original workspace text and its SHA256. offset is a UTF-8 byte boundary; start at 0, then use nextOffset for a truncated file."

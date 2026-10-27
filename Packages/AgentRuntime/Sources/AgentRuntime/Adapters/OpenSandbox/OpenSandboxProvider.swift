@@ -322,7 +322,10 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
 
     static func failure(_ message: String, uncertain: Bool = false, cancelled: Bool = false, occurred: Bool = false,
                         details: [String: String] = [:]) throws -> AgentFailure {
-        let safe = String(String.UnicodeScalarView(message.unicodeScalars.prefix(400).map {
+        let scalars = Array(message.unicodeScalars)
+        let excerpt = scalars.count > 400
+            ? Array(scalars.prefix(120)) + Array(" … ".unicodeScalars) + Array(scalars.suffix(270)) : scalars
+        let safe = String(String.UnicodeScalarView(excerpt.map {
             CharacterSet.controlCharacters.contains($0) ? UnicodeScalar(32)! : $0
         })).trimmingCharacters(in: .whitespacesAndNewlines)
         return try AgentFailure(code: "sandbox.opensandbox.execution",

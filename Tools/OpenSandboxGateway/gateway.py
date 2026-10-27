@@ -201,7 +201,12 @@ class Gateway:
                 # Exiting between status and interrupt is a known terminal state, not uncertainty.
                 if (await sandbox.commands.get_command_status(command)).running is not False:
                     raise
-        return await sandbox.commands.get_command_status(command)
+        for _ in range(30):
+            status = await sandbox.commands.get_command_status(command)
+            if status.running is False:
+                return status
+            await asyncio.sleep(.1)
+        raise RuntimeError('The process has not confirmed its exit')
 
     async def execute(self, operation):
         row = self.store.operation(operation)
@@ -225,6 +230,7 @@ class Gateway:
                     if process is None:
                         raise ValueError('Unknown process in this workspace')
                     if payload['action'] == 'stop':
+                        self.store.transition(operation, 'starting', started=now_ms(), command=process['command'])
                         await self.interrupt_running(sandbox, process['command'])
                     status = await sandbox.commands.get_command_status(process['command'])
                     self.store.transition(operation, 'completed', started=now_ms(), finished=now_ms(),
@@ -232,9 +238,13 @@ class Gateway:
                                            'exitCode': status.exit_code, 'error': status.error}))
                     return
                 if payload['action'] == 'browser':
-                    process = self.store.db.execute('SELECT command FROM processes WHERE workspace=? AND port=? ORDER BY rowid DESC LIMIT 1',
-                                                   (row['workspace'], payload.get('port'))).fetchone()
-                    if process is None or (await sandbox.commands.get_command_status(process['command'])).running is not True:
+                    processes = self.store.db.execute('SELECT command FROM processes WHERE workspace=? AND port=? ORDER BY rowid DESC',
+                        (row['workspace'], payload.get('port'))).fetchall()
+                    live = False
+                    for process in processes:
+                        if (await sandbox.commands.get_command_status(process['command'])).running is True:
+                            live = True; break
+                    if not live:
                         raise ConfirmedOperationFailure('Start an application on the selected port before inspecting it')
                 command = row['command']
                 if not command:
@@ -246,6 +256,19 @@ class Gateway:
                             raise ValueError('Application ports must be between 1024 and 32767')
                         if not isinstance(text, str) or not text.strip() or len(text.encode()) > 131072:
                             raise ValueError('Invalid command')
+                        for existing in self.store.db.execute('SELECT * FROM processes WHERE workspace=? AND port=?',
+                            (row['workspace'], port)).fetchall():
+                            if (await sandbox.commands.get_command_status(existing['command'])).running is True:
+                                raise ConfirmedOperationFailure('Port ' + str(port) + ' is already used by process ' + existing['id']
+                                    + '. Stop that process with sandbox_stop, or choose a different port.')
+                        probe = base64.b64encode(json.dumps({'action': 'port-check', 'port': port}).encode()).decode()
+                        checked = await sandbox.commands.run(['python3', '/opt/mobilellm/guest.py', probe],
+                            opts=RunCommandOpts(working_directory='/workspace/project', uid=1000, gid=1000, timeout=timedelta(seconds=10)))
+                        occupancy = json.loads(checked.text)
+                        if occupancy.get('occupied') is True:
+                            raise ConfirmedOperationFailure('Port ' + str(port) + ' already has a listener. Stop it or choose a different port.', occupancy)
+                        if checked.exit_code != 0:
+                            raise ConfirmedOperationFailure('Could not inspect the application port.', occupancy)
                         # The process keeps running independently of its observing client. Its
                         # stdout is file-size bounded and readable from the same workspace.
                         argv = ['/bin/bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', 'mkdir -p .mobilellm/processes; ulimit -f 65536; exec /bin/bash --noprofile --norc -e -o pipefail -c '
@@ -283,6 +306,8 @@ class Gateway:
                         raise ConfirmedOperationFailure('The started application failed its HTTP readiness check: ' + check.text[:2000],
                             json.loads(check.text))
                     verified = json.loads(check.text)
+                    if (await sandbox.commands.get_command_status(command)).running is not True:
+                        raise ConfirmedOperationFailure('The launched process exited during the HTTP readiness check.', verified)
                     self.store.transition(operation, 'completed', finished=now_ms(),
                         output=json.dumps({'processID': operation, 'running': True, 'port':payload['port'],
                             'sourceDigest':verified['sourceDigest'], 'logPath': '.mobilellm/processes/' + operation + '.log'}))
@@ -300,7 +325,7 @@ class Gateway:
                             output = json.loads(raw)
                         except json.JSONDecodeError:
                             raise RuntimeError('The saved sandbox result is not valid JSON')
-                        if payload['action'] == 'list' and payload.get('path', '.') == '.':
+                        if payload['action'] == 'list' and output.get('path', payload.get('path', '.')) == '.':
                             output['processes'] = []
                             rows = self.store.db.execute('SELECT * FROM processes WHERE workspace=? ORDER BY rowid DESC LIMIT 12',
                                 (row['workspace'],)).fetchall()
