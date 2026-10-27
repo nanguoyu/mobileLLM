@@ -235,7 +235,7 @@ class Gateway:
                             raise ValueError('Invalid command')
                         # The process keeps running independently of its observing client. Its
                         # stdout is file-size bounded and readable from the same workspace.
-                        argv = ['/bin/bash', '-lc', 'mkdir -p .mobilellm/processes; ulimit -f 65536; exec /bin/bash -lc '
+                        argv = ['/bin/bash', '--noprofile', '--norc', '-c', 'mkdir -p .mobilellm/processes; ulimit -f 65536; exec /bin/bash --noprofile --norc -c '
                                 + __import__('shlex').quote(text) + ' > .mobilellm/processes/' + operation + '.log 2>&1']
                         timeout = 1800
                     else:
@@ -282,7 +282,8 @@ class Gateway:
                         cancelled = self.store.operation(operation)['state'] == 'cancelling'
                         good = status.exit_code == 0 and output.get('exitCode', 0) == 0 and 'error' not in output
                         final = 'cancelled' if cancelled else 'completed' if good else 'failed'
-                        diagnostic = str(output.get('error') or output.get('stderr') or output.get('stdout') or status.error or 'Command exited unsuccessfully')
+                        diagnostic = '\n'.join(str(output[key]) for key in ('error', 'stderr', 'stdout') if output.get(key))
+                        diagnostic = diagnostic or status.error or 'Command exited unsuccessfully'
                         error = None if good else 'Read .mobilellm/operations/' + operation + '.json for the complete result. ' + diagnostic[-4000:]
                         self.store.transition(operation, final, finished=now_ms(), output=json.dumps(output, ensure_ascii=False), error=error)
                         return
