@@ -964,10 +964,12 @@ private func reviewFixture(requireTool: Bool = false) throws -> WorkflowFixture 
         ]) : .null
         return .object(["id": .string(id), "expectedRevision": .integer(0), "agent": .string(id),
             "instruction": .string("Complete " + id), "dependencies": .array(id.hasPrefix("check-") ? [.string(target)] : []),
-            "required": .bool(true), "maxToolCalls": .integer(0), "model": .string(""), "inputRanges": .array([]), "review": review])
+            "required": .bool(true), "maxToolCalls": .integer(requireTool && id == "check-a" ? 1 : 0),
+            "model": .string(""), "inputRanges": .array([]), "review": review])
     }
     return try makeFixture(body: "", args: CanonicalJSON(.object(["goal": .string("Deliver two correct artifacts."),
-        "plan": v5Decision("work", tasks: tasks), "availableTools": .array([]), "runDate": .string("2026-10-26"),
+        "plan": v5Decision("work", tasks: tasks), "availableTools": .array(requireTool ? [.string("builtin.calculator")] : []),
+        "runDate": .string("2026-10-26"),
         "_mobileLLMReviewRequiredV1": .bool(true)])), source: CollaborativeWorkflow.source)
 }
 
