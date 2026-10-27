@@ -295,7 +295,7 @@
       "id": "AH-ARCH-002",
       "area": "architecture",
       "title": "Forbidden effect runtimes and dependencies remain absent",
-      "statement": "Dynamic Workflows may evaluate the bounded, effect-free JavaScript orchestration ABI in section 34, but the release contains no Python/WASM/arbitrary-code workflow runtime, static DAG authoring system, production sandbox substitute, direct filesystem/shell/network/secret authority, or silent cloud fallback; every child effect crosses the shared harness boundary.",
+      "statement": "Dynamic Workflows may evaluate the bounded, effect-free JavaScript orchestration ABI in section 34, but the release contains no Python/WASM/arbitrary-code workflow runtime, static DAG authoring system, embedded sandbox substitute, direct workflow filesystem/shell/network/secret authority, or silent cloud fallback; every child effect crosses the shared harness boundary.",
       "status": "active",
       "riskTier": "P0",
       "specAnchors": [
@@ -1597,7 +1597,7 @@
       "id": "AH-SANDBOX-001",
       "area": "sandbox",
       "title": "Sandbox provider is optional",
-      "statement": "The open-source build compiles and works with no sandbox provider, advertises no sandbox-required tools, and contains no private runtime dependency or broken control.",
+      "statement": "The open-source build compiles and works with no configured sandbox provider; absent-provider tools are not advertised. Optional OpenSandbox execution uses the authorized HTTP adapter without a private runtime dependency or host shell.",
       "status": "active",
       "riskTier": "P0",
       "specAnchors": [
