@@ -140,10 +140,18 @@ private actor ExecutionToolBoundaryUsageAccumulator: ToolBoundaryUsageObserving 
 }
 
 extension AgentRunController {
-    /// Only a locally classified miss from the built-in public-page reader may continue. Remote
-    /// tools cannot opt into this by returning a similarly named error. Denials, quota failures,
-    /// writes and uncertain effects retain the normal stop/reconciliation behavior.
-    static func canContinueAfterPageMiss(_ failure: AgentFailure, plan: ExternalOperationPlan?) -> Bool {
+    /// A failed test or compiler command is usable feedback for the next edit. Only attested,
+    /// completed sandbox execution with source evidence can continue; uncertain effects still stop.
+    static func canContinueAfterToolDiagnostic(_ failure: AgentFailure, plan: ExternalOperationPlan?) -> Bool {
+        if let plan, plan.kind == .sandbox, plan.effects == [.codeExecution], plan.executionConstraintDigest != nil,
+           failure.code == "sandbox.opensandbox.execution", failure.classification == .permanent,
+           failure.externalEffect == .confirmedApplied, failure.requiredUserAction == .none,
+           failure.retryAdvice == .never, let source = failure.details["sandbox.source"],
+           (try? StableDigest(rawValue: source)) != nil,
+           let workspace = failure.details["sandbox.workspace"], UUID(uuidString: workspace) != nil,
+           OpenSandboxToolOperation.allCases.contains(where: {
+               (try? AgentToolLogicalID(providerID: "sandbox", name: $0.rawValue).description) == plan.subjectID
+           }) { return true }
         guard let plan, let pageID = try? AgentToolLogicalID(providerID: "builtin", name: "fetch_webpage") else { return false }
         return plan.kind == .tool && plan.subjectID == pageID.description
             && plan.effects == [.networkRead] && plan.idempotency == .pureRead
@@ -331,7 +339,7 @@ extension AgentRunController {
             for call in calls {
                 guard let outcome = history.toolOutcomes[call.invocationID]?.1 else { continue }
                 if case .failed(let failure) = outcome,
-                   !Self.canContinueAfterPageMiss(failure, plan: history.toolIntents[call.invocationID]?.1.plan) {
+                   !Self.canContinueAfterToolDiagnostic(failure, plan: history.toolIntents[call.invocationID]?.1.plan) {
                     needsSynthesis = true
                     break
                 }
@@ -1607,7 +1615,7 @@ extension AgentRunController {
                 failure = nil
                 blocking = hasMore ? nil : .modelResource
             case .failed(let value):
-                let mayContinue = Self.canContinueAfterPageMiss(value, plan: prepared.plan)
+                let mayContinue = Self.canContinueAfterToolDiagnostic(value, plan: prepared.plan)
                 next = mayContinue ? (hasMore ? .executingTools : .waitingForModel) : .synthesizing
                 failure = nil
                 blocking = mayContinue && !hasMore ? .modelResource : nil
@@ -1647,7 +1655,7 @@ extension AgentRunController {
             // rejected unless the source changes, and the cumulative budget is unchanged.
             return false
         }
-        if case .failed(let failure) = outcome, Self.canContinueAfterPageMiss(failure, plan: plan) {
+        if case .failed(let failure) = outcome, Self.canContinueAfterToolDiagnostic(failure, plan: plan) {
             // A distinct unavailable URL is useful negative evidence. Repeated identical calls
             // remain subject to the fingerprint guard and every miss consumes its tool budget.
             return false

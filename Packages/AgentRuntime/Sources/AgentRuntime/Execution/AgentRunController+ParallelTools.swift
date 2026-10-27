@@ -155,7 +155,7 @@ extension AgentRunController {
             case .completed:
                 continue
             case .failed(let failure):
-                if !Self.canContinueAfterPageMiss(failure, plan: history.toolIntents[call.invocationID]?.1.plan) {
+                if !Self.canContinueAfterToolDiagnostic(failure, plan: history.toolIntents[call.invocationID]?.1.plan) {
                     anyFailed = true
                 }
             case .uncertain(let failure):
