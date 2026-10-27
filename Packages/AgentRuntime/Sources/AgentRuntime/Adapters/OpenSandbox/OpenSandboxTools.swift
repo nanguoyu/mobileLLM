@@ -166,7 +166,7 @@ public struct OpenSandboxTool: ToolV2 {
             fields = ["path": string(512), "offset": integer(0, 8_388_608)]
             summary = "Read original workspace text and its SHA256. offset is a UTF-8 byte boundary; start at 0, then use nextOffset for a truncated file."
         case .list:
-            fields = ["path": string(512)]; summary = "List this goal's project files. Use '.' for the project root."
+            fields = ["path": string(512)]; summary = "List this goal's project files. Use '.' for the project root and actual tracked server process identities/status; use these identities to inspect or stop servers."
         case .run:
             fields = ["command": string(131_072), "timeoutSeconds": integer(1, 120)]
             summary = "Execute a real bash command with errexit and pipefail in /workspace/project. Node, npm, Python, SQLite and Playwright are available. Keep runtime data in MOBILELLM_DATA_DIR (/workspace/data), outside source files. Preserve test exit status; use assertions, not printed success claims. Output is bounded."
@@ -176,7 +176,7 @@ public struct OpenSandboxTool: ToolV2 {
         case .process, .stop:
             fields = ["processID": .object(["type": .string("string"), "minLength": .integer(36), "maxLength": .integer(36)])]
             summary = (operation == .stop ? "Stop a previously started process in this goal's workspace." : "Read the actual running/exit state of a process started in this workspace.")
-                + " processID must be the 36-character identity returned by sandbox_start, not an operating-system PID."
+                + " processID must be the 36-character identity returned by sandbox_start or sandbox_list_files('.'), not an operating-system PID."
         case .browser:
             fields = ["script": string(32_768), "port": integer(1024, 32767)]
             summary = "Run async Python Playwright checks on a started app port. page, context, browser, base_url, expect, json, datetime and asyncio.sleep/gather are provided. Imports of these helpers and Playwright expect are supported; OS/process work belongs in sandbox_run. Use assertions. Exceptions fail the check and retain page text, control visibility, browser errors, script output and a screenshot."

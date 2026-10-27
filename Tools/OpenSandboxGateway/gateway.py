@@ -300,6 +300,18 @@ class Gateway:
                             output = json.loads(raw)
                         except json.JSONDecodeError:
                             raise RuntimeError('The saved sandbox result is not valid JSON')
+                        if payload['action'] == 'list' and payload.get('path', '.') == '.':
+                            output['processes'] = []
+                            rows = self.store.db.execute('SELECT * FROM processes WHERE workspace=? ORDER BY rowid DESC LIMIT 12',
+                                (row['workspace'],)).fetchall()
+                            for process in rows:
+                                item = {'processID': process['id'], 'port': process['port'], 'running': None}
+                                try:
+                                    current = await sandbox.commands.get_command_status(process['command'])
+                                    item.update(running=current.running, exitCode=current.exit_code)
+                                except Exception:
+                                    item['status'] = 'unavailable'
+                                output['processes'].append(item)
                         cancelled = self.store.operation(operation)['state'] == 'cancelling'
                         good = status.exit_code == 0 and output.get('exitCode', 0) == 0 and 'error' not in output
                         final = 'cancelled' if cancelled else 'completed' if good else 'failed'

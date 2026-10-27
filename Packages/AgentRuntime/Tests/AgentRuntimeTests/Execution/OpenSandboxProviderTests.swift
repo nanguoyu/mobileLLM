@@ -30,6 +30,12 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
             "command": .string("python3 -m http.server 8011 --bind 0.0.0.0"), "port": .integer(8011)]))
         let started = try await execute(provider, request: start, key: "server")
         XCTAssertEqual(started.terminalStatus.state, .completed)
+        let list = try await request(provider, payload: .object(["action": .string("list"), "path": .string(".")]))
+        let listing = try object(try await execute(provider, request: list, key: "service-registry"))
+        guard case .array(let processes)? = listing["processes"] else { return XCTFail("No tracked service identities") }
+        XCTAssertTrue(processes.contains { if case .object(let process) = $0 {
+            return process["processID"] == .string(started.handleID.description) && process["running"] == .bool(true)
+        }; return false })
         let browser = try await request(provider, payload: .object(["action": .string("browser"), "port": .integer(8011),
             "script": .string("from datetime import date\nfrom playwright.async_api import expect\nimport json\nassert isinstance(date.today().year, int)\nawait expect(page.get_by_role('heading', name='Real browser')).to_be_visible()\nprint('assertion reached')\nreturn {'checked': True}")]))
         let inspected = try await execute(provider, request: browser, key: "browser")
