@@ -299,7 +299,7 @@ final class ToolV2AdapterTests: XCTestCase {
 
     // TEST-ID: AHT-DYNAMIC-001
     @MainActor
-    func testDevelopmentBudgetIsFrozenOnlyWhenExecutionToolsAreAvailable() throws {
+    func testDevelopmentBudgetIsFrozenOnlyWhenExecutionToolsAreAvailable() async throws {
         let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let assembly = try AgentRuntimeAssembly(engine: MockLLMEngine(script: .init()), downloadBase: root,
@@ -319,6 +319,11 @@ final class ToolV2AdapterTests: XCTestCase {
         XCTAssertEqual(disabled.budget.limits[.toolInvocations], 24)
         XCTAssertEqual(disabled.budget.limits[.modelAttempts], 32)
         XCTAssertTrue(development.instruction.contains("48 tool calls, 64 model requests"))
+        let reasoning = try assembly.makeWorkflowCoordinator(snapshot: makeSnapshot(userMessageID: UUID(), online: true,
+            executionEnvironment: connection).withText("Develop an application", reasoningEnabled: true))
+        let frozen = try await assembly.inputFreezer.freeze(reasoning)
+        XCTAssertEqual(frozen.generationParameters.maximumOutputTokens, 65_536,
+            "Configured online reasoning capacity must not retain the old 24K internal cap")
     }
 
     @MainActor

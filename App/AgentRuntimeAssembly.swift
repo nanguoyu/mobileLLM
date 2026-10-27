@@ -977,8 +977,8 @@ public final class AgentRuntimeAssembly {
                 instruction,
                 // Reserve a context-scaled input window for the coordinator instruction and frozen
                 // policy. Using the whole context as output makes admission impossible; a fixed
-                // output number also breaks local models with smaller native contexts. The 24K cap
-                // still gives reasoning-first compatible services room for structured decisions.
+                // output number also breaks local models with smaller native contexts. Online
+                // reasoning can use a larger output share when the configured context permits it.
                 // Children inherit this frozen generation policy. Preserve the conversation's
                 // reasoning choice rather than silently disabling it for every delegated task.
                 maximumOutputTokens: generatorOutputTokens
@@ -1031,7 +1031,10 @@ public final class AgentRuntimeAssembly {
             ? snapshot.onlineContextLength
             : ContextPolicy.effective(requested: snapshot.contextLength, model: snapshot.model)
         let reservedInput = min(8_192, max(1_024, context / 2))
-        return max(1, min(24_576, context - reservedInput))
+        let online = snapshot.onlineModelEnabled && snapshot.onlineModelID != nil
+        let ceiling = online && snapshot.onlineReasoningEnabled ? 65_536 : 24_576
+        let serviceLimit = (snapshot.onlineMaximumOutputTokens ?? 0) > 0 ? snapshot.onlineMaximumOutputTokens! : ceiling
+        return max(1, min(ceiling, serviceLimit, context - reservedInput))
     }
 
     private func dynamicWorkflowBudget(
