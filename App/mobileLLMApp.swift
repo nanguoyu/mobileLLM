@@ -256,6 +256,23 @@ struct MobileLLMApp: App {
         }
         container.settings.onSandboxConfigurationChanged?()
         #if DEBUG
+        if ProcessInfo.processInfo.environment["MOBILELLM_DEVICE_E2E"] == "1",
+           let path = ProcessInfo.processInfo.environment["MOBILELLM_SANDBOX_CONFIG_PATH"] {
+            // Explicit real-service integration only. It performs the same authenticated capability
+            // check as Settings; normal launches never probe or configure an execution environment.
+            Task { @MainActor [weak container] in
+                do {
+                    struct Configuration: Decodable { let endpoint: String; let apiKey: String }
+                    let config = try JSONDecoder().decode(Configuration.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+                    let connection = try await OpenSandboxHTTPClient.connect(endpoint: config.endpoint, apiKey: config.apiKey)
+                    try container?.settings.configureSandbox(connection, apiKey: config.apiKey)
+                } catch {
+                    container?.recordAgentRuntimeFailure(error)
+                }
+            }
+        }
+        #endif
+        #if DEBUG
         // Local OpenAI-compatible service config: the developer stores it once at
         // ~/.mobilellm/openai.json (outside the repo); the macOS DEBUG app reads it directly, and the
         // simulator/device test runners inject the same values through launch environment variables,
