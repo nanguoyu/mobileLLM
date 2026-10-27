@@ -6,6 +6,31 @@ import XCTest
 
 // TEST-ID: AHT-DYNAMIC-001
 final class WorkflowTaskReviewTests: XCTestCase {
+    func testActivationLimitIsFrozenAndImpossibleReviewProfilesAreRejected() throws {
+        var legacy = try WorkflowTaskGraph(objective: "Keep the existing budget.")
+        let long = WorkflowTaskUpdate(id: "build", expectedRevision: 0, agent: "builder",
+            instruction: "Implement and test in one activation.", maximumToolCalls: 10)
+        XCTAssertThrowsError(try legacy.update([long], expectedRevision: 1))
+        let decoded = try JSONDecoder().decode(WorkflowTaskGraph.self, from: JSONEncoder().encode(legacy))
+        XCTAssertNil(decoded.maximumToolCallsPerTask)
+        var development = try WorkflowTaskGraph(objective: "Build within the admitted development budget.", maximumToolCallsPerTask: 12)
+        try development.update([long], expectedRevision: 1)
+        XCTAssertEqual(development.tasks.first?.maximumToolCalls, 10)
+        let saved = development
+        let contract = WorkflowTaskReview(criteria: [.init(id: "check", requirement: "Run the required check.", targetTaskIDs: ["build"])],
+            requiredTools: ["sandbox.check"])
+        let forbidden = WorkflowTaskUpdate(id: "review", expectedRevision: 0, agent: "reviewer",
+            instruction: "Review.", dependencies: ["build"], maximumToolCalls: 1,
+            profile: try WorkflowAgentProfileV1(toolNames: ["sandbox.read"]), review: contract)
+        XCTAssertThrowsError(try development.update([forbidden], expectedRevision: development.revision)) {
+            XCTAssertEqual($0 as? WorkflowTaskGraphError, .reviewToolsUnavailable)
+        }
+        XCTAssertEqual(development, saved, "Rejected plans cannot partially alter the task graph")
+        let noCalls = WorkflowTaskUpdate(id: "review", expectedRevision: 0, agent: "reviewer",
+            instruction: "Review.", dependencies: ["build"], maximumToolCalls: 0, review: contract)
+        XCTAssertThrowsError(try development.update([noCalls], expectedRevision: development.revision))
+    }
+
     func testParallelReviewFailureReopensOnlyItsProducerAndKeepsOtherAcceptedBranch() throws {
         var graph = try WorkflowTaskGraph(objective: "Produce two checked artifacts.")
         try graph.update([work("a"), work("b"), review("check-a", target: "a"), review("check-b", target: "b")], expectedRevision: 1)
@@ -107,7 +132,7 @@ final class WorkflowTaskReviewTests: XCTestCase {
     }
     private func review(_ id: String, target: String, tools: [String] = [], dependencies: [String]? = nil) -> WorkflowTaskUpdate {
         .init(id: id, expectedRevision: 0, agent: id, instruction: "Check " + target,
-            dependencies: dependencies ?? [target], review: .init(criteria: [
+            dependencies: dependencies ?? [target], maximumToolCalls: UInt64(tools.count), review: .init(criteria: [
                 .init(id: "correctness", requirement: "Preserve the supplied requirement", targetTaskIDs: [target])
             ], requiredTools: tools))
     }

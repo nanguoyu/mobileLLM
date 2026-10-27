@@ -935,7 +935,10 @@ private actor DynamicWorkflowSession {
             guard let args = projection.launch.args,
                   case .object(let root) = try JSONDecoder().decode(JSONValue.self, from: args.data),
                   case .string(let objective)? = root["goal"] else { throw WorkflowTaskGraphError.invalid }
-            graph = try WorkflowTaskGraph(objective: objective)
+            let execution = projection.launch.capabilityCeiling.capabilities.contains(.codeExecution)
+                && projection.launch.capabilityCeiling.authority.workspaceIDs.count == 1
+            let share = projection.launch.budget.limits[.toolInvocations] / UInt64(projection.launch.limits.maximumConcurrentAgents)
+            graph = try WorkflowTaskGraph(objective: objective, maximumToolCallsPerTask: min(execution ? 12 : 6, share))
         }
         var feedback: String?
         var observation: JSONValue?

@@ -36,7 +36,7 @@ operation approvals. Configuring an environment does not silently change approva
 
 New goals with enabled execution tools freeze a development budget of 48 tool calls and 64 model
 requests before planning and approval. Other goals retain 24 tool calls and 32 model requests.
-Each worker activation remains limited to six tool calls, with at most four concurrent workers and
+Development activations allow up to twelve tool calls; other activations retain six. There are at most four concurrent workers and
 twelve activations. Resuming an existing goal preserves its original budget.
 
 Use up --rebuild after changing the guest image. It closes this setup's old workspaces, retains its

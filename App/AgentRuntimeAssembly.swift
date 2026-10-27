@@ -937,7 +937,7 @@ public final class AgentRuntimeAssembly {
             + "\nALLOWED SKILL CATALOG:\n" + (try CanonicalJSON(.array(availableSkills.map(\.catalogEntry))).string)
             + "\nALLOWED MODELS: " + source.modelPolicy.allowedSelections.map { $0.modelID.rawValue }.joined(separator: ", ")
             + "\nMAXIMUM REASONING EFFORT: " + (source.modelPolicy.localOnly || !snapshot.onlineReasoningEnabled ? "inherit only" : snapshot.onlineReasoningEffort?.rawValue ?? "service default")
-            + "\nFROZEN GOAL BUDGET: \(workflowBudget.limits[.toolInvocations]) tool calls, \(workflowBudget.limits[.modelAttempts]) model requests. Each activation may request at most 6 tool calls. Reserve capacity for acceptance and final artifact delivery."
+            + "\nFROZEN GOAL BUDGET: \(workflowBudget.limits[.toolInvocations]) tool calls, \(workflowBudget.limits[.modelAttempts]) model requests. Each activation may request at most \(executesCode ? 12 : 6) tool calls. Reserve capacity for acceptance and final artifact delivery."
             + "\nORIGINAL GOAL:\n" + snapshot.text
         // Dynamic execution uses the same frozen authority/model/tool policy as the conversation,
         // but needs a workflow-sized resource envelope. Four-way attenuation of the ordinary chat
@@ -959,7 +959,7 @@ public final class AgentRuntimeAssembly {
             userTurnID: source.userTurnID,
             role: "workflow-coordinator",
             instruction: instruction,
-            outputRequirement: .structured(CollaborativeWorkflow.preparationSchema),
+            outputRequirement: .structured(try CollaborativeWorkflow.preparationSchema(maximumToolCalls: executesCode ? 12 : 6)),
             modelPolicy: source.modelPolicy,
             capabilityCeiling: RunCapabilityCeiling(authority: teamAuthority),
             budget: workflowBudget,

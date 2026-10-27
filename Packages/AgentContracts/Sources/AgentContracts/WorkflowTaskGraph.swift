@@ -102,6 +102,7 @@ public enum WorkflowTaskGraphError: String, Error, Sendable, LocalizedError {
     case terminal = "The goal has already ended."
     case invalidReview = "The review must report every declared criterion exactly once with an explanation."
     case unreviewed = "Required deliverables need a passing independent review of their current versions and human amendments."
+    case reviewToolsUnavailable = "The review requires more tools than its activation permits, or excludes a required tool from its own profile."
     public var errorDescription: String? { rawValue }
 }
 
@@ -114,11 +115,14 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
     public private(set) var reason: String?
     public private(set) var tasks: [WorkflowTaskNode] = []
     public private(set) var artifacts: [WorkflowTaskArtifact] = []
+    /// nil preserves the six-call ceiling of already-saved graphs.
+    public let maximumToolCallsPerTask: UInt64?
 
-    public init(objective: String) throws {
+    public init(objective: String, maximumToolCallsPerTask: UInt64 = 6) throws {
         guard !objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              objective.utf8.count <= 262_144 else { throw WorkflowTaskGraphError.invalid }
+              objective.utf8.count <= 262_144, maximumToolCallsPerTask <= 12 else { throw WorkflowTaskGraphError.invalid }
         self.objective = objective
+        self.maximumToolCallsPerTask = maximumToolCallsPerTask == 6 ? nil : maximumToolCallsPerTask
     }
 
     public var readyTasks: [WorkflowTaskNode] {
@@ -146,7 +150,7 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
                   AgentWireValidation.isNonblankControlFree(change.agent, maximumLength: 48),
                   change.agent != "coordinator",
                   !change.instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  change.instruction.utf8.count <= 16_384, change.maximumToolCalls <= 6,
+                  change.instruction.utf8.count <= 16_384, change.maximumToolCalls <= (maximumToolCallsPerTask ?? 6),
                   change.dependencies.count <= 32, Set(change.dependencies).count == change.dependencies.count,
                   (change.inputRanges?.count ?? 0) <= 8,
                   change.inputRanges?.allSatisfy({ (change.dependencies.contains($0.taskID) || (change.artifactInputs ?? []).contains($0.taskID))
@@ -157,6 +161,11 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
                   change.model.map({ AgentWireValidation.isNonblankControlFree($0, maximumLength: 256) }) ?? true
             else { throw WorkflowTaskGraphError.invalid }
             try change.review?.validate()
+            if let review = change.review {
+                guard UInt64(review.requiredTools.count) <= change.maximumToolCalls,
+                      change.profile.map({ $0.toolNames.isEmpty || Set(review.requiredTools).isSubset(of: Set($0.toolNames)) }) ?? true
+                else { throw WorkflowTaskGraphError.reviewToolsUnavailable }
+            }
             if let index = next.tasks.firstIndex(where: { $0.id == change.id }) {
                 let old = next.tasks[index]
                 guard old.revision == change.expectedRevision else { throw WorkflowTaskGraphError.stale }
@@ -406,7 +415,9 @@ public struct WorkflowTaskGraph: Hashable, Codable, Sendable {
     }
 
     public func validate() throws {
-        guard revision > 0, tasks.count <= 32, Set(tasks.map(\.id)).count == tasks.count,
+        guard revision > 0, (maximumToolCallsPerTask ?? 6) <= 12,
+              tasks.allSatisfy({ $0.maximumToolCalls <= (maximumToolCallsPerTask ?? 6) }),
+              tasks.count <= 32, Set(tasks.map(\.id)).count == tasks.count,
               artifacts.count <= 128, Set(artifacts.map(\.id)).count == artifacts.count else { throw WorkflowTaskGraphError.invalid }
         let ids = Set(tasks.map(\.id))
         guard tasks.allSatisfy({ $0.dependencies.allSatisfy(ids.contains) }) else { throw WorkflowTaskGraphError.unavailableInput }

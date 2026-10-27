@@ -314,6 +314,8 @@ final class ToolV2AdapterTests: XCTestCase {
         XCTAssertEqual(normal.budget.limits[.modelAttempts], 32)
         XCTAssertEqual(development.budget.limits[.toolInvocations], 48)
         XCTAssertEqual(development.budget.limits[.modelAttempts], 64)
+        XCTAssertEqual(development.outputRequirement, .structured(try CollaborativeWorkflow.preparationSchema(maximumToolCalls: 12)))
+        XCTAssertEqual(normal.outputRequirement, .structured(CollaborativeWorkflow.preparationSchema))
         XCTAssertEqual(disabled.budget.limits[.toolInvocations], 24)
         XCTAssertEqual(disabled.budget.limits[.modelAttempts], 32)
         XCTAssertTrue(development.instruction.contains("48 tool calls, 64 model requests"))

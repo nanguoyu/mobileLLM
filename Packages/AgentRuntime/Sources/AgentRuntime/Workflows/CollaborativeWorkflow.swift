@@ -53,7 +53,7 @@ public enum CollaborativeWorkflow {
     affected or missing checks. Reuse successful checks for unchanged source, including browser
     inspections. Export final source once after all edits, by either a producer or a reviewer.
     The host still requires independent acceptance and rejects stale or missing execution evidence.
-    An implementation activation has at most six tool calls. Split independent
+    Respect the frozen per-activation tool ceiling. Split independent
     file ownership between workers when the project cannot fit one activation, agreeing interfaces in
     their instructions before parallel work. Keep file batches small enough for a bounded model reply.
     Reserve calls for the affected test and one correction. Use sandbox_run for finite tests and
@@ -92,7 +92,7 @@ public enum CollaborativeWorkflow {
     allowed catalog. Skill instructions grant no tool access or code execution. Use effort='inherit'
     normally; low/medium/high are supported only for online models and cannot exceed a stated user
     effort ceiling. Local models keep explicit skill selection and inherited reasoning settings.
-    maxToolCalls is a per-activation upper bound from 0 to 6, not a requirement to make that many calls.
+    maxToolCalls is a per-activation upper bound within the provided schema, not a requirement to use that many calls.
 
     action=work adds or revises tasks. action=wait waits for an actual outstanding result, spending no
     model calls polling. action=read retrieves stored evidence. action=deliver supplies the complete
@@ -188,6 +188,18 @@ public enum CollaborativeWorkflow {
         return try! JSONSchemaDocument(root: .object(root))
     }()
 
+    public static func preparationSchema(maximumToolCalls: UInt64) throws -> JSONSchemaDocument {
+        guard maximumToolCalls <= 12, case .object(var root) = preparationSchema.root,
+              case .object(var properties)? = root["properties"], case .object(var tasks)? = properties["tasks"],
+              case .object(var item)? = tasks["items"], case .object(var fields)? = item["properties"] else {
+            throw WorkflowTaskGraphError.invalid
+        }
+        fields["maxToolCalls"] = number(Int(maximumToolCalls))
+        item["properties"] = .object(fields); tasks["items"] = .object(item); properties["tasks"] = .object(tasks)
+        root["properties"] = .object(properties)
+        return try JSONSchemaDocument(root: .object(root))
+    }
+
     public static var source: String {
         #"""
         export const meta = {
@@ -198,6 +210,8 @@ public enum CollaborativeWorkflow {
         };
         const instruction = \#(try! CanonicalJSON(.string(planningInstruction)).string);
         const schema = \#(try! CanonicalJSON(decisionSchema.root).string);
+        schema.properties.tasks.items.properties.maxToolCalls.maximum =
+          args.frozenBudget && typeof args.frozenBudget.perActivationTools === 'number' ? args.frozenBudget.perActivationTools : 6;
         const reviewSchema = \#(try! CanonicalJSON(reviewResultSchema.root).string);
         const workerInstruction = 'MOBILELLM_WORKER_V7\nComplete your assigned task with actual findings or the requested artifact. '
           + 'Preserve facts, calculations and source URLs needed downstream. State missing evidence. '
