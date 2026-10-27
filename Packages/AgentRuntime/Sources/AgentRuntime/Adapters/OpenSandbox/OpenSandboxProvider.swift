@@ -76,6 +76,9 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
     }
 
     public func start(_ request: SandboxExecutionRequest, idempotencyKey: String) async throws -> SandboxExecutionHandleID {
+        guard !FileManager.default.fileExists(atPath: directory.appendingPathComponent(".closed").path) else {
+            throw OpenSandboxError.unavailable
+        }
         guard !idempotencyKey.isEmpty, idempotencyKey.utf8.count <= 256,
               request.negotiatedCapabilities == (try negotiate()), request.requirement.checkpointID == nil,
               request.requirement.workspaceID == nil || request.requirement.workspaceID == workspaceID,
@@ -127,7 +130,13 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
     }
 
     public func closeWorkspace() async throws {
+        let marker = directory.appendingPathComponent(".closed")
+        if FileManager.default.fileExists(atPath: marker.path) { return }
         _ = try await client.request("DELETE", path: "v1/workspaces/" + workspaceID.description)
+        if FileManager.default.fileExists(atPath: directory.path) {
+            try Data().write(to: marker, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: marker.path)
+        }
     }
 
     func status(_ id: SandboxExecutionHandleID) async throws -> SandboxExecutionStatus {

@@ -104,6 +104,7 @@ public actor OpenSandboxToolService {
             guard let serverID = UUID(uuidString: server.lastPathComponent) else { continue }
             for scope in try children(server) {
                 guard let id = UUID(uuidString: scope.lastPathComponent), workspaceID == nil || workspaceID == id else { continue }
+                if FileManager.default.fileExists(atPath: scope.appendingPathComponent(".closed").path) { continue }
                 guard let file = try children(scope).first(where: { $0.pathExtension == "json" }) else { continue }
                 let header = try JSONDecoder().decode(Header.self, from: Data(contentsOf: file))
                 let key = header.connectionFingerprint.rawValue + ":" + SandboxWorkspaceHandleID(rawValue: id).description

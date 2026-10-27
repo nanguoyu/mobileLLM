@@ -199,6 +199,8 @@ class Environment:
             self.run(['docker','rm','-f',container['Id']])
 
     def start(self, rebuild=False):
+        self.state.pop('cleanup', None)
+        self.save()
         self.setup(rebuild)
         if self.state.get('serverPID') or self.state.get('gatewayPID'):
             self.stop_workspaces(); self.stop_processes()
