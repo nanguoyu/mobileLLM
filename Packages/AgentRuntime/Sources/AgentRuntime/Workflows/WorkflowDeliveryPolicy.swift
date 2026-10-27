@@ -60,6 +60,11 @@ public struct WorkflowDeliveryPolicy: Codable, Sendable, Equatable {
         guard let source = records.last(where: { $0.execution?.sourceDigest != nil })?.execution?.sourceDigest else {
             return "Execute the requested work in this goal's workspace before delivering it."
         }
+        if let unknown = records.last(where: { $0.succeeded == false && $0.execution?.sourceDigest == nil
+            && !["sandbox_process", "sandbox_stop"].contains($0.execution?.operation ?? "") }),
+           (unknown.completedAt?.rawValue ?? 0) >= (records.last(where: { $0.execution?.sourceDigest != nil })?.completedAt?.rawValue ?? 0) {
+            return "A failed operation left the current source snapshot unavailable. Inspect the workspace and obtain fresh review/export evidence before delivery."
+        }
         let current = records.filter { $0.succeeded != false && $0.execution?.sourceDigest == source }
         let reviews = acceptedReviewEvidence.filter { $0.succeeded != false && $0.execution?.workspaceID == workspaceID
             && $0.execution?.sourceDigest == source }

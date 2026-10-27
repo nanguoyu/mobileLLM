@@ -15,10 +15,10 @@ extension WorkflowSandboxEvidence {
         let source = SandboxSourceObservation.read(outcome, prepared: prepared)?.digest
         guard case .completed(let values) = outcome else {
             if let source { return Self(workspaceID: workspace, sourceDigest: source, operation: operation.rawValue) }
-            // The authenticated gateway can reject an owned operation before submitting a command.
-            // Bind that rejection to this scope; arbitrary tool/provider claims remain untrusted.
+            // A settled command can fail before producing a source snapshot, or be rejected before
+            // submission. Both are known outcomes in this scope; uncertain transport is excluded.
             if case .failed(let failure) = outcome, failure.code == "sandbox.opensandbox.execution",
-               failure.externalEffect == .confirmedNone,
+               [.confirmedNone, .confirmedApplied].contains(failure.externalEffect),
                failure.details["sandbox.workspace"] == workspace.description,
                let id = failure.details["sandbox.operation"], UUID(uuidString: id) != nil {
                 return Self(workspaceID: workspace, sourceDigest: nil, operation: operation.rawValue)

@@ -146,8 +146,7 @@ extension AgentRunController {
         if let plan, plan.kind == .sandbox, plan.effects == [.codeExecution], plan.executionConstraintDigest != nil,
            failure.code == "sandbox.opensandbox.execution", failure.classification == .permanent,
            failure.requiredUserAction == .none, failure.retryAdvice == .never,
-           (failure.externalEffect == .confirmedNone || (failure.externalEffect == .confirmedApplied
-               && failure.details["sandbox.source"].flatMap { try? StableDigest(rawValue: $0) } != nil)),
+           [.confirmedNone, .confirmedApplied].contains(failure.externalEffect),
            let workspace = failure.details["sandbox.workspace"], UUID(uuidString: workspace) != nil,
            let operation = failure.details["sandbox.operation"], UUID(uuidString: operation) != nil,
            OpenSandboxToolOperation.allCases.contains(where: {
