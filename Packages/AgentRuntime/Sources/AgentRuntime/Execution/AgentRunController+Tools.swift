@@ -905,7 +905,8 @@ extension AgentRunController {
             let boundaryStarted = await usageObserver.hasStartedBoundary()
             if boundaryStarted,
                hasRiskyExternalEffects(prepared.plan),
-               case .failed = outcome
+               case .failed = outcome,
+               WorkflowSandboxEvidence.read(outcome, prepared: prepared) == nil
             {
                 outcome = .uncertain(try ExecutionFailureFactory.uncertain(
                     code: "execution.tool-returned-failure-uncertain",
