@@ -60,6 +60,10 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
         fields["endpoint"] = "http://untrusted.example"
         XCTAssertThrowsError(try JSONDecoder().decode(OpenSandboxConnection.self, from: JSONSerialization.data(withJSONObject: fields)))
         XCTAssertThrowsError(try OpenSandboxConnection.validatedEndpoint("https://user:secret@execution.example"))
+        for host in ["bad\nhost", "a..example", "-bad.example", "bad/path", String(repeating: "x", count: 64) + ".example"] {
+            XCTAssertThrowsError(try OpenSandboxConnection(id: UUID(), endpoint: value.endpoint, image: value.image,
+                capabilities: value.capabilities, allowedHosts: [host]))
+        }
         let process = try XCTUnwrap(OpenSandboxTool.descriptors(connection: value).first { $0.id.logicalID.name == "sandbox_process" })
         XCTAssertFalse(try process.inputSchema.validates(instance: .object(["processID": .string("12345")])))
         XCTAssertTrue(try process.inputSchema.validates(instance: .object(["processID": .string(UUID().uuidString)])))

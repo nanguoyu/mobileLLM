@@ -31,9 +31,20 @@ public struct OpenSandboxConnection: Hashable, Codable, Sendable, Identifiable {
     public init(id: UUID, endpoint: URL, image: String, capabilities: [WorkflowDeliveryCapability],
                 allowedHosts: [String] = [], backendVersion: String = "1.1.1") throws {
         let endpoint = try Self.validatedEndpoint(endpoint.absoluteString)
-        guard image.utf8.count <= 512, !image.isEmpty, !capabilities.contains(.publication),
-              allowedHosts.count <= 16, allowedHosts.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 256
-                  && !$0.contains("/") && !$0.contains(":") }) else { throw OpenSandboxError.invalidConfiguration }
+        func boundedText(_ value: String, _ maximum: Int) -> Bool {
+            !value.isEmpty && value.utf8.count <= maximum
+                && value == value.trimmingCharacters(in: .whitespacesAndNewlines)
+                && value.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
+        }
+        guard boundedText(image, 512), boundedText(backendVersion, 128), !capabilities.contains(.publication),
+              allowedHosts.count <= 16, allowedHosts.allSatisfy({ host in
+                  guard boundedText(host, 253) else { return false }
+                  return host.split(separator: ".", omittingEmptySubsequences: false).allSatisfy { label in
+                      !label.isEmpty && label.utf8.count <= 63 && label.first != "-" && label.last != "-"
+                          && label.utf8.allSatisfy { (48...57).contains($0) || (65...90).contains($0)
+                              || (97...122).contains($0) || $0 == 45 }
+                  }
+              }) else { throw OpenSandboxError.invalidConfiguration }
         self.id = id; self.endpoint = endpoint; self.image = image
         self.capabilities = Array(Set(capabilities)).sorted { $0.rawValue < $1.rawValue }
         self.allowedHosts = Array(Set(allowedHosts)).sorted(); self.backendVersion = backendVersion
@@ -49,7 +60,7 @@ public struct OpenSandboxConnection: Hashable, Codable, Sendable, Identifiable {
 
     public static func validatedEndpoint(_ text: String) throws -> URL {
         guard var parts = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let host = parts.host, parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
+              let host = parts.host, !host.isEmpty, parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
               parts.scheme == "https" || (parts.scheme == "http" && ["localhost", "127.0.0.1", "::1", "[::1]"].contains(host)),
               text.utf8.count <= 2_048 else { throw OpenSandboxError.invalidConfiguration }
         while parts.path.hasSuffix("/") { parts.path.removeLast() }
@@ -111,7 +122,8 @@ public final class OpenSandboxHTTPClient: @unchecked Sendable {
     func request(_ method: String, path: String, body: Data? = nil, discover: Bool = false,
                  maximumResponseBytes: UInt64 = 1_048_576,
                  onResponseBytes: (@Sendable (UInt64) async throws -> Void)? = nil) async throws -> Data {
-        guard let secret = key(), !secret.isEmpty, secret.utf8.count <= 4_096 else { throw OpenSandboxError.unavailable }
+        guard let secret = key(), !secret.isEmpty, secret.utf8.count <= 4_096,
+              secret.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else { throw OpenSandboxError.unavailable }
         var request = URLRequest(url: connection.endpoint.appendingPathComponent(path))
         request.httpMethod = method; request.httpBody = body
         request.setValue("Bearer " + secret, forHTTPHeaderField: "Authorization")
