@@ -33,7 +33,9 @@ TERMINAL = {'completed', 'failed', 'cancelled', 'uncertain'}
 ACTIONS = {'write', 'read', 'list', 'exec', 'start', 'process', 'stop', 'browser', 'download', 'export'}
 
 class ConfirmedOperationFailure(Exception):
-    pass
+    def __init__(self, message, output=None):
+        super().__init__(message)
+        self.output = output
 
 
 class BoundedStream(httpx.AsyncByteStream):
@@ -190,6 +192,17 @@ class Gateway:
             else:
                 self.schedule(row['id'])
 
+    async def interrupt_running(self, sandbox, command):
+        status = await sandbox.commands.get_command_status(command)
+        if status.running is True:
+            try:
+                await sandbox.commands.interrupt(command)
+            except Exception:
+                # Exiting between status and interrupt is a known terminal state, not uncertainty.
+                if (await sandbox.commands.get_command_status(command)).running is not False:
+                    raise
+        return await sandbox.commands.get_command_status(command)
+
     async def execute(self, operation):
         row = self.store.operation(operation)
         lock = self.locks.setdefault(row['workspace'], asyncio.Lock())
@@ -212,7 +225,7 @@ class Gateway:
                     if process is None:
                         raise ValueError('Unknown process in this workspace')
                     if payload['action'] == 'stop':
-                        await sandbox.commands.interrupt(process['command'])
+                        await self.interrupt_running(sandbox, process['command'])
                     status = await sandbox.commands.get_command_status(process['command'])
                     self.store.transition(operation, 'completed', started=now_ms(), finished=now_ms(),
                         output=json.dumps({'processID': process['id'], 'running': status.running,
@@ -257,13 +270,18 @@ class Gateway:
                 if payload['action'] == 'start':
                     status = await sandbox.commands.get_command_status(command)
                     if status.running is not True:
-                        raise ConfirmedOperationFailure('The service process did not remain running')
+                        snapshot = base64.b64encode(json.dumps({'action':'digest'}).encode()).decode()
+                        check = await sandbox.commands.run(['python3','/opt/mobilellm/guest.py',snapshot],
+                            opts=RunCommandOpts(working_directory='/workspace/project',uid=1000,gid=1000,timeout=timedelta(seconds=10)))
+                        logs = await sandbox.commands.get_background_command_logs(command)
+                        raise ConfirmedOperationFailure('The service process exited: ' + logs.content[-2000:], json.loads(check.text))
                     probe = base64.b64encode(json.dumps({'action':'probe','port':payload['port']}).encode()).decode()
                     check = await sandbox.commands.run(['python3','/opt/mobilellm/guest.py',probe],
                         opts=RunCommandOpts(working_directory='/workspace/project',uid=1000,gid=1000,timeout=timedelta(seconds=20)))
                     if check.exit_code != 0:
-                        await sandbox.commands.interrupt(command)
-                        raise ConfirmedOperationFailure('The started application failed its HTTP readiness check: ' + check.text[:2000])
+                        await self.interrupt_running(sandbox, command)
+                        raise ConfirmedOperationFailure('The started application failed its HTTP readiness check: ' + check.text[:2000],
+                            json.loads(check.text))
                     verified = json.loads(check.text)
                     self.store.transition(operation, 'completed', finished=now_ms(),
                         output=json.dumps({'processID': operation, 'running': True, 'port':payload['port'],
@@ -296,7 +314,8 @@ class Gateway:
                 if latest['state'] not in TERMINAL:
                     workspace = self.store.db.execute('SELECT state FROM workspaces WHERE id=?', (row['workspace'],)).fetchone()
                     uncertain = not isinstance(error, ConfirmedOperationFailure) and (latest['state'] in {'starting', 'running', 'cancelling'} or (workspace is not None and workspace['state'] == 'creating'))
-                    self.store.transition(operation, 'uncertain' if uncertain else 'failed', finished=now_ms(), error=str(error)[:8000])
+                    self.store.transition(operation, 'uncertain' if uncertain else 'failed', finished=now_ms(),
+                        error=str(error)[:8000], output=json.dumps(error.output) if isinstance(error, ConfirmedOperationFailure) and error.output else None)
 
     async def cancel(self, operation, command_id, expected):
         old = self.store.db.execute('SELECT * FROM cancellations WHERE id=?', (command_id,)).fetchone()
@@ -314,7 +333,7 @@ class Gateway:
                 self.store.transition(operation, 'cancelling', error='Cancellation requested')
                 if row['command']:
                     sandbox = await self.sandbox(row['workspace'])
-                    await sandbox.commands.interrupt(row['command'])
+                    await self.interrupt_running(sandbox, row['command'])
         response = self.store.public(operation)
         self.store.db.execute('INSERT INTO cancellations VALUES(?,?,?,?)', (command_id, operation, expected, json.dumps(response)))
         return response

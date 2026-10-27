@@ -111,6 +111,7 @@ final class SandboxWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                     let status = "\(state.state): \(state.calls.count) calls, \(state.currentPhase ?? "preparing")"
                     if status != previous { print("[SandboxWorkflow] \(name) \(status)"); previous = status }
                     if state.isTerminal || (state.state == .paused && state.taskGraph?.state != .active) { break }
+                    if state.state == .waitingForReconciliation { failures.append("The autonomous task needs effect reconciliation"); break }
                     var blocked = false
                     for call in state.calls {
                         if try await assembly.repository.loadRunFacts(for: call.childRunID)?.projection.state == .waitingForApproval {

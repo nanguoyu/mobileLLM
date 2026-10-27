@@ -272,6 +272,8 @@ def execute(payload):
                 pass
             time.sleep(0.2)
         raise ValueError('The started process did not serve HTTP on its declared port')
+    if action == 'digest':
+        return {}
     if action == 'export':
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
