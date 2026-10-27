@@ -184,10 +184,15 @@ final class SandboxWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         }
         let workers = state?.calls.filter { $0.options.requestedAgentType != "workflow-supervisor" } ?? []
         if Set(workers.compactMap { $0.options.sessionKey }).count < 2 { failures.append("No independent collaborating agents") }
-        let record: [String: Any] = ["case": name, "goal": goal, "runID": runID.description, "model": model,
+        var record: [String: Any] = ["case": name, "goal": goal, "runID": runID.description, "model": model,
             "codeRevision": ProcessInfo.processInfo.environment["MOBILELLM_LIVE_REVISION"] ?? "unrecorded",
             "durationSeconds": Date().timeIntervalSince(start), "state": state?.state.rawValue ?? "missing", "failures": failures,
             "workerCalls": workers.count, "recordedToolCalls": evidence.count, "artifactCount": artifacts.count]
+        if let state {
+            record["frozenLimits"] = ["toolCalls": state.launch.budget.limits[.toolInvocations],
+                "modelRequests": state.launch.budget.limits[.modelAttempts],
+                "activeMilliseconds": state.launch.budget.limits[.activeMilliseconds]]
+        }
         let bytes = try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys])
         try bytes.write(to: root.appendingPathComponent("public-result.json"))
         let attachment = XCTAttachment(data: bytes, uniformTypeIdentifier: "public.json")

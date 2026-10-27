@@ -1047,8 +1047,9 @@ public final class AgentRuntimeAssembly {
         }
 
         // At the iPhone default concurrency of four, one child may use at most one quarter. These
-        // totals therefore allow eight model turns, six tool calls, and two structured-output
-        // repairs per concurrently admitted child, while the workflow-wide ledger still prevents
+        // ordinary totals allow eight model turns, six tool calls, and two structured-output
+        // repairs per concurrently admitted child. The development preset has more cumulative
+        // room for implementation and acceptance; the workflow-wide ledger still prevents
         // aggregate overcommit. Discrete repair capacity must be raised explicitly: floor-sharing
         // the ordinary single repair among four children would otherwise produce zero and turn one
         // malformed structured answer into an immediate budget failure.
