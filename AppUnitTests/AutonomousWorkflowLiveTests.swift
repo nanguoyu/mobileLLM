@@ -458,7 +458,7 @@ final class AutonomousWorkflowLiveTests: XCTestCase, @unchecked Sendable {
     }
 }
 
-private struct LiveConfiguration:Decodable,Sendable {
+struct LiveConfiguration:Decodable,Sendable {
     let apiKey:String
     let baseURL:String
     let model:String
@@ -478,8 +478,8 @@ private struct LiveConfiguration:Decodable,Sendable {
         return value
     }
 }
-private struct LiveEvaluationError:Error,LocalizedError { let message:String; init(_ message:String){self.message=message};var errorDescription:String?{message} }
-private actor NoLocalEvaluationEngine:LLMEngine {
+struct LiveEvaluationError:Error,LocalizedError { let message:String; init(_ message:String){self.message=message};var errorDescription:String?{message} }
+actor NoLocalEvaluationEngine:LLMEngine {
     func load(model:LLMModel,variant:LLMVariant,weightsDir:URL,progress:@escaping @Sendable(Double)->Void) async throws { throw LiveEvaluationError("Unexpected local-model path in online evaluation") }
     func unload() async {}
     nonisolated func generate(messages:[ChatTurn],params:Sampling) -> AsyncThrowingStream<EngineDelta,Error> {
