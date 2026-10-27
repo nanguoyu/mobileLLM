@@ -111,6 +111,15 @@ def run_command(command, timeout):
     output = {'stdout': bytearray(), 'stderr': bytearray()}
     truncated = False
     expired = False
+    cancelled = False
+    def stop_children(signum, frame):
+        nonlocal cancelled
+        cancelled = True
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    previous_signals = {sig: signal.signal(sig, stop_children) for sig in (signal.SIGTERM, signal.SIGINT)}
     deadline = time.monotonic() + timeout
     while selector.get_map():
         if time.monotonic() > deadline:
@@ -130,8 +139,10 @@ def run_command(command, timeout):
             output[key.data].extend(data[:remaining])
             truncated |= len(data) > remaining
     code = process.wait()
+    for sig, handler in previous_signals.items():
+        signal.signal(sig, handler)
     return {'exitCode': code, 'stdout': output['stdout'].decode('utf-8', errors='replace'),
-            'stderr': output['stderr'].decode('utf-8', errors='replace'), 'truncated': truncated, 'timedOut': expired}
+            'stderr': output['stderr'].decode('utf-8', errors='replace'), 'truncated': truncated, 'timedOut': expired, 'cancelled': cancelled}
 
 
 async def inspect_browser(script, operation_id):

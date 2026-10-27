@@ -18,6 +18,7 @@ from pathlib import Path
 import sqlite3
 import time
 import uuid
+import httpx
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from opensandbox import Sandbox
@@ -30,6 +31,32 @@ import uvicorn
 
 TERMINAL = {'completed', 'failed', 'cancelled', 'uncertain'}
 ACTIONS = {'write', 'read', 'list', 'exec', 'start', 'process', 'stop', 'browser', 'download', 'export'}
+
+
+class BoundedStream(httpx.AsyncByteStream):
+    def __init__(self, stream):
+        self.stream = stream
+    async def __aiter__(self):
+        count = 0
+        async for chunk in self.stream:
+            count += len(chunk)
+            if count > 1048576:
+                await self.stream.aclose()
+                raise RuntimeError('OpenSandbox protocol response exceeds 1 MiB')
+            yield chunk
+    async def aclose(self):
+        await self.stream.aclose()
+
+
+class BoundedTransport(httpx.AsyncBaseTransport):
+    def __init__(self):
+        self.transport = httpx.AsyncHTTPTransport()
+    async def handle_async_request(self, request):
+        response = await self.transport.handle_async_request(request)
+        response.stream = BoundedStream(response.stream)
+        return response
+    async def aclose(self):
+        await self.transport.aclose()
 
 
 def identity(value):
@@ -100,6 +127,7 @@ class Gateway:
         self.store = Store(root / 'gateway.sqlite')
         self.connection = ConnectionConfig(domain=config['lifecycleDomain'], api_key=config['lifecycleKey'],
             protocol='http', use_server_proxy=True, disable_metrics=True, retry_policy=RetryPolicy.disabled(),
+            transport=BoundedTransport(),
             request_timeout=timedelta(seconds=30))
         self.clients = {}
         self.locks = {}
@@ -198,7 +226,7 @@ class Gateway:
                         timeout = 1800
                     else:
                         value = dict(payload, operationID=operation)
-                        value['timeoutSeconds'] = min(120, body['timeoutSeconds'])
+                        value['timeoutSeconds'] = min(120, body['timeoutSeconds'], payload.get('timeoutSeconds', 120))
                         encoded = base64.b64encode(json.dumps(value, ensure_ascii=False).encode()).decode()
                         argv = ['python3', '/opt/mobilellm/guest.py', encoded]
                         timeout = min(120, body['timeoutSeconds']) + 5
@@ -226,7 +254,7 @@ class Gateway:
                         try:
                             output = json.loads(logs.content.strip())
                         except json.JSONDecodeError:
-                            output = {'stderr': logs.content[:32768]}
+                            output = {'error': 'The sandbox returned no valid operation result', 'stderr': logs.content[:32768]}
                         cancelled = self.store.operation(operation)['state'] == 'cancelling'
                         good = status.exit_code == 0 and output.get('exitCode', 0) == 0 and 'error' not in output
                         final = 'cancelled' if cancelled else 'completed' if good else 'failed'

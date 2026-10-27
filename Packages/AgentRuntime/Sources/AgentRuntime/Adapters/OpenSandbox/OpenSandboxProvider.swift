@@ -49,11 +49,6 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
             .networkResponseBytesPerOperation: 1_048_576, .networkResponseBytesTotal: 2_097_152,
             .generatedArtifactBytes: 8_388_608, .persistedOutputBytes: 8_388_608, .peakMemoryBytes: 2_147_483_648
         ]), maximumThermalState: .critical, memoryPressureResponse: .pause)
-        try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700])
-        var local = self.directory
-        var values = URLResourceValues(); values.isExcludedFromBackup = true
-        try local.setResourceValues(values)
     }
 
     public func capabilities() async throws -> SandboxCapabilities { try report() }
@@ -290,6 +285,10 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
         return value
     }
     private func save(_ value: Record) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        var local = directory
+        var metadata = URLResourceValues(); metadata.isExcludedFromBackup = true
+        try local.setResourceValues(metadata)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         let path = directory.appendingPathComponent(value.id.description + ".json")
         try encoder.encode(value).write(to: path, options: .atomic)
