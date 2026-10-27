@@ -1,0 +1,1655 @@
+{
+  "description": "Original user-facing worker outputs and available source archives from failed development attempts. These reports are preserved evidence, not accepted outcomes. Private model reasoning and credentials are excluded.",
+  "attempts": [
+    {
+      "run": "repair-58262dd3-bd83-4a4a-b307-6029dba738d3",
+      "originalGoal": "Fix the inventory.py project in the workspace. reserve(stock, requests) must aggregate repeated SKU requests, reject invalid quantities or insufficient stock without changing any input, and return remaining stock on success. Keep the public function signature and the existing tests. Run the tests, fix the code, verify it and deliver the repaired project.",
+      "failures": [
+        "The autonomous task needs effect reconciliation",
+        "Goal did not complete: waitingForReconciliation",
+        "No actual source archive",
+        "No independent collaborating agents"
+      ],
+      "publicWorkerResults": [],
+      "sourceArchives": [],
+      "tasks": [
+        {
+          "id": "fix",
+          "agent": "fixer",
+          "state": "running",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "review",
+          "agent": "reviewer",
+          "state": "pending",
+          "required": true,
+          "dependencies": [
+            "fix"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "aggregation",
+                "requirement": "reserve aggregates repeated SKU requests into one demand calculation and produces the correct remaining stock.",
+                "targetTaskIDs": [
+                  "fix"
+                ]
+              },
+              {
+                "id": "validation",
+                "requirement": "Invalid quantities and insufficient stock are rejected with the required behavior.",
+                "targetTaskIDs": [
+                  "fix"
+                ]
+              },
+              {
+                "id": "immutability",
+                "requirement": "Rejected calls do not mutate stock or requests; successful behavior preserves inputs as required by the specification.",
+                "targetTaskIDs": [
+                  "fix"
+                ]
+              },
+              {
+                "id": "signature-tests",
+                "requirement": "The public function signature is unchanged and the existing tests are preserved and pass.",
+                "targetTaskIDs": [
+                  "fix"
+                ]
+              },
+              {
+                "id": "artifact",
+                "requirement": "The final repaired project is exported from the unchanged verified source.",
+                "targetTaskIDs": [
+                  "fix"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox11:sandbox_run",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": null
+        }
+      ]
+    },
+    {
+      "run": "restaurant-20b24cfe-7445-4928-8046-4f1182741301",
+      "originalGoal": "开发一个中餐馆网站，支持在线订台。",
+      "failures": [
+        "Goal did not complete: The model request budget was used; remaining work and partial results are saved.",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported"
+      ],
+      "publicWorkerResults": [
+        {
+          "artifactID": "build-site:1",
+          "taskID": "build-site",
+          "taskRevision": 2,
+          "text": "## Status: incomplete — tool budget exhausted (6/6 calls used), one required verification step did not pass\n\n### What was actually created (verified by `sandbox_write_files` result)\n\n| Path | Bytes | SHA-256 |\n|---|---|---|\n| `/workspace/project/app.py` | 19,736 | `4ea9a6c72daf4d4d6365e032b05c635d6cb639e230ddda2f8528074fc4d3a59d` |\n| `/workspace/project/tests/test_app.py` | 5,424 | `226bc1d43d8ff254503e9b0bc8788331fe6468407c634ae7345fc6f1b30dd99a` |\n| `/workspace/project/README.md` | 1,455 | `f35b905b9bc56ddf564baf0c4bf98cc95efb67ae38cb9d721ad14331c8e7c737` |\n\nWorkspace ID `20b24cfe-7445-4928-8046-4f1182741301`, write operation `f4b1259d-d046-4b97-0b0c-055c7174dd12`.\n\n`app.py` implements the full spec: `ThreadingHTTPServer` + `sqlite3` only, DB at `$MOBILELLM_DATA_DIR/restaurant.db` (fallback `./data`), seed tables `A1–A3` (2 seats), `B1–B4` (4), `C1–C2` (6), `D1–D2` (8); `BEGIN IMMEDIATE` + `NOT EXISTS` free-table probe ordered by `seats ASC, id ASC` (smallest fitting) + `UNIQUE(table_id, res_date, res_time)` as the hard double-booking guard; validation of 姓名/电话/日期/时段白名单/人数 1–8/备注; success page renders `id=\"confirmation-code\"` (`FML-XXXXXX`) and `id=\"table-number\"`; `/lookup?code=` returns 200/404; `/healthz`; all CSS inline, no external assets.\n\n### Test result — FAILED\n\n- `python -m unittest discover -s tests -v` was run three times; **exit code 1 each time** (`exitCode: 1`, operation `3c2e06d8-74c2-8c19-d939-abcb3f39f756`).\n- The captured stdout/stderr in that operation record were **empty strings**, so **the list of failing tests is not confirmed evidence**. An attempt to read `/tmp/test.log` was rejected (tool requires a workspace-relative path), and the retry that wrote `test.log` inside the project still returned exit 1 without exposing the log text.\n- Only one concrete signal survives: run 1's message shows `test_concurrent_bookings_no_double_booking` had started and emitted `DeprecationWarning: datetime.datetime.utcnow() is deprecated` at `app.py:177`. A warning alone does not fail a test.\n\n### Most probable cause (hypothesis, NOT verified)\n\n`tests/test_app.py::test_no_overbooking_same_slot` contradicts the app's own required behaviour. It books three 2-person parties at the same date/19:00 and then asserts the 4th raises `NoTableError`. But \"smallest **fitting** table\" legitimately escalates a 2-person party to a free 4/6/8-seat table, and the seed has 11 tables — so the 4th booking succeeds and the assertion fails. The correct exhaustion test must fill *all* capacities (as the concurrency test does with party_size=8 against the two 8-seat tables). The test file was also patched mid-run to give each test a unique day via a `_counter` (replacing a `__hash__`-based day, which varies per process under hash randomisation); that patch's effect is unverified.\n\n### Not done (do not treat as passing)\n\n- **Server start: never executed.** `sandbox_start` was not called. No listener on port 8000 exists as far as this run's evidence shows. Intended URL: `http://127.0.0.1:8000/` (server binds `0.0.0.0:8000` by default) — **unverified, not asserted reachable**.\n- **Browser check: never executed.** `sandbox_browser` was not called, so there is **no** confirmation-code assertion from a real form submission. Any claim of a passing end-to-end booking would be fabricated.\n- No final source archive was exported.\n\n### Exact next actions for whoever resumes (needs 3–4 calls)\n\n1. Rewrite `test_no_overbooking_same_slot` to exhaust capacity honestly — e.g. 12 sequential `party_size=8` bookings on one date/`19:00`, expect exactly 11 successes (`D1`,`D2`,`C1`,`C2`,`B1–B4`,`A1–A3`) and `NoTableError` on the 12th; keep the HTTP-level 409 check. Optionally switch `datetime.utcnow()` → `datetime.now(timezone.utc)` to clear the warning.\n2. `cd /workspace/project && python3 -m unittest discover -s tests -v; echo \"EXIT_CODE=$?\"` and read the real exit code plus the `FAIL:`/`OK` lines (write the log inside the project, not `/tmp`).\n3. `sandbox_start` on port 8000, then `sandbox_browser`: open `/`, fill 姓名/电话/日期/时间/人数, submit, assert the `#confirmation-code` text matches `^FML-[0-9A-F]{6}$` and that `#table-number` is non-empty; then GET `/lookup?code=<code>` and assert the same code and name appear.\n4. Export the archive.\n\n**Bottom line:** source files exist and are consistent with the brief, but the mandated test exit code is **1 (failing)**, and both the live-server check and the browser booking assertion were never performed.",
+          "validationFailure": null,
+          "review": null
+        }
+      ],
+      "sourceArchives": [],
+      "tasks": [
+        {
+          "id": "build-app",
+          "agent": "builder",
+          "state": "failed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": "Tool is outside this task's allowed policy: sandbox_browser."
+        },
+        {
+          "id": "verify-app",
+          "agent": "reviewer",
+          "state": "pending",
+          "required": true,
+          "dependencies": [
+            "build-app"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "booking-flow",
+                "requirement": "The running site presents a usable Chinese restaurant site and a real online reservation flow: browser form submission succeeds and visibly returns a confirmation code/table assignment with no blocking JS or page errors.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              },
+              {
+                "id": "persistence-integrity",
+                "requirement": "Reservations are stored server-side in SQLite under MOBILELLM_DATA_DIR; availability uses a transactional check and smallest-fitting-table assignment so concurrent bookings cannot overbook; automated tests pass with a real zero exit code.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              },
+              {
+                "id": "exported-source",
+                "requirement": "sandbox_export succeeds on the final unchanged source and includes the runnable application, tests, and README; the result is a working app rather than a static mockup, with no external CDN dependency.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "sandbox_browser",
+              "sandbox_export"
+            ]
+          },
+          "failure": null
+        },
+        {
+          "id": "build-site",
+          "agent": "builder",
+          "state": "completed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "verify-site",
+          "agent": "reviewer",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "build-site"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "booking-flow",
+                "requirement": "The running site presents a usable Chinese restaurant site and a real online reservation flow: browser form submission succeeds and visibly returns a confirmation code with table assignment, with no blocking JS or page errors.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "persistence-integrity",
+                "requirement": "Reservations are stored server-side in SQLite under MOBILELLM_DATA_DIR; availability uses a transactional check and smallest-fitting-table assignment so concurrent bookings cannot overbook; automated tests pass with a real zero exit code.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "exported-source",
+                "requirement": "sandbox_export succeeds on the final unchanged source and includes the runnable application, tests and README; the result is a working app rather than a static mockup, with no external CDN dependency.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": "The run stopped because a fixed resource budget was exhausted."
+        }
+      ]
+    },
+    {
+      "run": "restaurant-252a7fda-74c5-460a-91ef-49ada33f88af",
+      "originalGoal": "开发一个中餐馆网站，支持在线订台。",
+      "failures": [
+        "Goal did not complete: The coordinator could not continue: __MOBILELLM_WORKFLOW_ERROR__|hostFailure|The model could not produce a valid action after one repair attempt: model.online.structured-output-invalid: The online model returned invalid structured output.",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported",
+        "No independent collaborating agents"
+      ],
+      "publicWorkerResults": [],
+      "sourceArchives": [],
+      "tasks": [
+        {
+          "id": "build-site",
+          "agent": "builder",
+          "state": "failed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": "The online model returned no answer text. It may have spent its output budget on service-side reasoning; turn thinking off or raise Max tokens and retry."
+        },
+        {
+          "id": "accept-site",
+          "agent": "reviewer",
+          "state": "pending",
+          "required": true,
+          "dependencies": [
+            "build-site"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "c1-persistence",
+                "requirement": "Online reservations are written to server-side SQLite under MOBILELLM_DATA_DIR, are readable through the lookup API/UI, and survive a fresh browser context and service restart; validation rejects bad input.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "c2-site-ux",
+                "requirement": "The Chinese restaurant site includes branding, menu with prices, hours/contact, responsive layout, and an accessible 在线订台 form with clear validation, success confirmation, reservation ID, and 查询订台 lookup.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "c3-runtime-evidence",
+                "requirement": "The actual app starts successfully, browser end-to-end checks pass, automated tests exit 0, and final source is present/exported from /workspace/project.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox11:sandbox_run",
+              "7:sandbox13:sandbox_start",
+              "7:sandbox12:sandbox_stop",
+              "7:sandbox17:sandbox_read_file",
+              "7:sandbox18:sandbox_list_files"
+            ]
+          },
+          "failure": null
+        }
+      ]
+    },
+    {
+      "run": "restaurant-472cd257-f9af-44b6-9ba2-4296c1d6bd22",
+      "originalGoal": "开发一个中餐馆网站，支持在线订台。",
+      "failures": [
+        "The autonomous task needs effect reconciliation",
+        "Goal did not complete: waitingForReconciliation",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported"
+      ],
+      "publicWorkerResults": [
+        {
+          "artifactID": "build_site:1",
+          "taskID": "build_site",
+          "taskRevision": 2,
+          "text": "## 状态：部分完成（代码与单元测试已通过；服务启动 / 浏览器验收 / 源码导出 未执行）\n\n本轮工具预算在完成「写文件 + 跑测试」后用尽，**未执行** `sandbox_start`、`sandbox_browser`、`sandbox_export`。因此以下三项目标要求我**不能声称已完成**：应用是否在 8000 端口运行、真实浏览器下单/报错/满位验证、最终源码归档。\n\n### 1. 已写入的项目文件（有 sandbox_write_files 记录）\n\n路径均在 `/workspace/project`：\n\n| 文件 | 字节 | sha256 |\n|---|---|---|\n| `app.py` | 11423 | `6d8e35796b2b0c32a1f2844b6052149c1501d2f1609ac38502ac13478e33d71f` |\n| `public/index.html` | 10456 | `e4c40731a8455c694cb34d99389f8d9bb610b3d9a23ce3dbd7359583f809c4bc` |\n| `public/styles.css` | 10741 | `60448ee705d60f46f414b8fa1acc61280fdb3479349a761b3507cde90e5fee7e` |\n| `public/app.js` | 7880 | `baf115af15b0afb877505b0ec7779ef00293468f5fc8313c509a36bb80e72326` |\n| `tests/test_app.py` | 9303 | `208930efc42ca469b7273921020dd9ebc00816918259e4a2843cb951dce3f713` |\n| `README.md` | 2862 | `015678632062060888dbc694504ba4261345b7a70a82d11252062b663c88f4ed` |\n\n环境事实（sandbox_run 输出）：Python 3.12.3；`MOBILELLM_DATA_DIR=/workspace/data`；`/workspace/project` 初始为空。\n\n### 2. 实现要点（与任务规格对应）\n\n- 纯标准库：`http.server.ThreadingHTTPServer` + `sqlite3` + `json`，无 pip / 外网依赖；静态资源由同一服务提供，`/` 返回 `public/index.html`。\n- DB：`os.environ['MOBILELLM_DATA_DIR']/restaurant.sqlite3`（未设该变量时回退项目内 `data/`），`os.makedirs(..., exist_ok=True)`；表 `bookings(id, ref, name, phone, date, time, party_size, notes, created_at)`，`ref` UNIQUE，`(date,time)` 索引。**无 localStorage**，前端只 `fetch` 服务端。\n- `POST /api/bookings`：name 2–40；phone 正则 `^\\+?[0-9][0-9 \\-]{5,18}[0-9]$` 且数字 7–15；date 今天 ~ +90 天（含端点）；time 严格属于 14 个 30 分钟时段（11:00–13:30 / 17:00–20:30）；party_size 1–12（拒绝 bool/浮点）；notes ≤200。错误返回 400 `{\"error\",\"code\":\"validation_error\",\"fields\":{...}}`，非法 JSON 返回 400 `code=invalid_json`。\n- 满位：`BEGIN IMMEDIATE` 事务内计数，`>=5` 回滚并返回 **409** `code=slot_full`（防并发超订）。\n- 成功：**201**，`ref = \"ZG-YYYYMMDD-XXXX\"`（4 位大写字母/数字，冲突重试），同时返回 `booking` 明细。\n- `GET /api/availability?date=YYYY-MM-DD`：返回 14 个时段的 `booked/remaining/full`，**不含姓名/电话**；日期非法或越界返回 400。\n- `GET /health`：`{\"status\":\"ok\",\"service\":\"zuixiangge\",\"db\":\"ok\"}`。\n- 前端中文 UI：暖红 `#8c1c13` / 金 `#d9a441`、Hero、镇店四味、双栏菜单、营业时间表、地址电话、订台表单（`label`/`fieldset`/`legend`、`role=\"alert\"` 错误、`aria-invalid`、跳过链接、focus-visible）、成功确认卡片显示预订号、时段按钮显示「余 N 桌 / 已订满」并置灰、`@media` 移动端单列布局、系统字体 + 纯 CSS（无图片/字体外链）。\n\n### 3. 测试证据（sandbox_run，命令与真实输出）\n\n命令：`cd /workspace/project && python3 -m unittest discover -s tests -v 2>&1 | tail -60; echo \"EXIT=${PIPESTATUS[0]}\"`\n\n真实输出末尾：\n\n```\ntest_path_traversal_blocked ... 404 ... ok\n\n----------------------------------------------------------------------\nRan 21 tests in 1.134s\n\nOK\nEXIT=0\n```\n\n测试使用 `tempfile.TemporaryDirectory()` 独立 SQLite + `make_server(port=0, host=\"127.0.0.1\")` 随机空闲端口，真实 HTTP 请求，不触碰生产库。覆盖：首页/CSS/JS 200、`/health`、路径穿越 404、201 建单并落库校验 9 个列、ref 唯一且日期段正确、name/phone/date/time/party_size/notes 各类非法值 400、过去日期与 +91 天 400 而 +90 天 201、三种电话格式通过、非法 JSON/数组/空 body 400、第 6 次同日期同 12:30 返回 409 且库内仍为 5 行、availability 不泄露姓名电话且 14 个时段。\n\n### 4. 未完成 / 缺失证据（不得视为通过）\n\n- **未启动服务**：没有 `sandbox_start` 记录，无法确认 `http://localhost:8000/` 正在监听。\n- **未做浏览器验收**：无 `sandbox_browser` 记录，因此「真实提交有效订台并断言确认号」「非法字段提示」「满位 409 提示」三项 UI 级证据缺失。\n- **未导出源码**：无 `sandbox_export` 归档记录。\n\n### 5. 复现 / 重启命令\n\n```bash\ncd /workspace/project\nMOBILELLM_DATA_DIR=/workspace/data PORT=8000 python3 app.py\n# 打开 http://localhost:8000/\n# DB: /workspace/data/restaurant.sqlite3\n# 测试: cd /workspace/project && python3 -m unittest discover -s tests -v\n```\n\n下一步应由具备工具预算的执行者：启动上述命令 → 用浏览器提交一次有效订台并断言确认卡与 `ZG-\\d{8}-[0-9A-Z]{4}` → 提交非法电话/姓名断言错误文案 → 对同一 date/time 连发 5 次后断言第 6 次 409 与前端「已订满」→ 最后 `sandbox_export` 打包。",
+          "validationFailure": null,
+          "review": null
+        }
+      ],
+      "sourceArchives": [],
+      "tasks": [
+        {
+          "id": "build_site",
+          "agent": "site_builder",
+          "state": "completed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "review_site",
+          "agent": "site_reviewer",
+          "state": "running",
+          "required": true,
+          "dependencies": [
+            "build_site"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "site_complete",
+                "requirement": "Chinese restaurant site includes restaurant identity/hero, menu or signature dishes, hours, location/contact, an accessible reservation form, and a responsive mobile layout with no external assets.",
+                "targetTaskIDs": [
+                  "build_site"
+                ]
+              },
+              {
+                "id": "booking_validation",
+                "requirement": "Online booking validates all required fields, rejects invalid input with meaningful errors, handles full slots, and returns a visible unique confirmation reference.",
+                "targetTaskIDs": [
+                  "build_site"
+                ]
+              },
+              {
+                "id": "persistence",
+                "requirement": "Reservations are stored server-side in SQLite under MOBILELLM_DATA_DIR, not client-only, and an existing booking survives a real server restart and fresh browser context.",
+                "targetTaskIDs": [
+                  "build_site"
+                ]
+              },
+              {
+                "id": "runtime_quality",
+                "requirement": "Automated tests pass with preserved exit codes, the app runs on port 8000, the browser booking flow succeeds without console errors, and sandbox_export contains the final source.",
+                "targetTaskIDs": [
+                  "build_site"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox11:sandbox_run",
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": null
+        }
+      ]
+    },
+    {
+      "run": "restaurant-610b9cd9-d9b2-4045-827a-9e0094f826b9",
+      "originalGoal": null,
+      "failures": [
+        "Initial builder exhausted its fixed budget after malformed model arguments. A later start call used a one-shot command; readiness failed and a race interrupting its already-exited process was misclassified uncertain. Evaluation stopped without injecting corrections."
+      ],
+      "publicWorkerResults": [],
+      "sourceArchives": [],
+      "tasks": [
+        {
+          "id": "build_site",
+          "agent": "web_builder",
+          "state": "running",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "accept_site",
+          "agent": "acceptance_reviewer",
+          "state": "needsReview",
+          "required": true,
+          "dependencies": [
+            "build_site"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "chinese_ui",
+                "requirement": "The homepage loads successfully with a coherent Chinese-language restaurant presentation, menu/hours/location information, and a usable reservation form with no blocking JavaScript errors.",
+                "targetTaskIDs": [
+                  "build_site"
+                ]
+              },
+              {
+                "id": "reservation_flow",
+                "requirement": "A real browser submission creates a reservation and displays a confirmation/reference; the reservation is retrievable in a fresh browser context, demonstrating server-side rather than client-only storage.",
+                "targetTaskIDs": [
+                  "build_site"
+                ]
+              },
+              {
+                "id": "restart_persistence",
+                "requirement": "After stopping and restarting the actual service, the previously created reservation remains present, proving persistent server-side storage.",
+                "targetTaskIDs": [
+                  "build_site"
+                ]
+              },
+              {
+                "id": "source_export",
+                "requirement": "The final unchanged application source is exported successfully and contains the complete runnable website and reservation backend.",
+                "targetTaskIDs": [
+                  "build_site"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox12:sandbox_stop",
+              "7:sandbox13:sandbox_start",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": null
+        }
+      ]
+    },
+    {
+      "run": "restaurant-6bdb5e0d-04f2-4bd6-8602-42bf82b5f280",
+      "originalGoal": "开发一个中餐馆网站，支持在线订台。",
+      "failures": [
+        "The autonomous task needs effect reconciliation",
+        "Goal did not complete: waitingForReconciliation",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported",
+        "No independent collaborating agents"
+      ],
+      "publicWorkerResults": [],
+      "sourceArchives": [],
+      "tasks": [
+        {
+          "id": "build-site",
+          "agent": "builder",
+          "state": "running",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "review-site",
+          "agent": "reviewer",
+          "state": "pending",
+          "required": true,
+          "dependencies": [
+            "build-site"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "site-content",
+                "requirement": "Chinese restaurant site loads at base_url with restaurant story, menu, hours/location, and a usable responsive reservation form.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "booking-flow",
+                "requirement": "A valid booking produces a confirmation/reference; invalid fields, dates, party sizes, or time slots are rejected with clear errors.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "persistent-shared-state",
+                "requirement": "Reservations persist server-side in SQLite under MOBILELLM_DATA_DIR, remain visible from a fresh browser context, and survive a documented service restart.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "capacity-control",
+                "requirement": "Per-slot capacity/overbooking protection exists server-side and is transactional rather than client-only.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "source-export",
+                "requirement": "Final unchanged source, README, and tests are exported successfully with sandbox_export and the artifact contains the runnable application.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox14:sandbox_export",
+              "7:sandbox12:sandbox_stop",
+              "7:sandbox13:sandbox_start"
+            ]
+          },
+          "failure": null
+        }
+      ]
+    },
+    {
+      "run": "restaurant-6dc7377e-bc74-49f4-b2d2-05de2ecaf909",
+      "originalGoal": "开发一个中餐馆网站，支持在线订台。",
+      "failures": [
+        "Goal did not complete: 共享工具预算 24/24 已耗尽，剩余两项验收（真实停服重启持久化、sandbox_export 归档）必须依赖 sandbox_stop/sandbox_start/sandbox_export 的实际工具记录，无法在零工具调用下完成，也不能伪造；已保留全部可用成果与证据，故报阻塞。",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported"
+      ],
+      "publicWorkerResults": [
+        {
+          "artifactID": "build-site:1",
+          "taskID": "build-site",
+          "taskRevision": 2,
+          "text": "## 结果状态：部分完成 — 后端已通过测试，实时 UI 订台与最终导出未完成\n\n### 已确认完成（有工具记录）\n\n**1. 源文件写入 `/workspace/project`（sandbox_write_files，操作 ID `2d1a7174-b6f9-5a6e-24c2-a5cea032288e`）**\n\n| 路径 | 字节 | SHA-256 |\n|---|---|---|\n| static/index.html | 10076 | 8827344ba1fff99349d809e76dc5e7d4e6106c30c940396ced230d3509175ba7 |\n| static/styles.css | 12006 | 7f7ba9e9887ebe29b9115f83a8c713d3a09b7825c683e89e8a7c63e44285a619 |\n| static/app.js | 9157 | 8fce0d932c380bb72b5d4b2463f353d7658f409fc26115b2bd87157585765405 |\n| test_app.py | 8636 | 577a0b660b205d1b6833bf1ff5743cba3b71080278a1d97d514be3864a886658 |\n| README.md | 2351 | fcf7e3b7f8907831225dac60e6bd6621c8a0a899ea2f06733f33a9f1bcdc4206 |\n\n`server.py` 在更早的写入调用中落盘（该次观测未在本轮证据里回显，故不列哈希；`ls -l static` 只覆盖 static 目录）。前端为中文响应式站点，含 hero / 招牌菜 / 关于 / 在线订台 / 联系 / 成功弹窗，表单含姓名（2–20 中文字符）、手机（`^1[3-9]\\d{9}$`）、日期、时间、人数、桌位选择与备注。\n\n**2. 自动化测试全绿（sandbox_run，操作 ID `2a0d1911-6f89-88cf-f7a4-074dd54175f0`）**\n- `TEST_EXIT=0`，`Ran 11 tests ... OK`，耗时 0.261s。\n- 覆盖：health、静态首页、availability（含人数筛选）、availability 参数校验、成功订台 + GET 详情、已订桌从可订列表消失、`table_id+date+time` 冲突 409、容量/输入校验 400、非法 JSON、**杀进程重启后数据仍在且唯一约束仍生效**。\n- 仅有 `ResourceWarning: unclosed file`（subprocess 管道未关闭），不影响退出码。\n\n**3. 实际服务曾成功启动于 8000 端口（同一次 sandbox_run 内）**\n- 日志：`锦绣轩中餐馆 running on http://0.0.0.0:8000 (db=/workspace/data/reservations.db)`，进程 pid=75。\n- `GET /api/health` → `{\"status\":\"ok\",\"service\":\"jinxiu-restaurant\"}`（200）\n- `GET /api/availability?date=2026-11-02&time=18:00&party_size=4` → 200，返回 id 3(B1,4人)、4(B2,4人)、5(C1,6人)、6(C2,6人)、7(D1,8人)。符合“容量足够且未被预订”的语义。\n\n### 未完成 / 缺失证据\n\n- **真实 UI 订台未完成**：sandbox_browser 调用失败，错误为 `sandbox.opensandbox.execution / \"Start an application on the selected port before inspecting it\"`（permanent，externalEffect: confirmedNone）。原因：前一次 `sandbox_run` 用 `setsid nohup` 起的后台进程在该调用结束后已不可达，浏览器检查时 8000 端口无服务。因此页面渲染、表单校验、fetch 提交、成功弹窗、移动端布局**均无实测记录**。\n- **服务重启尝试失败**：sandbox_start（port 8000）返回 `\"The started process did not serve HTTP on its declared port\"`（externalEffect: confirmedApplied）。命令先 `pkill -f \"[p]ython3 server.py\"` 再前台启动，就绪探测未通过；具体原因（探测过早 / 端口占用 / 进程被杀）无法从该错误中区分，**不得据此断言服务不可用**。\n- **未执行 sandbox_export**：无最终源码归档产物。\n- 因此 `server.py` 的最终内容与哈希未在本轮证据中复核；上述 5 个文件的哈希来自写入回执，非磁盘复读。\n\n### 给后续执行者的最小修复路径（剩余预算 1 次工具调用时优先做这个）\n\n不要再用 `sandbox_run` + `nohup` 起服务：进程存活期与调用绑定。改用 **sandbox_start 直接跑 `python3 server.py`**，并把 `PORT=8000 MOBILELLM_DATA_DIR=/workspace/data` 写进启动命令；确认 `/api/health` 200 后再调用 sandbox_browser。若必须复用已有 DB，先检查 `/workspace/data/reservations.db` 是否被残留进程锁住。\n\n浏览器脚本可沿用已写好的那份（日期 2026-11-03 / 18:30 / 4 人 / 张伟 / 13900139000 / 备注“靠窗，需要儿童座椅”），它已包含：区块存在性断言、非法姓名（`Li Ming`）被前端拦截、真实订台 + 弹窗编号、API 复查持久化、已订桌从 availability 消失、强制 409 冲突、390×844 移动端无横向溢出与导航开合。\n\n> 说明：本报告只陈述工具回执中实际出现的内容；未观测到的 UI 行为一律标记为未知，不推断为通过。",
+          "validationFailure": null,
+          "review": null
+        },
+        {
+          "artifactID": "fix-and-export:1",
+          "taskID": "fix-and-export",
+          "taskRevision": 2,
+          "text": "**锦绣轩订台应用修复报告（fix-and-export）**\n\n## 一、诊断结论\n\n读取 `accept-site:1` 验收反馈后，结合 `sandbox_run` 读取的原始 `static/app.js`（sha256 `8fce0d93…5405`）确认根因：\n\n1. **默认日期为空/当天**：原代码 `if (!dateEl.value) dateEl.value = todayISO();`，且 `#time`、`#party_size` 未设默认值，`loadAvailability()` 在首屏因 `!time || !party` 直接返回，从不请求 `/api/availability`，页面停留在“该时段暂无可订餐桌”。\n2. **availability 请求缺参数**：因上一条，请求根本没发出；即便发出，原代码只读 `r.body.tables`，无兜底。\n3. **提交未带 table_id**：原代码 `table_id: selectedTable.id` 在未选桌时抛异常，被 `.catch` 吞掉，只显示“网络异常”，reservations 表因此为空。\n4. **fetch 错误被吞**：`.catch(function(){…})` 无日志，掩盖了上述异常。\n\n## 二、修改内容（仅 `static/app.js`，其余文件未动）\n\n`sandbox_write_files` 回执：`operationID 439fa286-13a3-770e-c8cb-ee6bbd14b6d1`，写入 `static/app.js` 10578 bytes，sha256 `7a95732dca8c2539047898d6893a6faf410619a699d2eac6812eede23917633b`。\n\n- 新增 `tomorrowISO()` 与 `applyDefaults()`：日期默认**明天**、`min` 为今天，时间默认 `18:00`、人数默认 `2`（均校验选项存在）。\n- `[dateEl,timeEl,partyEl]` 同时监听 `change` 与 `input`，任一变化即调用 `loadAvailability()`；首屏 `applyDefaults(); loadAvailability();` 自动请求 `/api/availability?date=…&time=…&party_size=…`。\n- 渲染可点选桌位单选项（`role=\"radio\"`、`aria-checked`、`data-table-id`），选中后写入 `selectedTable`。\n- 提交 payload 含 `table_id: Number(selectedTable.id)`；201 时 `showConfirmation()` 弹出含 `#编号` 的确认弹窗并显示“预订成功！预订编号 …”；409 与其它错误走 `setMsg(..., \"error\")` 内联错误。\n- 校验在提交前拦截：姓名 `^[\\u4e00-\\u9fff\\u3400-\\u4dbf·]{2,20}$`（`Li Ming` 不通过）、手机 `^1[3-9]\\d{9}$`、日期不得早于今天、人数 1–8、必须选桌；错误写入 `[data-err=\"…\"]` 并设 `aria-invalid`。\n- 暴露 `window.__jinxiu` 供自动化检查。\n\n## 三、工具回执证据\n\n| 步骤 | 工具 | 回执 |\n|---|---|---|\n| 读取现状 | sandbox_run | exitCode 0，`operationID b05f12d5-31c2-d224-385c-a562e99cf8e9`，输出 app.js 全文与 index.html 表单结构 |\n| 基线测试 | sandbox_run | exitCode 0，`operationID 221ade06-40eb-099e-8024-76cf83d6b8d7`，`Ran 11 tests … OK`，`TEST_EXIT=0` |\n| 写入修复 | sandbox_write_files | `operationID 439fa286-13a3-770e-c8cb-ee6bbd14b6d1`，sha256 `7a95732d…633b` |\n| 回归测试 | sandbox_run | exitCode 0，`operationID f20ff871-8f6d-28ba-657e-ba8f9079734b`，`Ran 11 tests in 0.245s / OK`，`TEST_EXIT=0`，`node --check` 输出 `JS_SYNTAX_OK` |\n| 启动服务 | sandbox_start | `processID a5163919-7ebd-3030-515d-3492e434f768`，port 8000，`running:true`，命令 `PORT=8000 MOBILELLM_DATA_DIR=/workspace/data python3 server.py`（前台，无 nohup/setsid） |\n| 浏览器实测 | sandbox_browser | **失败**：`sandbox.opensandbox.execution` — “Start an application on the selected port before inspecting it”，`externalEffect: confirmedNone`，脚本未执行 |\n\n## 四、未完成项（必须如实说明）\n\n1. **浏览器端到端流程未取得证据**：`sandbox_browser` 调用被工具层拒绝（提示需先在所选端口启动应用），尽管 `sandbox_start` 已返回 `running:true`。因此以下均**未验证**：默认日期为明天、`Li Ming` 被拦截且弹窗不出现、有效订台（2026-11-05 18:30 / 4 人 / 张伟 / 13900139000）的弹窗文本与预订编号、页面内 `fetch GET /api/reservations/<id>` 返回 200、重复 POST 返回 409、390px 无横向溢出与导航切换。\n2. **未执行 `sandbox_export`**：本轮工具调用预算已耗尽（6/6），未导出源码归档，**无归档 ID/路径**。\n3. **未执行 `sandbox_stop`**：服务进程 `a5163919-…` 仍在运行。\n4. 代码级证据仅覆盖 `test_app.py` 的 11 项测试（含 `test_07_conflict`、`test_11_persistence_after_restart`）与 JS 语法检查，**不能替代**真实浏览器与真实服务器持久化验证。\n\n## 五、下游需继续执行的动作\n\n1. 确认 8000 端口服务可访问后重跑 `sandbox_browser` 脚本（脚本已备好，含 `print(json.dumps(...))` 输出），保留 `booking_id`、`modal_text`、`get_status/get_body`、`duplicate_status`。\n2. 重启服务后 `GET /api/reservations/<id>` 应仍为 200 且数据一致；重复同桌/同日/同时 POST 应返回 409。\n3. 执行 `sandbox_export` 导出 `/workspace/project` 并报告归档 ID/路径。\n4. 完成后 `sandbox_stop` 停止进程 `a5163919-7ebd-3030-515d-3492e434f768`。",
+          "validationFailure": null,
+          "review": null
+        }
+      ],
+      "sourceArchives": [],
+      "tasks": [
+        {
+          "id": "build-site",
+          "agent": "site-builder",
+          "state": "completed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "accept-site",
+          "agent": "site-reviewer",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "build-site"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "booking-flow",
+                "requirement": "Browser end-to-end booking succeeds: homepage loads, form validates, availability is shown, valid submission produces a visible confirmation, and the reservation is retrievable through the API.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "persistence-conflict",
+                "requirement": "Reservations persist in SQLite across a server restart and a duplicate table/date/time booking is rejected with HTTP 409.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "site-quality",
+                "requirement": "Responsive Chinese restaurant site includes hero, menu, about, contact and booking UI with sensible validation and no broken layout at mobile width.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "tests-export",
+                "requirement": "Automated tests exit successfully and final source has been exported through sandbox_export.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox11:sandbox_run",
+              "7:sandbox12:sandbox_stop",
+              "7:sandbox13:sandbox_start",
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox17:sandbox_read_file"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox12:sandbox_stop\ntests-export: Partial pass: /workspace/project contains server.py (12199 bytes), test_app.py (8636 bytes), and static/{index.html,app.js,styles.css}; the rerun of test_app.py exited 0 with 'Ran 11 tests ... OK'. Failure: no sandbox_export invocation or exported archive was observed. The attempted archive search aborted at an IndexError ('TOTAL 0') before its find command ran. Run sandbox_export and report the archive path/ID.\nbooking-flow: Homepage loaded at http://127.0.0.1:8000/ with title '锦绣轩 · 中餐馆 | 在线订台', Chinese hero/menu/about/booking/contact content, and no browser errors. However the browser script returned result:null and empty stdout despite scriptCompleted:true; the captured page shows an empty booking form and '该时段暂无可订餐桌', with no visible confirmation, booking ID, or API retrieval result. A later SQLite query returned TOTAL 0. End-to-end UI booking and API retrievability are therefore unproven. Rerun the browser flow and retain the booking ID, modal confirmation text, and API GET 200 body.\npersistence-conflict: The rerun of test_app.py exited 0 and its suite includes test_07_conflict and test_11_persistence_after_restart, so those code-level tests pass. But the independent real-server check failed before restart: the reservations query returned [] and TOTAL 0, causing IndexError at rows[0]; no created reservation existed to verify across restart, and the duplicate POST against the live server was not executed. Create a booking, restart the running server, confirm GET returns 200 with the same data, then confirm a duplicate table/date/time POST returns HTTP 409.\nsite-quality: static/index.html has a responsive viewport meta and all required Chinese sections: hero ('一席锦绣'), menu ('招牌菜', four dishes), about ('关于我们'), booking form ('在线订台'), and contact ('联系我们'), with Chinese labels and fields. Actual mobile layout and client-side validation remain unproven: the browser result was null, with no viewport assertion output. Rerun checks at 390px for no horizontal overflow, working nav toggle and contact anchor, and invalid-name rejection with an inline error while the confirmation modal stays hidden."
+        },
+        {
+          "id": "fix-and-export",
+          "agent": "site-builder",
+          "state": "completed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "accept-final",
+          "agent": "site-reviewer",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "fix-and-export"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "booking-flow",
+                "requirement": "真实浏览器端到端订台成功：首页加载、表单校验拦截非法输入、可选桌位渲染、有效提交后出现含预订编号的可见确认弹窗，且该预订可通过 GET /api/reservations/<id> 以 200 取回。",
+                "targetTaskIDs": [
+                  "fix-and-export"
+                ]
+              },
+              {
+                "id": "persistence-conflict",
+                "requirement": "预订写入 SQLite 并在服务停止重启后仍可通过 API 取回；对同一 table_id/date/time 的重复提交返回 HTTP 409。",
+                "targetTaskIDs": [
+                  "fix-and-export"
+                ]
+              },
+              {
+                "id": "site-quality",
+                "requirement": "响应式中文餐馆站点含 hero、招牌菜、关于我们、在线订台、联系我们区块；390px 视口无横向溢出，导航可开合。",
+                "targetTaskIDs": [
+                  "fix-and-export"
+                ]
+              },
+              {
+                "id": "tests-export",
+                "requirement": "python3 test_app.py 退出码 0，且最终源码已通过 sandbox_export 导出并有可核对的归档 ID。",
+                "targetTaskIDs": [
+                  "fix-and-export"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox11:sandbox_run",
+              "7:sandbox12:sandbox_stop",
+              "7:sandbox13:sandbox_start",
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox17:sandbox_read_file"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox12:sandbox_stop\npersistence-conflict: REVISE. Duplicate rejection is proven: in-page POST for the same table_id=1/date=2026-10-28/time=18:00 returned HTTP 409 with body {\"error\":\"该餐桌在所选时段已被预订，请选择其他餐桌或时间\"}. However real stop/restart persistence is NOT proven in this run. The dedicated sandbox_run attempt (sourceID cc3231e9-494f-363e-ffeb-5e1df7df4237) failed with exit status 1 / sandbox.opensandbox.execution; no health, restart, GET-by-id, or SQLite output was returned. There is no sandbox_stop record; the 8020 server (processID 11aaef99-3035-d691-bc45-6b28171a459c) remains running. test_app.py test_11_persistence_after_restart passes, but that is not the required real server stop/restart API proof. Required fix: call sandbox_stop on the live 8020 process, restart with sandbox_start (PORT=8020 MOBILELLM_DATA_DIR=/workspace/data python3 server.py), then curl GET /api/reservations/1 and confirm HTTP 200 with id=1 and identical fields.\ntests-export: REVISE. Tests pass: `cd /workspace/project && python3 test_app.py` exited 0 (sandbox_run operationID db669070-301a-f033-be44-dd3609eef083) with `Ran 11 tests in 0.269s` and `OK`; only ResourceWarning unclosed subprocess pipes. But final source export is NOT verified. `ls -la /workspace` showed only data/ and project/; no .tar.gz/.zip or export artifact was found, and the export search did not return an archive path or ID. The fix-and-export report explicitly states sandbox_export was not executed and gives no archive ID. Required fix: run sandbox_export on /workspace/project and record the returned archive ID/path."
+        }
+      ]
+    },
+    {
+      "run": "restaurant-74ac6eef-31ab-4e5b-ab11-083053409216",
+      "originalGoal": "开发一个中餐馆网站，支持在线订台。",
+      "failures": [
+        "The autonomous task needs effect reconciliation",
+        "Goal did not complete: waitingForReconciliation",
+        "No actual source archive",
+        "No independent collaborating agents"
+      ],
+      "publicWorkerResults": [],
+      "sourceArchives": [],
+      "tasks": [
+        {
+          "id": "build-site",
+          "agent": "builder",
+          "state": "running",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "review-site",
+          "agent": "reviewer",
+          "state": "pending",
+          "required": true,
+          "dependencies": [
+            "build-site"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "R1",
+                "requirement": "Site loads as a polished Chinese restaurant website with menu, opening hours, and a usable booking form at mobile and desktop widths.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "R2",
+                "requirement": "Booking POST creates a server-side SQLite reservation with confirmation code; validation rejects past dates, invalid party size/time; the 20-seat slot capacity prevents overbooking.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "R3",
+                "requirement": "A fresh browser client and a server restart retain the reservation and updated availability, proving shared persistence rather than client-only storage.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              },
+              {
+                "id": "R4",
+                "requirement": "Automated tests pass and sandbox_export contains the final unchanged source tree.",
+                "targetTaskIDs": [
+                  "build-site"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": null
+        }
+      ]
+    },
+    {
+      "run": "restaurant-88e91373-954b-4c5e-8c4a-a59341009713",
+      "originalGoal": null,
+      "failures": [
+        "Evaluation selected safePreset; first sandbox operation correctly waited for manual approval. Stopped without executing that operation."
+      ],
+      "publicWorkerResults": [],
+      "sourceArchives": []
+    },
+    {
+      "run": "restaurant-c8d1de62-98f3-4226-9679-7ca1e608139e",
+      "originalGoal": "开发一个中餐馆网站，支持在线订台。",
+      "failures": [
+        "Goal did not complete: 工具预算 48/48 已耗尽（本轮 0 次可用），独立浏览器端验收（移动视口渲染、页面确认码、错误提示、跨上下文共享）无法再取得真实证据；按协议不得伪造通过，故以 blocked 保留已完成的实现、修复、测试与导出成果并如实报告缺口。",
+        "The website was not actually started, inspected and exported"
+      ],
+      "publicWorkerResults": [
+        {
+          "artifactID": "build_app:1",
+          "taskID": "build_app",
+          "taskRevision": 2,
+          "text": "## 交付状态：部分完成，尚不能宣称“网站可运行”\n\n### 已有工具证据\n\n| 项目 | 结果 |\n|---|---|\n| 后端文件 | `/workspace/project/app.py` 已写入成功，**19,552 bytes**，SHA-256 `c999fc0b636c2b9825256dbc206c8e58551242b4cc3431b1ac27e2379a29bf79` |\n| 技术栈 | Python 3.12.3 标准库 `http.server` + `sqlite3`，无外部依赖 |\n| 数据目录 | 代码读取 `MOBILELLM_DATA_DIR`；当前环境为 `/workspace/data`；数据库文件为 `jinyu_reservations.sqlite3` |\n| 目录 | `static/`、`tests/` 目录存在；但**未读取其内容**，不能确认首页/测试文件已就绪 |\n| 文件清单（最后一次 list） | `.mobilellm/`、`app.py`（当时 13,007 bytes）、`static/`（目录 74 bytes）、`tests/`（目录 22 bytes）；随后 `app.py` 被覆盖为 19,552 bytes |\n| 服务启动 | **未执行 `sandbox_start`**，无监听端口、无健康检查实测结果 |\n| 浏览器验收 | **未执行 `sandbox_browser`**，无首页/订台流程截图或断言 |\n| 自动化测试 | **未执行**，无测试命令、无退出码 |\n| 源码导出 | **未执行 `sandbox_export`**，无最终源码归档 |\n\n### 后端代码已具备的能力（代码层面，未运行验证）\n\n- 接口：\n  - `GET /api/health`\n  - `GET /api/slots?date=YYYY-MM-DD`\n  - `POST /api/reservations`\n  - `GET /api/reservations?code=JYXXXXXX&phone=13xxxxxxxxx`\n- SQLite 表 `reservations` 字段：\n  `code, name, phone, date, time, party_size, notes, created_at`\n- 校验规则：\n  - 姓名 2–20 字\n  - 手机号 `^1[3-9]\\d{9}$`\n  - 日期不早于今天，最多提前 60 天\n  - 合法时段：11:30–13:30、17:30–20:30\n  - 人数 1–12\n  - 备注最多 200 字\n- 容量/重复：\n  - 每时段容量 6 桌\n  - 同一手机号 + 日期 + 时段唯一索引，重复返回 409\n  - 超额返回 409\n- 确认码：`JY` + 6 位大写字母/数字\n- 持久化：SQLite 文件位于 `MOBILELLM_DATA_DIR`，代码使用 WAL 和 `BEGIN IMMEDIATE` 串行化写入\n- 静态文件：由 `static/` 提供，带路径穿越防护和 CSP 响应头\n\n### 缺失与未验证项\n\n1. **前端首页/订台 UI 未确认存在**：若 `static/index.html` 缺失，访问 `/` 会返回 404。\n2. **未做前后端双重校验的真实联调**：后端校验代码存在，但未通过浏览器提交验证。\n3. **未验证跨浏览器、跨服务重启查询**：SQLite 持久化逻辑存在，但未实测。\n4. **无测试退出码**：任务要求的创建、校验失败、容量/重复、查询、重启持久化测试尚未落盘执行。\n5. **无端口记录**：代码默认端口 8000，但未实际启动。\n6. **无导出归档**：最终源码尚未用 `sandbox_export` 导出。\n\n### 已知限制/风险\n\n- 容量按“桌”计算，不是按人数；6 桌最多可容纳 72 人（若每桌 12 人）。\n- 无取消、改期、管理员后台、登录鉴权、短信验证、限流/防刷。\n- 查询接口只凭确认码 + 手机号，属于弱隐私保护。\n- “今天”按服务器本地时区计算，可能与客户端时区不一致。\n- 404 页面含内联 `<style>`，会被后端 CSP 的 `style-src 'self'` 拦截，属于视觉小问题。\n- `Store.create` 在极罕见的确认码碰撞重试分支中，回滚后继续插入时未重新 `BEGIN IMMEDIATE`，高并发下存在理论竞态；未实测。\n- 未做多进程并发压测；SQLite WAL 的跨进程写入行为未验证。\n\n### 恢复执行所需命令（尚未执行）\n\n```bash\ncd /workspace/project\npython3 -m py_compile app.py; echo \"PY_COMPILE_EXIT:$?\"\n\nMOBILELLM_DATA_DIR=/workspace/data python3 app.py --host 0.0.0.0 --port 8000\n```\n\n待补充 `static/index.html`、`static/styles.css`、`static/app.js`、`tests/test_api.py` 后，应执行：\n\n```bash\ncd /workspace/project\nMOBILELLM_DATA_DIR=$(mktemp -d) python3 -m unittest discover -s tests -v; echo \"TEST_EXIT:$?\"\n```\n\n随后用 `sandbox_start` 启动、`sandbox_browser` 实测首页与订台流程、停止服务，最后 `sandbox_export` 导出 `/workspace/project`。当前没有这些步骤的真实结果，不能标记为通过。",
+          "validationFailure": null,
+          "review": null
+        },
+        {
+          "artifactID": "fix_app:4",
+          "taskID": "fix_app",
+          "taskRevision": 5,
+          "text": "## 最小修复结果（fix_app）\n\n### 1. 修改点\n\n**A. `app.py` — `do_POST`（读取确认：当前文件已是修复后状态）**\n\n- 调用改为显式关键字映射，消除 `date`/`time` 与 `day`/`time_slot` 不匹配导致的 `TypeError`：\n  ```python\n  record = self.store.create(\n      name=clean[\"name\"], phone=clean[\"phone\"],\n      day=clean[\"date\"], time_slot=clean[\"time\"],\n      party_size=clean[\"party_size\"],\n      notes=clean.get(\"notes\", \"\"),\n  )\n  ```\n- 在 create 外补齐异常边界，连接绝不会静默断开：\n  - `except DuplicateError` → 409 + 已有 `code`\n  - `except CapacityError` → 409 + `fields.time`\n  - `except Exception` → `traceback.print_exc()` + `self._json(500, {\"error\": \"...\", \"status\": 500})`\n- `python3 -m py_compile app.py` → `COMPILE_OK`；导入区为纯标准库；检查时 8000 端口空闲（`PORT8000_FREE`）。\n\n**B. `tests/test_app.py` — 两次脚本化修补（10,384 → 11,861 → 11,973 bytes）**\n\n1. **修 `test_04` 参数冲突**：`self.post(phone=\"13700000001\", **over)` 在 `over` 含 `phone` 时抛 `TypeError: got multiple values for keyword argument 'phone'`（3 个 subTest ERROR 的根因）→ 改为 `kw = {\"phone\": ...}; kw.update(over); self.post(**kw)`。\n2. **把自证断言换成真实核对**：用例开始前 `GET /api/slots?date=...` 记录 `baseline`，校验失败后断言 `18:00` 剩余桌数 **等于 baseline**（原为硬编码 6）；容量核对改为读取真实 `remaining` 后逐桌占满，断言占满后 `slots[slot]==0` 且第 N+1 次必须 409、失败后仍为 0。`test_03` 中已含真实可用性核对：提交后 `GET /api/reservations?code=...&phone=...` 断言 200 且 `code`/`notes` 一致，错误手机号与不存在确认码均 404，缺参 400。\n3. **修 `test_06` 硬编码**：改用 `today+7` 日期与 `20:30` 时段，动态读取 `remaining` 再占满，避免 `/workspace/data` 中历史持久化数据把 `11:30` 占满造成的假失败。\n\n### 2. 测试退出码与用例数\n\n| 轮次 | 结果 |\n|---|---|\n| 修补前 | `Ran 7 tests`，`FAILED (failures=1, errors=3)`：test_04 的 3 个 subTest ERROR（TypeError）+ test_04 FAIL（`5 != 6`，历史数据） |\n| 第一次修补后 | `Ran 7 tests`，`FAILED (failures=1)`：test_06 `assertGreater(avail[\"slots\"][\"11:30\"], 0)` → `0 not greater than 0`（历史数据占满） |\n| 第二次修补后（最终） | **`Ran 7 tests in 0.849s` → `OK`，`TEST_EXIT:0`** |\n\n最终 7 个用例全部 ok：`test_01_health`、`test_02_homepage_and_assets`、`test_03_create_and_lookup`、`test_04_validation_failures`、`test_05_duplicate_rejected`、`test_06_capacity_limit`、`test_07_restart_persistence`。仅剩 `ResourceWarning: subprocess ... is still running`（测试内起停服务进程的告警，非失败）。命令为 `MOBILELLM_DATA_DIR=/workspace/data timeout 120 python3 tests/test_app.py -v`，退出码取自 `PIPESTATUS[0]`，未用 `|| true`。\n\n### 3. Export 结果\n\n- `artifactID`: **74d52040-732c-4b5b-88a3-72de7597f8f7**\n- `mimeType`: `application/zip`，`bytes`: **23,877**\n- `sha256`: `6dc37a2c24e5235af391f9e4a7887cabfc1c311c3b4dcebf90d85c644b0e260c`\n- `integrityStatus`: **verified**，`semanticType`: `sandbox.project-source`，覆盖 `/workspace/project`（app.py、static/*、tests/test_app.py）\n\n### 4. 缺失证据 / 风险（不作通过声明）\n\n- 本轮**未执行 `sandbox_browser`**（按任务分工由 reviewer 负责），因此无移动视口渲染、表单错误提示可见性的浏览器断言。\n- 本轮**未重新计算 `app.py` 的 SHA-256**；上游记录的 `c999fc0b…`（19,552 bytes）与当前修复后内容不对应，字节数亦未复核。\n- 未用 curl 做端到端复测（8 次工具调用预算已用尽）。\n- 测试直接使用持久目录 `/workspace/data`，跨运行累积数据；`test_06` 靠 `today+7 / 20:30` 规避，**非幂等**，反复跑满该时段仍可能失败——建议正式 CI 用临时 `MOBILELLM_DATA_DIR`。",
+          "validationFailure": null,
+          "review": null
+        }
+      ],
+      "sourceArchives": [
+        {
+          "artifactID": "74d52040-732c-4b5b-88a3-72de7597f8f7",
+          "sha256": "6dc37a2c24e5235af391f9e4a7887cabfc1c311c3b4dcebf90d85c644b0e260c",
+          "path": "failed-source/source-6dc37a2c24e5235a.zip"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "build_app",
+          "agent": "builder",
+          "state": "completed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "review_app",
+          "agent": "reviewer",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "build_app"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "C1-booking",
+                "requirement": "有效预订返回确认码；无效日期、人数、手机号或时段被拒绝并显示错误。",
+                "targetTaskIDs": [
+                  "build_app"
+                ]
+              },
+              {
+                "id": "C2-persistence",
+                "requirement": "预订写入服务端 SQLite；服务停止并重启后仍可用确认码+手机号查询；不同浏览器上下文共享服务端状态。",
+                "targetTaskIDs": [
+                  "build_app"
+                ]
+              },
+              {
+                "id": "C3-ux",
+                "requirement": "中文餐馆品牌、菜单、营业信息完整，桌面和移动宽度下订台流程可用。",
+                "targetTaskIDs": [
+                  "build_app"
+                ]
+              },
+              {
+                "id": "C4-tests-export",
+                "requirement": "自动化测试真实通过；/workspace/project 源码完整且 builder 已执行 sandbox_export；reviewer 抽查关键文件。",
+                "targetTaskIDs": [
+                  "build_app"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox11:sandbox_run",
+              "7:sandbox13:sandbox_start",
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox17:sandbox_read_file"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox15:sandbox_browser\nC1-booking: 有效预订无法返回确认码：POST /api/reservations 崩溃并断开连接。实测（sandbox_run，exit 0 外壳）：`curl -sS -m 10 -i -X POST http://127.0.0.1:8000/api/reservations -H 'Content-Type: application/json' --data '{\"name\":\"陈小玉\",\"phone\":\"13800001234\",\"date\":\"2026-11-01\",\"time\":\"18:00\",\"party_size\":4,\"notes\":\"靠窗\"}'` → `curl: (52) Empty reply from server`，未取得任何确认码。源码抽查（sandbox_read_file app.py, 19552 bytes, sha256 c999fc0b…）定位到具体缺陷：do_POST 中 `clean, errors = validate(payload)` 返回的 clean 键为 name/phone/date/time/party_size/notes，随后 `self.store.create(**clean)`，但 Store.create 的签名是 `create(self, name, phone, day, time_slot, party_size, notes)`；关键字 date/time 不匹配，抛出 TypeError，且该调用仅捕获 DuplicateError/CapacityError，未捕获 TypeError，导致连接无响应关闭（客户端 RemoteDisconnected）。修复要求：将 clean 映射为 day/time_slot 后再调用 create（或在 create 签名中改用 date/time），并对 create 的意外异常返回 500 JSON。当前 201 成功路径与 409 重复/满位路径均无法到达；无效输入拒绝（422）分支同样在实测中表现为 ERROR，未能给出可采信的拒绝响应证据。\nC2-persistence: 服务端 SQLite 使用属实但持久化未验证。证据：app.py 从 MOBILELLM_DATA_DIR 取数据目录（本环境 /workspace/data），DB 文件 jinyu_reservations.sqlite3，表 reservations + 唯一索引 ux_reservations_phone_slot；`GET /api/health`（sandbox_run curl，HTTP 200）返回 `\"db\": \"/workspace/data/jinyu_reservations.sqlite3\"`，启动日志同为 `db=/workspace/data/jinyu_reservations.sqlite3`，端口 8000。但“停止→重启→以确认码+手机号查询仍在”无法完成：写入路径因 C1 的 TypeError 崩溃，测试 test_07_restart_persistence 实测 ERROR（未获得确认码）；跨浏览器上下文共享状态、前端是否使用 localStorage 均无证据（static/app.js 9938 bytes 未被读取，仅测试断言其包含字符串 /api/reservations，不足以证明无客户端存储）。修复要求：先修复写入，再实际执行 stop/start 重启与二次查询，并读取 static/app.js 确认无 localStorage/sessionStorage 保存预订。\nC3-ux: 首页可访问且中文内容存在，但订台流程在浏览器层面不可用且移动宽度未验证。证据：sandbox_start 以 `MOBILELLM_DATA_DIR=/workspace/data python3 app.py --host 0.0.0.0 --port 8000` 启动，processID ebba8627…，running=true，port=8000；curl `GET /` 连续两次均 HTTP 200（首页 HTML 已落盘 /tmp/home.html）。自动化断言 test_02_homepage_and_assets 实测 ok，检查首页含“金玉满堂”“在线订台”“营业时间”“恩宁路”“bookingForm”，且 /styles.css、/app.js 返回 200、/nope.html 返回 404。缺陷与缺口：任何表单提交都会命中 C1 的服务端崩溃（curl 实测 Empty reply），用户无法完成订台、拿不到确认码；本轮无 sandbox_browser 观测记录，桌面/移动视口渲染、表单可用性、错误提示展示均未取得真实浏览器断言，不能宣称通过。修复要求：修复提交接口后，用浏览器在移动宽度提交未来日期预订取得确认码，并验证无效输入的错误提示可见。\nC4-tests-export: 自动化测试真实执行为失败，且未见导出证据。命令与退出码：`cd /workspace/project && MOBILELLM_DATA_DIR=/workspace/data timeout 100 python3 tests/test_app.py -v` → 退出码 1，`Ran 7 tests in 0.569s` / `FAILED (errors=7)`；复跑（写 /tmp/testout.txt）仍退出码 1，仅 test_01_health、test_02_homepage_and_assets 为 ok，test_03/04/05/06/07 全部 ERROR，堆栈为 `http.client.RemoteDisconnected: Remote end closed connection without response`（POST 触发，与 C1 根因一致）。源码完整性抽查通过：/workspace/project 含 app.py 19552 bytes、static/{index.html 13075, styles.css 17758, app.js 9938, favicon.svg 364}、tests/test_app.py 10384 bytes（sandbox_list_files/sandbox_read_file）。但 builder 报告自述未执行 sandbox_export，本轮亦无任何 sandbox_export 观测，故 C4 不满足。另注：tests/test_app.py 中 test_04 的 `_count()` 恒返回 0，属自证式断言，需改为真实可用性核对。修复要求：修复接口使 7 项测试退出码为 0，补强该断言，然后执行 sandbox_export 并保留归档证据。"
+        },
+        {
+          "id": "fix_app",
+          "agent": "builder",
+          "state": "completed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "review_app2",
+          "agent": "reviewer",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "fix_app"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "C1-booking",
+                "requirement": "有效预订返回确认码（页面可见 JY 开头码）；无效日期、人数、手机号或时段被拒绝并显示可见错误提示。",
+                "targetTaskIDs": [
+                  "fix_app"
+                ]
+              },
+              {
+                "id": "C2-persistence",
+                "requirement": "预订写入服务端 SQLite；服务停止并重启后仍可用确认码+手机号查询；不同浏览器上下文共享同一服务端状态；前端不把预订存 localStorage/sessionStorage。",
+                "targetTaskIDs": [
+                  "fix_app"
+                ]
+              },
+              {
+                "id": "C3-ux",
+                "requirement": "中文餐馆品牌、菜单、营业信息完整，桌面与移动宽度下订台流程经真实浏览器断言可用。",
+                "targetTaskIDs": [
+                  "fix_app"
+                ]
+              },
+              {
+                "id": "C4-tests-export",
+                "requirement": "自动化测试真实退出码 0 且断言有效（test_04 不再是恒返回 0 的自证断言）；/workspace/project 源码完整并已通过 sandbox_export 成功导出。",
+                "targetTaskIDs": [
+                  "fix_app"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox11:sandbox_run",
+              "7:sandbox13:sandbox_start",
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox17:sandbox_read_file"
+            ]
+          },
+          "failure": "The model repeated an already executed tool call."
+        },
+        {
+          "id": "review_app3",
+          "agent": "reviewer",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "fix_app"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "C1-booking",
+                "requirement": "有效预订返回 201 与 JY 开头确认码；非法日期/人数/手机号/时段返回 422 且带字段错误信息。",
+                "targetTaskIDs": [
+                  "fix_app"
+                ]
+              },
+              {
+                "id": "C2-persistence",
+                "requirement": "预订写入服务端 SQLite；pkill 后重启服务，用同一确认码+手机号查询仍返回 200 且确认码一致；前端通过 fetch('/api/reservations') 提交而非客户端存储。",
+                "targetTaskIDs": [
+                  "fix_app"
+                ]
+              },
+              {
+                "id": "C3-ux",
+                "requirement": "真实浏览器在 390x844 移动视口下打开首页，含中文品牌与在线订台表单，提交后确认码可见，非法输入显示可见错误提示。",
+                "targetTaskIDs": [
+                  "fix_app"
+                ]
+              },
+              {
+                "id": "C4-tests-export",
+                "requirement": "自动化测试真实退出码 0（未用 || true 或伪造 PASS），且 fix_app 已成功执行 sandbox_export 并有可核验的归档记录。",
+                "targetTaskIDs": [
+                  "fix_app"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox11:sandbox_run",
+              "7:sandbox15:sandbox_browser"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox11:sandbox_run, 7:sandbox15:sandbox_browser\nC1-booking: 部分证据成立，但本轮未能直接取到 HTTP 状态码。sandbox_run（recordedCallID call_00_mayua0cgI95oNl8HgseC1761）的 diagnostics.stderr 显示 7 个用例全部 ok，含 test_03_create_and_lookup、test_04_validation_failures、test_05_duplicate_rejected、test_06_capacity_limit，stdout 为 'TEST_EXIT:0'，即创建/查询与校验拒绝路径在测试层面可跑通（这是对 C1 的间接支持）。但该次执行 status='failed'、bounded=true，捕获到的输出只保留到测试段落（'Ran 7 tests in 0.805s / OK / TEST_EXIT:0'），随后的 curl 段落（/api/health、CREATE_HTTP、CODE=JY…、BAD_HTTP、重启后查询）均未出现在观测中；因此“有效预订返回 201 且页面/响应含 JY 开头确认码”“非法手机号 123 + 过去日期 2020-01-01 + 人数 99 返回 422 且带字段错误”这两条没有我本轮亲手取得的原始 HTTP 码与响应体。sandbox_browser 也未产出任何创建结果（见 C3 失败）。结论：不判 pass，需单独重跑仅含 curl 的短命令并保留完整 stdout：CREATE_HTTP:201、code 形如 JYXXXXXX、BAD_HTTP:422 且 JSON 含 fields 键。\nC2-persistence: 服务端持久化有较强证据，重启+前端存储两项未完成。sandbox_run 中 test_07_restart_persistence 实测 ok（该用例按 fix_app 描述会停服再起服后用确认码+手机号复查），说明服务端 SQLite（/workspace/data/jinyu_reservations.sqlite3）在进程重启后仍保留记录；test_03_create_and_lookup 亦 ok。但我本次脚本在测试后追加的 pkill→重启→curl 复查段未进入观测（bounded 输出在 TEST_EXIT:0 处截断，整体 status='failed'），因此“同一 code+phone 重启后 200 且 code 一致”缺少我亲手取得的响应体与状态码；sandbox_browser 侧跨上下文查询与 localStorage/sessionStorage 检查完全未执行（浏览器调用直接失败，externalEffect='confirmedNone'）。前端是否用 fetch('/api/reservations') 提交、是否不写 localStorage，本轮未读 static/app.js，仅有 fix_app:4 的自述，不能作为已核验事实。修复/补证要求：重启前后各一次 GET /api/reservations?code=..&phone=.. 并打印状态码与 body，读取 static/app.js 确认存在 fetch('/api/reservations') 且无 localStorage/sessionStorage 写入预订。\nC3-ux: 无任何浏览器断言成立。sandbox_browser（recordedCallID call_00_hDDIa5ZgGjvnfJ71yqmr1706）返回 status='failed'、code='sandbox.opensandbox.execution'、safeMessage='Start an application on the selected port before inspecting it'、externalEffect='confirmedNone'，脚本未进入 main()，故 390x844 视口加载首页、'金玉满堂'/'在线订台'文案、#bookingForm 填表提交、页面出现 /JY[A-Z0-9]{6}/ 确认码、以及手机号 123 的可见错误提示——这些断言一条都没有真实执行结果，也没有 PASS/FAIL 行可引。原因可修复：本轮 sandbox_run 结束/被截断后 8000 端口无存活 app.py（其 nohup 启动段未出现在输出中），浏览器工具因此拒绝检查。补证要求：先用 sandbox_start 以 MOBILELLM_DATA_DIR=/workspace/data python3 app.py --host 127.0.0.1 --port 8000 启动并确认 /api/health 200，再单独执行 sandbox_browser，显式 goto http://127.0.0.1:8000/，打印每条断言的 PASS/FAIL、页面确认码与错误提示文本。在取得该记录前 C3 不能通过。"
+        }
+      ]
+    },
+    {
+      "run": "restaurant-d09f4d01-7986-4be8-ab8b-2db14091d6c8",
+      "originalGoal": "开发一个中餐馆网站，支持在线订台。",
+      "failures": [
+        "Goal did not complete: The model request budget was used; remaining work and partial results are saved."
+      ],
+      "publicWorkerResults": [
+        {
+          "artifactID": "build-app:1",
+          "taskID": "build-app",
+          "taskRevision": 2,
+          "text": "## 交付结果（build-app）\n\n### 项目结构（`/workspace/project`，已写入并校验 SHA-256）\n| 文件 | 字节 | SHA-256 |\n|---|---|---|\n| `app.py` | 8897 | `ec3f2b64…25a3bdb1` |\n| `templates/base.html` | 1100 | `ed29d663…b271b4b4` |\n| `templates/index.html` | 2157 | `e1926236…a82e34ee` |\n| `templates/reserve.html` | 4456 | `50f762d6…1b0856a0` |\n| `templates/confirmation.html` | 1147 | `8fffb654…810d5bf` |\n| `templates/admin.html` | 1385 | `086bf5e5…834a550d` |\n| `static/style.css` | 8525 | `5d16cb7f…158fdb2` |\n| `test_app.py` | 5161 | `3dd9a1d3…f66b8a57` |\n\n技术栈：Python Flask + SQLite（`MOBILELLM_DATA_DIR=/workspace/data` → `restaurant.db`），服务端持久化。\n\n### 功能实现\n1. **首页 `/`**：福满楼中餐馆、川鲁菜系介绍、4 道招牌菜（北京烤鸭 ¥168 / 麻婆豆腐 ¥38 / 清蒸东星斑 ¥228 / 蟹粉小笼包 ¥32）、营业时间、地址/电话/邮箱；中文 UI + 响应式 CSS（820px / 560px 断点）。\n2. **订台 `/reserve`**：姓名、电话、日期、时段、人数、备注；服务端校验：必填、电话格式（6–20 位）、`1 ≤ 人数 ≤ 20`、日期不早于今天、时段必须在 12 个合法时段内；成功后重定向到 `/reservation/<id>` 显示\"预订成功\"与编号 `R00001` 形式。\n3. **容量控制**：`SLOT_CAPACITY = 20`，按 `SUM(party_size)` 校验，超出返回 **409** + 友好提示\"抱歉，该时段座位已满（仅剩 N 个座位）…\"；另有 `/api/availability` 余位查询与页面内查询控件。\n4. **管理页 `/admin`**：表格列出全部预订（编号/姓名/电话/日期/时段/人数/备注/创建时间），另有 `/api/reservations` JSON 端点。\n\n### 实际执行的命令\n```bash\n# 1) 写文件（一次批量）\nsandbox_write_files  → 8 个文件，operationID 15c7265e-7a85-d351-d3ef-063709bd8598\n\n# 2) 首次测试（失败：环境无 flask）\ncd /workspace/project && MOBILELLM_DATA_DIR=/workspace/data python test_app.py\n→ ModuleNotFoundError: No module named 'flask'\n\n# 3) 系统级 pip 安装（失败：/root/.local 无权限）\npython -m pip install --quiet flask\n→ ERROR: Could not install packages due to an OSError: [Errno 13] Permission denied: '/root/.local'\n\n# 4) 改用 --target 安装并注入 PYTHONPATH（成功）\ncd /workspace/project && python -m pip install --quiet --no-cache-dir \\\n  --target /workspace/data/pylibs flask 2>&1 | tail -3; \\\n  PYTHONPATH=/workspace/data/pylibs MOBILELLM_DATA_DIR=/workspace/data python test_app.py; \\\n  echo \"EXIT_CODE=$?\"\n\n# 5) 启动服务\ncd /workspace/project && PYTHONPATH=/workspace/data/pylibs \\\n  MOBILELLM_DATA_DIR=/workspace/data PORT=8000 python app.py\n```\n\n### 测试输出（真实 exit code = 0）\n```\nPASS: home page returns 200\nPASS: home page shows restaurant name\nPASS: home page shows menu highlights\nPASS: home page shows opening hours\nPASS: home page links to reservation page\nPASS: successful booking returns 200\nPASS: confirmation page shows 预订成功\nPASS: confirmation page shows reservation ID label\nPASS: confirmation page shows booking details\nPASS: successful booking persisted to SQLite\nPASS: missing name rejected with 400\nPASS: party size 25 rejected with 400\nPASS: past date rejected with 400\nPASS: invalid time slot rejected with 400\nPASS: invalid phone rejected with 400\nPASS: validation failures did not persist any row\nPASS: full-capacity booking of 20 accepted\nPASS: overbooking rejected with 409 and friendly message\nPASS: booked seats never exceed slot capacity of 20\nPASS: availability API reports 0 remaining seats\nPASS: admin page returns 200\nPASS: admin page lists existing reservations\nPASS: admin page shows formatted reservation ID\n\nALL 23 CHECKS PASSED\nEXIT_CODE=0\n```\n\n### 运行中的服务\n- 进程 ID / 端口：`7bba2fe6-0232-c620-cd71-7716ba107645`，`running: true`，`port 8000`\n- URL：`http://127.0.0.1:8000/`（日志 `.mobilellm/processes/7bba2fe6-…log`）\n\n### 浏览器端断言（Playwright，exitCode 0，`BROWSER_ALL_CHECKS_PASSED`）\n1. `GET /` → `h1` 含\"福满楼中餐馆\"；\"招牌北京烤鸭\"可见。\n2. 点击\"在线订台\" → 跳转 `/reserve`；填 `浏览器测试顾客 / 13612345678 / 2026-11-03 / 18:30 / 3 / 浏览器自动化订台测试` → 提交 → 跳转 `/reservation/1`。\n3. 确认页断言通过：`预订成功`、`预订编号：R00001`、姓名、`2026-11-03`、`18:30`、`3 位`。\n4. `GET /admin` → 标题\"预订管理 · 福满楼中餐馆\"；匹配行可见，文本为\n   `R00001 | 浏览器测试顾客 | 13612345678 | 2026-11-03 | 18:30 | 3 | 浏览器自动化订台测试 | 2026-10-27T05:16:02`\n5. 截图：`.mobilellm/screenshots/baac0498-3fcd-fdcd-8c03-0dd1a7df8dda.jpg`（artifact `08624937-0b9c-4964-b0f7-7a0f08728430`，SHA-256 `14070d1a…52e8a7`）。\n- 非致命告警：脚本中 `page.title()` 未 await（`RuntimeWarning`），不影响任何断言。\n\n### 未完成项（需下游补齐）\n- **`sandbox_export` 未执行**：本次运行的 6 次工具调用额度已用尽（write_files ×1、sandbox_run ×3、sandbox_start ×1、sandbox_browser ×1），因此**没有生成最终源码归档**。源码当前位于 `/workspace/project`，运行时数据在 `/workspace/data`（含 `restaurant.db`、`test_restaurant.db`、`pylibs/`、`browser_check.png`）。归档时应包含 `app.py`、`templates/`、`static/`、`test_app.py`，排除 `pylibs/` 与 `*.db`。\n- 环境说明：Flask 未预装且无 root 权限，只能以 `--target /workspace/data/pylibs` 安装，运行/测试均需 `PYTHONPATH=/workspace/data/pylibs`；若在干净环境部署，应改用 `requirements.txt`（当前尚未创建）。",
+          "validationFailure": null,
+          "review": null
+        },
+        {
+          "artifactID": "finalize-app:1",
+          "taskID": "finalize-app",
+          "taskRevision": 2,
+          "text": "## 最终校验报告（finalize-app）— 部分完成，两项未通过，需下一轮补齐\n\n### 1) requirements.txt — 已完成\n- 路径：`/workspace/project/requirements.txt`\n- 内容（11 字节）：\n```\nFlask>=3.0\n```\n- SHA-256：`d2eaa345eec408e0cc882f7f0973af5d04cf3b6da531e3e50d6579e82e0d2c6a`\n- 写入操作 ID：`8b0c8029-3168-034f-9545-aea240ff825a`（单文件，无多余依赖）\n\n### 2) 真实测试套件 — 已通过（exit code 0）\n命令（按要求原样执行）：\n```bash\ncd /workspace/project && PYTHONPATH=/workspace/data/pylibs MOBILELLM_DATA_DIR=/workspace/data python test_app.py; echo \"EXIT_CODE=$?\"\n```\n- **实际 EXIT_CODE=0**，stderr 为空，`ALL 23 CHECKS PASSED`，操作 ID `d1f477b6-5253-e0e7-738f-2edfd28b0a0d`\n- PASS 行（23 条，逐条实录）：\n  1. home page returns 200\n  2. home page shows restaurant name\n  3. home page shows menu highlights\n  4. home page shows opening hours\n  5. home page links to reservation page\n  6. successful booking returns 200\n  7. confirmation page shows 预订成功\n  8. confirmation page shows reservation ID label\n  9. confirmation page shows booking details\n  10. successful booking persisted to SQLite\n  11. missing name rejected with 400\n  12. party size 25 rejected with 400\n  13. past date rejected with 400\n  14. invalid time slot rejected with 400\n  15. invalid phone rejected with 400\n  16. validation failures did not persist any row\n  17. full-capacity booking of 20 accepted\n  18. overbooking rejected with 409 and friendly message\n  19. booked seats never exceed slot capacity of 20\n  20. availability API reports 0 remaining seats\n  21. admin page returns 200\n  22. admin page lists existing reservations\n  23. admin page shows formatted reservation ID\n- 无需修改代码：未发现真实失败，`app.py` / `test_app.py` 未改动（仅新增 requirements.txt）。\n\n### 3) 端口 8000 服务 — 有响应，但新进程绑定失败\n- `sandbox_start` 返回：processID `1f50180a-3806-75de-9a12-3bf29a39b777`，port `8000`，`running: true`（注册层面）\n- 但该进程日志实际为：\n```\n * Serving Flask app 'app'\n * Debug mode: off\nAddress already in use\nPort 8000 is in use by another program.\n```\n- 端口探测：`curl http://127.0.0.1:8000/` → **HTTP=200**\n- 结论：端口 8000 上真正提供服务的是**上一轮 build-app 的旧进程 `7bba2fe6-0232-c620-cd71-7716ba107645`**；本次 `1f50180a` 未成功监听。这正是下一步浏览器检查被判失败的直接原因（浏览器工具按新 processID 的端口注册判断\"应用未启动\"）。\n\n### 4) 浏览器端校验 — 未执行成功（断言未被评估）\n- `sandbox_browser`（port 8000）返回工具解析错误，脚本未运行：\n```json\n{\"classification\":\"permanent\",\"code\":\"sandbox.opensandbox.execution\",\n \"safeMessage\":\"Start an application on the selected port before inspecting it\",\"status\":\"failed\"}\n```\n- **因此无法声称任何页面断言通过**；既不是断言失败，也不是通过，是检查未发生。\n- 已提交的断言脚本（原样保留，未用 try/except 或 `|| true` 掩盖）：\n  1. `resp = await page.goto(base_url + \"/\")`；`assert resp.status == 200`\n  2. `h1 = page.locator(\"h1\").first.inner_text()`；`assert \"福满楼中餐馆\" in h1`\n  3. `await page.click(\"a[href='/reserve']\")`；`await page.wait_for_url(\"**/reserve\")`\n  4. 填 `input[name=name]`=最终校验顾客、`input[name=phone]`=13612345678、`input[name=date]`=2026-11-10、`select[name=time_slot]`=18:30、`input[name=party_size]`=3\n  5. `notes_locator = page.locator(\"input[name=notes]\")`；`assert await notes_locator.count() == 1`；`await notes_locator.fill(\"最终校验：靠窗座位\")`（按纠正使用 `input[name=notes]`，非 textarea；该模板确实为 `<input id=\"notes\" name=\"notes\" type=\"text\">`，已核实）\n  6. `async with page.expect_navigation(): await page.click(\"button[type=submit]\")`\n  7. `assert \"/reservation/\" in page.url` 且末段 `isdigit()`\n  8. `body = await page.locator(\"body\").inner_text()`；`assert \"预订成功\" in body`；`assert \"预订编号\" in body`\n  9. 打印 `BROWSER_ALL_CHECKS_PASSED`\n\n### 5) 源码归档 — 未执行\n- `sandbox_export` 未运行，**没有 archive 标识符或路径可报告**。本 worker 6 次调用额度已用尽（read/verify ×1、write_files ×1、sandbox_run ×2、sandbox_start ×1、sandbox_browser ×1）。\n- 归档范围应为 `/workspace/project`，包含 `app.py`、`test_app.py`、`requirements.txt`、`templates/`、`static/`；排除 `pylibs/`、`*.db`、`__pycache__/`、`.mobilellm/`。\n\n### 下一轮最小补齐步骤（按序，2–3 次调用）\n1. `sandbox_stop` 停止 `7bba2fe6-0232-c620-cd71-7716ba107645`（占用 8000 的旧进程），再 `sandbox_start` 以同命令重启，确认日志出现 `Running on http://0.0.0.0:8000` 且 `running: true`。\n2. 用上面第 4 节的脚本重跑 `sandbox_browser`（port 8000），确认输出 `BROWSER_ALL_CHECKS_PASSED`；若 `input[name=notes]` 计数不为 1 或跳转非 `/reservation/<数字>`，则保留失败原文。\n3. 执行 `sandbox_export`（源 `/workspace/project`，排除 `pylibs/`、`*.db`），记录 archive ID/路径。\n\n### 未支持/待确认项\n- 浏览器断言结果：**未知**（工具未执行脚本）。\n- 导出归档标识符：**不存在**。\n- 端口 8000 的\"本任务新进程\"实际未监听；200 响应来自旧进程，不能作为本次启动成功的证据。",
+          "validationFailure": null,
+          "review": null
+        }
+      ],
+      "sourceArchives": [
+        {
+          "artifactID": "c5ea7ca4-1f63-48a3-964f-5b60221d976b",
+          "sha256": "56169a89575705d75f603cbd8d8c3eff6fc0c1e695c2ebb416f28ad617eb42b8",
+          "path": "failed-source/source-56169a89575705d7.zip"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "build-app",
+          "agent": "builder",
+          "state": "completed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "review-app",
+          "agent": "reviewer",
+          "state": "completed",
+          "required": true,
+          "dependencies": [
+            "build-app"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "persistent-storage",
+                "requirement": "Reservations are stored server-side persistently (SQLite or equivalent), not in client-only storage.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              },
+              {
+                "id": "validation",
+                "requirement": "Server-side validation rejects missing fields, invalid party size, past dates and invalid time slots.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              },
+              {
+                "id": "capacity",
+                "requirement": "Overbooking beyond the per-slot capacity is prevented with a friendly error.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              },
+              {
+                "id": "runs-and-books",
+                "requirement": "The app starts and a browser submission of the reservation form shows a confirmation, verified by actual browser assertions.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              },
+              {
+                "id": "tests-pass",
+                "requirement": "Automated tests exist and pass with a real successful exit code from sandbox_run.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox11:sandbox_run",
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox13:sandbox_start",
+              "7:sandbox17:sandbox_read_file"
+            ]
+          },
+          "failure": null
+        },
+        {
+          "id": "finalize-app",
+          "agent": "finalizer",
+          "state": "completed",
+          "required": true,
+          "dependencies": [
+            "build-app"
+          ],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "verify-app",
+          "agent": "auditor",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "finalize-app"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "persistent-storage",
+                "requirement": "Reservations are stored server-side persistently in SQLite (or equivalent) under MOBILELLM_DATA_DIR, not in client-only storage.",
+                "targetTaskIDs": [
+                  "finalize-app"
+                ]
+              },
+              {
+                "id": "validation",
+                "requirement": "Server-side validation rejects missing fields, invalid phone, party size outside 1-20, past dates and invalid time slots.",
+                "targetTaskIDs": [
+                  "finalize-app"
+                ]
+              },
+              {
+                "id": "capacity",
+                "requirement": "Overbooking beyond the per-slot capacity is prevented with a friendly error message.",
+                "targetTaskIDs": [
+                  "finalize-app"
+                ]
+              },
+              {
+                "id": "tests-pass",
+                "requirement": "The automated test suite runs with a real successful exit code from sandbox_run, with no masked failures.",
+                "targetTaskIDs": [
+                  "finalize-app"
+                ]
+              },
+              {
+                "id": "runs-and-books",
+                "requirement": "A real browser submission of the reservation form (using input[name=notes]) reaches /reservation/<id> and shows '预订成功', verified by actual sandbox_browser assertions.",
+                "targetTaskIDs": [
+                  "finalize-app"
+                ]
+              },
+              {
+                "id": "packaging",
+                "requirement": "requirements.txt exists and the final source archive was produced by sandbox_export.",
+                "targetTaskIDs": [
+                  "finalize-app"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox11:sandbox_run",
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox13:sandbox_start",
+              "7:sandbox17:sandbox_read_file",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": "The run stopped because a fixed resource budget was exhausted."
+        }
+      ]
+    },
+    {
+      "run": "restaurant-eaf1d7d7-1aa5-4408-9145-922f0c829938",
+      "originalGoal": "开发一个中餐馆网站，支持在线订台。",
+      "failures": [
+        "Goal did not complete: 源码已完成且测试通过，但共享工具预算 24/24 已耗尽，无法取得 sandbox_export 归档与 sandbox_browser 的非空 DOM/订台回执，评审硬性条件不可达成，按规则保留可用成果并报告真实能力阻塞。",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported"
+      ],
+      "publicWorkerResults": [
+        {
+          "artifactID": "build:1",
+          "taskID": "build",
+          "taskRevision": 2,
+          "text": "## 构建报告：金龍軒中餐馆网站（在线订台）\n\n### 已完成并有工具证据的部分\n\n**文件（均位于 `/workspace/project`）**\n\n| 文件 | 大小 | SHA-256 |\n|---|---:|---|\n| `server.py` | 12,272 B | `c11b609ee6498f1a7be522e872ffa57e3fa36444c0f17797a544803ca792e037` |\n| `static/index.html` | 10,673 B | `ca5b639e35f201e9d2103be89ed2fb9ab7712a595577d44124aef01ece70ddcf` |\n| `static/styles.css` | 14,302 B | `2d9928932db14254088115a29f0a4f0e29b502b352eeebb99ada673613da172f` |\n| `static/app.js` | 8,552 B | `e9e8315c7d6492317c2132bd1d4c6a08c0406333e481fd91c43ee662be61b0a4` |\n| `static/favicon.svg` | 218 B | `999367e4fd03808b6065c6a0521bbf9f1ba896ab0ef86b63510af793dc2369ff` |\n| `tests/test_api.py` | 7,880 B | `5b25b30e11a2a5411947a5127b0139b99185f2d3308647154660ab5b89a3bddf` |\n\n**实现要点**\n- 仅使用 Python 3 标准库：`ThreadingHTTPServer`、`sqlite3`、`json`、`urllib.parse`、`secrets`、`threading`；无 pip、框架或外部 CDN。\n- 数据库：`os.path.join(os.environ.get('MOBILELLM_DATA_DIR','/workspace/project/data'),'reservations.db')`，本次运行实际为 `/workspace/data/reservations.db`；启动时自动创建目录与表。\n- 绑定 `0.0.0.0`，`PORT` 默认 8000。\n- 时段：午市 11:30、13:00；晚市 17:30、19:00、20:30；每段容量 20，按 `party_size` 求和。\n- `POST /api/reservations`：`BEGIN IMMEDIATE` 事务内检查容量并插入；唯一编号格式 `JL` + 8 位十六进制；201 返回 `{code,name,date,time,partySize,status:'confirmed'}`；字段错误 400；满座 409（含 `remaining`）。\n- 校验：姓名 2–40 字符；电话 `^[0-9+\\- ]{6,20}$`；人数 1–8 的整数；日期今天至 +60 天；时间必须在配置时段内；备注 ≤200。\n- `GET /api/reservations/<code>` 仅返回单条，未知编号 404；`GET /api/reservations` 无列表接口（404），不公开全部预订。\n- 静态资源路径做 realpath 越界检查。\n- 前端：中文响应式页面，含 hero（CSS 灯笼/月亮/山形）、关于、六道招牌菜（纯 CSS 菜品图）、营业时间/联系方式、订台表单（日期、时段、人数、称呼、电话、备注）、内联错误、成功确认页显示编号，以及编号查询框；无外部图片。\n\n**命令与结果**\n- `python3 --version` → `Python 3.12.3`\n- 测试：\n  ```bash\n  cd /workspace/project && MOBILELLM_DATA_DIR=/workspace/data python3 -m unittest tests.test_api -v\n  ```\n  结果：`Ran 10 tests in 1.102s` → `OK`\n  覆盖：首页与静态资源、可用时段、非法日期、有效预订+查询、查询不存在、列表接口不暴露、非法字段（12 组子测试）、畸形 JSON、容量冲突（8+8 后 5 人 409、4 人 201、再 1 人 409）、重新打开数据库及新服务器进程后的持久化。\n- 启动服务器：\n  ```bash\n  cd /workspace/project && MOBILELLM_DATA_DIR=/workspace/data PORT=8000 python3 server.py\n  ```\n  返回 `running:true`，`port:8000`，`processID:87329dd0-59d2-b3c9-bd42-7aaf9e5546b5`，日志 `.mobilellm/processes/87329dd0-59d2-b3c9-bd42-7aaf9e5546b5.log`。服务器保持运行。\n\n**访问地址**\n- 网站：`http://localhost:8000/`\n- 可用时段：`http://localhost:8000/api/availability?date=YYYY-MM-DD`\n- 预订：`POST http://localhost:8000/api/reservations`\n- 查询：`http://localhost:8000/api/reservations/<code>`\n\n### 缺失证据 / 未完成项\n\n**未执行 `sandbox_browser` 的真实页面填写与提交，因此没有线上预订确认页断言，也没有可报告的线上预订编号。** 本次运行工具调用额度已耗尽，无法补做该步骤。\n\n测试输出中的 `JL7A9C4640`（有效预订测试）与 `JLE3116A66`（持久化测试）产生于临时测试数据库，测试结束后临时目录已清理，**不能作为线上预订编号**，也不代表 `/workspace/data/reservations.db` 中存在该记录。\n\n因此目标中“浏览器实际订台并断言确认”的要求尚未通过；网站、API、测试与运行中的服务器已就绪，可由后续执行者访问 `http://localhost:8000/` 完成该步并记录真实编号。",
+          "validationFailure": null,
+          "review": null
+        }
+      ],
+      "sourceArchives": [],
+      "tasks": [
+        {
+          "id": "build",
+          "agent": "builder",
+          "state": "completed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "verify",
+          "agent": "reviewer",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "build"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "site-ui",
+                "requirement": "Chinese restaurant site loads with polished responsive desktop/mobile layout, menu, hours/contact, and a usable booking form.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "booking-flow",
+                "requirement": "Submitting a valid reservation through the browser returns a confirmation with a unique booking code, and the booking can be retrieved afterward.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "persistence",
+                "requirement": "Reservations are stored server-side in SQLite and remain available after a fresh server process/client, not merely in browser storage.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "validation-capacity",
+                "requirement": "Invalid fields are rejected and capacity is enforced transactionally so overbooking is prevented.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "tests-source",
+                "requirement": "Automated tests pass and sandbox_export contains the runnable application source and tests.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox_browser",
+              "7:sandbox11:sandbox_run",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox_browser, 7:sandbox14:sandbox_export\nsite-ui: sandbox_start launched the app at http://127.0.0.1:8011/ (process ffbbf5ba-8e07-e88c-a97e-4d2c76645080, log .mobilellm/processes/ffbbf5ba-8e07-e88c-a97e-4d2c76645080.log). sandbox_browser loaded the page and returned title \"金龍軒 · 粵式手工菜 · 在线订台\", scriptCompleted:true, and screenshot artifacts 9247dbde-2f84-45a0-b3c9-a49ad37830ba and 717ecd56-9539-4736-86e5-c57b438e5d0d. However, both successful browser invocations returned result:null; no stdout containing desktop/mobile overflow, nav visibility, form fields, menu, hours/contact text, or viewport measurements was returned. One earlier invocation failed permanently because the script used imports/introspection. The build report's layout claims are untrusted and cannot substitute for actual DOM assertions. Rerun at 1440x900 and 390x844 returning JSON that asserts document scrollWidth==clientWidth (no horizontal overflow), visible nav, presence of menu and hours/contact sections, and all booking fields (date, time, party size, name, phone, notes).\nbooking-flow: No real reservation through the browser was verified. The first browser script failed with tool-resolution error \"imports, introspection and OS operations belong in sandbox_run\". The next two scripts completed (scriptCompleted:true) but returned result:null, so no confirmation text, booking code, or lookup result was captured. The build report itself states browser form submission was not executed and that test codes JL7A9C4640/JLE3116A66 came from a temporary test database. This criterion fails on evidence. Reproduce on http://127.0.0.1:8011/: fill date 2026-11-20, choose a time slot, party size 4, name 測試客人, phone 0912345678, submit, assert the page contains a Chinese success/confirmation message and a code matching /JL[0-9A-F]{8}/; reload, enter that exact code in the lookup field, click 查詢/查询, and assert the code and name appear. Return the captured code and excerpts.\npersistence: Server-side SQLite is suggested by tests but not independently verified against the running app. sandbox_run ran `MOBILELLM_DATA_DIR=/workspace/data python3 -m unittest tests.test_api -v`: 10 tests passed in 1.097s, including test_persistence_across_reopen, where POST /api/reservations returned 201 and GET /api/reservations/JL5DC3FD7A returned 200. That test reopens a temporary database; it is not proof that a reservation made through the live browser survives a fresh server process using /workspace/data/reservations.db. No live booking code was obtained. Reproduce: create a booking through the browser, record its JL code; stop server process ffbbf5ba-8e07-e88c-a97e-4d2c76645080; start a new server process with the same `MOBILELLM_DATA_DIR=/workspace/data`; GET /api/reservations/<code> and assert HTTP 200 with matching name/date/time; also run a read-only sqlite3 query against /workspace/data/reservations.db showing the row. This proves server-side SQLite rather than browser storage.\ntests-source: The test suite passes: 10 tests OK in 1.097s under /workspace/project. sandbox_list_files confirmed server.py (12,272 bytes), static/ with app.js, favicon.svg, index.html, styles.css, and tests/test_api.py. However, no sandbox_export call appears in the evidence, so the required final unchanged source archive was not produced or inspected. Reproduce with sandbox_export path \".\", then list the exported archive and confirm it contains server.py, static/index.html, static/styles.css, static/app.js, and tests/test_api.py. The current source tree is runnable, but the export requirement is unverified."
+        },
+        {
+          "id": "verify2",
+          "agent": "reviewer",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "build"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "site-ui",
+                "requirement": "Chinese restaurant site loads with a polished responsive desktop (1440x900) and mobile (390x844) layout without horizontal overflow, with visible nav, menu, hours/contact and all booking fields, asserted by a browser script that prints its measurements.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "booking-flow",
+                "requirement": "Submitting a valid reservation through the live page returns a Chinese confirmation with a unique JL code, and that code can be looked up again on the page showing the same name.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "persistence",
+                "requirement": "A reservation made through the browser is stored server-side in SQLite under MOBILELLM_DATA_DIR and is retrievable by a fresh server process, not merely in browser storage.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "validation-capacity",
+                "requirement": "Automated tests show invalid fields rejected with 400 and capacity enforced transactionally (409 when full) so overbooking is prevented.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "tests-source",
+                "requirement": "The test suite passes and sandbox_export produced an archive containing the runnable application source and tests.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox_browser",
+              "7:sandbox11:sandbox_run",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox_browser, 7:sandbox11:sandbox_run, 7:sandbox14:sandbox_export\nsite-ui: No runtime layout measurement was captured. sandbox_start succeeded: `cd /workspace/project && MOBILELLM_DATA_DIR=/workspace/data PORT=8011 python3 server.py` → {\"running\":true,\"port\":8011,\"processID\":\"5eb8f87d-af99-b29f-5177-5e74fb4f8d12\",\"logPath\":\".mobilellm/processes/5eb8f87d-af99-b29f-5177-5e74fb4f8d12.log\"}. But every sandbox_browser attempt failed at tool resolution with no page result: two scripts against port 8011 returned {\"classification\":\"permanent\",\"code\":\"sandbox.opensandbox.execution\",\"safeMessage\":\"Start an application on the selected port before inspecting it\",\"status\":\"failed\"}; the script against port 8000 returned \"Unsupported type: <class 'str'>\", and reading .mobilellm/operations/98048c00-cb02-226b-2377-f4ef24883b69.json showed only {\"error\": \"Unsupported type: <class 'str'>\", ...} — no stdout, no scrollWidth/clientWidth, no field-visibility data. Static source was read (static/index.html, 10,673 B, sha256 ca5b639e...): it contains header#top with .nav-links (关于我们/招牌菜式/营业时间/查询预订) and a header CTA, #menu with 6 article.card entries (金龍蝦餃皇 etc.), #hours with 营业时间/周一至周四/订位时段/联系我们/020-8888 1688/龙津东路, and #date, #time, #partySize, #name, #phone, #notes, #submit-btn, #lookup-code. That proves the elements exist in markup but NOT responsive rendering or absence of horizontal overflow, which require a live DOM measurement. Reproduce: launch the app on the port the browser tool actually proxies (observed working target earlier was 8000), then run one script that at 1440x900 and 390x844 asserts document.documentElement.scrollWidth === clientWidth, header#top visible, #menu 6 cards, the #hours tokens above, and count/visibility of each booking field, printing the measurements. If the browser tool still returns result:null or a tool-resolution error, this criterion stays revise.\nbooking-flow: No reservation was submitted through the live page and no JL booking code exists as evidence. The browser submission script never ran: the 8011 attempts failed with \"Start an application on the selected port before inspecting it\" and the 8000 attempt failed with \"Unsupported type: <class 'str'>\" (operation log .mobilellm/operations/98048c00-cb02-226b-2377-f4ef24883b69.json contains only that error). Therefore no 订台成功 confirmation text, no /JL[0-9A-F]{8}/ code, and no post-reload lookup result were captured. The build report itself states browser submission was never executed and that JL7A9C4640 / JLE3116A66 came from a temporary test database, so they are not valid live-booking evidence. The page markup does define #confirmation with heading 订台成功！, #conf-code, #conf-date/#conf-time/#conf-party/#conf-name, and a #lookup-form with #lookup-code and a 查询 submit button, so the flow is plausibly implemented but unverified. Reproduce on the reachable origin: fill #date=2026-11-20, wait for #time options, select the first slot, #partySize=4, #name=測試客人, #phone=0912345678, click #submit-btn, assert #confirmation is visible and contains 订台成功 and a code matching JL[0-9A-F]{8}; then reload, enter that code in #lookup-code, submit, and assert #lookup-result contains both the code and 測試客人. Print the code and both excerpts. No printed dict means revise.\npersistence: Server-side persistence was not independently demonstrated for a live booking. There is no live booking code (see booking-flow), so no GET /api/reservations/<code> against a fresh process was possible, and no read-only sqlite3 query of /workspace/data/reservations.db was executed in this run. The only persistence-adjacent facts available are from source reading: server.py stores the DB at os.path.join(os.environ.get('MOBILELLM_DATA_DIR','/workspace/project/data'),'reservations.db') and the running process was started with MOBILELLM_DATA_DIR=/workspace/data, so the intended file is /workspace/data/reservations.db — but intent is not proof, and browser localStorage cannot be the storage path. Reproduce: (1) create a booking through the page and record its JL code; (2) start a second server process on a different port with the same MOBILELLM_DATA_DIR=/workspace/data; (3) urllib GET /api/reservations/<code> and assert HTTP 200 with matching name/date/time; (4) run a read-only sqlite3 query against /workspace/data/reservations.db showing the row; (5) terminate the temporary process. Until that evidence exists this criterion is revise, not pass.\ntests-source: The suite result is favorable (10 tests OK in 1.097s, recorded) and the source tree contains server.py plus static/index.html (10,673 B, sha256 ca5b639e35f201e9d2103be89ed2fb9ab7712a595577d44124aef01ece70ddcf) as read this run, with styles.css, app.js and tests/test_api.py listed by the earlier sandbox_list_files. However the required final unchanged archive was NOT produced: no sandbox_export call was executed in this run or the preceding one, so no archive exists to inspect and the export requirement is unverified. Reproduce: run sandbox_export with path \".\" from /workspace/project, then list/inspect the archive and confirm it contains server.py, static/index.html, static/styles.css, static/app.js, and tests/test_api.py, and that the source was not modified during verification (server.py sha256 c11b609ee6498f1a7be522e872ffa57e3fa36444c0f17797a544803ca792e037, app.js e9e8315c7d6492317c2132bd1d4c6a08c0406333e481fd91c43ee662be61b0a4, tests/test_api.py 5b25b30e11a2a5411947a5127b0139b99185f2d3308647154660ab5b89a3bddf)."
+        },
+        {
+          "id": "verify3",
+          "agent": "reviewer",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "build"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "site-ui",
+                "requirement": "Chinese restaurant site loads with a polished responsive desktop (1440x900) and mobile (390x844) layout without horizontal overflow, with visible nav, menu, hours/contact and all booking fields, asserted by a browser script that prints its measurements.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "booking-flow",
+                "requirement": "Submitting a valid reservation through the live page returns a Chinese confirmation with a unique JL code, and that code can be looked up again on the page showing the same name.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "persistence",
+                "requirement": "A reservation made through the browser is stored server-side in SQLite under MOBILELLM_DATA_DIR and is retrievable by a fresh server process, not merely in browser storage.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "validation-capacity",
+                "requirement": "Automated tests show invalid fields rejected with 400 and capacity enforced transactionally (409 when full) so overbooking is prevented.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "tests-source",
+                "requirement": "The test suite passes and sandbox_export produced an archive containing the runnable application source and tests.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox_browser",
+              "7:sandbox11:sandbox_run",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox_browser, 7:sandbox14:sandbox_export\nsite-ui: No live layout measurement was captured. sandbox_start on PORT=8020 with MOBILELLM_DATA_DIR=/workspace/data returned running:true (processID fe93e802-e8d1-bba0-823a-5c1a63740b5b, log .mobilellm/processes/fe93e802-e8d1-bba0-823a-5c1a63740b5b.log). The first browser script was rejected at tool resolution: {\"classification\":\"permanent\",\"code\":\"sandbox.opensandbox.execution\",\"safeMessage\":\"... imports, introspection and OS operations belong in sandbox_run\"} because it used `import re`. The corrected script (no imports) completed — scriptCompleted:true, title \"金龍軒 · 粵式手工菜 · 在线订台\", url http://127.0.0.1:8020/, screenshot artifact d7872960-27a9-4c00-bbaa-2accd71a9578 — but returned \"result\":null, so the printed dict never came back. Therefore no scrollWidth/clientWidth pair at 1440x900 or 390x844, no nav/menu/hours/field visibility values exist as evidence. A screenshot proves the page rendered, not that there is no horizontal overflow. Reproduce: rerun the same single script and require a non-null result containing desktop_scrollWidth==desktop_clientWidth, mobile_scrollWidth==mobile_clientWidth, header#top_visible, menu_cards>=6, hours_has_open/hours_has_phone, and all_fields_visible=true; a null result means revise, not pass.\nbooking-flow: No booking code or confirmation excerpt was captured. The corrected browser script reached the live page (scriptCompleted:true at http://127.0.0.1:8020/) and included the fill/submit/lookup steps plus assertions on #confirmation containing 订台成功, a JL[0-9A-Fa-f]{8} code, and #lookup-result containing the code and 測試客人, but the tool returned \"result\":null with only a screenshot, so no code text, confirmation excerpt or lookup excerpt exists. Circumstantial support only: /workspace/data/reservations.db exists and is 20,480 bytes (mtime Oct 27 03:49, i.e. written during this session), and the build report explicitly states browser submission was never executed and that test codes JL7A9C4640/JLE3116A66 came from a temporary test database. Neither substitutes for a captured live code. Reproduce: on http://127.0.0.1:8020/ set #date=2026-11-20, dispatch change, wait for #time options, select the first slot, set #partySize=4, #name=測試客人, #phone=0912345678, click #submit-btn, wait for #confirmation visible, print the confirmation excerpt and the matched JL code; then reload, fill #lookup-code with that code, submit #lookup-form, and print the #lookup-result excerpt with lookup_has_code/lookup_has_name. Do not report pass without a printed code.\npersistence: Server-side persistence across a fresh process was NOT proven, and the SQLite row was not shown. The sqlite3 CLI is absent in the sandbox: the run failed with safeMessage \"/bin/bash: line 4: sqlite3: command not found\", after only `=== DB FILE === -rw-r--r-- 1 ubuntu ubuntu 20480 Oct 27 03:49 /workspace/data/reservations.db` and an empty `=== ROWS (read-only) ===`; the script aborted before starting the temporary server on PORT=8021, so no HTTP status or JSON body from a fresh process was captured. Also no live JL code exists to query (see booking-flow). What is established: the app is launched with MOBILELLM_DATA_DIR=/workspace/data and a 20 KB reservations.db was created there, which is consistent with server-side storage but does not exclude a trivial/empty table or prove row contents. Reproduce without the sqlite3 binary: use `python3 -c` with the sqlite3 module in read-only URI mode (file:/workspace/data/reservations.db?mode=ro) to SELECT code,name,date,time,party_size,status for the live code, then start `MOBILELLM_DATA_DIR=/workspace/data PORT=8021 python3 server.py`, GET http://127.0.0.1:8021/api/reservations/<code> with urllib, assert HTTP 200 and matching name=測試客人, date=2026-11-20, partySize=4, and terminate the process. Print status, body and row.\ntests-source: The export requirement is unmet: no sandbox_export call was executed in this session or either prior verify pass, so no archive exists to inspect and the 6-call budget is now exhausted (0 invocations remaining). The source tree itself is present and runnable: `ls -la /workspace/project` showed server.py 12,272 B (Oct 27 03:44), static/ and tests/ directories; the app served successfully on PORT=8020 with page title \"金龍軒 · 粵式手工菜 · 在线订台\". Test suite result is favorable from the earlier recorded run (10 tests OK in 1.097s). What is missing is only the archive artifact and its manifest check. Reproduce: run sandbox_export with path \".\" from /workspace/project, then list the archive contents and confirm it includes server.py, static/index.html, static/styles.css, static/app.js and tests/test_api.py, and that verification left the source unmodified (server.py sha256 c11b609ee6498f1a7be522e872ffa57e3fa36444c0f17797a544803ca792e037, app.js e9e8315c7d6492317c2132bd1d4c6a08c0406333e481fd91c43ee662be61b0a4, tests/test_api.py 5b25b30e11a2a5411947a5127b0139b99185f2d3308647154660ab5b89a3bddf)."
+        }
+      ]
+    },
+    {
+      "run": "restaurant-fc862989-4a62-4537-b205-18da7df09f6a",
+      "originalGoal": "开发一个中餐馆网站，支持在线订台。",
+      "failures": [
+        "Goal did not complete: The sandbox agent runtime rejects every build activation with invalidName(\"sandbox filesystem requirement\") before any tool executes, so no files can be written, no server started, no browser check run and no source exported. Three attempts including a varied tool profile all failed identically; the requested working application cannot be produced in this environment.",
+        "No actual source archive"
+      ],
+      "publicWorkerResults": [],
+      "sourceArchives": [],
+      "tasks": [
+        {
+          "id": "build-app",
+          "agent": "builder3",
+          "state": "failed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": "The agent runtime could not continue this run (non-execution-error: invalidName(\"sandbox filesystem requirement\"))."
+        },
+        {
+          "id": "review-app",
+          "agent": "reviewer",
+          "state": "needsReview",
+          "required": true,
+          "dependencies": [
+            "build-app"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "c1",
+                "requirement": "A usable responsive Chinese restaurant website presents restaurant identity, menu with prices, and an accessible online table reservation flow.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              },
+              {
+                "id": "c2",
+                "requirement": "A valid reservation is stored server-side and remains retrievable from a fresh browser context and after a server restart, not merely in client storage.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              },
+              {
+                "id": "c3",
+                "requirement": "Invalid input and unavailable/over-capacity requests are rejected with clear user-visible errors, while valid requests receive a confirmation code.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              },
+              {
+                "id": "c4",
+                "requirement": "The final unchanged source is exported and the actual running application is successfully exercised through browser checks.",
+                "targetTaskIDs": [
+                  "build-app"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": null
+        }
+      ]
+    },
+    {
+      "run": "restaurant-feb1f0ef-dd6a-4d64-9e7a-8720e8b1ea1a",
+      "originalGoal": "开发一个中餐馆网站，支持在线订台。",
+      "failures": [
+        "Goal did not complete: 共享工具预算 48/48 已全部耗尽（toolInvocationsRemaining=0），剩余 worker 激活无法执行任何 sandbox_browser/sandbox_run，因此无法补做真实浏览器整页验收这一必要能力；按协议以 blocked 保留已完成的源码、测试、API 冒烟、SQLite 持久化与导出回执等全部部分成果，并明确报告 #time 可见性疑似真实缺陷尚未复验。",
+        "The website was not actually started, inspected and exported"
+      ],
+      "publicWorkerResults": [
+        {
+          "artifactID": "build:1",
+          "taskID": "build",
+          "taskRevision": 2,
+          "text": "## 交付报告（build 任务）\n\n### 已完成的文件写入（有工具回执）\n\n| 路径 | 字节 | SHA-256 |\n|---|---|---|\n| `app.py` | 12028 | `5ed145fe3e6cc0f0d45a52bbbb39822fdc6e01898c4796d384c68ca30886a5b2` |\n| `static/index.html` | 7863 | `9fad754b608711fc0280f82ce301f041f1c285a47126b7e9914cb3679b34fd53` |\n| `static/styles.css` | 8395 | `8b8997b070a9b8910af93f87340a4564561cb938cee2cc1f8b72fdb1a3bc30c7` |\n| `static/app.js` | 6953 | `e7bce719117b0f1cab042c3bddb09b52a43c33f7ddefb8c6dc1fb1ed69a92976` |\n| `tests/test_app.py` | 9256 | `7358cef063fee09c91cfa7d5486738edfb020a2a6a6e1612c84c24ad9dd5aadb` |\n| `README.md` | 3198 | `7b04b1b357dc6df4151d0aeed9a16dbe40f26e1dee0dc7e6a77d750b7ea52f22` |\n\n实现要点（来自已写入源码）：仅标准库 + SQLite；`ThreadingHTTPServer` 监听 `0.0.0.0:$PORT`（默认 8000）；DB 位于 `$MOBILELLM_DATA_DIR/reservations.db`，未设置时回落 `./data`（自动建目录），支持 `RESERVATION_DB` 覆盖；表 `reservations(id, code, name, phone, date, time, party_size, created_at, status)`；`GET /api/availability` 返回 11:00–21:00 每 30 分钟共 21 个时段、每时段 20 座；`POST /api/reservations` 校验姓名/电话/日期（今天..+60 天）/时段/人数 1–8，非法 400、容量不足 409，均为中文消息，成功 201 带 `FML-XXXXXX` 编号；`GET /api/reservations/<code>` 查询；写入用进程内锁 + `BEGIN IMMEDIATE` 防超卖；前端全部通过 `fetch` 调用 API，无客户端本地预订状态。\n\n### 测试证据（实际执行）\n\n命令：`cd /workspace/project && python3 -m unittest discover -s tests -v`\n结果：**Ran 12 tests in 6.845s — OK，EXIT=0**（服务器进程退出码 0，管道退出码 0）。\n覆盖用例：`test_home_page_served`、`test_static_assets`、`test_availability_slots`（21 个时段、11:00 首、21:00 末、剩余 20）、`test_availability_bad_date`、`test_availability_past_and_far_future_rejected`、`test_create_booking_and_fetch`（201 + 编号 + 查询 200 + 18:30 剩余由 20 降为 16）、`test_lookup_missing_code_404`、`test_invalid_inputs`（10 组 400）、`test_invalid_json_400`、`test_capacity_conflict_409`（8+8+4 满座后 1 人 409，相邻 19:30 仍 201）、`test_partial_overshoot_rejected`（剩 4 座时再订 8 人 409）、`test_persistence_across_restart`（重启后按编号查询仍 200，DB 中 1 条记录）。\n\n### 未完成 / 缺失证据（不声称已通过）\n\n- **实际启动应用（sandbox_start）未执行**：无运行中的服务进程，无监听端口。\n- **浏览器实测（sandbox_browser）未执行**：首页内容、真实提交订台、确认编号与空位下降均未在真实浏览器中验证，仅有 unittest 内的 HTTP 级验证。\n- **sandbox_export /workspace/project 未执行**：无源码归档产物。\n- 原因：本次执行预算内工具调用已用尽（6/6），无法继续调用。上述三项需由后续执行者补做；预期 URL 为 `http://127.0.0.1:8000`（或 `$PORT`），DB 为 `/workspace/data/reservations.db`。\n- 潜在注意点（未实测）：`app.py` 静态文件校验依赖 `STATIC_DIR + os.sep` 前缀匹配，若部署时 `static` 为符号链接可能返回 404；`/api/availability` 对过去日期同样返回 400（前端 `date.min` 已限制，不影响正常使用）。",
+          "validationFailure": null,
+          "review": null
+        }
+      ],
+      "sourceArchives": [
+        {
+          "artifactID": "7499a7a4-609a-4a3b-8610-8b76d56192df",
+          "sha256": "9103745eb6b596e2a3a4cc71388facf0e198ceaf46323e8d1f0a20dd585ad1db",
+          "path": "failed-source/source-9103745eb6b596e2.zip"
+        },
+        {
+          "artifactID": "b7383cb0-9bf7-4eb5-998c-6bd8c817a446",
+          "sha256": "f7c5030e1e3b224d9cbbc25f6b1825a70e7d041712a2707d67e2bed7f3c37b0f",
+          "path": "failed-source/source-f7c5030e1e3b224d.zip"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "build",
+          "agent": "builder",
+          "state": "completed",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "review",
+          "agent": "reviewer",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "build"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "home_ui",
+                "requirement": "Running site renders a Chinese restaurant home page with menu, contact/hours, and a usable reservation form.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "booking_persistence",
+                "requirement": "A valid booking returns a confirmation code and is persisted service-side in SQLite; a fresh client/reload can verify availability or booking state.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "validation_capacity",
+                "requirement": "Invalid inputs are rejected and slot capacity is enforced with appropriate errors.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "tests_export",
+                "requirement": "Automated tests pass with preserved exit code, and final source is present in /workspace/project and exported.",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox11:sandbox_run",
+              "7:sandbox17:sandbox_read_file"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox15:sandbox_browser\nhome_ui: 源码 static/index.html（7863B，sha256 9fad754b…）含中文品牌“福满楼中餐馆”、6 道招牌菜及价格、营业时间、地址/电话、#booking-form（日期、时段、人数、姓名、电话、提交按钮）和确认面板；sandbox_start 记录进程 64dc984d 在 8000 端口 running=true。但本轮没有 sandbox_browser 实际加载 http://127.0.0.1:8000 并断言首页渲染、中文内容、菜单和订台表单可用的记录，也未读取 app.js 验证前端提交行为；启动后也未做健康检查。因此“Running site renders ... usable reservation form”缺少浏览器证据，不能判 pass。需补做浏览器首页加载与中文内容、菜单、订台表单断言。\ntests_export: 实际执行 cd /workspace/project && python3 -m unittest discover -s tests -v：Ran 12 tests in 6.849s，OK，exitCode=0（stdout EXIT=0）。sandbox_list_files 确认 app.py 12028B、README.md 3198B、static/、tests/ 均在 /workspace/project。但没有任何 sandbox_export 归档回执，构建报告也承认 export 未执行；“final source ... exported”未满足。需执行 sandbox_export 导出 /workspace/project 并保留归档路径/校验值；README.md 内容本轮未读取，仅有目录项。"
+        },
+        {
+          "id": "verify_ui",
+          "agent": "reviewer",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "build"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "home_ui",
+                "requirement": "运行中的站点在真实浏览器渲染中文中餐馆首页，含菜单与价格、营业时间/联系方式、可用的订台表单。",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "booking_persistence",
+                "requirement": "浏览器中提交合法订台返回确认编号，且刷新/新客户端可见座位减少或预订状态，证明服务端 SQLite 持久化。",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "validation_capacity",
+                "requirement": "非法输入被拒绝，超容量时段返回明确错误（409），并有实际执行证据。",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox15:sandbox_browser"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox15:sandbox_browser\nhome_ui: 未获得任何真实浏览器证据。sandbox_start 返回 running=true（processID d2f2beca-8c1a-db3d-db09-64bb3c4d5250，port 8000），但对旧进程 64dc984d 的 sandbox_process 健康检查失败（\"Unknown process in this workspace\"）；随后两次 sandbox_browser 调用（完整脚本 call_00_6IkjPRmD2NnPwXcK06Qi7152 与最小首页加载 call_00_YEN0To2PklSoSYxmyWjJ9868）均返回 status=failed，\"Start an application on the selected port before inspecting it\"。因此无法断言中文品牌名（福满楼）、菜单项与价格、营业时间/地址/电话或订台表单字段（日期/时段/人数/姓名/电话/提交）在页面上可见。build 报告中的首页内容仅为源码层面的声明（static/index.html 7863 bytes），未在运行站点中验证。当前激活工具调用已用尽（6/6），无法补做。需在服务确认监听 8000 后重跑首页断言。\nbooking_persistence: 未执行任何真实提交，故无确认编号、无座位数前后值。计划脚本包含用 fetch 调用 /api/availability 取基线、填表提交、正则匹配 FML-[A-Z0-9]{4,10}、新建 browser context 复查询座位与 /api/reservations/<code>，但该脚本因服务不可达而未运行（返回 \"Start an application on the selected port before inspecting it\"）。build 报告称 DB 位于 $MOBILELLM_DATA_DIR/reservations.db 且 test_persistence_across_restart 覆盖重启后查询，但那是上游 unittest 的自述，属于未验证证据，不构成本次验收。无法区分服务端 SQLite 持久化与客户端状态，也无法证明刷新/新客户端可见座位下降。工具预算耗尽，无法补验。\nvalidation_capacity: 未观察到任何 400/409 响应。计划用例（party_size=0、phone='abc'、以及同日同档 8+8+4 满座后 1 人应 409 并检查相邻档位仍可订）均未实际发出，因浏览器会话无法连接 8000 端口而中止。build 报告声称 test_invalid_inputs（10 组 400）与 test_capacity_conflict_409 通过、EXIT=0，但本次激活未运行 sandbox_run，无法确认退出码或错误码，也未取得中文错误消息文本。需在服务可用后重跑非法输入与容量用例并记录实际 HTTP 状态码与消息。"
+        },
+        {
+          "id": "verify_artifacts",
+          "agent": "verifier",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "build"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "tests_export",
+                "requirement": "自动化测试在本次验收中实际执行并通过（退出码 0 保留），源码位于 /workspace/project 且已通过 sandbox_export 导出并给出归档回执。",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox11:sandbox_run",
+              "7:sandbox17:sandbox_read_file",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox17:sandbox_read_file"
+        },
+        {
+          "id": "uicheck",
+          "agent": "uicheck",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "build"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "home_ui",
+                "requirement": "运行中的站点在真实浏览器中渲染中文中餐馆首页：品牌名、菜单与价格、营业时间/联系方式、可用订台表单均被断言可见。",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "booking_persistence",
+                "requirement": "浏览器 UI 提交合法订台后返回 FML 确认编号，且该时段剩余座位减少；新浏览器上下文/刷新后按编号查询成功，证明服务端 SQLite 持久化而非客户端状态。",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "validation_capacity",
+                "requirement": "非法输入被拒绝（400）且超容量时段返回 409，均有本次实际执行的状态码与消息证据。",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox11:sandbox_run"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox15:sandbox_browser, 7:sandbox11:sandbox_run\nhome_ui: 本次无任何真实浏览器断言证据。sandbox_start 返回 processID=3ea1055d-e26a-3c1e-a433-f8f5df929107、running=true、port=8000，但后续两次 sandbox_run 健康检查均以 tool-resolution failed（exit status 1）结束，未取得任何 HTTP 状态码，因此无法确认 8000 端口实际监听；唯一一次 sandbox_browser 调用（call_00_Qzg9ePlc5AUXPKLjzhQs5266）被平台拒绝，原文 'Use the provided Playwright objects; imports, introspection and OS operations belong in sandbox_run'，原因是脚本内 import re，导致标题/正文含「福满楼」、≥3 个菜单价格、营业时间/地址/电话、#booking-form 内 #date/#time/#party_size/#name/#phone/#submit-btn 可见可填等断言一条都没有执行。静态源码 static/app.js（sha256 e7bce719…2976）确实包含 #booking-form、#date、#time、#party_size、#name、#phone、#submit-btn、#confirmation、#conf-code 等元素引用，但源码存在不等于运行页面渲染通过。需在剩余预算内重跑 sandbox_browser：去掉 import，改用页面文本正则（如 page.inner_text 后 in 判断）与 locator 断言，并先用 curl 确认 200 再执行。\nbooking_persistence: 无 UI 提交与持久化实测数据。未获得任何 FML 确认编号，未取得提交前后 /api/availability 同一时段 remaining 的基线与下降值，也未在新 browser context 中对 /api/reservations/<code> 取得 200 及姓名/人数/日期一致性。可参考的仅有 build 报告中的 unittest 记录（test_create_booking_and_fetch 声称 201 + 编号 + 18:30 剩余 20→16，test_persistence_across_restart 重启后 200），但那是上游自述、非本次执行，且 build 报告本身声明 sandbox_browser 未执行，不能作为本判据通过依据。需重跑浏览器脚本：page.evaluate 取 baseline，UI 填表提交，断言 #conf-code 匹配 FML-[A-Z0-9]{4,10}，再取 after=baseline-4，并用 browser.new_context() 查询编号 200 且 name 一致。\nvalidation_capacity: 未执行任何非法输入或容量用例。没有 party_size=0、phone='abc' 的 400 状态码与中文错误文本，也没有同一时段订满（8+8+4）后 1 人返回 409 及相邻时段 201 的实际响应。sandbox_browser 脚本中的这些断言虽已写好（post() 封装、CAP_DATE 2026-11-15 20:00、over 期望 409、adjacent 20:30 期望 201），但调用在入口即被拒绝，断言从未运行；sandbox_run 侧也未做任何 curl POST 验证。需在修复脚本后实际执行并保留状态码与 error 消息原文，方可判定 pass。"
+        },
+        {
+          "id": "uicheck2",
+          "agent": "uicheck",
+          "state": "failed",
+          "required": true,
+          "dependencies": [
+            "build"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "ui_home",
+                "requirement": "真实浏览器加载 base_url 后，页面标题或正文含「福满楼」，并含菜单与价格、营业时间/联系方式，且订台表单字段（#date/#time/#party_size/#name/#phone/#submit-btn）可见。",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "ui_booking",
+                "requirement": "浏览器 UI 提交合法订台后 #conf-code 显示 FML- 开头编号，该时段剩余座位按人数减少；新 browser context 按编号查询返回 200 且姓名一致，证明服务端 SQLite 持久化。",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              },
+              {
+                "id": "ui_validation",
+                "requirement": "浏览器/页面上下文发出非法订台（人数 0、电话非法）返回 400，同一时段订满后超额预订返回 409，并记录实际状态码与中文错误文本。",
+                "targetTaskIDs": [
+                  "build"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox15:sandbox_browser",
+              "7:sandbox13:sandbox_start"
+            ]
+          },
+          "failure": "Required tool execution was not recorded: 7:sandbox15:sandbox_browser\nui_home: 真实浏览器调用有执行但断言失败，错误原文：\"not visible: #time\"（sandbox_browser，call_00_7o5KdKLnNkHX4zUglmDS1216，状态 failed）。脚本按顺序先执行 goto(base_url)、标题/正文含「福满楼」、价格正则≥3 项、营业时间/电话/地址关键字断言，随后才在可见性循环中于 '#time' 处失败，说明品牌名、菜单价格、营业时间/联系方式这些断言已通过（但平台只回传了最终错误文本，未回传 PRICES/TITLE 的具体打印值，故具体菜品与价格文本无逐字证据）；表单可见性循环中 #booking-form、#date 已通过，#time 不可见，后续 #party_size/#name/#phone/#submit-btn 未验证。可修复缺陷：静态页中的时段控件（#time，可能为 <select> 或被 CSS/初始隐藏）在页面加载后不可见，需让 #time 及其余字段在初始状态即 is_visible 为真（例如不要默认 display:none，或选择器与 HTML 中实际 id 对齐）。本轮 3 次工具调用已用尽（toolInvocationsRemaining=0），无法复跑确认修复。另注：sandbox_run 的端口清理命令返回 exit status 1 且输出未回传（可能仅因 grep 无匹配），未获得 200 健康检查证据，第 3 步 curl 未执行。\nui_booking: 无本次实际执行证据。sandbox_browser 脚本在 UI 填写前即因 \"not visible: #time\" 失败，未执行 page.fill/select_option 与 #submit-btn 点击，因此没有确认编号、没有提交前后 remaining 基线/变化值；新 browser context 的 /api/reservations/<code> 查询与 SQLite 持久化断言同样未运行。sandbox_start 返回 processID=a7fbc999-c32a-21f8-d981-78d2bca07fa5、port=8000、running=true、logPath=.mobilellm/processes/a7fbc999-c32a-21f8-d981-78d2bca07fa5.log，但仅有进程启动记录、无健康检查，不能证明服务正确响应。build 报告中的 unittest（test_create_booking_and_fetch 201+编号+18:30 剩余 20→16）属上游自述，非本次执行证据，不予采信为通过。需在修复 #time 可见性后重跑：UI 提交合法订台取得 FML- 编号，读取该时段 remaining 前后差值，并用 browser.new_context() 查询 /api/reservations/<编号> 断言 200 与姓名一致。\nui_validation: 无本次实际执行证据。脚本中的验证段（party_size=0 与 phone='abc' 的 POST /api/reservations 断言 400；对 2026-11-21 20:00 连续 8+8+4 后订 1 人断言 409；相邻 20:30 断言 201）均未运行到，因为流程在首页 #time 可见性断言处已抛出异常终止，未产生任何 400/409/201 状态码或中文错误文本。故本判据既不能判通过，也无法据此判定源码缺陷，属证据缺失（blocked）。重跑时须记录实际 status 与 body 中的中文 message 文本，例如 OVERBOOK=409 的具体错误消息，以及相邻时段 201 的编号，作为可核验证据。"
+        }
+      ]
+    },
+    {
+      "run": "sales-9303aac4-759b-413c-9303-262f64195e2f",
+      "originalGoal": "Create a reproducible Python sales analysis project from orders.csv. Deduplicate by order_id keeping the latest updated_at, exclude cancelled orders, and compute revenue in integer euro cents as quantity * unit_cents - refund_cents. Write totals.json with revenue_cents, order_count and by_country revenue totals. Include a concise human-readable report and tests, run them, and deliver the project.",
+      "failures": [
+        "The autonomous task needs effect reconciliation",
+        "Goal did not complete: waitingForReconciliation",
+        "No actual source archive",
+        "No independent collaborating agents"
+      ],
+      "publicWorkerResults": [],
+      "sourceArchives": [],
+      "tasks": [
+        {
+          "id": "build_sales_project",
+          "agent": "builder",
+          "state": "running",
+          "required": true,
+          "dependencies": [],
+          "review": null,
+          "failure": null
+        },
+        {
+          "id": "review_and_export_sales_project",
+          "agent": "reviewer",
+          "state": "pending",
+          "required": true,
+          "dependencies": [
+            "build_sales_project"
+          ],
+          "review": {
+            "criteria": [
+              {
+                "id": "dedup_and_filter",
+                "requirement": "Deduplicates by order_id using the latest updated_at and excludes cancelled orders case-insensitively; evidence demonstrates the retained rows.",
+                "targetTaskIDs": [
+                  "build_sales_project"
+                ]
+              },
+              {
+                "id": "revenue_integer_cents",
+                "requirement": "Revenue per valid order is integer euro cents computed as quantity * unit_cents - refund_cents, with totals consistent across orders.",
+                "targetTaskIDs": [
+                  "build_sales_project"
+                ]
+              },
+              {
+                "id": "totals_schema",
+                "requirement": "totals.json contains revenue_cents, order_count, and by_country revenue totals with correct integer types and sums.",
+                "targetTaskIDs": [
+                  "build_sales_project"
+                ]
+              },
+              {
+                "id": "report_and_reproducibility",
+                "requirement": "README.md is a concise human-readable report with methodology, key totals and country breakdown, plus exact reproducible run/test commands.",
+                "targetTaskIDs": [
+                  "build_sales_project"
+                ]
+              },
+              {
+                "id": "tests_actually_pass",
+                "requirement": "Tests cover deduplication, cancellation, refunds, integer-cent revenue, country totals, and full output; the reviewer's sandbox_run record shows them passing.",
+                "targetTaskIDs": [
+                  "build_sales_project"
+                ]
+              },
+              {
+                "id": "final_export",
+                "requirement": "The final unchanged project is exported with sandbox_export as a real workspace artifact after checks.",
+                "targetTaskIDs": [
+                  "build_sales_project"
+                ]
+              }
+            ],
+            "requiredTools": [
+              "7:sandbox11:sandbox_run",
+              "7:sandbox14:sandbox_export"
+            ]
+          },
+          "failure": null
+        }
+      ]
+    }
+  ]
+}

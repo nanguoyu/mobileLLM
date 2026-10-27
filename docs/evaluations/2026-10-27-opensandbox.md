@@ -15,6 +15,8 @@ The configured model alias was deepseek-v4-flash on the official service. Budget
 settings differ between these development runs. They are not a frozen reliability benchmark.
 [The complete attempt ledger](evidence/2026-10-27-opensandbox/evaluation-ledger.json) retains earlier
 blocked, interrupted and failed runs, their limits, task relationships and native receipt digests.
+[Original failed worker reports and available source archives](evidence/2026-10-27-opensandbox/original-failures.json)
+are retained separately from accepted outcomes.
 
 ## What the failures changed
 
