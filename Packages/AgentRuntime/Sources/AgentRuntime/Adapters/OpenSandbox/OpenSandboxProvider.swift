@@ -44,11 +44,14 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
         maximumAuthority = try AgentAuthorityScope(capabilities: AgentCapabilitySet([.localRead, .localWrite, .codeExecution, .networkRead]),
             destinations: [connection.destination] + connection.networkDestinations,
             dataCategories: [OpenSandboxConnection.dataCategory], workspaceIDs: [workspaceID])
-        maximumBudget = try AgentBudget(limits: BudgetQuantities([
+        var limits = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map { ($0, UInt64(0)) })
+        limits.merge([
             .activeMilliseconds: 180_000, .networkRequestBytes: 300_000,
             .networkResponseBytesPerOperation: 1_048_576, .networkResponseBytesTotal: 2_097_152,
             .generatedArtifactBytes: 8_388_608, .persistedOutputBytes: 8_388_608, .peakMemoryBytes: 2_147_483_648
-        ]), maximumThermalState: .critical, memoryPressureResponse: .pause)
+        ], uniquingKeysWith: { _, maximum in maximum })
+        maximumBudget = try AgentBudget(limits: BudgetQuantities(limits),
+            maximumThermalState: .critical, memoryPressureResponse: .pause)
     }
 
     public func capabilities() async throws -> SandboxCapabilities { try report() }
