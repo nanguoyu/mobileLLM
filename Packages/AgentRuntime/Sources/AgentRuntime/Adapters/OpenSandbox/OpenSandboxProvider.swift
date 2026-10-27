@@ -159,7 +159,8 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
         } catch {
             // No automatic POST retry. A durable handle survives ambiguous submission and remains inspectable.
             let confirmedRejection: Bool
-            if case OpenSandboxError.http(let code) = error { confirmedRejection = [400, 401, 403, 409, 413, 422, 429].contains(code) }
+            if (try load(id).requestBytes ?? 0) == 0 { confirmedRejection = true }
+            else if case OpenSandboxError.http(let code) = error { confirmedRejection = [400, 401, 403, 409, 413, 422, 429].contains(code) }
             else { confirmedRejection = false }
             try finishFailure(id, message: error.localizedDescription, uncertain: !confirmedRejection)
         }

@@ -229,7 +229,9 @@ public struct OpenSandboxTool: ToolV2 {
                             negotiatedCapabilitiesFingerprint: binding.negotiated.fingerprint))
                     let boundary = try await context.performBoundary(observation: ExternalOperationObservation(
                         destination: connection.destination, dataCategories: [OpenSandboxConnection.dataCategory], effects: descriptor.effects,
-                        requestBytes: UInt64(binding.payload.value.data.count), responseBytesLimit: plan.maximumResponseBytes,
+                        // Reserve the provider's total body allowance, including wrapper and cancel
+                        // requests. The provider also meters actual bytes against the attenuated budget.
+                        requestBytes: plan.maximumRequestBytes, responseBytesLimit: plan.maximumResponseBytes,
                         payloadDigest: prepared.prepared.request.sanitizedArguments.fingerprint,
                         executionConstraintDigest: binding.requirement.fingerprint, descriptorID: descriptor.id.description,
                         schemaDigest: descriptor.id.schemaDigest, trustRevision: descriptor.id.trustRevision,
