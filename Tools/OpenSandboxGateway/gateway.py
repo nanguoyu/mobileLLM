@@ -290,13 +290,16 @@ class Gateway:
                 while not self.closing:
                     status = await sandbox.commands.get_command_status(command)
                     if status.running is False:
-                        logs = await sandbox.commands.get_background_command_logs(command)
-                        if len(logs.content.encode()) > 900000:
+                        # execd log tails can truncate a single long screenshot/archive line.
+                        # The guest commits the complete bounded result before exiting.
+                        raw = await sandbox.files.read_file('/workspace/project/.mobilellm/operations/' + operation + '.json',
+                            range_header='bytes=0-850000')
+                        if len(raw.encode()) > 850000:
                             raise RuntimeError('OpenSandbox result exceeds the response limit')
                         try:
-                            output = json.loads(logs.content.strip())
+                            output = json.loads(raw)
                         except json.JSONDecodeError:
-                            output = {'error': 'The sandbox returned no valid operation result', 'stderr': logs.content[:32768]}
+                            raise RuntimeError('The saved sandbox result is not valid JSON')
                         cancelled = self.store.operation(operation)['state'] == 'cancelling'
                         good = status.exit_code == 0 and output.get('exitCode', 0) == 0 and 'error' not in output
                         final = 'cancelled' if cancelled else 'completed' if good else 'failed'

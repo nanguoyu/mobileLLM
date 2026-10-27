@@ -8,6 +8,44 @@ import XCTest
 
 // TEST-ID: AHT-SANDBOX-001
 final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
+    func testRealBrowserScreenshotAndSourceArchiveSurviveLogTailLimits() async throws {
+        guard let path = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_SANDBOX_CONFIG"] else {
+            throw XCTSkip("Explicit local OpenSandbox configuration is required")
+        }
+        struct Configuration: Decodable { let endpoint: String; let apiKey: String }
+        let config = try JSONDecoder().decode(Configuration.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        let connection = try await OpenSandboxHTTPClient.connect(endpoint: config.endpoint, apiKey: config.apiKey)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mobilellm-browser-test-" + UUID().uuidString)
+        let provider = try OpenSandboxProvider(connection: connection, scopeID: UUID(), directory: directory, apiKey: { config.apiKey })
+        addTeardownBlock { try await provider.closeWorkspace(); try? FileManager.default.removeItem(at: directory) }
+        let html = """
+        <!doctype html><title>Artifact contract</title><h1>Real browser</h1><canvas width="800" height="600"></canvas>
+        <script>const c=document.querySelector('canvas').getContext('2d');let s=7;
+        for(let y=0;y<600;y+=4)for(let x=0;x<800;x+=4){s=(s*1664525+1013904223)>>>0;c.fillStyle='rgb('+(s&255)+','+((s>>>8)&255)+','+((s>>>16)&255)+')';c.fillRect(x,y,4,4)}</script>
+        """
+        let write = try await request(provider, payload: .object(["action": .string("write"), "files": .array([.object([
+            "path": .string("index.html"), "content": .string(html), "expectedSHA256": .null])])]))
+        _ = try await execute(provider, request: write, key: "source")
+        let start = try await request(provider, payload: .object(["action": .string("start"),
+            "command": .string("python3 -m http.server 8011 --bind 0.0.0.0"), "port": .integer(8011)]))
+        XCTAssertEqual(try await execute(provider, request: start, key: "server").terminalStatus.state, .completed)
+        let browser = try await request(provider, payload: .object(["action": .string("browser"), "port": .integer(8011),
+            "script": .string("await expect(page.get_by_role('heading', name='Real browser')).to_be_visible()\nreturn {'checked': True}")]))
+        let inspected = try await execute(provider, request: browser, key: "browser")
+        let image = try object(inspected)
+        guard case .string(let encoded)? = image["screenshotBase64"], let pixels = Data(base64Encoded: encoded) else {
+            return XCTFail("No original screenshot: \(inspected.terminalStatus.failure?.safeMessage ?? "missing result")")
+        }
+        XCTAssertGreaterThan(pixels.count, 65_536)
+        XCTAssertEqual(image["screenshotSHA256"], .string(StableDigest.sha256(pixels).rawValue))
+        let export = try await request(provider, payload: .object(["action": .string("export")]))
+        let archive = try object(try await execute(provider, request: export, key: "archive"))
+        guard case .string(let data)? = archive["dataBase64"], let zip = Data(base64Encoded: data) else { return XCTFail("No archive") }
+        XCTAssertEqual(Array(zip.prefix(2)), [0x50, 0x4b])
+        XCTAssertEqual(archive["sha256"], .string(StableDigest.sha256(zip).rawValue))
+        XCTAssertEqual(archive["sourceDigest"], image["sourceDigest"])
+    }
+
     func testPersistedConnectionCannotBypassEndpointOrCapabilityValidation() throws {
         let value = try OpenSandboxConnection(id: UUID(), endpoint: URL(string: "https://execution.example/")!,
             image: "sha256:test", capabilities: [.workspaceFiles, .codeExecution])

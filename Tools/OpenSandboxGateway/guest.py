@@ -313,5 +313,7 @@ if __name__ == '__main__':
             fd = os.open(leaf, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600, dir_fd=directory)
             with os.fdopen(fd, 'w') as output: output.write(encoded)
         finally: os.close(directory)
-    print(encoded, flush=True)
+        print(json.dumps({'resultPath': '.mobilellm/operations/' + identity + '.json', 'exitCode': code}), flush=True)
+    else:
+        print(encoded, flush=True)
     sys.exit(code)
