@@ -203,9 +203,9 @@ Closing an inspector detaches its subscriptions without stopping work. Rejected 
 safe failure. Completed history remains accessible, and unchanged projections do not rewrite snapshots
 or bump conversation activity times.
 
-The program permits at most 12 worker activations, 24 actual tool calls and 24 coordination decisions.
-All normalized model steps, including preparation and tool-related follow-ups, share the 32-step goal
-limit. Provider protocol retries consume recorded tokens within a step, so the limit is not a raw HTTP
+The program permits at most 12 worker activations and 24 coordination decisions. Ordinary goals freeze
+24 tool calls and 32 normalized model steps. Execution-enabled development goals freeze 48 tool calls
+and 64 model steps, with a twelve-call activation ceiling instead of six. Provider protocol retries consume recorded tokens within a step, so the limit is not a raw HTTP
 request count. `await budget.snapshot()` reports actual usage only from settled
 calls reached by replay. Unused worker tool allowances become available to later stages, while the durable
 runtime ledger still enforces admission and all real consumption. The supervisor writes the final answer itself. Separate writer,
@@ -241,8 +241,9 @@ from becoming evidence. The supervisor and dependent workers request relevant re
 The program passes the packet with `serialize(packet)`. Its cache also invalidates when replay reaches
 another settled child. Later journaled evidence cannot leak backward into an earlier replayed prompt.
 
-The app's workflow envelope admits 32 model attempts and 24 tool calls by default. Cumulative input
-and output capacities cover the admitted model passes while per-attempt ceilings stay unchanged.
+The app chooses the ordinary or development envelope before planning and approval. Saved goals keep
+their original envelope and graph activation ceiling on resume. Cumulative token capacities cover
+the admitted model passes while per-attempt output/context ceilings stay unchanged.
 The app child builder shrinks its usual strict share to the coordinator's current available capacity.
 Capacity calculation, exact request construction and reservation occur without an intervening suspension
 point. If a shrinking child builder temporarily has no capacity because other children hold reservations,
@@ -770,4 +771,6 @@ implements authenticated, bounded HTTP transport, durable execution handles and 
 external gateway uses the pinned official OpenSandbox SDK and runs code in an isolated Linux guest.
 The app never executes model-generated host commands. One workspace belongs to one goal; workers
 share files through that scope. Executable delivery compares native startup, browser and archive receipts
-against the current source digest and accepted review. Task details expose the original verified files.
+against the current source digest and accepted review. Task details expose the original verified files,
+including screenshots from failed checks. Bounded page/control/stdout diagnostics reach the next agent
+turn; failed receipts remain failed and cannot substitute for a later successful check.
