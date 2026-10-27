@@ -90,6 +90,18 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
         let listed = try await execute(restored, request: listing, key: "check-no-late-write")
         XCTAssertFalse(try XCTUnwrap(listed.structuredOutput).string.contains("late.txt"), "Cancellation must stop the command's child, not just its observer")
 
+        let exits = try await request(restored, payload: .object(["action": .string("start"),
+            "command": .string("python3 -c 'pass'"), "port": .integer(8000)]))
+        let exitsID = try await restored.start(exits, idempotencyKey: "not-a-service")
+        let exited = try await collect(restored, id: exitsID)
+        XCTAssertEqual(exited.terminalStatus.state, .failed)
+        XCTAssertEqual(exited.terminalStatus.failure?.externalEffect, .confirmedApplied)
+        XCTAssertNotNil(exited.terminalStatus.failure?.details["sandbox.source"])
+        let stop = try await request(restored, payload: .object(["action": .string("stop"),
+            "processID": .string(exitsID.description)]))
+        let stopped = try await execute(restored, request: stop, key: "stop-exited-service")
+        XCTAssertEqual(try object(stopped)["running"], .bool(false))
+
         let freshHandle = try await restored.attach(to: onceID)
         var events: [SandboxEventRecord] = []
         for try await event in freshHandle.events(after: nil) { events.append(event.payload) }
