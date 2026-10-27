@@ -270,7 +270,7 @@ extension AgentRunController {
                         return .reconcile(invocationID: call.invocationID, failure: failure)
                     }
                 case .failed(let failure):
-                    if !Self.canContinueAfterPageMiss(failure, plan: history.toolIntents[call.invocationID]?.1.plan) {
+                    if !Self.canContinueAfterToolDiagnostic(failure, plan: history.toolIntents[call.invocationID]?.1.plan) {
                         requiresSynthesis = true
                     }
                 case .completed:
