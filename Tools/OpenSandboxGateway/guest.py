@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Bounded operation helpers executed INSIDE the OpenSandbox container, never on the Mac."""
 import asyncio
+import ast
 import base64
 import hashlib
 import io
@@ -15,6 +16,7 @@ import sys
 import time
 import uuid
 import zipfile
+from types import SimpleNamespace
 import urllib.request
 import urllib.error
 from urllib.parse import urlsplit
@@ -173,9 +175,15 @@ def run_command(command, timeout):
 
 
 async def inspect_browser(script, operation_id, port):
-    from playwright.async_api import async_playwright
+    from playwright.async_api import async_playwright, expect
     if len(script.encode()) > 32768:
         raise ValueError('Browser script exceeds 32 KiB')
+    forbidden = {'eval','exec','compile','open','input','globals','locals','vars','getattr','setattr','delattr','__import__','exit','quit','breakpoint'}
+    for node in ast.walk(ast.parse(script)):
+        if isinstance(node, (ast.Import, ast.ImportFrom, ast.ClassDef)) or (
+            isinstance(node, ast.Name) and (node.id.startswith('_') or node.id in forbidden)) or (
+            isinstance(node, ast.Attribute) and node.attr.startswith('_')):
+            raise ValueError('Use the provided Playwright objects; imports, introspection and OS operations belong in sandbox_run')
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True, args=['--no-sandbox'])
         context = await browser.new_context(viewport={'width': 1280, 'height': 900})
@@ -187,7 +195,9 @@ async def inspect_browser(script, operation_id, port):
         if response is None or response.status >= 400:
             raise ValueError('The application page did not load successfully')
         # The supplied script is authorized code running only in the guest, like shell execution.
-        namespace = {'page': page, 'context': context, 'browser': browser, 'base_url': base_url, 'asyncio': asyncio, 'json': json}
+        namespace = {'page': page, 'context': context, 'browser': browser, 'base_url': base_url, 'expect': expect,
+                     'asyncio': SimpleNamespace(sleep=asyncio.sleep,gather=asyncio.gather),
+                     'json': SimpleNamespace(dumps=json.dumps,loads=json.loads)}
         exec('async def user_check():\n' + '\n'.join('    ' + line for line in script.splitlines()), namespace)
         result = await namespace['user_check']()
         location = urlsplit(page.url)
@@ -265,8 +275,12 @@ def execute(payload):
     if action == 'export':
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+            count = 0
             for path, data in source_files():
                 archive.writestr(path, data)
+                count += 1
+        if count == 0:
+            raise ValueError('There are no project source files to export')
         data = buffer.getvalue()
         if len(data) > 512 * 1024:
             raise ValueError('Compressed source export exceeds 512 KiB')
@@ -276,14 +290,26 @@ def execute(payload):
 
 
 if __name__ == '__main__':
+    payload = json.loads(base64.b64decode(sys.argv[1], validate=True))
+    code = 1
     try:
-        result = execute(json.loads(base64.b64decode(sys.argv[1], validate=True)))
+        result = execute(payload)
         result['sourceDigest'] = source_digest()
         encoded = json.dumps(result, ensure_ascii=False)
         if len(encoded.encode()) > 850000:
             raise ValueError('Operation result exceeds its output limit')
-        print(encoded, flush=True)
-        sys.exit(0 if result.get('exitCode', 0) == 0 else 1)
-    except Exception as error:
-        print(json.dumps({'error': str(error)[:4000]}), flush=True)
-        sys.exit(1)
+        code = 0 if result.get('exitCode', 0) == 0 else 1
+    except BaseException as error:
+        result = {'error': str(error)[:4000] or type(error).__name__}
+        try: result['sourceDigest'] = source_digest()
+        except Exception: pass
+        encoded = json.dumps(result, ensure_ascii=False)
+    if payload.get('operationID'):
+        identity = str(uuid.UUID(payload['operationID']))
+        directory, leaf = parent_fd('.mobilellm/operations/' + identity + '.json', create=True)
+        try:
+            fd = os.open(leaf, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+            with os.fdopen(fd, 'w') as output: output.write(encoded)
+        finally: os.close(directory)
+    print(encoded, flush=True)
+    sys.exit(code)

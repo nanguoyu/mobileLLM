@@ -181,8 +181,11 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
         default: throw OpenSandboxError.invalidResponse
         }
         if let state {
+            var details: [String: String] = ["sandbox.workspace": workspaceID.description, "sandbox.operation": id.description]
+            if case .object(let value)? = job.output, case .string(let digest)? = value["sourceDigest"],
+               (try? StableDigest(rawValue: digest)) != nil { details["sandbox.source"] = digest }
             let failure = state == .completed ? nil : try Self.failure(job.error ?? "Sandbox execution did not complete",
-                uncertain: job.state == "uncertain", cancelled: state == .cancelled, occurred: job.submitted)
+                uncertain: job.state == "uncertain", cancelled: state == .cancelled, occurred: job.submitted, details: details)
             let timestamp = try AgentTimestamp(Date())
             let previous = record.events.last!
             let status = try SandboxExecutionStatus(handleID: id, stateVersion: previous.status.stateVersion + 1,
@@ -252,7 +255,8 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
         return receipt
     }
 
-    static func failure(_ message: String, uncertain: Bool = false, cancelled: Bool = false, occurred: Bool = false) throws -> AgentFailure {
+    static func failure(_ message: String, uncertain: Bool = false, cancelled: Bool = false, occurred: Bool = false,
+                        details: [String: String] = [:]) throws -> AgentFailure {
         let safe = String(String.UnicodeScalarView(message.unicodeScalars.prefix(400)))
             .replacingOccurrences(of: #"[\x00-\x1f\x7f]"#, with: " ", options: .regularExpression)
         return try AgentFailure(code: "sandbox.opensandbox.execution",
@@ -260,6 +264,7 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
             safeMessage: safe.isEmpty ? "Sandbox execution failed" : safe, retryAdvice: .never,
             externalEffect: uncertain ? .uncertain : occurred ? .confirmedApplied : .confirmedNone,
             requiredUserAction: uncertain ? .reconcile : .none,
+            details: details,
             redaction: RedactionMetadata(classification: .sensitive, policyVersion: 1))
     }
 

@@ -159,7 +159,21 @@ extension AgentRunController {
     ) async throws {
         let frozen = try await frozenInputsForTools(facts)
         let selected = try frozen.selectedTools(latestUserRequest: frozen.currentUser.frozen.content)
-        let previous: Set<StableDigest> = Set(history.toolIntents.values.compactMap { intent in
+        var sourceVersions: [SandboxWorkspaceHandleID: StableDigest] = [:]
+        for (id, outcome) in history.toolOutcomes.sorted(by: { $0.value.0.sequence < $1.value.0.sequence }) {
+            if let prepared = history.toolIntents[id]?.1,
+               let source = SandboxSourceObservation.read(outcome.1, prepared: prepared) {
+                sourceVersions[source.workspace] = source.digest
+            }
+        }
+        let previous: Set<StableDigest> = Set(history.toolIntents.compactMap { id, intent in
+            if let outcome = history.toolOutcomes[id]?.1,
+               let source = SandboxSourceObservation.read(outcome, prepared: intent.1),
+               let latest = sourceVersions[source.workspace], latest != source.digest {
+                // Retesting after an observed source change is new work. Unchanged repetitions,
+                // uncertain effects, and every non-sandbox tool retain their existing guard.
+                return nil
+            }
             guard let descriptorText = intent.1.plan.descriptorID,
                   let arguments = intent.1.plan.canonicalArguments
             else { return nil }
@@ -1626,6 +1640,13 @@ extension AgentRunController {
     }
 
     func isSemanticNoProgress(_ outcome: AgentToolInvocationOutcome, plan: ExternalOperationPlan? = nil) -> Bool {
+        if case .failed(let failure) = outcome, plan?.kind == .sandbox, plan?.effects == [.codeExecution],
+           failure.externalEffect == .confirmedApplied, let source = failure.details["sandbox.source"],
+           (try? StableDigest(rawValue: source)) != nil {
+            // A real compiler/test diagnostic is actionable evidence. Exact repeats are still
+            // rejected unless the source changes, and the cumulative budget is unchanged.
+            return false
+        }
         if case .failed(let failure) = outcome, Self.canContinueAfterPageMiss(failure, plan: plan) {
             // A distinct unavailable URL is useful negative evidence. Repeated identical calls
             // remain subject to the fingerprint guard and every miss consumes its tool budget.

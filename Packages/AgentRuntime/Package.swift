@@ -31,7 +31,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AgentRuntimeTests",
-            dependencies: ["AgentRuntime", "AgentContracts", "LLMCore"]
+            dependencies: ["AgentRuntime", "AgentContracts", "AgentSandboxAPI", "LLMCore"]
         ),
     ]
 )

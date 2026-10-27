@@ -282,7 +282,8 @@ class Gateway:
                         cancelled = self.store.operation(operation)['state'] == 'cancelling'
                         good = status.exit_code == 0 and output.get('exitCode', 0) == 0 and 'error' not in output
                         final = 'cancelled' if cancelled else 'completed' if good else 'failed'
-                        error = None if good else str(output.get('error') or output.get('stderr') or status.error or 'Command exited unsuccessfully')[:8000]
+                        diagnostic = str(output.get('error') or output.get('stderr') or output.get('stdout') or status.error or 'Command exited unsuccessfully')
+                        error = None if good else 'Read .mobilellm/operations/' + operation + '.json for the complete result. ' + diagnostic[-4000:]
                         self.store.transition(operation, final, finished=now_ms(), output=json.dumps(output, ensure_ascii=False), error=error)
                         return
                     await asyncio.sleep(0.25)

@@ -141,7 +141,7 @@ public struct OpenSandboxTool: ToolV2 {
             summary = operation == .stop ? "Stop a previously started process in this goal's workspace." : "Read the actual running/exit state of a process started in this workspace."
         case .browser:
             fields = ["script": string(32_768), "port": integer(1024, 32767)]
-            summary = "Run real async Python Playwright checks against a started application port. page, context, browser and base_url are provided. Use assertions; exceptions fail the check. Return JSON-compatible findings. A screenshot is retained."
+            summary = "Run async Python Playwright checks on a started app port. page, context, browser, base_url, expect, json and asyncio.sleep/gather are provided; imports/introspection are not allowed. Use assertions. Exceptions fail the check. Return JSON findings; a screenshot is retained."
         case .export:
             fields = [:]; summary = "Export the current project source as an immutable ZIP artifact, excluding dependency caches and internal logs. The compressed archive is limited to 512 KiB."
         }
