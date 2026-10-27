@@ -95,6 +95,13 @@ successful checks. Optional [OpenSandbox tools](docs/OPENSANDBOX.md) now provide
 execution, browser checks and downloadable source. Without a configured execution environment,
 an application request remains blocked instead of being marked complete with source text.
 
+Connect OpenSandbox in Settings to give new tasks a project workspace, commands and browser checks.
+Source archives and screenshots are saved with the task results.
+
+<p align="center">
+  <a href="assets/demo/opensandbox-settings.png"><img src="assets/demo/opensandbox-settings.png" width="320" alt="The execution environment settings on iPhone Simulator, connected to a real OpenSandbox service with workspace and browser capabilities." /></a>
+</p>
+
 <p align="center">
   <a href="assets/demo/goal-tasks.png"><img src="assets/demo/goal-tasks.png" width="300" alt="Current tasks in dependency order, with source and saved-feedback links." /></a>
   <a href="assets/demo/goal-rejected.png"><img src="assets/demo/goal-rejected.png" width="300" alt="An actual rejected original stays available with its validation reason." /></a>
