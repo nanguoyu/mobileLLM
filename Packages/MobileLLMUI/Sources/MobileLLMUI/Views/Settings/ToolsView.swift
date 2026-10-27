@@ -21,6 +21,7 @@ struct ToolsView: View {
     var locationProvider: (any LocationProviding)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var showMCP = false
+    @State private var showExecution = false
     /// Which privacy row's "allowed it off in system Settings" alert is up (nil = none).
     @State private var deniedRow: BuiltInToolRow?
 
@@ -31,6 +32,19 @@ struct ToolsView: View {
                 builtInSection
                 webProviderSection
                 searchEnginesSection
+                section("Execution", icon: "terminal") {
+                    Button { showExecution = true } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Execution environment").font(.subheadline)
+                                Text(settings.sandboxEnabled && settings.sandboxConnection != nil ? "OpenSandbox selected" : "Connect workspace, command and browser tools")
+                                    .font(.caption).foregroundStyle(Theme.textSecondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption)
+                        }.frame(minHeight: 44)
+                    }.accessibilityIdentifier("settings.execution.environment")
+                }
                 connectionsSection
             }
             .frame(maxWidth: Theme.Layout.form, alignment: .leading)
@@ -48,6 +62,12 @@ struct ToolsView: View {
             NavigationStack { MCPServersView(settings: settings) }
             #if os(macOS)
             .frame(minWidth: 520, minHeight: 560)
+            #endif
+        }
+        .sheet(isPresented: $showExecution) {
+            NavigationStack { ExecutionEnvironmentView(settings: settings) }
+            #if os(macOS)
+            .frame(minWidth: 520, minHeight: 520)
             #endif
         }
         .alert(deniedRow.map { "\($0.title) access is off" } ?? "",

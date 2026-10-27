@@ -62,7 +62,7 @@ public final class AppSettings {
 
     public func sandboxAPIKey() throws -> String? {
         guard let connection = sandboxConnection else { return nil }
-        return sandboxSessionKey ?? (try keychain?.readString(account: "sandbox." + connection.id.uuidString))
+        return try sandboxSessionKey ?? keychain?.readString(account: "sandbox." + connection.id.uuidString)
     }
 
     public func disconnectSandbox() throws {
