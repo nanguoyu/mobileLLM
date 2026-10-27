@@ -9,6 +9,18 @@ import XCTest
 /// This is a mechanism regression, separate from autonomous real-model task evaluation.
 final class OpenSandboxToolPipelineTests: XCTestCase, @unchecked Sendable {
     func testFailedCommandCanBeRetriedAfterAnObservedEditInTheSameRun() async throws {
+        try await repairLoop(runtimeDataOnly: false, unchangedRepeat: false)
+    }
+
+    func testRuntimeDataChangesPermitTheSameCheckWithoutChangingSourceFiles() async throws {
+        try await repairLoop(runtimeDataOnly: true, unchangedRepeat: false)
+    }
+
+    func testImmediateIdenticalSandboxRetriesRemainBounded() async throws {
+        try await repairLoop(runtimeDataOnly: false, unchangedRepeat: true)
+    }
+
+    private func repairLoop(runtimeDataOnly: Bool, unchangedRepeat: Bool) async throws {
         guard let path = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_SANDBOX_CONFIG"] else {
             throw XCTSkip("Explicit local OpenSandbox configuration is required")
         }
@@ -20,13 +32,15 @@ final class OpenSandboxToolPipelineTests: XCTestCase, @unchecked Sendable {
         let template = try OpenSandboxProvider(connection: connection, scopeID: scope, directory: directory, apiKey: { config.apiKey })
         let descriptor = try XCTUnwrap(OpenSandboxTool.descriptors(connection: connection).first { $0.id.logicalID.name == "sandbox_run" })
         let model = try ExecutorTestModelDefinition(offset: 686)
-        let check = "python3 -c \"assert open('value.txt').read() == 'fixed'\""
+        let location = runtimeDataOnly ? "__import__('os').environ['MOBILELLM_DATA_DIR'] + '/value.txt'" : "'value.txt'"
+        let check = "python3 -c \"assert open(\(location)).read() == 'fixed'\""
+        let path = runtimeDataOnly ? "\"$MOBILELLM_DATA_DIR/value.txt\"" : "value.txt"
         func call(_ index: Int, _ command: String) throws -> ProposedToolCall {
             try ProposedToolCall(invocationID: ExecutorTestID.invocation(index), toolID: descriptor.id.logicalID,
                 arguments: CanonicalJSON(.object(["command": .string(command), "timeoutSeconds": .integer(20)])))
         }
-        let calls = try [call(686, "printf broken > value.txt"), call(687, check),
-                         call(688, "printf fixed > value.txt"), call(689, check)]
+        let calls = try [call(686, "printf broken > " + path), call(687, check),
+                         call(688, unchangedRepeat ? check : "printf fixed > " + path), call(689, check)]
         let outcomes = try calls.map { call in
             try AgentModelAttemptOutcome.completed(AgentModelCompletion(action: .callTools([call]),
                 usage: modelUsage(input: 8, output: 3, milliseconds: 4, memory: 48)))
@@ -64,6 +78,12 @@ final class OpenSandboxToolPipelineTests: XCTestCase, @unchecked Sendable {
         let handle = try await harness.executor.attach(to: id)
         let events = try await collectTerminalEvents(from: handle)
         let result = try await handle.result()
+        if unchangedRepeat {
+            XCTAssertEqual(result?.status.state, .failed)
+            XCTAssertEqual(result?.status.failure?.code, "execution.repeated-tool-call")
+            XCTAssertEqual(result?.usage.quantities[.toolInvocations], 2, "Immediate repeats must not execute another command")
+            return
+        }
         XCTAssertEqual(result?.status.state, .completed)
         XCTAssertEqual(result?.usage.quantities[.toolInvocations], 4)
         XCTAssertGreaterThan(result?.usage.quantities[.networkResponseBytesTotal] ?? 0, 0)

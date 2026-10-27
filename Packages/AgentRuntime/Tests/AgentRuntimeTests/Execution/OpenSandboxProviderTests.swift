@@ -30,6 +30,11 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
             "command": .string("python3 -m http.server 8011 --bind 0.0.0.0"), "port": .integer(8011)]))
         let started = try await execute(provider, request: start, key: "server")
         XCTAssertEqual(started.terminalStatus.state, .completed)
+        let collision = try await execute(provider, request: start, key: "same-port")
+        XCTAssertEqual(collision.terminalStatus.state, .failed)
+        XCTAssertEqual(collision.terminalStatus.failure?.externalEffect, .confirmedNone)
+        XCTAssertTrue(collision.terminalStatus.failure?.safeMessage.contains(started.handleID.description) == true,
+            "A new start must not mistake the old server's HTTP response for its own readiness")
         let list = try await request(provider, payload: .object(["action": .string("list"), "path": .string(".")]))
         let listing = try object(try await execute(provider, request: list, key: "service-registry"))
         guard case .array(let processes)? = listing["processes"] else { return XCTFail("No tracked service identities") }
@@ -68,6 +73,14 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(Array(zip.prefix(2)), [0x50, 0x4b])
         XCTAssertEqual(archive["sha256"], .string(StableDigest.sha256(zip).rawValue))
         XCTAssertEqual(archive["sourceDigest"], image["sourceDigest"])
+        let absolute = try await request(provider, payload: .object(["action": .string("read"),
+            "path": .string("/workspace/project/index.html"), "offset": .integer(0)]))
+        XCTAssertEqual(try object(try await execute(provider, request: absolute, key: "absolute-project-path"))["content"], .string(html))
+        let stop = try await request(provider, payload: .object(["action": .string("stop"), "processID": .string(started.handleID.description)]))
+        let stopped = try await execute(provider, request: stop, key: "stop-server")
+        XCTAssertEqual(try object(stopped)["running"], .bool(false))
+        let restarted = try await execute(provider, request: start, key: "restart-server")
+        XCTAssertEqual(restarted.terminalStatus.state, .completed)
     }
 
     func testPersistedConnectionCannotBypassEndpointOrCapabilityValidation() throws {
