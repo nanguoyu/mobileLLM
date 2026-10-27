@@ -234,6 +234,8 @@ public struct OpenSandboxTool: ToolV2 {
                         executionConstraintDigest: binding.requirement.fingerprint, descriptorID: descriptor.id.description,
                         schemaDigest: descriptor.id.schemaDigest, trustRevision: descriptor.id.trustRevision,
                         idempotencyKey: plan.idempotencyKey), operation: { control in
+                        try await binding.provider.metered(idempotencyKey: context.invocationID.description,
+                            observer: { count in try await control.consumeResponseBytes(count) }) {
                         let id = try await binding.provider.start(request, idempotencyKey: context.invocationID.description)
                         let handle = try await binding.provider.attach(to: id)
                         let result: SandboxExecutionResult
@@ -255,8 +257,8 @@ public struct OpenSandboxTool: ToolV2 {
                             result = try await Task.detached { try await Self.cancelAndCollect(handle) }.value
                         }
                         let encoded = try CanonicalJSON(JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(result)))
-                        try await control.consumeResponseBytes(UInt64(encoded.data.count))
-                        return try ExternalOperationBoundaryCompletion(value: .canonicalJSON(encoded))
+                        return ExternalOperationBoundaryCompletion(value: .canonicalJSON(encoded))
+                        }
                     })
                     guard case .canonicalJSON(let raw) = boundary.value else { throw OpenSandboxError.invalidResponse }
                     let result = try JSONDecoder().decode(SandboxExecutionResult.self, from: raw.data)

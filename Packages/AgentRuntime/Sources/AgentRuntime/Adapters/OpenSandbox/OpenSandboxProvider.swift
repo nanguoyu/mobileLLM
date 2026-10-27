@@ -30,6 +30,48 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
         var events: [SandboxEventRecord]
         var remote: OpenSandboxJob?
         var cancellations: [String: CancelEntry] = [:]
+        var requestBytes: UInt64? = nil
+        var responseBytes: UInt64? = nil
+        var largestResponse: UInt64? = nil
+    }
+
+    private var responseObservers: [String: @Sendable (UInt64) async throws -> Void] = [:]
+
+    func metered<T: Sendable>(idempotencyKey: String, observer: @escaping @Sendable (UInt64) async throws -> Void,
+                             operation: @Sendable () async throws -> T) async throws -> T {
+        guard responseObservers[idempotencyKey] == nil else { throw AgentSandboxAPIError.idempotencyConflict }
+        responseObservers[idempotencyKey] = observer
+        defer { responseObservers.removeValue(forKey: idempotencyKey) }
+        return try await operation()
+    }
+
+    private func exchange(_ method: String, path: String, body: Data? = nil, id: SandboxExecutionHandleID) async throws -> Data {
+        var record = try load(id)
+        let sent = UInt64(body?.count ?? 0)
+        let limit = record.request.requirement.budget.limits
+        guard sent <= limit[.networkRequestBytes] - min(limit[.networkRequestBytes], record.requestBytes ?? 0) else {
+            throw AgentContractError.budgetExceeded(dimension: .networkRequestBytes, limit: limit[.networkRequestBytes], requested: sent)
+        }
+        record.requestBytes = (record.requestBytes ?? 0) + sent
+        try save(record)
+        let bytes = try await client.request(method, path: path, body: body,
+            maximumResponseBytes: limit[.networkResponseBytesPerOperation],
+            onResponseBytes: { [self] count in try await consumeResponse(count, id: id) })
+        record = try load(id)
+        record.largestResponse = max(record.largestResponse ?? 0, UInt64(bytes.count))
+        try save(record)
+        return bytes
+    }
+
+    private func consumeResponse(_ count: UInt64, id: SandboxExecutionHandleID) async throws {
+        var record = try load(id)
+        let limit = record.request.requirement.budget.limits[.networkResponseBytesTotal]
+        guard count <= limit - min(limit, record.responseBytes ?? 0) else {
+            throw AgentContractError.budgetExceeded(dimension: .networkResponseBytesTotal, limit: limit, requested: count)
+        }
+        record.responseBytes = (record.responseBytes ?? 0) + count
+        try save(record)
+        try await responseObservers[record.key]?(count)
     }
 
     public init(connection: OpenSandboxConnection, scopeID: UUID, directory: URL,
@@ -112,7 +154,7 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
         let body = try CanonicalJSON(.object(["workspaceID": .string(workspaceID.description),
             "requestFingerprint": .string(request.fingerprint.rawValue), "payload": payload, "timeoutSeconds": .integer(Int64(timeout))]))
         do {
-            let data = try await client.request("POST", path: "v1/operations/" + id.description, body: body.data)
+            let data = try await exchange("POST", path: "v1/operations/" + id.description, body: body.data, id: id)
             try install(JSONDecoder().decode(OpenSandboxJob.self, from: data), for: id)
         } catch {
             // No automatic POST retry. A durable handle survives ambiguous submission and remains inspectable.
@@ -164,7 +206,7 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
         let record = try load(id)
         if record.events.last!.status.state.isTerminal || starting.contains(id) { return }
         do {
-            let data = try await client.request("GET", path: "v1/operations/" + id.description)
+            let data = try await exchange("GET", path: "v1/operations/" + id.description, id: id)
             try install(JSONDecoder().decode(OpenSandboxJob.self, from: data), for: id)
         } catch OpenSandboxError.http(404) {
             try finishFailure(id, message: "The environment has no matching operation after recovery. Its earlier submission was not replayed.", uncertain: true)
@@ -203,7 +245,9 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
             let status = try SandboxExecutionStatus(handleID: id, stateVersion: previous.status.stateVersion + 1,
                 state: state, failure: failure, acceptedAt: previous.status.acceptedAt, updatedAt: timestamp)
             let elapsed = job.finishedAtMS.flatMap { end in job.startedAtMS.map { end >= $0 ? end - $0 : 0 } } ?? 0
-            let usage = AgentUsage(quantities: BudgetQuantities([.activeMilliseconds: elapsed]))
+            let usage = AgentUsage(quantities: BudgetQuantities([.activeMilliseconds: elapsed,
+                .networkRequestBytes: record.requestBytes ?? 0, .networkResponseBytesTotal: record.responseBytes ?? 0,
+                .networkResponseBytesPerOperation: record.largestResponse ?? 0]))
             let result = try SandboxExecutionResult(requestID: record.request.requestID, handleID: id, terminalStatus: status,
                 structuredOutput: state == .completed ? try job.output.map(CanonicalJSON.init) : nil,
                 finalWorkspaceID: workspaceID, usage: usage)
@@ -251,7 +295,8 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
         }
         let expected = record.cancellations[command.commandID.description]!.remoteVersion
         let body = try CanonicalJSON(.object(["commandID": .string(command.commandID.description), "expectedVersion": .integer(Int64(expected))]))
-        let data = try await client.request("POST", path: "v1/operations/" + command.handleID.description + "/cancel", body: body.data)
+        let data = try await exchange("POST", path: "v1/operations/" + command.handleID.description + "/cancel",
+            body: body.data, id: command.handleID)
         try install(JSONDecoder().decode(OpenSandboxJob.self, from: data), for: command.handleID)
         record = try load(command.handleID)
         let receipt = try SandboxCommandReceipt(commandID: command.commandID, commandFingerprint: command.fingerprint,

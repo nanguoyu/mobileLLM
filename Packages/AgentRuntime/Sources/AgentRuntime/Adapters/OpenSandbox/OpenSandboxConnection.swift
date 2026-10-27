@@ -108,7 +108,9 @@ public final class OpenSandboxHTTPClient: @unchecked Sendable {
             capabilities: value.features, allowedHosts: value.allowedHosts, backendVersion: value.backendVersion)
     }
 
-    func request(_ method: String, path: String, body: Data? = nil, discover: Bool = false) async throws -> Data {
+    func request(_ method: String, path: String, body: Data? = nil, discover: Bool = false,
+                 maximumResponseBytes: UInt64 = 1_048_576,
+                 onResponseBytes: (@Sendable (UInt64) async throws -> Void)? = nil) async throws -> Data {
         guard let secret = key(), !secret.isEmpty, secret.utf8.count <= 4_096 else { throw OpenSandboxError.unavailable }
         var request = URLRequest(url: connection.endpoint.appendingPathComponent(path))
         request.httpMethod = method; request.httpBody = body
@@ -119,12 +121,19 @@ public final class OpenSandboxHTTPClient: @unchecked Sendable {
         defer { stream.task.cancel() }
         guard let response = response as? HTTPURLResponse else { throw OpenSandboxError.invalidResponse }
         guard (200...299).contains(response.statusCode) else { throw OpenSandboxError.http(response.statusCode) }
-        guard response.expectedContentLength <= 1_048_576 else { throw OpenSandboxError.responseTooLarge }
+        let limit = min(maximumResponseBytes, 1_048_576)
+        guard response.expectedContentLength < 0 || UInt64(response.expectedContentLength) <= limit else { throw OpenSandboxError.responseTooLarge }
         var data = Data()
+        var chunk = Data()
         for try await byte in stream {
-            guard data.count < 1_048_576 else { throw OpenSandboxError.responseTooLarge }
-            data.append(byte)
+            guard UInt64(data.count + chunk.count) < limit else { throw OpenSandboxError.responseTooLarge }
+            chunk.append(byte)
+            if chunk.count == 8_192 {
+                try await onResponseBytes?(UInt64(chunk.count))
+                data.append(chunk); chunk.removeAll(keepingCapacity: true)
+            }
         }
+        if !chunk.isEmpty { try await onResponseBytes?(UInt64(chunk.count)); data.append(chunk) }
         return data
     }
 }

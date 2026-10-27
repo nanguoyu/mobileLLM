@@ -1345,7 +1345,7 @@ extension AgentRunController {
 
     func requiresExternalByteAccounting(_ plan: ExternalOperationPlan) -> Bool {
         let networkDestinations: Set<ExternalDestination.Kind> = [
-            .networkEndpoint, .mcpServer, .modelProvider,
+            .networkEndpoint, .mcpServer, .modelProvider, .sandboxProvider,
         ]
         let destinations = [plan.destination].compactMap { $0 }
             + plan.allowedRedirects
