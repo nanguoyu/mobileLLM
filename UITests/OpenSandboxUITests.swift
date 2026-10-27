@@ -9,7 +9,9 @@ final class OpenSandboxUITests: XCTestCase {
         }
         let app = XCUIApplication()
         app.launchEnvironment["MOBILELLM_DEVICE_E2E"] = "1"
-        app.launchEnvironment["MOBILELLM_E2E_STORAGE_NAMESPACE"] = UUID().uuidString
+        let namespace = UUID().uuidString
+        app.launchEnvironment["MOBILELLM_E2E_STORAGE_NAMESPACE"] = namespace
+        print("[OpenSandboxUI] isolated namespace: " + namespace)
         app.launchEnvironment["MOBILELLM_SANDBOX_CONFIG_PATH"] = path
         app.launch()
         let settings = app.tabBars.buttons["Settings"]
@@ -25,11 +27,15 @@ final class OpenSandboxUITests: XCTestCase {
         XCTAssertTrue(key.exists)
         XCTAssertTrue((key.value as? String ?? "").isEmpty || (key.value as? String ?? "").contains("API key"))
         app.buttons["execution.connect"].tap()
-        XCTAssertTrue(app.staticTexts["execution.connected"].waitForExistence(timeout: 30))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true AND label == %@", "Check and connect"),
+            object: app.buttons["execution.connect"])
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 30), .completed)
+        XCTAssertTrue(app.staticTexts["execution.connected"].exists)
         let enabled = app.switches["execution.enabled"]
         XCTAssertEqual(enabled.value as? String, "1")
         enabled.tap()
-        XCTAssertEqual(enabled.value as? String, "0")
+        let disabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "0"), object: enabled)
+        XCTAssertEqual(XCTWaiter.wait(for: [disabled], timeout: 5), .completed)
         enabled.tap()
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Real OpenSandbox settings"; screenshot.lifetime = .keepAlways; add(screenshot)

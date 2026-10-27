@@ -37,6 +37,7 @@ struct ExecutionEnvironmentView: View {
                     Label("Connected to OpenSandbox \(connection.backendVersion)", systemImage: "checkmark.shield")
                         .foregroundStyle(Theme.fitGreen).accessibilityIdentifier("execution.connected")
                     Toggle("Allow for new tasks", isOn: $settings.sandboxEnabled)
+                        .disabled(busy)
                         .accessibilityIdentifier("execution.enabled")
                     Text("New chats use this selection. For an existing chat, apply its tool settings before sending a new task.")
                         .font(.caption).foregroundStyle(Theme.textSecondary)
