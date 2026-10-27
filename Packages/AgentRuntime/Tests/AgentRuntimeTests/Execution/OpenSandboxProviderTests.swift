@@ -75,7 +75,8 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(archive["sourceDigest"], image["sourceDigest"])
         let absolute = try await request(provider, payload: .object(["action": .string("read"),
             "path": .string("/workspace/project/index.html"), "offset": .integer(0)]))
-        XCTAssertEqual(try object(try await execute(provider, request: absolute, key: "absolute-project-path"))["content"], .string(html))
+        let absoluteResult = try await execute(provider, request: absolute, key: "absolute-project-path")
+        XCTAssertEqual(try object(absoluteResult)["content"], .string(html))
         let stop = try await request(provider, payload: .object(["action": .string("stop"), "processID": .string(started.handleID.description)]))
         let stopped = try await execute(provider, request: stop, key: "stop-server")
         XCTAssertEqual(try object(stopped)["running"], .bool(false))

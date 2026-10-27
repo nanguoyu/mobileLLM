@@ -34,13 +34,13 @@ final class OpenSandboxToolPipelineTests: XCTestCase, @unchecked Sendable {
         let model = try ExecutorTestModelDefinition(offset: 686)
         let location = runtimeDataOnly ? "__import__('os').environ['MOBILELLM_DATA_DIR'] + '/value.txt'" : "'value.txt'"
         let check = "python3 -c \"assert open(\(location)).read() == 'fixed'\""
-        let path = runtimeDataOnly ? "\"$MOBILELLM_DATA_DIR/value.txt\"" : "value.txt"
+        let targetFile = runtimeDataOnly ? "\"$MOBILELLM_DATA_DIR/value.txt\"" : "value.txt"
         func call(_ index: Int, _ command: String) throws -> ProposedToolCall {
             try ProposedToolCall(invocationID: ExecutorTestID.invocation(index), toolID: descriptor.id.logicalID,
                 arguments: CanonicalJSON(.object(["command": .string(command), "timeoutSeconds": .integer(20)])))
         }
-        let calls = try [call(686, "printf broken > " + path), call(687, check),
-                         call(688, unchangedRepeat ? check : "printf fixed > " + path), call(689, check)]
+        let calls = try [call(686, "printf broken > " + targetFile), call(687, check),
+                         call(688, unchangedRepeat ? check : "printf fixed > " + targetFile), call(689, check)]
         let outcomes = try calls.map { call in
             try AgentModelAttemptOutcome.completed(AgentModelCompletion(action: .callTools([call]),
                 usage: modelUsage(input: 8, output: 3, milliseconds: 4, memory: 48)))
