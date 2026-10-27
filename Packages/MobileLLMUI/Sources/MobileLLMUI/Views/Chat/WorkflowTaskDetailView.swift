@@ -9,6 +9,7 @@ struct WorkflowTaskDetailView: View {
     let workflowID: UUID
     let callID: WorkflowAgentCallID
     @State private var result: String?
+    @State private var files: [WorkflowSavedFile] = []
     @State private var readError: String?
     @State private var loading = false
     @State private var readToken: UUID?
@@ -70,6 +71,7 @@ struct WorkflowTaskDetailView: View {
                     } else {
                         output(call)
                     }
+                    if !files.isEmpty { WorkflowSavedFilesView(files: files) }
                     inputs(call)
                     assignment(call)
                     agentSettings(call)
@@ -140,7 +142,7 @@ struct WorkflowTaskDetailView: View {
         }
         .navigationTitle(call?.taskTitle ?? "Task")
         .task(id: "\(callID.description)-\(call?.hasResult == true)") {
-            result = nil; copied = false; readError = nil
+            result = nil; files = []; copied = false; readError = nil
             await loadResult()
         }
         .task(id: observationKey) { detach(); await observe() }
@@ -281,6 +283,11 @@ struct WorkflowTaskDetailView: View {
             let value = try await store.result(workflowID: workflowID, callID: callID)
             guard !Task.isCancelled, readToken == token else { return }
             result = value
+            if let reader = store.savedFilesHandler {
+                let saved = try await reader(workflowID, callID)
+                guard !Task.isCancelled, readToken == token else { return }
+                files = saved
+            }
         } catch {
             if !Task.isCancelled, readToken == token { readError = "Could not read the saved result: \(error.localizedDescription)" }
         }

@@ -31,6 +31,7 @@ public final class WorkflowStore: WorkflowRecording {
     public var dynamicStopHandler: (@MainActor (UUID) async throws -> Void)?
     public var dynamicRestartHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> Void)?
     public var dynamicResultHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> String?)?
+    public var savedFilesHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> [WorkflowSavedFile])?
     public var dynamicObserverHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> AgentRunStore?)?
     public var planningObserverHandler: (@MainActor (UUID) async throws -> AgentRunStore?)?
     public var taskSessionHandler: (@MainActor (UUID, WorkflowAgentCallID) async throws -> AgentSessionView)?

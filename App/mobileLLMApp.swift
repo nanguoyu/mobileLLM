@@ -484,6 +484,9 @@ struct MobileLLMApp: App {
                 container.workflowStore.dynamicResultHandler = { [launcher] workflowID, callID in
                     try await launcher.result(workflowID: workflowID, callID: callID)
                 }
+                container.workflowStore.savedFilesHandler = { [launcher] workflowID, callID in
+                    try await launcher.savedFiles(workflowID: workflowID, callID: callID)
+                }
                 container.workflowStore.dynamicObserverHandler = { [launcher] workflowID, callID in
                     try await launcher.observeTask(workflowID: workflowID, callID: callID)
                 }

@@ -288,6 +288,19 @@ final class WorkflowLauncher {
         try await assembly.dynamicWorkflows.result(runID: dynamicRunID(workflowID), callID: callID)
     }
 
+    func savedFiles(workflowID: UUID, callID: WorkflowAgentCallID) async throws -> [WorkflowSavedFile] {
+        guard let projection = try await assembly.dynamicWorkflowJournal.loadProjection(for: dynamicRunID(workflowID)),
+              let handle = projection.submittedHandles[callID], projection.outcomes[callID] != nil else { return [] }
+        let evidence = try await DurableSubagentSpawner(executor: assembly.executor, repository: assembly.repository).reviewToolEvidence(handle)
+        var files: [WorkflowSavedFile] = []
+        var seen: Set<ArtifactID> = []
+        for reference in evidence.flatMap({ $0.execution?.artifacts ?? [] }) where seen.insert(reference.id).inserted {
+            let data = try await assembly.artifactStore.data(for: reference, maximumBytes: 1_048_576)
+            files.append(WorkflowSavedFile(reference: reference, data: data))
+        }
+        return files
+    }
+
     func observeTask(workflowID: UUID, callID: WorkflowAgentCallID) async throws -> AgentRunStore? {
         guard let conversationID = container?.workflowStore.summary(workflowID: workflowID)?.conversationID,
               let projection = try await assembly.dynamicWorkflows.projection(runID: dynamicRunID(workflowID)),
