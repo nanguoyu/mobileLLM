@@ -211,9 +211,11 @@ enum ArchitectureBoundaryVerifier {
                     add(&diagnostics, "AHV-DEFERRED-WORKFLOW", "\(path):\(tokens[index].line)",
                         "first release may not implement \(name)")
                 }
-                if conformances.contains("AgentSandboxProvider") || placeholderSandboxName(lowered) {
+                let configuredHTTPAdapter = path == "Packages/AgentRuntime/Sources/AgentRuntime/Adapters/OpenSandbox/OpenSandboxProvider.swift"
+                    && name == "OpenSandboxProvider"
+                if (conformances.contains("AgentSandboxProvider") && !configuredHTTPAdapter) || placeholderSandboxName(lowered) {
                     add(&diagnostics, "AHV-DEFERRED-SANDBOX", "\(path):\(tokens[index].line)",
-                        "open-source production sources may not implement a sandbox provider or substitute")
+                        "sandbox implementations must use the explicit OpenSandbox HTTP adapter; private or placeholder runtimes are prohibited")
                 }
                 if onlineProviderImplementationName(lowered) {
                     add(&diagnostics, "AHV-DEFERRED-ONLINE-MODEL", "\(path):\(tokens[index].line)",
