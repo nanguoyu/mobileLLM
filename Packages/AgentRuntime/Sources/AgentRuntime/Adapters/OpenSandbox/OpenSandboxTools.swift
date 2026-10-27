@@ -166,12 +166,13 @@ public struct OpenSandboxTool: ToolV2 {
         let plan = try ExternalOperationPlan(kind: .sandbox, subjectID: descriptor.id.logicalID.description,
             canonicalArguments: request.sanitizedArguments, destination: connection.destination,
             dataCategories: [OpenSandboxConnection.dataCategory], payloadDigest: request.sanitizedArguments.fingerprint,
+            executionConstraintDigest: binding.requirement.fingerprint,
             effects: descriptor.effects, requiredCapabilities: descriptor.requiredCapabilities,
             maximumRequestBytes: 300_000, maximumResponseBytes: 1_048_576,
             timeoutMilliseconds: 180_000, retryPolicy: .never, idempotency: .idempotencyKeyRequired, idempotencyKey: key,
             userPreview: "Run \(operation.rawValue) in the configured OpenSandbox workspace",
             descriptorID: descriptor.id.description, schemaDigest: descriptor.id.schemaDigest,
-            trustRevision: descriptor.id.trustRevision, executionConstraintDigest: binding.requirement.fingerprint)
+            trustRevision: descriptor.id.trustRevision)
         return try PreparedToolInvocation(request: request, context: context, plan: plan)
     }
 
@@ -197,9 +198,10 @@ public struct OpenSandboxTool: ToolV2 {
                     let boundary = try await context.performBoundary(observation: ExternalOperationObservation(
                         destination: connection.destination, dataCategories: [OpenSandboxConnection.dataCategory], effects: descriptor.effects,
                         requestBytes: UInt64(binding.payload.value.data.count), responseBytesLimit: plan.maximumResponseBytes,
-                        payloadDigest: prepared.prepared.request.sanitizedArguments.fingerprint, descriptorID: descriptor.id.description,
-                        schemaDigest: descriptor.id.schemaDigest, trustRevision: descriptor.id.trustRevision, idempotencyKey: plan.idempotencyKey,
-                        executionConstraintDigest: binding.requirement.fingerprint), operation: { control in
+                        payloadDigest: prepared.prepared.request.sanitizedArguments.fingerprint,
+                        executionConstraintDigest: binding.requirement.fingerprint, descriptorID: descriptor.id.description,
+                        schemaDigest: descriptor.id.schemaDigest, trustRevision: descriptor.id.trustRevision,
+                        idempotencyKey: plan.idempotencyKey), operation: { control in
                         let id = try await binding.provider.start(request, idempotencyKey: context.invocationID.description)
                         let handle = try await binding.provider.attach(to: id)
                         let result: SandboxExecutionResult
@@ -245,6 +247,8 @@ public struct OpenSandboxTool: ToolV2 {
                     contents.insert(.structured(try ToolStructuredResult(CanonicalJSON(.object(value)))), at: 0)
                     continuation.yield(.completed(try ToolResultCollection(contents)))
                     continuation.finish()
+                } catch let error as OpenSandboxToolFailure {
+                    continuation.yield(.failed(error.failure)); continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -266,6 +270,8 @@ public struct OpenSandboxTool: ToolV2 {
             if let result = try await handle.result() { return result }
             try await Task.sleep(nanoseconds: 250_000_000)
         }
-        throw try OpenSandboxProvider.failure("Cancellation was requested but the final execution state is not confirmed.", uncertain: true)
+        throw OpenSandboxToolFailure(failure: try OpenSandboxProvider.failure("Cancellation was requested but the final execution state is not confirmed.", uncertain: true))
     }
 }
+
+private struct OpenSandboxToolFailure: Error, Sendable { let failure: AgentFailure }
