@@ -1130,10 +1130,10 @@ submission. Detaching an observer does not cancel the command. Explicit cancella
 Confirmed test failures retain bounded diagnostic output and the complete guest result. They allow another edit;
 rerunning an identical command requires an observed source change and still consumes the original cumulative budget.
 
-Executable deliverables require native receipts from the goal's workspace and latest source digest. An accepted
-reviewer exports the immutable source ZIP. A running application also requires a successful service start followed
-by the accepted reviewer's browser check with a retained screenshot. Source changes invalidate older execution
-receipts. These receipts prove execution; independent task-specific outcome checks establish correctness.
+Executable deliverables require native receipts from the goal's workspace and latest source digest, plus a passing
+independent review of current task artifacts. A running application requires a successful service start, browser
+check and immutable source ZIP. Reuse successful evidence for unchanged source across workers; do not force the
+reviewer to repeat the same check or export. Source changes invalidate older execution receipts. These receipts prove execution; independent task-specific outcome checks establish correctness.
 Task details read verified artifact bytes and allow saving source and screenshots without rerunning tools.
 Stop and data erase close only scopes recorded by this app. A disconnected service retains its bounded server TTL.
 

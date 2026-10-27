@@ -43,9 +43,9 @@ An old goal cannot silently switch to the new environment.
 | Tool | Actual operation |
 | --- | --- |
 | sandbox_write_files / read_file / list_files | Goal-scoped file access; replacements check the original SHA-256 |
-| sandbox_run | Bounded command execution with stdout, stderr and exit status |
+| sandbox_run | Bounded bash execution with errexit, pipefail, stdout, stderr and exit status |
 | sandbox_start / process / stop | HTTP readiness check and durable service process identity |
-| sandbox_browser | Chromium/Playwright interaction, assertions and a retained screenshot |
+| sandbox_browser | Chromium/Playwright assertions, page text, controls, bounded script output and a screenshot |
 | sandbox_export | Immutable ZIP of current source, excluding dependencies, build caches and internal logs |
 
 Node 24 LTS, Python, Python's SQLite library and Playwright are present in the guest. Runtime data
@@ -56,10 +56,10 @@ A known failed test retains diagnostics and permits correction within the origin
 an unchanged command remains guarded; an observed source change permits a fresh test. A network
 disconnect does not replay a command whose submission outcome is uncertain.
 
-Executable delivery needs real tool receipts from the latest source version. An accepted reviewer
-exports the source. A running application additionally needs service startup and that reviewer's
-browser check on the same source and port. Task details show verified screenshots and **Save project
-source**. These checks establish what ran; task-specific external assertions still determine whether
+Executable delivery needs real tool receipts from the latest source version and independent acceptance
+of the current task artifacts. A running application needs service startup and a browser check on the
+same source and port. Reviewers reuse original successful evidence for unchanged source. Export the
+final source once. Task details show verified screenshots and **Save project source**. These checks establish what ran; task-specific external assertions still determine whether
 the result is correct.
 
 ## Limits of this development deployment
