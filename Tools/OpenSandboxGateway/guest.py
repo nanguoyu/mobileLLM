@@ -15,10 +15,37 @@ import sys
 import time
 import uuid
 import zipfile
+import urllib.request
+import urllib.error
+from urllib.parse import urlsplit
 
-ROOT = Path('/workspace')
+ROOT = Path('/workspace/project')
 MAX_TEXT = 131072
 MAX_FILE = 8 * 1024 * 1024
+IGNORED = {'node_modules', '.git', '.mobilellm', '.venv', '__pycache__', '.next', 'dist', 'build'}
+
+
+def source_files():
+    total = 0
+    count = 0
+    for directory, folders, files in os.walk(ROOT, followlinks=False):
+        folders[:] = sorted(p for p in folders if p not in IGNORED)
+        for name in folders + sorted(files):
+            path = Path(directory, name)
+            if path.is_symlink():
+                raise ValueError('Source snapshots require ordinary files: ' + str(path.relative_to(ROOT)))
+        for name in sorted(files):
+            path = str(Path(directory, name).relative_to(ROOT))
+            data = read_file(path)
+            total += len(data); count += 1
+            if total > MAX_FILE or count > 1000:
+                raise ValueError('Source snapshot exceeds 8 MiB or 1000 files; keep runtime data outside the project')
+            yield path, data
+
+
+def source_digest():
+    manifest = [{'path': path, 'sha256': hashlib.sha256(data).hexdigest()} for path, data in source_files()]
+    return hashlib.sha256(json.dumps(manifest, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
 
 
 def components(path):
@@ -145,7 +172,7 @@ def run_command(command, timeout):
             'stderr': output['stderr'].decode('utf-8', errors='replace'), 'truncated': truncated, 'timedOut': expired, 'cancelled': cancelled}
 
 
-async def inspect_browser(script, operation_id):
+async def inspect_browser(script, operation_id, port):
     from playwright.async_api import async_playwright
     if len(script.encode()) > 32768:
         raise ValueError('Browser script exceeds 32 KiB')
@@ -154,16 +181,33 @@ async def inspect_browser(script, operation_id):
         context = await browser.new_context(viewport={'width': 1280, 'height': 900})
         page = await context.new_page()
         page.set_default_timeout(10000)
+        base_url = 'http://127.0.0.1:' + str(port)
+        before = source_digest()
+        response = await page.goto(base_url)
+        if response is None or response.status >= 400:
+            raise ValueError('The application page did not load successfully')
         # The supplied script is authorized code running only in the guest, like shell execution.
-        namespace = {'page': page, 'context': context, 'browser': browser, 'asyncio': asyncio, 'json': json}
+        namespace = {'page': page, 'context': context, 'browser': browser, 'base_url': base_url, 'asyncio': asyncio, 'json': json}
         exec('async def user_check():\n' + '\n'.join('    ' + line for line in script.splitlines()), namespace)
         result = await namespace['user_check']()
+        location = urlsplit(page.url)
+        if location.hostname not in {'localhost', '127.0.0.1'} or location.port != port:
+            raise ValueError('Browser checks must finish on the selected workspace application')
+        if source_digest() != before:
+            raise ValueError('Project files changed during browser checks; store runtime data in MOBILELLM_DATA_DIR and retest')
         folder = ROOT / '.mobilellm' / 'screenshots'
         folder.mkdir(parents=True, exist_ok=True)
         screenshot = folder / (operation_id + '.jpg')
         await page.screenshot(path=str(screenshot), type='jpeg', quality=70, full_page=False)
-        response = {'scriptCompleted': True, 'url': page.url, 'title': await page.title(),
-                    'result': result, 'screenshot': str(screenshot.relative_to(ROOT))}
+        data = screenshot.read_bytes()
+        if len(data) > 512 * 1024:
+            await page.screenshot(path=str(screenshot), type='jpeg', quality=35, full_page=False)
+            data = screenshot.read_bytes()
+        if len(data) > 512 * 1024:
+            raise ValueError('Browser screenshot exceeds 512 KiB')
+        response = {'scriptCompleted': True, 'url': page.url, 'port': port, 'title': await page.title(),
+                    'result': result, 'screenshot': str(screenshot.relative_to(ROOT)),
+                    'screenshotBase64': base64.b64encode(data).decode(), 'screenshotSHA256': hashlib.sha256(data).hexdigest()}
         await browser.close()
         return response
 
@@ -201,23 +245,28 @@ def execute(payload):
     if action == 'exec':
         return run_command(payload['command'], min(120, max(1, payload.get('timeoutSeconds', 60))))
     if action == 'browser':
-        return asyncio.run(inspect_browser(payload['script'], payload['operationID']))
+        return asyncio.run(inspect_browser(payload['script'], payload['operationID'], payload['port']))
+    if action == 'probe':
+        port = payload['port']
+        if not isinstance(port, int) or not 1024 <= port <= 32767:
+            raise ValueError('Application ports must be between 1024 and 32767')
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            try:
+                with urllib.request.urlopen('http://127.0.0.1:' + str(port), timeout=1) as response:
+                    return {'port': port, 'httpStatus': response.status, 'ready': True}
+            except urllib.error.HTTPError as error:
+                if error.code < 500:
+                    return {'port': port, 'httpStatus': error.code, 'ready': True}
+            except OSError:
+                pass
+            time.sleep(0.2)
+        raise ValueError('The started process did not serve HTTP on its declared port')
     if action == 'export':
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-            total = 0
-            for directory, folders, files in os.walk(ROOT, followlinks=False):
-                folders[:] = sorted(p for p in folders if p not in {'node_modules', '.git', '.mobilellm', '.venv', '__pycache__'}
-                                    and not Path(directory, p).is_symlink())
-                for name in sorted(files):
-                    path = Path(directory, name)
-                    if path.is_symlink():
-                        continue
-                    data = read_file(str(path.relative_to(ROOT)))
-                    total += len(data)
-                    if total > 8 * 1024 * 1024:
-                        raise ValueError('Source export exceeds 8 MiB')
-                    archive.writestr(str(path.relative_to(ROOT)), data)
+            for path, data in source_files():
+                archive.writestr(path, data)
         data = buffer.getvalue()
         if len(data) > 512 * 1024:
             raise ValueError('Compressed source export exceeds 512 KiB')
@@ -229,7 +278,11 @@ def execute(payload):
 if __name__ == '__main__':
     try:
         result = execute(json.loads(base64.b64decode(sys.argv[1], validate=True)))
-        print(json.dumps(result, ensure_ascii=False), flush=True)
+        result['sourceDigest'] = source_digest()
+        encoded = json.dumps(result, ensure_ascii=False)
+        if len(encoded.encode()) > 850000:
+            raise ValueError('Operation result exceeds its output limit')
+        print(encoded, flush=True)
         sys.exit(0 if result.get('exitCode', 0) == 0 else 1)
     except Exception as error:
         print(json.dumps({'error': str(error)[:4000]}), flush=True)

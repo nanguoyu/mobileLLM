@@ -32,6 +32,9 @@ import uvicorn
 TERMINAL = {'completed', 'failed', 'cancelled', 'uncertain'}
 ACTIONS = {'write', 'read', 'list', 'exec', 'start', 'process', 'stop', 'browser', 'download', 'export'}
 
+class ConfirmedOperationFailure(Exception):
+    pass
+
 
 class BoundedStream(httpx.AsyncByteStream):
     def __init__(self, stream):
@@ -83,6 +86,8 @@ class Store:
           CREATE TABLE IF NOT EXISTS cancellations(id TEXT PRIMARY KEY, operation TEXT NOT NULL,
             expected INTEGER NOT NULL, response TEXT NOT NULL);
         ''')
+        if 'port' not in {row[1] for row in self.db.execute('PRAGMA table_info(processes)')}:
+            self.db.execute('ALTER TABLE processes ADD COLUMN port INTEGER')
 
     def operation(self, operation):
         value = self.db.execute('SELECT * FROM operations WHERE id=?', (operation,)).fetchone()
@@ -125,14 +130,15 @@ class Gateway:
         root = Path(config['stateDirectory'])
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.store = Store(root / 'gateway.sqlite')
-        self.connection = ConnectionConfig(domain=config['lifecycleDomain'], api_key=config['lifecycleKey'],
-            protocol='http', use_server_proxy=True, disable_metrics=True, retry_policy=RetryPolicy.disabled(),
-            transport=BoundedTransport(),
-            request_timeout=timedelta(seconds=30))
         self.clients = {}
         self.locks = {}
         self.tasks = {}
         self.closing = False
+
+    def connection(self):
+        return ConnectionConfig(domain=self.config['lifecycleDomain'], api_key=self.config['lifecycleKey'],
+            protocol='http', use_server_proxy=True, disable_metrics=True, retry_policy=RetryPolicy.disabled(),
+            transport=BoundedTransport(), request_timeout=timedelta(seconds=30))
 
     def authenticate(self, authorization, server_id, discovery=False):
         if not authorization or not hmac.compare_digest(authorization, 'Bearer ' + self.config['apiKey']):
@@ -148,7 +154,7 @@ class Gateway:
             self.store.db.execute('DELETE FROM workspaces WHERE id=?', (workspace,))
             row = None
         if row and row['sandbox'] and row['state'] == 'running':
-            client = await Sandbox.connect(row['sandbox'], connection_config=self.connection)
+            client = await Sandbox.connect(row['sandbox'], connection_config=self.connection())
         elif row:
             raise RuntimeError('Workspace creation outcome is unavailable; it must not be recreated silently')
         else:
@@ -157,7 +163,7 @@ class Gateway:
                 raise RuntimeError('The two-workspace resource limit is reached; close a workspace before creating another')
             self.store.db.execute('INSERT INTO workspaces VALUES(?,NULL,?)', (workspace, 'creating'))
             try:
-                client = await Sandbox.create(self.config['image'], connection_config=self.connection,
+                client = await Sandbox.create(self.config['image'], connection_config=self.connection(),
                     timeout=timedelta(seconds=3600), ready_timeout=timedelta(seconds=90),
                     entrypoint=['/bin/sleep', 'infinity'], resource={'cpu': '2', 'memory': '2Gi'},
                     metadata={'mobilellm.owner': self.config['owner'], 'mobilellm.workspace': workspace},
@@ -212,11 +218,19 @@ class Gateway:
                         output=json.dumps({'processID': process['id'], 'running': status.running,
                                            'exitCode': status.exit_code, 'error': status.error}))
                     return
+                if payload['action'] == 'browser':
+                    process = self.store.db.execute('SELECT command FROM processes WHERE workspace=? AND port=? ORDER BY rowid DESC LIMIT 1',
+                                                   (row['workspace'], payload.get('port'))).fetchone()
+                    if process is None or (await sandbox.commands.get_command_status(process['command'])).running is not True:
+                        raise ConfirmedOperationFailure('Start an application on the selected port before inspecting it')
                 command = row['command']
                 if not command:
                     self.store.transition(operation, 'starting', started=now_ms())
                     if payload['action'] == 'start':
                         text = payload['command']
+                        port = payload.get('port')
+                        if not isinstance(port, int) or not 1024 <= port <= 32767:
+                            raise ValueError('Application ports must be between 1024 and 32767')
                         if not isinstance(text, str) or not text.strip() or len(text.encode()) > 131072:
                             raise ValueError('Invalid command')
                         # The process keeps running independently of its observing client. Its
@@ -231,19 +245,29 @@ class Gateway:
                         argv = ['python3', '/opt/mobilellm/guest.py', encoded]
                         timeout = min(120, body['timeoutSeconds']) + 5
                     execution = await sandbox.commands.run(argv, opts=RunCommandOpts(background=True,
-                        working_directory='/workspace', uid=1000, gid=1000, timeout=timedelta(seconds=timeout)))
+                        working_directory='/workspace/project', uid=1000, gid=1000, timeout=timedelta(seconds=timeout),
+                        envs={'MOBILELLM_DATA_DIR': '/workspace/data'}))
                     if not execution.id:
                         raise RuntimeError('OpenSandbox did not return a command identity')
                     command = execution.id
                     self.store.transition(operation, 'running', command=command)
                     if payload['action'] == 'start':
-                        self.store.db.execute('INSERT OR IGNORE INTO processes VALUES(?,?,?)', (operation, row['workspace'], command))
+                        self.store.db.execute('INSERT OR IGNORE INTO processes(id,workspace,command,port) VALUES(?,?,?,?)',
+                                              (operation, row['workspace'], command, payload['port']))
                 if payload['action'] == 'start':
                     status = await sandbox.commands.get_command_status(command)
                     if status.running is not True:
-                        raise RuntimeError('The service process did not remain running')
+                        raise ConfirmedOperationFailure('The service process did not remain running')
+                    probe = base64.b64encode(json.dumps({'action':'probe','port':payload['port']}).encode()).decode()
+                    check = await sandbox.commands.run(['python3','/opt/mobilellm/guest.py',probe],
+                        opts=RunCommandOpts(working_directory='/workspace/project',uid=1000,gid=1000,timeout=timedelta(seconds=20)))
+                    if check.exit_code != 0:
+                        await sandbox.commands.interrupt(command)
+                        raise ConfirmedOperationFailure('The started application failed its HTTP readiness check: ' + check.text[:2000])
+                    verified = json.loads(check.text)
                     self.store.transition(operation, 'completed', finished=now_ms(),
-                        output=json.dumps({'processID': operation, 'running': True, 'logPath': '.mobilellm/processes/' + operation + '.log'}))
+                        output=json.dumps({'processID': operation, 'running': True, 'port':payload['port'],
+                            'sourceDigest':verified['sourceDigest'], 'logPath': '.mobilellm/processes/' + operation + '.log'}))
                     return
                 while not self.closing:
                     status = await sandbox.commands.get_command_status(command)
@@ -269,7 +293,7 @@ class Gateway:
                 latest = self.store.operation(operation)
                 if latest['state'] not in TERMINAL:
                     workspace = self.store.db.execute('SELECT state FROM workspaces WHERE id=?', (row['workspace'],)).fetchone()
-                    uncertain = latest['state'] in {'starting', 'running', 'cancelling'} or (workspace is not None and workspace['state'] == 'creating')
+                    uncertain = not isinstance(error, ConfirmedOperationFailure) and (latest['state'] in {'starting', 'running', 'cancelling'} or (workspace is not None and workspace['state'] == 'creating'))
                     self.store.transition(operation, 'uncertain' if uncertain else 'failed', finished=now_ms(), error=str(error)[:8000])
 
     async def cancel(self, operation, command_id, expected):

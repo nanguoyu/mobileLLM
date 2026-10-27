@@ -132,7 +132,7 @@ public struct OpenSandboxTool: ToolV2 {
             fields = ["path": string(512)]; summary = "List this goal's project files. Use '.' for the project root."
         case .run:
             fields = ["command": string(131_072), "timeoutSeconds": integer(1, 120)]
-            summary = "Execute a real shell command in the isolated project workspace. Node, npm, Python, SQLite and Playwright are available. A nonzero exit is a real failure. Output is bounded; inspect files for longer logs."
+            summary = "Execute a real shell command in /workspace/project. Node, npm, Python, SQLite and Playwright are available. Keep runtime data in MOBILELLM_DATA_DIR (/workspace/data), outside source files. Nonzero exit is a real failure. Output is bounded."
         case .start:
             fields = ["command": string(32_768), "port": integer(1024, 32767)]
             summary = "Start a long-running application server in this workspace and check its HTTP port. Returns an actual process identity; this does not mean the application passed its tests."
@@ -237,6 +237,13 @@ public struct OpenSandboxTool: ToolV2 {
                     value["workspaceID"] = .string(binding.provider.workspaceID.description)
                     value["operation"] = .string(operation.rawValue)
                     var contents: [ToolResultContent] = []
+                    if case .string(let encoded)? = value.removeValue(forKey: "screenshotBase64"), let bytes = Data(base64Encoded: encoded) {
+                        guard value["screenshotSHA256"] == .string(StableDigest.sha256(bytes).rawValue) else { throw OpenSandboxError.invalidResponse }
+                        let artifact = try await context.artifactWriter.commit(data: bytes, mimeType: "image/jpeg",
+                            semanticType: "sandbox.browser-screenshot", retention: .run, sensitivity: .sensitive)
+                        value["screenshotArtifactID"] = .string(artifact.id.description)
+                        contents.append(.image(artifact))
+                    }
                     if case .string(let encoded)? = value.removeValue(forKey: "dataBase64"), let bytes = Data(base64Encoded: encoded) {
                         guard value["sha256"] == .string(StableDigest.sha256(bytes).rawValue) else { throw OpenSandboxError.invalidResponse }
                         let artifact = try await context.artifactWriter.commit(data: bytes, mimeType: "application/zip",

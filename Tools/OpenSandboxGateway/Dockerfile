@@ -4,8 +4,9 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm git \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m pip install --no-cache-dir playwright==1.64.1 \
-    && mkdir -p /workspace /opt/mobilellm \
-    && chown 1000:1000 /workspace
+    && mkdir -p /workspace/project /workspace/data /opt/mobilellm \
+    && chown -R 1000:1000 /workspace
 COPY guest.py /opt/mobilellm/guest.py
 RUN chmod 0555 /opt/mobilellm/guest.py
-WORKDIR /workspace
+ENV MOBILELLM_DATA_DIR=/workspace/data
+WORKDIR /workspace/project
