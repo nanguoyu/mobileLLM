@@ -77,6 +77,13 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
             "path": .string("/workspace/project/index.html"), "offset": .integer(0)]))
         let absoluteResult = try await execute(provider, request: absolute, key: "absolute-project-path")
         XCTAssertEqual(try object(absoluteResult)["content"], .string(html))
+        for (index, path) in ["/etc/passwd", "/workspace/project/../data/private", "/workspace/project-other/file"].enumerated() {
+            let outside = try await request(provider, payload: .object(["action": .string("read"),
+                "path": .string(path), "offset": .integer(0)]))
+            let rejected = try await execute(provider, request: outside, key: "outside-project-\(index)")
+            XCTAssertEqual(rejected.terminalStatus.state, .failed)
+            XCTAssertNil(rejected.structuredOutput, "Path normalization must not expose another root")
+        }
         let stop = try await request(provider, payload: .object(["action": .string("stop"), "processID": .string(started.handleID.description)]))
         let stopped = try await execute(provider, request: stop, key: "stop-server")
         XCTAssertEqual(try object(stopped)["running"], .bool(false))
