@@ -144,6 +144,12 @@ final class SandboxWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             try data.write(to: root.appendingPathComponent(artifact.id.description + suffix))
         }
         if artifacts.filter({ $0.semanticType == "sandbox.project-source" }).isEmpty { failures.append("No actual source archive") }
+        if name == "restaurant" {
+            let actions = Set(evidence.filter { $0.succeeded != false }.compactMap { $0.execution?.operation })
+            if !actions.isSuperset(of: ["sandbox_start", "sandbox_browser", "sandbox_export"]) {
+                failures.append("The website was not actually started, inspected and exported")
+            }
+        }
         // Independent assertions execute after the autonomous run and cannot send it corrective hints.
         if state?.state == .completed && name == "repair" {
             do { _ = try await operation(client, workspace: runID, payload: ["action": .string("exec"), "timeoutSeconds": .integer(20),
@@ -179,6 +185,7 @@ final class SandboxWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         let workers = state?.calls.filter { $0.options.requestedAgentType != "workflow-supervisor" } ?? []
         if Set(workers.compactMap { $0.options.sessionKey }).count < 2 { failures.append("No independent collaborating agents") }
         let record: [String: Any] = ["case": name, "goal": goal, "runID": runID.description, "model": model,
+            "codeRevision": ProcessInfo.processInfo.environment["MOBILELLM_LIVE_REVISION"] ?? "unrecorded",
             "durationSeconds": Date().timeIntervalSince(start), "state": state?.state.rawValue ?? "missing", "failures": failures,
             "workerCalls": workers.count, "recordedToolCalls": evidence.count, "artifactCount": artifacts.count]
         let bytes = try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys])
