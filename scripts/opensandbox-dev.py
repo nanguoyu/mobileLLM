@@ -175,7 +175,10 @@ class Environment:
                 continue
             record = json.loads(self.run(['docker','inspect',short]))[0]
             labels = record.get('Config',{}).get('Labels',{}) or {}
-            if self.state['ownerLabel'] in labels.values() or any(value in sandbox_ids for value in labels.values()):
+            # Image labels are inherited by unrelated containers that reuse an image. Require
+            # instance metadata or a sandbox identity actually recorded by this environment.
+            if labels.get('mobilellm.owner') == self.state['ownerLabel'] or (
+                labels.get('opensandbox.io/id') in sandbox_ids or labels.get('opensandbox.io/egress-sidecar-for') in sandbox_ids):
                 owned.append(record)
         return owned
 
@@ -240,8 +243,9 @@ class Environment:
         self.docker_ready(); self.stop_workspaces(); self.stop_processes()
         before = self.state.get('baseline',{})
         errors=[]
+        existing_volumes = set(self.run(['docker','volume','ls','-q']).splitlines())
         for volume in self.state.get('volumes',[]):
-            if volume not in before.get('volumes',[]):
+            if volume not in before.get('volumes',[]) and volume in existing_volumes:
                 try:self.run(['docker','volume','rm',volume])
                 except subprocess.CalledProcessError:errors.append('Volume retained: '+volume)
         seen=set()
