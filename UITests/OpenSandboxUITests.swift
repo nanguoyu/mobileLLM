@@ -33,10 +33,13 @@ final class OpenSandboxUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["execution.connected"].exists)
         let enabled = app.switches["execution.enabled"]
         XCTAssertEqual(enabled.value as? String, "1")
-        enabled.tap()
+        // SwiftUI exposes the entire form row as Switch; only its trailing control is hit-testable.
+        enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         let disabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "0"), object: enabled)
         XCTAssertEqual(XCTWaiter.wait(for: [disabled], timeout: 5), .completed)
-        enabled.tap()
+        enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        let reenabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "1"), object: enabled)
+        XCTAssertEqual(XCTWaiter.wait(for: [reenabled], timeout: 5), .completed)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Real OpenSandbox settings"; screenshot.lifetime = .keepAlways; add(screenshot)
         app.buttons["execution.remove"].tap()
