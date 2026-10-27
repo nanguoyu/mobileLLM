@@ -52,6 +52,13 @@ public enum CollaborativeWorkflow {
     The accepted reviewer must itself use sandbox_browser and sandbox_export on the final unchanged
     source for an application, or sandbox_export for a workspace deliverable. Budget those tools in
     the review task. The host checks the real receipts and rejects stale source or missing artifacts.
+    An implementation activation has at most six tool calls and eight model turns. Split independent
+    file ownership between workers when the project cannot fit one activation, agreeing interfaces in
+    their instructions before parallel work. Keep file batches small enough for a bounded model reply.
+    Reserve calls for the affected test and one correction. Use sandbox_run for finite tests and
+    sandbox_start only for a server that should stay running. Do not spend calls repeatedly checking
+    the supplied toolchain or reinstalling unchanged dependencies. Read current files before editing
+    an existing project; a profile that permits edits should also permit those reads.
     Browser checks use async Python with page, context, browser, base_url and expect already provided.
     An execution failure is useful feedback for correction, not an instruction to claim success.
 
