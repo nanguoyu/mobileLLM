@@ -51,6 +51,11 @@ final class WorkflowExecutionDeliveryTests: XCTestCase {
         XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [changed], acceptedReviewEvidence: good))
         let stop = try receipt("sandbox_stop", 4, running: false)
         XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [stop], acceptedReviewEvidence: good))
+        let unknown = WorkflowReviewToolEvidence(toolID: "sandbox_run", invocationID: ToolInvocationID(), recordDigest: source,
+            execution: WorkflowSandboxEvidence(workspaceID: scope, sourceDigest: nil, operation: "sandbox_run"),
+            completedAt: AgentTimestamp(rawValue: 4), succeeded: false)
+        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [unknown], acceptedReviewEvidence: good),
+            "A known failed command without current source evidence cannot validate a stale delivery")
         XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: Array(good.dropFirst()), acceptedReviewEvidence: good))
     }
 }
