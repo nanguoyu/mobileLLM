@@ -100,7 +100,7 @@ final class SandboxWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             mcpToolDescriptors: [], webSearchDestinations: [], toolPolicy: nil, onlineModelEnabled: true, onlineModelID: model,
             onlineServiceID: "sandbox-evaluation", onlineConfigurationID: "sandbox-evaluation", onlineReasoningEnabled: true,
             onlineContextLength: 32768, onlineOutputBudgetAuto: true, onlineMaximumOutputTokens: nil,
-            approvalMode: .safePreset, onlineReasoningEffort: .low, availableSkills: Skill.builtIns, executionEnvironment: connection)
+            approvalMode: .fullAccess, onlineReasoningEffort: .low, availableSkills: Skill.builtIns, executionEnvironment: connection)
         do {
             _ = try await assembly.prepareCoordinatedWorkflow(snapshot: snapshot, runID: runID)
             _ = try await assembly.dynamicWorkflows.approveAndStart(runID: runID)
@@ -111,6 +111,13 @@ final class SandboxWorkflowLiveTests: XCTestCase, @unchecked Sendable {
                     let status = "\(state.state): \(state.calls.count) calls, \(state.currentPhase ?? "preparing")"
                     if status != previous { print("[SandboxWorkflow] \(name) \(status)"); previous = status }
                     if state.isTerminal || (state.state == .paused && state.taskGraph?.state != .active) { break }
+                    var blocked = false
+                    for call in state.calls {
+                        if try await assembly.repository.loadRunFacts(for: call.childRunID)?.projection.state == .waitingForApproval {
+                            blocked = true; break
+                        }
+                    }
+                    if blocked { failures.append("Full Access evaluation unexpectedly requested tool approval"); break }
                 }
                 try await Task.sleep(nanoseconds: 500_000_000)
             }
