@@ -5,7 +5,7 @@
   "sourceSpecification": {
     "path": "spec.md",
     "sha256": "466bff8829197a376960cf34777bb470de812cbd6124c1fc0727a639ebdc3e19",
-    "capturedAtUTC": "2026-10-26T11:05:04Z"
+    "capturedAtUTC": "2026-10-27T02:25:00Z"
   },
   "requirements": [
     {
@@ -19,8 +19,8 @@
         {
           "section": "27",
           "heading": "Test strategy",
-          "lineStart": 1287,
-          "lineEnd": 1479
+          "lineStart": 1317,
+          "lineEnd": 1509
         }
       ],
       "platforms": [
@@ -50,8 +50,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1405,
-          "lineEnd": 1479
+          "lineStart": 1435,
+          "lineEnd": 1509
         }
       ],
       "platforms": [
@@ -81,8 +81,8 @@
         {
           "section": "27",
           "heading": "Test strategy",
-          "lineStart": 1287,
-          "lineEnd": 1479
+          "lineStart": 1317,
+          "lineEnd": 1509
         }
       ],
       "platforms": [
@@ -112,8 +112,8 @@
         {
           "section": "27.1",
           "heading": "Deterministic unit and property tests",
-          "lineStart": 1298,
-          "lineEnd": 1335
+          "lineStart": 1328,
+          "lineEnd": 1365
         }
       ],
       "platforms": [
@@ -143,14 +143,14 @@
         {
           "section": "27.1",
           "heading": "Deterministic unit and property tests",
-          "lineStart": 1298,
-          "lineEnd": 1335
+          "lineStart": 1328,
+          "lineEnd": 1365
         },
         {
           "section": "27.3",
           "heading": "Real-device matrix",
-          "lineStart": 1357,
-          "lineEnd": 1387
+          "lineStart": 1387,
+          "lineEnd": 1417
         }
       ],
       "platforms": [
@@ -179,8 +179,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1405,
-          "lineEnd": 1479
+          "lineStart": 1435,
+          "lineEnd": 1509
         }
       ],
       "platforms": [
@@ -210,8 +210,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1405,
-          "lineEnd": 1479
+          "lineStart": 1435,
+          "lineEnd": 1509
         }
       ],
       "platforms": [
@@ -241,8 +241,8 @@
         {
           "section": "27.5",
           "heading": "Coverage and release gates",
-          "lineStart": 1405,
-          "lineEnd": 1479
+          "lineStart": 1435,
+          "lineEnd": 1509
         }
       ],
       "platforms": [
@@ -308,8 +308,8 @@
         {
           "section": "23",
           "heading": "Unified staged and Dynamic Workflows boundary",
-          "lineStart": 1172,
-          "lineEnd": 1239
+          "lineStart": 1202,
+          "lineEnd": 1269
         }
       ],
       "platforms": [
@@ -1254,8 +1254,8 @@
         {
           "section": "24",
           "heading": "Security and privacy requirements",
-          "lineStart": 1240,
-          "lineEnd": 1255
+          "lineStart": 1270,
+          "lineEnd": 1285
         }
       ],
       "platforms": [
@@ -1605,7 +1605,7 @@
           "section": "21.1",
           "heading": "Isolation from the private implementation",
           "lineStart": 1051,
-          "lineEnd": 1062
+          "lineEnd": 1064
         }
       ],
       "platforms": [
@@ -1635,8 +1635,8 @@
         {
           "section": "21.2",
           "heading": "Two-level integration",
-          "lineStart": 1063,
-          "lineEnd": 1113
+          "lineStart": 1065,
+          "lineEnd": 1114
         }
       ],
       "platforms": [
@@ -1664,8 +1664,8 @@
         {
           "section": "21.2",
           "heading": "Two-level integration",
-          "lineStart": 1063,
-          "lineEnd": 1113
+          "lineStart": 1065,
+          "lineEnd": 1114
         }
       ],
       "platforms": [
@@ -1694,8 +1694,8 @@
         {
           "section": "22",
           "heading": "Subagent compatibility seam",
-          "lineStart": 1114,
-          "lineEnd": 1171
+          "lineStart": 1144,
+          "lineEnd": 1201
         }
       ],
       "platforms": [
@@ -1722,8 +1722,8 @@
         {
           "section": "22",
           "heading": "Subagent compatibility seam",
-          "lineStart": 1114,
-          "lineEnd": 1171
+          "lineStart": 1144,
+          "lineEnd": 1201
         }
       ],
       "platforms": [
@@ -1752,8 +1752,8 @@
         {
           "section": "34.5",
           "heading": "Parallel subagent, authority, and lifecycle contract",
-          "lineStart": 1903,
-          "lineEnd": 1919
+          "lineStart": 1934,
+          "lineEnd": 1950
         }
       ],
       "platforms": [
@@ -1813,8 +1813,8 @@
         {
           "section": "23",
           "heading": "Unified staged and Dynamic Workflows boundary",
-          "lineStart": 1172,
-          "lineEnd": 1239
+          "lineStart": 1202,
+          "lineEnd": 1269
         }
       ],
       "platforms": [
@@ -1843,8 +1843,8 @@
         {
           "section": "34",
           "heading": "P0 full Dynamic Workflows program",
-          "lineStart": 1722,
-          "lineEnd": 1969
+          "lineStart": 1753,
+          "lineEnd": 2002
         }
       ],
       "platforms": [
@@ -1880,8 +1880,8 @@
         {
           "section": "24",
           "heading": "Security and privacy requirements",
-          "lineStart": 1240,
-          "lineEnd": 1255
+          "lineStart": 1270,
+          "lineEnd": 1285
         }
       ],
       "platforms": [
@@ -1916,8 +1916,8 @@
         {
           "section": "24",
           "heading": "Security and privacy requirements",
-          "lineStart": 1240,
-          "lineEnd": 1255
+          "lineStart": 1270,
+          "lineEnd": 1285
         }
       ],
       "platforms": [
@@ -1946,8 +1946,8 @@
         {
           "section": "25",
           "heading": "Observability",
-          "lineStart": 1256,
-          "lineEnd": 1272
+          "lineStart": 1286,
+          "lineEnd": 1302
         }
       ],
       "platforms": [
@@ -1976,8 +1976,8 @@
         {
           "section": "26",
           "heading": "Backward compatibility and rollout",
-          "lineStart": 1273,
-          "lineEnd": 1286
+          "lineStart": 1303,
+          "lineEnd": 1316
         }
       ],
       "platforms": [
@@ -2007,8 +2007,8 @@
         {
           "section": "26",
           "heading": "Backward compatibility and rollout",
-          "lineStart": 1273,
-          "lineEnd": 1286
+          "lineStart": 1303,
+          "lineEnd": 1316
         }
       ],
       "platforms": [
@@ -2037,8 +2037,8 @@
         {
           "section": "27.1",
           "heading": "Deterministic unit and property tests",
-          "lineStart": 1298,
-          "lineEnd": 1335
+          "lineStart": 1328,
+          "lineEnd": 1365
         }
       ],
       "platforms": [
@@ -2067,8 +2067,8 @@
         {
           "section": "27.2",
           "heading": "Integration tests",
-          "lineStart": 1336,
-          "lineEnd": 1356
+          "lineStart": 1366,
+          "lineEnd": 1386
         }
       ],
       "platforms": [
@@ -2096,8 +2096,8 @@
         {
           "section": "27.3",
           "heading": "Real-device matrix",
-          "lineStart": 1357,
-          "lineEnd": 1387
+          "lineStart": 1387,
+          "lineEnd": 1417
         }
       ],
       "platforms": [
@@ -2128,8 +2128,8 @@
         {
           "section": "27.4",
           "heading": "Performance and resource gates",
-          "lineStart": 1388,
-          "lineEnd": 1404
+          "lineStart": 1418,
+          "lineEnd": 1434
         }
       ],
       "platforms": [
@@ -2158,8 +2158,8 @@
         {
           "section": "29.1",
           "heading": "Audit cadence and stop rule",
-          "lineStart": 1534,
-          "lineEnd": 1555
+          "lineStart": 1564,
+          "lineEnd": 1585
         }
       ],
       "platforms": [
@@ -2224,8 +2224,8 @@
         {
           "section": "35",
           "heading": "Persistent agent sessions",
-          "lineStart": 1972,
-          "lineEnd": 2004
+          "lineStart": 2003,
+          "lineEnd": 2041
         }
       ],
       "platforms": [
@@ -2255,8 +2255,8 @@
         {
           "section": "36",
           "heading": "Event-driven workflow collaboration",
-          "lineStart": 2011,
-          "lineEnd": 2249
+          "lineStart": 2042,
+          "lineEnd": 2280
         }
       ],
       "platforms": [
