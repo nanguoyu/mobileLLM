@@ -75,6 +75,9 @@ final class SandboxWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         let client = OpenSandboxHTTPClient(connection: connection, apiKey: { sandbox.apiKey })
         let modelConfig = try LiveConfiguration.load()
         let model = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_MODEL"] ?? modelConfig.model
+        guard let effort = ReasoningEffort(rawValue: ProcessInfo.processInfo.environment["MOBILELLM_LIVE_REASONING_EFFORT"] ?? "low") else {
+            throw LiveEvaluationError("Use an explicitly supported low, medium or high reasoning effort")
+        }
         let runID = WorkflowRunID()
         let base = ProcessInfo.processInfo.environment["MOBILELLM_LIVE_OUTPUT_DIR"].map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.temporaryDirectory.appendingPathComponent("mobilellm-sandbox-evaluations")
@@ -100,7 +103,7 @@ final class SandboxWorkflowLiveTests: XCTestCase, @unchecked Sendable {
             mcpToolDescriptors: [], webSearchDestinations: [], toolPolicy: nil, onlineModelEnabled: true, onlineModelID: model,
             onlineServiceID: "sandbox-evaluation", onlineConfigurationID: "sandbox-evaluation", onlineReasoningEnabled: true,
             onlineContextLength: 32768, onlineOutputBudgetAuto: true, onlineMaximumOutputTokens: nil,
-            approvalMode: .fullAccess, onlineReasoningEffort: .low, availableSkills: Skill.builtIns, executionEnvironment: connection)
+            approvalMode: .fullAccess, onlineReasoningEffort: effort, availableSkills: Skill.builtIns, executionEnvironment: connection)
         do {
             _ = try await assembly.prepareCoordinatedWorkflow(snapshot: snapshot, runID: runID)
             _ = try await assembly.dynamicWorkflows.approveAndStart(runID: runID)
@@ -185,6 +188,7 @@ final class SandboxWorkflowLiveTests: XCTestCase, @unchecked Sendable {
         let workers = state?.calls.filter { $0.options.requestedAgentType != "workflow-supervisor" } ?? []
         if Set(workers.compactMap { $0.options.sessionKey }).count < 2 { failures.append("No independent collaborating agents") }
         var record: [String: Any] = ["case": name, "goal": goal, "runID": runID.description, "model": model,
+            "reasoningEffort": effort.rawValue, "contextTokens": 32768,
             "codeRevision": ProcessInfo.processInfo.environment["MOBILELLM_LIVE_REVISION"] ?? "unrecorded",
             "durationSeconds": Date().timeIntervalSince(start), "state": state?.state.rawValue ?? "missing", "failures": failures,
             "workerCalls": workers.count, "recordedToolCalls": evidence.count, "artifactCount": artifacts.count]

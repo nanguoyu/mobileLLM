@@ -37,7 +37,7 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
             return process["processID"] == .string(started.handleID.description) && process["running"] == .bool(true)
         }; return false })
         let browser = try await request(provider, payload: .object(["action": .string("browser"), "port": .integer(8011),
-            "script": .string("from datetime import date\nfrom playwright.async_api import expect\nimport json\nassert isinstance(date.today().year, int)\nawait expect(page.get_by_role('heading', name='Real browser')).to_be_visible()\nprint('assertion reached')\nreturn {'checked': True}")]))
+            "script": .string("from datetime import date\nfrom playwright.async_api import expect\nimport json, re\nassert isinstance(date.today().year, int)\nawait expect(page.get_by_role('heading', name=re.compile('Real.*'))).to_be_visible()\nprint('assertion reached')\nreturn {'checked': True}")]))
         let inspected = try await execute(provider, request: browser, key: "browser")
         let image = try object(inspected)
         XCTAssertEqual(image["stdout"], .string("assertion reached\n"))

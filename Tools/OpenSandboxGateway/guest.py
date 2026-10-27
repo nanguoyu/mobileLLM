@@ -10,6 +10,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from pathlib import Path, PurePosixPath
 import selectors
 import signal
@@ -223,15 +224,19 @@ async def inspect_browser(script, operation_id, port):
             'asyncio': SimpleNamespace(sleep=asyncio.sleep, gather=asyncio.gather),
             'datetime': SimpleNamespace(datetime=datetime.datetime, date=datetime.date,
                 timedelta=datetime.timedelta, timezone=datetime.timezone),
+            're': SimpleNamespace(**{name: getattr(re, name) for name in (
+                'compile', 'escape', 'search', 'match', 'fullmatch', 'findall', 'finditer', 'sub', 'split',
+                'IGNORECASE', 'MULTILINE', 'DOTALL', 'VERBOSE')}),
             'playwright.async_api': SimpleNamespace(expect=expect)
         }
         namespace = {'page': page, 'context': context, 'browser': browser, 'base_url': base_url, 'expect': expect,
-                     'asyncio': pure_modules['asyncio'], 'json': pure_modules['json'], 'datetime': pure_modules['datetime']}
+                     'asyncio': pure_modules['asyncio'], 'json': pure_modules['json'],
+                     'datetime': pure_modules['datetime'], 're': pure_modules['re']}
         class ProvidedImports(ast.NodeTransformer):
             def visit_Import(self, node):
                 for alias in node.names:
-                    if alias.name not in {'json', 'asyncio', 'datetime'}:
-                        raise ValueError('OS, process and package imports belong in sandbox_run')
+                    if alias.name not in {'json', 'asyncio', 'datetime', 're'}:
+                        raise ValueError('Unsupported browser import: ' + alias.name + '; use json, asyncio, datetime, re or Playwright expect helpers')
                     namespace[alias.asname or alias.name] = pure_modules[alias.name]
                 return ast.copy_location(ast.Pass(), node)
 
@@ -239,7 +244,7 @@ async def inspect_browser(script, operation_id, port):
                 module = pure_modules.get(node.module) if node.level == 0 else None
                 for alias in node.names:
                     if module is None or alias.name.startswith('_') or not hasattr(module, alias.name):
-                        raise ValueError('Use provided json, asyncio, datetime and Playwright expect helpers')
+                        raise ValueError('Use provided json, asyncio, datetime, re and Playwright expect helpers')
                     namespace[alias.asname or alias.name] = getattr(module, alias.name)
                 return ast.copy_location(ast.Pass(), node)
 
