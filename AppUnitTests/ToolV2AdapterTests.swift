@@ -224,7 +224,8 @@ final class ToolV2AdapterTests: XCTestCase {
 
     @MainActor
     private func makeSnapshot(userMessageID: UUID, deepSeekWebServiceID: String? = nil,
-                              online: Bool = false, activeSkill: Skill? = nil, availableSkills: [Skill] = []) -> AgentRunRequestSnapshot {
+                              online: Bool = false, activeSkill: Skill? = nil, availableSkills: [Skill] = [],
+                              executionEnvironment: OpenSandboxConnection? = nil) -> AgentRunRequestSnapshot {
         let model = LLMCatalog.bonsai8b
         let variant = model.defaultVariantValue
         return AgentRunRequestSnapshot(
@@ -265,7 +266,7 @@ final class ToolV2AdapterTests: XCTestCase {
             approvalMode: .safePreset,
             onlineReasoningEffort: nil,
             deepSeekWebServiceID: deepSeekWebServiceID,
-            availableSkills: availableSkills
+            availableSkills: availableSkills, executionEnvironment: executionEnvironment
         )
     }
 
@@ -297,6 +298,27 @@ final class ToolV2AdapterTests: XCTestCase {
     }
 
     // TEST-ID: AHT-DYNAMIC-001
+    @MainActor
+    func testDevelopmentBudgetIsFrozenOnlyWhenExecutionToolsAreAvailable() throws {
+        let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let assembly = try AgentRuntimeAssembly(engine: MockLLMEngine(script: .init()), downloadBase: root,
+            conversationDirectory: root, models: [LLMCatalog.bonsai8b], snapshot: { _, _, _, _ in nil })
+        let normal = try assembly.makeWorkflowCoordinator(snapshot: makeSnapshot(userMessageID: UUID()))
+        let connection = try OpenSandboxConnection(id: UUID(), endpoint: URL(string: "http://127.0.0.1:18281")!,
+            image: "test-image", capabilities: [.workspaceFiles, .codeExecution, .applicationInspection])
+        let execution = makeSnapshot(userMessageID: UUID(), executionEnvironment: connection)
+        let development = try assembly.makeWorkflowCoordinator(snapshot: execution)
+        let disabled = try assembly.makeWorkflowCoordinator(snapshot: execution.withText("Plan only", toolsEnabled: false))
+        XCTAssertEqual(normal.budget.limits[.toolInvocations], 24)
+        XCTAssertEqual(normal.budget.limits[.modelAttempts], 32)
+        XCTAssertEqual(development.budget.limits[.toolInvocations], 48)
+        XCTAssertEqual(development.budget.limits[.modelAttempts], 64)
+        XCTAssertEqual(disabled.budget.limits[.toolInvocations], 24)
+        XCTAssertEqual(disabled.budget.limits[.modelAttempts], 32)
+        XCTAssertTrue(development.instruction.contains("48 tool calls, 64 model requests"))
+    }
+
     @MainActor
     func testWorkflowGeneratorSuppressesItsOwnToolsWithoutErasingDelegatedPolicy() async throws {
         let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)

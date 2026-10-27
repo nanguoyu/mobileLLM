@@ -927,12 +927,17 @@ public final class AgentRuntimeAssembly {
         let availableSkills = availableWorkflowSkills(snapshot: snapshot)
         let source = try frozenBuilder.request(snapshot: snapshot, artifactReferences: [], sandboxWorkspaceID: sandboxWorkspaceID)
         let date = runDate ?? String(ISO8601DateFormatter().string(from: Date()).prefix(10))
+        let executesCode = tools.contains { $0.hasPrefix("7:sandbox") }
+        let generatorOutputTokens = dynamicWorkflowOutputTokens(for: snapshot)
+        let workflowBudget = try dynamicWorkflowBudget(from: source.budget,
+            maximumOutputTokensPerAttempt: UInt64(generatorOutputTokens), executesCode: executesCode)
         let instruction = CollaborativeWorkflow.planningInstruction
             + "\nWORKER TOOL IDS (host delegation remains available when this list is empty):\n" + tools.joined(separator: ", ")
             + "\nACTUAL RUN DATE (UTC): " + date
             + "\nALLOWED SKILL CATALOG:\n" + (try CanonicalJSON(.array(availableSkills.map(\.catalogEntry))).string)
             + "\nALLOWED MODELS: " + source.modelPolicy.allowedSelections.map { $0.modelID.rawValue }.joined(separator: ", ")
             + "\nMAXIMUM REASONING EFFORT: " + (source.modelPolicy.localOnly || !snapshot.onlineReasoningEnabled ? "inherit only" : snapshot.onlineReasoningEffort?.rawValue ?? "service default")
+            + "\nFROZEN GOAL BUDGET: \(workflowBudget.limits[.toolInvocations]) tool calls, \(workflowBudget.limits[.modelAttempts]) model requests. Each activation may request at most 6 tool calls. Reserve capacity for acceptance and final artifact delivery."
             + "\nORIGINAL GOAL:\n" + snapshot.text
         // Dynamic execution uses the same frozen authority/model/tool policy as the conversation,
         // but needs a workflow-sized resource envelope. Four-way attenuation of the ordinary chat
@@ -940,9 +945,6 @@ public final class AgentRuntimeAssembly {
         // search -> observation -> answer cycle. This is an app-owned upper bound, not authority:
         // children still receive strict quarter shares and the workflow ledger accounts aggregate
         // actual usage across every wave.
-        let generatorOutputTokens = dynamicWorkflowOutputTokens(for: snapshot)
-        let workflowBudget = try dynamicWorkflowBudget(from: source.budget,
-            maximumOutputTokensPerAttempt: UInt64(generatorOutputTokens))
         let parentAuthority = source.capabilityCeiling.authority
         let teamAuthority = try AgentAuthorityScope(capabilities: AgentCapabilitySet(parentAuthority.capabilities.values + [.localRead, .agentMessage]),
             destinations: parentAuthority.destinations + [WorkflowAgentTool.destination(source.conversationID)],
@@ -1034,7 +1036,8 @@ public final class AgentRuntimeAssembly {
 
     private func dynamicWorkflowBudget(
         from baseline: AgentBudget,
-        maximumOutputTokensPerAttempt: UInt64
+        maximumOutputTokensPerAttempt: UInt64,
+        executesCode: Bool
     ) throws -> AgentBudget {
         var values = Dictionary(uniqueKeysWithValues: BudgetDimension.allCases.map {
             ($0, baseline.limits[$0])
@@ -1049,7 +1052,9 @@ public final class AgentRuntimeAssembly {
         // aggregate overcommit. Discrete repair capacity must be raised explicitly: floor-sharing
         // the ordinary single repair among four children would otherwise produce zero and turn one
         // malformed structured answer into an immediate budget failure.
-        raise(.modelAttempts, to: 32)
+        // Code development needs implementation, execution, repair and acceptance. Select this
+        // bounded preset before planning/approval; existing goals never gain budget on resume.
+        raise(.modelAttempts, to: executesCode ? 64 : 32)
         // The ordinary token totals cover six chat passes. Expanding attempts without expanding
         // those totals left each research child only 1.5 context windows for up to eight passes.
         // Reserve enough cumulative capacity for the permitted passes, keeping per-pass ceilings.
@@ -1063,7 +1068,7 @@ public final class AgentRuntimeAssembly {
             guard !overflow else { throw AgentContractError.arithmeticOverflow(dimension: dimension) }
             raise(dimension, to: total)
         }
-        raise(.toolInvocations, to: 24)
+        raise(.toolInvocations, to: executesCode ? 48 : 24)
         raise(.structuredRepairs, to: 8)
         raise(.networkRequestBytes, to: 32 * 1_024 * 1_024)
         raise(.networkResponseBytesPerOperation, to: 8 * 1_024 * 1_024)

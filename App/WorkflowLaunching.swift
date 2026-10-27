@@ -623,6 +623,8 @@ extension AgentRuntimeAssembly {
                 "runDate": .string(runDate),
                 "availableTools": .array(try availableWorkflowTools(snapshot: snapshot).map(JSONValue.string)),
                 "toolAliases": .object(try workflowToolAliases(snapshot: snapshot).mapValues(JSONValue.string)),
+                "frozenBudget": .object(["toolCalls": .unsignedInteger(coordinator.budget.limits[.toolInvocations]),
+                    "modelRequests": .unsignedInteger(coordinator.budget.limits[.modelAttempts]), "perActivationTools": .integer(6)]),
                 "availableSkills": .array(availableWorkflowSkills(snapshot: snapshot).map(\.catalogEntry)),
                 "availableModels": .array(coordinator.modelPolicy.allowedSelections.map { .string($0.modelID.rawValue) }),
                 "maximumReasoningEffort": .string(coordinator.modelPolicy.localOnly || !snapshot.onlineReasoningEnabled ? "inherit only" : snapshot.onlineReasoningEffort?.rawValue ?? "service default"),
