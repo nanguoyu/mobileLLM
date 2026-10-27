@@ -712,7 +712,8 @@ Online transport accounts bounded byte chunks before parsing, hashes the receive
 redirects, sums usage across fallback attempts, and reduces retry output limits by prior consumption.
 Workflow analysis recognizes exact do/while pairs and instruments expression arrows, callable method
 bodies, and callbacks nested in loop conditions. JavaScriptCore remains a logical realm with cooperative
-termination; the project does not advertise an OS sandbox or a hard heap limit.
+termination; this orchestration realm does not advertise OS isolation or a hard heap limit.
+The optional OpenSandbox execution environment is a separate container boundary.
 
 
 DeepSeek Chat Completions retains native-call reasoning exactly when replaying tool history. A call

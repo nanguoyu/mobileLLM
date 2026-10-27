@@ -91,8 +91,9 @@ stays in history with its rejection reason while the agent corrects it. [Validat
 
 Task details also show acceptance criteria, the agent's assessment and recorded tool executions.
 [Review and revision evidence](docs/evaluations/2026-10-26-acceptance-loops.md) includes both failures and
-successful checks. Building or testing a working application requires an execution provider, which is
-not yet integrated. Such a request stays blocked instead of being marked complete with source text.
+successful checks. Optional [OpenSandbox tools](docs/OPENSANDBOX.md) now provide real application
+execution, browser checks and downloadable source. Without a configured execution environment,
+an application request remains blocked instead of being marked complete with source text.
 
 <p align="center">
   <a href="assets/demo/goal-tasks.png"><img src="assets/demo/goal-tasks.png" width="300" alt="Current tasks in dependency order, with source and saved-feedback links." /></a>
