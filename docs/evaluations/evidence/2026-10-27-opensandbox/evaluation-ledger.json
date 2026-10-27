@@ -1,0 +1,3461 @@
+{
+  "schemaVersion": 1,
+  "notes": "Each row retains its own code, budget and effort. These development attempts are not a frozen reliability score. Recorded tokens can include conservative charges for missing usage.",
+  "attempts": [
+    {
+      "case": "restaurant",
+      "state": "evaluation-stopped",
+      "codeRevision": "7c8f3fe",
+      "failures": [
+        "Evaluation selected safePreset; first sandbox operation correctly waited for manual approval. Stopped without executing that operation."
+      ],
+      "recordedSandboxToolCalls": 0,
+      "evidenceDirectory": "restaurant-88e91373-954b-4c5e-8c4a-a59341009713",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T02:14:56.933000+00:00",
+      "scriptSHA256": "e0f4a54d158c48c002bc318f8c3f64b73ede0ebe79d724c0274a22221074279c",
+      "reasoningEffort": "low",
+      "recordedUsage": {
+        "inputTokens": 6145,
+        "modelAttempts": 2,
+        "outputTokens": 4192,
+        "toolInvocations": 0
+      }
+    },
+    {
+      "artifactCount": 0,
+      "case": "restaurant",
+      "durationSeconds": 279.6885540485382,
+      "failures": [
+        "Goal did not complete: The sandbox agent runtime rejects every build activation with invalidName(\"sandbox filesystem requirement\") before any tool executes, so no files can be written, no server started, no browser check run and no source exported. Three attempts including a varied tool profile all failed identically; the requested working application cannot be produced in this environment.",
+        "No actual source archive"
+      ],
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 6,
+      "runID": "fc862989-4a62-4537-b205-18da7df09f6a",
+      "state": "paused",
+      "workerCalls": 3,
+      "evidenceDirectory": "restaurant-fc862989-4a62-4537-b205-18da7df09f6a",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T02:21:02.675000+00:00",
+      "scriptSHA256": "e0f4a54d158c48c002bc318f8c3f64b73ede0ebe79d724c0274a22221074279c",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build-app",
+          "agent": "builder3",
+          "state": "failed",
+          "dependencies": [],
+          "revision": 9,
+          "required": true
+        },
+        {
+          "id": "review-app",
+          "agent": "reviewer",
+          "state": "needsReview",
+          "dependencies": [
+            "build-app"
+          ],
+          "revision": 3,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "3676162fe2629ae843620f96be635d76c411180440a68e8dac02c1b0bfa771bd",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "8700ea6babc501399179c2bd4e7d845a82b37fad6e97c6d608239a7ea7258a05",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "475afa3e25db942ce378d8098951f747524d1c9da7dc6b1109e0ffd3e96040cd",
+          "artifacts": []
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 142108,
+        "modelAttempts": 16,
+        "outputTokens": 57809,
+        "toolInvocations": 6
+      }
+    },
+    {
+      "case": "restaurant",
+      "state": "waitingForReconciliation",
+      "codeRevision": "414c6b3",
+      "runID": "610b9cd9-d9b2-4045-827a-9e0094f826b9",
+      "failures": [
+        "Initial builder exhausted its fixed budget after malformed model arguments. A later start call used a one-shot command; readiness failed and a race interrupting its already-exited process was misclassified uncertain. Evaluation stopped without injecting corrections."
+      ],
+      "evidenceDirectory": "restaurant-610b9cd9-d9b2-4045-827a-9e0094f826b9",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T02:26:53.060000+00:00",
+      "scriptSHA256": "e0f4a54d158c48c002bc318f8c3f64b73ede0ebe79d724c0274a22221074279c",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build_site",
+          "agent": "web_builder",
+          "state": "running",
+          "dependencies": [],
+          "revision": 5,
+          "required": true
+        },
+        {
+          "id": "accept_site",
+          "agent": "acceptance_reviewer",
+          "state": "needsReview",
+          "dependencies": [
+            "build_site"
+          ],
+          "revision": 2,
+          "required": true
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 133410,
+        "modelAttempts": 13,
+        "outputTokens": 72693,
+        "toolInvocations": 8
+      }
+    },
+    {
+      "artifactCount": 0,
+      "case": "restaurant",
+      "durationSeconds": 199.94602298736572,
+      "failures": [
+        "The autonomous task needs effect reconciliation",
+        "Goal did not complete: waitingForReconciliation",
+        "No actual source archive",
+        "No independent collaborating agents"
+      ],
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 0,
+      "runID": "74ac6eef-31ab-4e5b-ab11-083053409216",
+      "state": "waitingForReconciliation",
+      "workerCalls": 1,
+      "evidenceDirectory": "restaurant-74ac6eef-31ab-4e5b-ab11-083053409216",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T02:38:48.918000+00:00",
+      "scriptSHA256": "16e5dc42d634dfa51c131e02ea2446a65e985685aa411c0dc561e6470d4ef276",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build-site",
+          "agent": "builder",
+          "state": "running",
+          "dependencies": [],
+          "revision": 2,
+          "required": true
+        },
+        {
+          "id": "review-site",
+          "agent": "reviewer",
+          "state": "pending",
+          "dependencies": [
+            "build-site"
+          ],
+          "revision": 1,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [],
+      "recordedUsage": {
+        "inputTokens": 13961,
+        "modelAttempts": 4,
+        "outputTokens": 48314,
+        "toolInvocations": 4
+      }
+    },
+    {
+      "artifactCount": 0,
+      "case": "repair",
+      "durationSeconds": 24.73783791065216,
+      "failures": [
+        "The autonomous task needs effect reconciliation",
+        "Goal did not complete: waitingForReconciliation",
+        "No actual source archive",
+        "No independent collaborating agents"
+      ],
+      "goal": "Fix the inventory.py project in the workspace. reserve(stock, requests) must aggregate repeated SKU requests, reject invalid quantities or insufficient stock without changing any input, and return remaining stock on success. Keep the public function signature and the existing tests. Run the tests, fix the code, verify it and deliver the repaired project.",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 0,
+      "runID": "58262dd3-bd83-4a4a-b307-6029dba738d3",
+      "state": "waitingForReconciliation",
+      "workerCalls": 1,
+      "evidenceDirectory": "repair-58262dd3-bd83-4a4a-b307-6029dba738d3",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T02:42:00.278000+00:00",
+      "scriptSHA256": "16e5dc42d634dfa51c131e02ea2446a65e985685aa411c0dc561e6470d4ef276",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "fix",
+          "agent": "fixer",
+          "state": "running",
+          "dependencies": [],
+          "revision": 2,
+          "required": true
+        },
+        {
+          "id": "review",
+          "agent": "reviewer",
+          "state": "pending",
+          "dependencies": [
+            "fix"
+          ],
+          "revision": 1,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [],
+      "recordedUsage": {
+        "inputTokens": 13929,
+        "modelAttempts": 4,
+        "outputTokens": 2917,
+        "toolInvocations": 4
+      }
+    },
+    {
+      "artifactCount": 0,
+      "case": "sales",
+      "durationSeconds": 73.9257379770279,
+      "failures": [
+        "The autonomous task needs effect reconciliation",
+        "Goal did not complete: waitingForReconciliation",
+        "No actual source archive",
+        "No independent collaborating agents"
+      ],
+      "goal": "Create a reproducible Python sales analysis project from orders.csv. Deduplicate by order_id keeping the latest updated_at, exclude cancelled orders, and compute revenue in integer euro cents as quantity * unit_cents - refund_cents. Write totals.json with revenue_cents, order_count and by_country revenue totals. Include a concise human-readable report and tests, run them, and deliver the project.",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 0,
+      "runID": "9303aac4-759b-413c-9303-262f64195e2f",
+      "state": "waitingForReconciliation",
+      "workerCalls": 1,
+      "evidenceDirectory": "sales-9303aac4-759b-413c-9303-262f64195e2f",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T02:42:28.838000+00:00",
+      "scriptSHA256": "16e5dc42d634dfa51c131e02ea2446a65e985685aa411c0dc561e6470d4ef276",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build_sales_project",
+          "agent": "builder",
+          "state": "running",
+          "dependencies": [],
+          "revision": 2,
+          "required": true
+        },
+        {
+          "id": "review_and_export_sales_project",
+          "agent": "reviewer",
+          "state": "pending",
+          "dependencies": [
+            "build_sales_project"
+          ],
+          "revision": 1,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [],
+      "recordedUsage": {
+        "inputTokens": 53483,
+        "modelAttempts": 7,
+        "outputTokens": 14020,
+        "toolInvocations": 6
+      }
+    },
+    {
+      "artifactCount": 3,
+      "case": "repair",
+      "codeRevision": "968ceb0",
+      "durationSeconds": 113.35484004020691,
+      "failures": [],
+      "goal": "Fix the inventory.py project in the workspace. reserve(stock, requests) must aggregate repeated SKU requests, reject invalid quantities or insufficient stock without changing any input, and return remaining stock on success. Keep the public function signature and the existing tests. Run the tests, fix the code, verify it and deliver the repaired project.",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 18,
+      "runID": "6e836bb3-97e5-428b-a3ce-4f6fe16b6b15",
+      "state": "completed",
+      "workerCalls": 4,
+      "evidenceDirectory": "repair-6e836bb3-97e5-428b-a3ce-4f6fe16b6b15",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T02:49:31.474000+00:00",
+      "scriptSHA256": "16e5dc42d634dfa51c131e02ea2446a65e985685aa411c0dc561e6470d4ef276",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "inspect-inventory",
+          "agent": "inventory-fixer",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": false
+        },
+        {
+          "id": "fix-implementation",
+          "agent": "inventory-fixer",
+          "state": "completed",
+          "dependencies": [
+            "inspect-inventory"
+          ],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify-repair",
+          "agent": "inventory-reviewer",
+          "state": "completed",
+          "dependencies": [
+            "fix-implementation"
+          ],
+          "revision": 6,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "8bba9daeb4f1330e9b0c22a60a29a9b787af1fb02bd34429b63e3acf613792fe",
+          "port": null,
+          "recordDigest": "137414acdfbabd8587324bbb2fd2cab1633de810fcdfa981a7be38c30fcba76f",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "8bba9daeb4f1330e9b0c22a60a29a9b787af1fb02bd34429b63e3acf613792fe",
+          "port": null,
+          "recordDigest": "cfeb891a66834d17a2ec5f2dc4bb8593838370ffa1fe11f3a731c2be422c127f",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "8bba9daeb4f1330e9b0c22a60a29a9b787af1fb02bd34429b63e3acf613792fe",
+          "port": null,
+          "recordDigest": "58fb57139bee4e009865e163a72b9fb79002bc89d00de0382bd191002edb2754",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "1b337adbb4804b78e4e44ced87d7ca9ed1fd50243e65e3668b6e7764261ca1dc",
+          "port": null,
+          "recordDigest": "dcd11f19bc7df4fbe494f7ba9e9f9afec10c3d5aeb92ca407ea5b4413d81dba7",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "1b337adbb4804b78e4e44ced87d7ca9ed1fd50243e65e3668b6e7764261ca1dc",
+          "port": null,
+          "recordDigest": "0df39cb2d510043998a4d2846c99bf273a83946b7a2ab51d1f2495c6d2eb3ca9",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "1b337adbb4804b78e4e44ced87d7ca9ed1fd50243e65e3668b6e7764261ca1dc",
+          "port": null,
+          "recordDigest": "126e6b8af5855e8b729a6847708ebe48dffffe2a0b07ef5764dfec72b9647a66",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "1b337adbb4804b78e4e44ced87d7ca9ed1fd50243e65e3668b6e7764261ca1dc",
+          "port": null,
+          "recordDigest": "a169cec6ddea3fb3108ea9d8fc7d165f90f0049571d17063612e04aa41a08fb2",
+          "artifacts": [
+            {
+              "id": "3672b572-b0dc-44cb-8379-a3b8d65c4d92",
+              "sha256": "63c0aef1665879f44f10d9355c9386736e0f856a6a61e78eecf44a80eb8f222b",
+              "mimeType": "application/zip",
+              "bytes": 1015,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "1b337adbb4804b78e4e44ced87d7ca9ed1fd50243e65e3668b6e7764261ca1dc",
+          "port": null,
+          "recordDigest": "d5d322100a6b1cbcda743b36c24e66c5b422c4f86eb45702ff8fcd4dbd077f72",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "1b337adbb4804b78e4e44ced87d7ca9ed1fd50243e65e3668b6e7764261ca1dc",
+          "port": null,
+          "recordDigest": "902737a7628ed6934f687300130564a25a1b9ec5c5d09b75c8b2244da5834e6c",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "1b337adbb4804b78e4e44ced87d7ca9ed1fd50243e65e3668b6e7764261ca1dc",
+          "port": null,
+          "recordDigest": "fee1535453e55ecbcd37d7dfa114003aebcda0e6d826712b93476bd5a4efa6eb",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "1b337adbb4804b78e4e44ced87d7ca9ed1fd50243e65e3668b6e7764261ca1dc",
+          "port": null,
+          "recordDigest": "aae16d84a271cabc0ecf0d16602878483b0011cdfbc097617cf17718e28798d7",
+          "artifacts": [
+            {
+              "id": "9f99751c-eea6-4157-b17a-544e9446aba9",
+              "sha256": "c98320e9a7f936156acb5c1bd83ee6bfa4bdbc31c0f6edb176e6eb8fb7e397e2",
+              "mimeType": "application/zip",
+              "bytes": 1015,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "8bba9daeb4f1330e9b0c22a60a29a9b787af1fb02bd34429b63e3acf613792fe",
+          "port": null,
+          "recordDigest": "2f518fba65a2e25a8d65e3c7001d71262a80f7319f10503473b89afca0ba8237",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "8bba9daeb4f1330e9b0c22a60a29a9b787af1fb02bd34429b63e3acf613792fe",
+          "port": null,
+          "recordDigest": "c0a9fb3f81dbbac9f5ba0fd382c2ae28a09d5dc49c3e7acdafbdc3eb6e726ae3",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "1b337adbb4804b78e4e44ced87d7ca9ed1fd50243e65e3668b6e7764261ca1dc",
+          "port": null,
+          "recordDigest": "11b5b85d1435ca76d220bbcc09d0460b0a978f8c3db1e30ce363b52e0066d060",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "1b337adbb4804b78e4e44ced87d7ca9ed1fd50243e65e3668b6e7764261ca1dc",
+          "port": null,
+          "recordDigest": "b63fadc823d117ccfec353a7af4d1774913f5589add968c6c86172ba634db987",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "1b337adbb4804b78e4e44ced87d7ca9ed1fd50243e65e3668b6e7764261ca1dc",
+          "port": null,
+          "recordDigest": "4991b66d3da5f308431626b60d1c16c1d15fa17e79aba0e363576dc428e8a9ea",
+          "artifacts": [
+            {
+              "id": "b2512b07-d15c-48c1-9ff8-8be3d5905133",
+              "sha256": "1b156b6368764529d3d08a0f620ea8e3b624bdb342e697e47623c3f9715f52d4",
+              "mimeType": "application/zip",
+              "bytes": 1015,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 168605,
+        "modelAttempts": 21,
+        "outputTokens": 13599,
+        "toolInvocations": 18
+      }
+    },
+    {
+      "artifactCount": 0,
+      "case": "restaurant",
+      "codeRevision": "968ceb0",
+      "durationSeconds": 314.15548396110535,
+      "failures": [
+        "The autonomous task needs effect reconciliation",
+        "Goal did not complete: waitingForReconciliation",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported",
+        "No independent collaborating agents"
+      ],
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 0,
+      "runID": "6bdb5e0d-04f2-4bd6-8602-42bf82b5f280",
+      "state": "waitingForReconciliation",
+      "workerCalls": 1,
+      "evidenceDirectory": "restaurant-6bdb5e0d-04f2-4bd6-8602-42bf82b5f280",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T02:52:40.401000+00:00",
+      "scriptSHA256": "16e5dc42d634dfa51c131e02ea2446a65e985685aa411c0dc561e6470d4ef276",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build-site",
+          "agent": "builder",
+          "state": "running",
+          "dependencies": [],
+          "revision": 2,
+          "required": true
+        },
+        {
+          "id": "review-site",
+          "agent": "reviewer",
+          "state": "pending",
+          "dependencies": [
+            "build-site"
+          ],
+          "revision": 1,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [],
+      "recordedUsage": {
+        "inputTokens": 68897,
+        "modelAttempts": 8,
+        "outputTokens": 69413,
+        "toolInvocations": 5
+      }
+    },
+    {
+      "artifactCount": 1,
+      "case": "sales",
+      "codeRevision": "968ceb0",
+      "durationSeconds": 138.35483300685883,
+      "failures": [],
+      "goal": "Create a reproducible Python sales analysis project from orders.csv. Deduplicate by order_id keeping the latest updated_at, exclude cancelled orders, and compute revenue in integer euro cents as quantity * unit_cents - refund_cents. Write totals.json with revenue_cents, order_count and by_country revenue totals. Include a concise human-readable report and tests, run them, and deliver the project.",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 9,
+      "runID": "0e7dcff4-0564-4779-a880-5950ce339422",
+      "state": "completed",
+      "workerCalls": 2,
+      "evidenceDirectory": "sales-0e7dcff4-0564-4779-a880-5950ce339422",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T02:57:51.324000+00:00",
+      "scriptSHA256": "16e5dc42d634dfa51c131e02ea2446a65e985685aa411c0dc561e6470d4ef276",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build",
+          "agent": "builder",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify",
+          "agent": "verifier",
+          "state": "completed",
+          "dependencies": [
+            "build"
+          ],
+          "revision": 3,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "3c2537558129c2c7257528774eca18e63fa6891cc99fbc43b0325cf93cfbc2f3",
+          "port": null,
+          "recordDigest": "9b099d45a2cb65e7cc24904dfe3b5ed75b7cef99e3b07fe5b7b4c12cbffb8ac0",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "3c2537558129c2c7257528774eca18e63fa6891cc99fbc43b0325cf93cfbc2f3",
+          "port": null,
+          "recordDigest": "4fb2ff14f73a07675533ece504cbf3ef4b964449f1edd68662bb0af3c44b0e1a",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "3c2537558129c2c7257528774eca18e63fa6891cc99fbc43b0325cf93cfbc2f3",
+          "port": null,
+          "recordDigest": "add11fd44afd8c6fcb8a73aeee18068f9436e9a15d9539683ca9d7fdeaf9a271",
+          "artifacts": [
+            {
+              "id": "29728624-b073-4d98-9ea3-3cef709d3948",
+              "sha256": "5460ad6715403d27b8f88935f8ee4dd217ed7b1bb8b1a7efd801216946fb2a35",
+              "mimeType": "application/zip",
+              "bytes": 5600,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "7caa64d906fb3605879254fc1574507ccdbe0d78212ed4a366edbd1c2169161c",
+          "port": null,
+          "recordDigest": "d63438c24857c6ca753d0f79b75e84ce6be9d7425671001ba54a20eeb2b91605",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "7caa64d906fb3605879254fc1574507ccdbe0d78212ed4a366edbd1c2169161c",
+          "port": null,
+          "recordDigest": "004e160fb9266f5ec1c72c45153b16fba4560766609a5855fdb147312621bf4c",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "7caa64d906fb3605879254fc1574507ccdbe0d78212ed4a366edbd1c2169161c",
+          "port": null,
+          "recordDigest": "ed69716ca62f05720264360ee52f064723d7146cab6a85f600601d857ed269e7",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "dd1cd3087d3401ee74e3c2ab9396d5c8972c8d2acda06eec74870483b7cea454",
+          "port": null,
+          "recordDigest": "fca0d5565f9f3470fb27dc8e40882862b11feb6a7df6a4ff50bf492d9dd8e484",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "dd1cd3087d3401ee74e3c2ab9396d5c8972c8d2acda06eec74870483b7cea454",
+          "port": null,
+          "recordDigest": "73aa2188e895f55d829f562b8a72adc87d12553f6527019e22321113559f3aaa",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "3c2537558129c2c7257528774eca18e63fa6891cc99fbc43b0325cf93cfbc2f3",
+          "port": null,
+          "recordDigest": "00e919d0d14373d928294c1be5d0a8721f92d5e50c0498858d372970bad56af9",
+          "artifacts": []
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 99839,
+        "modelAttempts": 13,
+        "outputTokens": 26233,
+        "toolInvocations": 9
+      }
+    },
+    {
+      "artifactCount": 0,
+      "case": "restaurant",
+      "codeRevision": "b92502a",
+      "durationSeconds": 388.7211719751358,
+      "failures": [
+        "Goal did not complete: The model request budget was used; remaining work and partial results are saved.",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported"
+      ],
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 15,
+      "runID": "20b24cfe-7445-4928-8046-4f1182741301",
+      "state": "paused",
+      "workerCalls": 3,
+      "evidenceDirectory": "restaurant-20b24cfe-7445-4928-8046-4f1182741301",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T03:16:05.633000+00:00",
+      "scriptSHA256": "09d25970fa7400103bccbb91b2ff45e2696a649739670678d092ea6cc802aa85",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build-app",
+          "agent": "builder",
+          "state": "failed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify-app",
+          "agent": "reviewer",
+          "state": "pending",
+          "dependencies": [
+            "build-app"
+          ],
+          "revision": 1,
+          "required": true
+        },
+        {
+          "id": "build-site",
+          "agent": "builder",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify-site",
+          "agent": "reviewer",
+          "state": "failed",
+          "dependencies": [
+            "build-site"
+          ],
+          "revision": 3,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "fda8c18f29d21c23e2c44c5ce9b9c4118d6d1f90ef79c0b13a3400e5b7d6cef2",
+          "port": null,
+          "recordDigest": "6da2678af080096bc13f852b79cfe5959c85b536eebe54f480d30812cedebc87",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "30c89b7e745160a366b6899059f1cdfb53f169aef909f2cb2ec3c756711db9c1",
+          "port": null,
+          "recordDigest": "69c32563096570c4d720a80da59845659c2a9d807360c6725a7fd48d34d5051e",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "30c89b7e745160a366b6899059f1cdfb53f169aef909f2cb2ec3c756711db9c1",
+          "port": null,
+          "recordDigest": "76c95f73fbe45baab99d94dd18f83c7a6276852708f262fac3de13e026349135",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "30c89b7e745160a366b6899059f1cdfb53f169aef909f2cb2ec3c756711db9c1",
+          "port": null,
+          "recordDigest": "adf1b5228398887396e6f657e04475261d27a15f2fc744ae79590d4d3409623e",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "a1db33034a7bce69bab5b4245213477b04b098b293d267d84f0bdac4a7ebea98",
+          "port": null,
+          "recordDigest": "ff5394d18bb00cd20471b98709390b0d8273aceb6e360e29e2f3b057eca7280c",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "a1db33034a7bce69bab5b4245213477b04b098b293d267d84f0bdac4a7ebea98",
+          "port": null,
+          "recordDigest": "2af95ec688f8b10a7843e73227751edf7012c97238739c38cf54cc4a80beca46",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "a1db33034a7bce69bab5b4245213477b04b098b293d267d84f0bdac4a7ebea98",
+          "port": null,
+          "recordDigest": "9bd2f9e7ec4f9c070d32f7dd16e33700a342527cfbcafd3e8d3bb030aa51b1a0",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "a1db33034a7bce69bab5b4245213477b04b098b293d267d84f0bdac4a7ebea98",
+          "port": null,
+          "recordDigest": "d3db57fb5900d05fae16d956d914688902d94f483e6d592c69e899acc48e6d58",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "a1db33034a7bce69bab5b4245213477b04b098b293d267d84f0bdac4a7ebea98",
+          "port": 8000,
+          "recordDigest": "88b7cde8325b51ee818485881e019120a2f31ba1fe01ca5cd21dcc517fa4ba95",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": "a1db33034a7bce69bab5b4245213477b04b098b293d267d84f0bdac4a7ebea98",
+          "port": null,
+          "recordDigest": "b8482d195824d103ea4e946ddcf90c4c7cd6913081118d19dba02c3b676a96ac",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": "a1db33034a7bce69bab5b4245213477b04b098b293d267d84f0bdac4a7ebea98",
+          "port": null,
+          "recordDigest": "95e4ffc09318d309aa624d27b3f1aa22ec4e5023f2e73a460f9b63feabc10c6e",
+          "artifacts": []
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 309131,
+        "modelAttempts": 32,
+        "outputTokens": 71190,
+        "toolInvocations": 18
+      }
+    },
+    {
+      "artifactCount": 1,
+      "case": "repair",
+      "codeRevision": "b92502a",
+      "durationSeconds": 78.61392307281494,
+      "failures": [],
+      "goal": "Fix the inventory.py project in the workspace. reserve(stock, requests) must aggregate repeated SKU requests, reject invalid quantities or insufficient stock without changing any input, and return remaining stock on success. Keep the public function signature and the existing tests. Run the tests, fix the code, verify it and deliver the repaired project.",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 11,
+      "runID": "48c78ac1-2352-4c79-8e1a-fb131080f953",
+      "state": "completed",
+      "workerCalls": 2,
+      "evidenceDirectory": "repair-48c78ac1-2352-4c79-8e1a-fb131080f953",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T03:22:26.886000+00:00",
+      "scriptSHA256": "09d25970fa7400103bccbb91b2ff45e2696a649739670678d092ea6cc802aa85",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "repair_inventory",
+          "agent": "fixer",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify_inventory",
+          "agent": "verifier",
+          "state": "completed",
+          "dependencies": [
+            "repair_inventory"
+          ],
+          "revision": 3,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "b176f43072a0a1c8deb35a476d05a77d2bc97ac03ff80e107b38d73eb31d869f",
+          "port": null,
+          "recordDigest": "d82734e94cdd17cb7c4444fd7e6dbee9dfd469793453c8569b892d9f9ba9835a",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "b176f43072a0a1c8deb35a476d05a77d2bc97ac03ff80e107b38d73eb31d869f",
+          "port": null,
+          "recordDigest": "570c88969c2f601b08b24cb930a429bce972fa70cb6734435c1f08d728a5a2b6",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "b176f43072a0a1c8deb35a476d05a77d2bc97ac03ff80e107b38d73eb31d869f",
+          "port": null,
+          "recordDigest": "640388f3f8082017b1b796e4d9fad607625d7389a64e7effb7cadac5a3c78026",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "b176f43072a0a1c8deb35a476d05a77d2bc97ac03ff80e107b38d73eb31d869f",
+          "port": null,
+          "recordDigest": "c172ce81a41c025ae4d7c32e80e1e81715e47bd2cadf758025fe62d65bf60baf",
+          "artifacts": [
+            {
+              "id": "aaa77383-3b19-461d-97b5-836935c9861a",
+              "sha256": "9692d090c9665376212cfedc97274254c7a37d94470255b505de06ac6ab2e17d",
+              "mimeType": "application/zip",
+              "bytes": 933,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "8bba9daeb4f1330e9b0c22a60a29a9b787af1fb02bd34429b63e3acf613792fe",
+          "port": null,
+          "recordDigest": "c8af738ecdc19f5cb1dd1d0229c42ab045cbeeb9da50b7b3d8e75470fb824b2f",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "8bba9daeb4f1330e9b0c22a60a29a9b787af1fb02bd34429b63e3acf613792fe",
+          "port": null,
+          "recordDigest": "e2df81d2f2f99eaddef6f37d49169505c718423d16578b65f2e89823f712aa40",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "8bba9daeb4f1330e9b0c22a60a29a9b787af1fb02bd34429b63e3acf613792fe",
+          "port": null,
+          "recordDigest": "a8b9afbd702f153b632e7f71476ccf582534c83903e33b461fca5d9e5ae97787",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "b176f43072a0a1c8deb35a476d05a77d2bc97ac03ff80e107b38d73eb31d869f",
+          "port": null,
+          "recordDigest": "68a3a0d2abce00f1e51c4e92484340ca4ad6a592addea7102e9b5dec920e9ffe",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "b176f43072a0a1c8deb35a476d05a77d2bc97ac03ff80e107b38d73eb31d869f",
+          "port": null,
+          "recordDigest": "646adf543d4eebe8b13718379f6ded6b889566b0fb9908537ad7bb4d52dd2a82",
+          "artifacts": []
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 74403,
+        "modelAttempts": 13,
+        "outputTokens": 9680,
+        "toolInvocations": 11
+      }
+    },
+    {
+      "artifactCount": 2,
+      "case": "sales",
+      "codeRevision": "b92502a",
+      "durationSeconds": 96.92741191387177,
+      "failures": [],
+      "goal": "Create a reproducible Python sales analysis project from orders.csv. Deduplicate by order_id keeping the latest updated_at, exclude cancelled orders, and compute revenue in integer euro cents as quantity * unit_cents - refund_cents. Write totals.json with revenue_cents, order_count and by_country revenue totals. Include a concise human-readable report and tests, run them, and deliver the project.",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 12,
+      "runID": "87e95f52-dc20-40a0-8c96-75fed1630378",
+      "state": "completed",
+      "workerCalls": 2,
+      "evidenceDirectory": "sales-87e95f52-dc20-40a0-8c96-75fed1630378",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T03:23:41.579000+00:00",
+      "scriptSHA256": "09d25970fa7400103bccbb91b2ff45e2696a649739670678d092ea6cc802aa85",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build_project",
+          "agent": "data-engineer",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify_project",
+          "agent": "qa-reviewer",
+          "state": "completed",
+          "dependencies": [
+            "build_project"
+          ],
+          "revision": 3,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "7caa64d906fb3605879254fc1574507ccdbe0d78212ed4a366edbd1c2169161c",
+          "port": null,
+          "recordDigest": "4167f565480b5b3cbce9c1bf544e9626ee66cd5a318b3f4af8679118e111b74c",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "7caa64d906fb3605879254fc1574507ccdbe0d78212ed4a366edbd1c2169161c",
+          "port": null,
+          "recordDigest": "644fdfd422dc19e104ebba2a8a66444a7debc98ef342d36bb1b01e3762b4bc9f",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "15f42e1cfc7769e8af7eff687e70c8bf6cfb1d98ed6143295a874b7e1f13f985",
+          "port": null,
+          "recordDigest": "bc3475d6a7cf3cb9cfe5fe7d2aa9c119ba9debefe3f06c480fae96a263960ae2",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "88fe3fc641b14763848f147e5bb32a9ab8bfd22fe8ed82bad6e9a756c99af81e",
+          "port": null,
+          "recordDigest": "ea38ff47d3fa046abe7c9c950e744b5e41a3a84caae3134c783057d45cc3b43e",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "88fe3fc641b14763848f147e5bb32a9ab8bfd22fe8ed82bad6e9a756c99af81e",
+          "port": null,
+          "recordDigest": "df779e5cfd799d74e76e531cd6acfaaf9aa53b7cb80ac986157f5441cb66e75b",
+          "artifacts": [
+            {
+              "id": "0dfa6c21-2430-41b4-8b96-78d0fc039dd8",
+              "sha256": "454eb586531c9cf3dabf75766b8d8a7e6a4b3ea99404044c3c0f01b3c266a0ff",
+              "mimeType": "application/zip",
+              "bytes": 6741,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "88fe3fc641b14763848f147e5bb32a9ab8bfd22fe8ed82bad6e9a756c99af81e",
+          "port": null,
+          "recordDigest": "acfc17a0c0a0539a624af7ea65f6074c69401676de884ce6e81582e4859453cf",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "88fe3fc641b14763848f147e5bb32a9ab8bfd22fe8ed82bad6e9a756c99af81e",
+          "port": null,
+          "recordDigest": "697118122ee34739de9d361623fb85515118aa385cc71ad774113e0ee85b02f4",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "88fe3fc641b14763848f147e5bb32a9ab8bfd22fe8ed82bad6e9a756c99af81e",
+          "port": null,
+          "recordDigest": "7b47aa646d6060b9bdb423fce150b5cef868152db79c9af7ffba1759532a2bc5",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "88fe3fc641b14763848f147e5bb32a9ab8bfd22fe8ed82bad6e9a756c99af81e",
+          "port": null,
+          "recordDigest": "1906b27e14ddc6132f7a7deac8ad4df653480098b80d643f7a34936baf619143",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "88fe3fc641b14763848f147e5bb32a9ab8bfd22fe8ed82bad6e9a756c99af81e",
+          "port": null,
+          "recordDigest": "5bae7b6b402bbc44177bbc2c5a397b107c11c152bc2c4a79d8d0dc4035bba734",
+          "artifacts": [
+            {
+              "id": "1fbc278a-0c6d-4f94-b5db-2d359903abef",
+              "sha256": "a0cb5455410ec7b017f3176a217ec7adaa92247b1d205c0d20ddd309aa973283",
+              "mimeType": "application/zip",
+              "bytes": 6741,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 148046,
+        "modelAttempts": 16,
+        "outputTokens": 14316,
+        "toolInvocations": 12
+      }
+    },
+    {
+      "artifactCount": 0,
+      "case": "restaurant",
+      "codeRevision": "fc811b6",
+      "durationSeconds": 289.8596910238266,
+      "failures": [
+        "The autonomous task needs effect reconciliation",
+        "Goal did not complete: waitingForReconciliation",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported"
+      ],
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 6,
+      "runID": "472cd257-f9af-44b6-9ba2-4296c1d6bd22",
+      "state": "waitingForReconciliation",
+      "workerCalls": 2,
+      "evidenceDirectory": "restaurant-472cd257-f9af-44b6-9ba2-4296c1d6bd22",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T03:30:51.754000+00:00",
+      "scriptSHA256": "6051d38e2149f82d6ae118d4658709f131d8169597fb243bfae1427f9e383444",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build_site",
+          "agent": "site_builder",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "review_site",
+          "agent": "site_reviewer",
+          "state": "running",
+          "dependencies": [
+            "build_site"
+          ],
+          "revision": 2,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "94dd3e3069470a8a3aa7ffb4149720b8cbba1e0c492539535109a1f750505357",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "5b0f488cb46a205ae70f9a262bfc7eabf3fc005a5661e2fde9c8ccae0a89a385",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "54368b953ef877ee6bb17c3c364d0f0ffbac843c14b982ce11e725246975f62b",
+          "port": null,
+          "recordDigest": "4437e1701c49b31ee713b944d69afefb07d707f4cbe539d125f3400c406d97a0",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "60f0d57737232196298775bf1018c2ca35cd29c2fac1f88c7090128c42d25800",
+          "port": null,
+          "recordDigest": "1c1cde23591f3c279a9d5ce8cd6c721fa9d503395f16f596aa18a86211f67ca7",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "ac599074c56d13d0e56b6d90eaab176fd8ce9ad5a3aba07fd7bb0d571cf0f232",
+          "port": null,
+          "recordDigest": "a01daf0e2445e2a964a8df4e70a7a616e22d799e466a964cba83fd96070c9d9b",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "ac599074c56d13d0e56b6d90eaab176fd8ce9ad5a3aba07fd7bb0d571cf0f232",
+          "port": null,
+          "recordDigest": "8b0cb2e868bc6f34f9ced7498c48402bf2723587e3ff12bd610ee16e3968fb57",
+          "artifacts": []
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 104483,
+        "modelAttempts": 10,
+        "outputTokens": 70244,
+        "toolInvocations": 8
+      }
+    },
+    {
+      "artifactCount": 3,
+      "case": "restaurant",
+      "codeRevision": "e143c3a",
+      "durationSeconds": 387.73883306980133,
+      "failures": [
+        "Goal did not complete: 源码已完成且测试通过，但共享工具预算 24/24 已耗尽，无法取得 sandbox_export 归档与 sandbox_browser 的非空 DOM/订台回执，评审硬性条件不可达成，按规则保留可用成果并报告真实能力阻塞。",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported"
+      ],
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 24,
+      "runID": "eaf1d7d7-1aa5-4408-9145-922f0c829938",
+      "state": "paused",
+      "workerCalls": 4,
+      "evidenceDirectory": "restaurant-eaf1d7d7-1aa5-4408-9145-922f0c829938",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T03:43:28.087000+00:00",
+      "scriptSHA256": "6051d38e2149f82d6ae118d4658709f131d8169597fb243bfae1427f9e383444",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build",
+          "agent": "builder",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify",
+          "agent": "reviewer",
+          "state": "failed",
+          "dependencies": [
+            "build"
+          ],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify2",
+          "agent": "reviewer",
+          "state": "failed",
+          "dependencies": [
+            "build"
+          ],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify3",
+          "agent": "reviewer",
+          "state": "failed",
+          "dependencies": [
+            "build"
+          ],
+          "revision": 3,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": null,
+          "recordDigest": "02c4950aaa0b6514f85477423c91a5ed84f2b76ec8f2daac7d61c32f016112ae",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": null,
+          "recordDigest": "21787809551fbec9b9a1be9f728a361f03cd2a1adfbaba5b0560496d16a51570",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": 8011,
+          "recordDigest": "c0bb12540000ed1675beb7841c8aa87a1a985095bfd05f320e0f0ce3ffc99930",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": null,
+          "recordDigest": "38632b2fb2354303823463030c766251f400894e7bb6ca88f4853cbfbf2b1490",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": 8011,
+          "recordDigest": "ab0377c98683123293c8b891bd3dfc7fdcf25c8251e9d8a9e46d2efc073d4ff2",
+          "artifacts": [
+            {
+              "id": "9247dbde-2f84-45a0-b3c9-a49ad37830ba",
+              "sha256": "80fcdc1176492b0c1633314de5bf202ae1e4b85ee37e43f9e4bc7589bc9fce34",
+              "mimeType": "image/jpeg",
+              "bytes": 49395,
+              "semanticType": "sandbox.browser-screenshot"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": 8011,
+          "recordDigest": "26812bf69097e8115bc1cbccc1764d9fc64373e36dbccfc13af4b0dc608c2bec",
+          "artifacts": [
+            {
+              "id": "717ecd56-9539-4736-86e5-c57b438e5d0d",
+              "sha256": "00c9ec3b2cff34a8dcac530d87316b382bdd14a00040b16b47b83cdae8866b99",
+              "mimeType": "image/jpeg",
+              "bytes": 49432,
+              "semanticType": "sandbox.browser-screenshot"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": 8011,
+          "recordDigest": "3a3839a8329c9017d8abf7bb7ec6a93849337632afdb81fc64364e16053db35a",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": null,
+          "recordDigest": "390d1badcfca7a9e1af70d433df30ce7f29ca8b7b57e191476794ee20d665e77",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": null,
+          "port": null,
+          "recordDigest": "860f4a08e79f192f894a9bfcd15bd7589046d568e4909fe4c45bf6546719bc02",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": null,
+          "port": null,
+          "recordDigest": "04a07fa14ea5ff778e74fdaa0cea4b2f68403c6b8b92e0eed8dc4b1354fd68a4",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": null,
+          "recordDigest": "b92fb68a99cbfc02a7d982b6041a5fe27c10bf662b8438343d1ed6b49afadbfd",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": null,
+          "recordDigest": "daca8d190f0da355537a70ccf8cd00dd5b8ac5a063cdd04ab1ca5f52a7f40a74",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "07959bc7a071e4faf7ace2c3c342f0cd2f64f55cedad737ff75b25c9300011f1",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "2b6896794f8b21662fd2293a485a4167b676ebfeaa0cf628df978bb3a188a441",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "0bfd57dd4541c31e70596bd19cdd586ab6ab5558e8823e0670aa864d32ca0d25",
+          "port": null,
+          "recordDigest": "3dd70f8e62af0c37b6671866da5d4b9b01f1e2d72530b086237d22fe6d448882",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": null,
+          "recordDigest": "b18cd62df02ac64a5cc3a081996f561861800beee65540944956d3fda50cc6d3",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": null,
+          "recordDigest": "5448132fea0667b7102154502c49ed40402a82a1b1658fb09b8e804cd13b4371",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": 8000,
+          "recordDigest": "3b686ddc5bb9b6cd7e0ab093ed68fbaec99a6f6fed16c799cb40156d065e4c8f",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": null,
+          "recordDigest": "7b6ac036a3feaca99ce6c42c88d75e67f3ad502ab96371a6e2f44eb8d85c0884",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": 8020,
+          "recordDigest": "cff41e967ed295f5c9a776c3ba096bc903f50fffe9679d1061827680d18ead5d",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": null,
+          "recordDigest": "a0c2c93969a8cea57e28bb0e723e14d7e0e6476a3d97372337e0204c11d2c9b8",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": true,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": 8020,
+          "recordDigest": "dcc2d38c2a44bf479a8a21c4101debc1991a3e89de1b0dbd1830f03b63da6d4d",
+          "artifacts": [
+            {
+              "id": "d7872960-27a9-4c00-bbaa-2accd71a9578",
+              "sha256": "821e43c1bae6a65554f62b9a505f3b18412118ef5575865b6186aacbeec282c2",
+              "mimeType": "image/jpeg",
+              "bytes": 54226,
+              "semanticType": "sandbox.browser-screenshot"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "90f269ce1242e67829bcbe0b0c74fc8705abaabe37c60d095d75b042169b5ce1",
+          "port": null,
+          "recordDigest": "6c2d706b4f46abddb847f6e434eb8362a9bd73ea5abc112e0e5bb05c930f4541",
+          "artifacts": []
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 505447,
+        "modelAttempts": 32,
+        "outputTokens": 69778,
+        "toolInvocations": 24
+      }
+    },
+    {
+      "artifactCount": 2,
+      "case": "restaurant",
+      "codeRevision": "e3385e0",
+      "durationSeconds": 484.20930099487305,
+      "failures": [
+        "Goal did not complete: 共享工具预算 24/24 已耗尽，剩余两项验收（真实停服重启持久化、sandbox_export 归档）必须依赖 sandbox_stop/sandbox_start/sandbox_export 的实际工具记录，无法在零工具调用下完成，也不能伪造；已保留全部可用成果与证据，故报阻塞。",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported"
+      ],
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 24,
+      "runID": "6dc7377e-bc74-49f4-b2d2-05de2ecaf909",
+      "state": "paused",
+      "workerCalls": 4,
+      "evidenceDirectory": "restaurant-6dc7377e-bc74-49f4-b2d2-05de2ecaf909",
+      "frozenLimits": {
+        "toolCalls": 24,
+        "modelRequests": 32,
+        "activeMilliseconds": 1800000
+      },
+      "launchedAtUTC": "2026-10-27T04:04:03.267000+00:00",
+      "scriptSHA256": "a5136e66e8d22ff75b42d76f9a029565d6f81f573af3b1b0e12b21346bba26c0",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build-site",
+          "agent": "site-builder",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "accept-site",
+          "agent": "site-reviewer",
+          "state": "failed",
+          "dependencies": [
+            "build-site"
+          ],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "fix-and-export",
+          "agent": "site-builder",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "accept-final",
+          "agent": "site-reviewer",
+          "state": "failed",
+          "dependencies": [
+            "fix-and-export"
+          ],
+          "revision": 3,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "0cbfb417f7f5595ebd3a301e62d5ef2dd1a3f005a0787c9ef137cffbd6ec9efd",
+          "port": null,
+          "recordDigest": "14c38fb07c685f7ec331c7641df27bfe81b50580a1d944a4a7cb0b93828c105c",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "0cbfb417f7f5595ebd3a301e62d5ef2dd1a3f005a0787c9ef137cffbd6ec9efd",
+          "port": null,
+          "recordDigest": "6cfc8a71d7b0e2abb560c9e34f044bc0e43d58e187f5cb5e5bbe10caf5d5db8f",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "0f6dae971e476430cb1847cac06b79bd9ca401ec5963fb074b072a2eea674387",
+          "port": null,
+          "recordDigest": "8f9efb0b8de49da5e8d290926d6fd6d8c1d90ee6215d40f5df4ebe2d170e8329",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "0f6dae971e476430cb1847cac06b79bd9ca401ec5963fb074b072a2eea674387",
+          "port": null,
+          "recordDigest": "827684b1376192b8b39a77fe2185068c8a5196ae97f92290e5a031145349809a",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "0f6dae971e476430cb1847cac06b79bd9ca401ec5963fb074b072a2eea674387",
+          "port": 8000,
+          "recordDigest": "603eb02309eee46f7508cffa25813fe4eedec4bfb77f1a87ca043d9ad0580721",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": null,
+          "port": null,
+          "recordDigest": "f27759b1510b28ffaf145f6f644b6534bae879005c1d337a4fa3e47c2b4f75e3",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "0cbfb417f7f5595ebd3a301e62d5ef2dd1a3f005a0787c9ef137cffbd6ec9efd",
+          "port": null,
+          "recordDigest": "d62756440c99916633d72f13fb2eb21deaf5ac0054d56f468c2589501c3a15fb",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "0cbfb417f7f5595ebd3a301e62d5ef2dd1a3f005a0787c9ef137cffbd6ec9efd",
+          "port": null,
+          "recordDigest": "e591652bc6f8802075f575a265d74677393bddac28db0b265ba82f093dcc2c42",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "0cbfb417f7f5595ebd3a301e62d5ef2dd1a3f005a0787c9ef137cffbd6ec9efd",
+          "port": 8000,
+          "recordDigest": "eaf1367377e083949790737d3a83097ec66735e15e19a245b440a737440ce80c",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "0cbfb417f7f5595ebd3a301e62d5ef2dd1a3f005a0787c9ef137cffbd6ec9efd",
+          "port": null,
+          "recordDigest": "5b39463d0eaff5af5d46039b911405e7fa5bd2ff301089135f1b7f7181fa8153",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": true,
+          "sourceDigest": "0cbfb417f7f5595ebd3a301e62d5ef2dd1a3f005a0787c9ef137cffbd6ec9efd",
+          "port": 8000,
+          "recordDigest": "61f850309f982b1520887ca9a2b2f115ff5c356834451d4666c70a0b9c5a8dd2",
+          "artifacts": [
+            {
+              "id": "bb5a2cfd-39bf-4a0c-b1be-40c3380d05e9",
+              "sha256": "6c79d9c2468fabeea67e3f604c0704c80eab14bf1e8b637997f8752f7904674e",
+              "mimeType": "image/jpeg",
+              "bytes": 48147,
+              "semanticType": "sandbox.browser-screenshot"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "0cbfb417f7f5595ebd3a301e62d5ef2dd1a3f005a0787c9ef137cffbd6ec9efd",
+          "port": null,
+          "recordDigest": "9575ca0b38e7124b5fb6c2fbcc85ae5f6f2b5957bae158d104f01ff463afbe70",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "882017f186b280bb0555380f5b3def4f60018b37012c60a3102e1366560831d8",
+          "port": null,
+          "recordDigest": "9b445f3af262ac2bf48060553db243177b647478df57aee4c4f882de49fd5491",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": false,
+          "sourceDigest": "882017f186b280bb0555380f5b3def4f60018b37012c60a3102e1366560831d8",
+          "port": null,
+          "recordDigest": "27184a4d46a02817fd701cc202c600a09bcd7ce371f563366de88868993c40af",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "0cbfb417f7f5595ebd3a301e62d5ef2dd1a3f005a0787c9ef137cffbd6ec9efd",
+          "port": null,
+          "recordDigest": "d4d8a97df0eff295e69e90b3dc949949d92fa7e9a6b3210531030a95aa1163fd",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "0cbfb417f7f5595ebd3a301e62d5ef2dd1a3f005a0787c9ef137cffbd6ec9efd",
+          "port": null,
+          "recordDigest": "b5575a9c160ac3f05e21fe83a5f7d42bbad71664a278c95872644d15c31904c0",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": null,
+          "port": null,
+          "recordDigest": "94414c311a53d1a12967e9a3abc3699869af387e86af26f1d6985fd419f7af43",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": false,
+          "sourceDigest": "0cbfb417f7f5595ebd3a301e62d5ef2dd1a3f005a0787c9ef137cffbd6ec9efd",
+          "port": null,
+          "recordDigest": "49a73cb5caf3d2fdb3b70444cfea9567b348868c53d8d104c1468e72028bc4b7",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "0f6dae971e476430cb1847cac06b79bd9ca401ec5963fb074b072a2eea674387",
+          "port": null,
+          "recordDigest": "0f40b75e0439a1f5df5edbadbc90127277621f546b4406c7b6f595dd64abde3d",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "0f6dae971e476430cb1847cac06b79bd9ca401ec5963fb074b072a2eea674387",
+          "port": null,
+          "recordDigest": "eb3b91e259bd7dfcf92e0e774d7a147ace9f6a8af15f784faa00da4b1cea19c1",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "0f6dae971e476430cb1847cac06b79bd9ca401ec5963fb074b072a2eea674387",
+          "port": null,
+          "recordDigest": "cb7be29071b8feaeb9e58dcbbc147c54dea8e4ceeb9205a8732ad27d49ab2e48",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "0f6dae971e476430cb1847cac06b79bd9ca401ec5963fb074b072a2eea674387",
+          "port": 8020,
+          "recordDigest": "d9f7fb94ef7226be55ebcbb455ab546b34dd63b1347cd7abdd5db712efeb818c",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": "0f6dae971e476430cb1847cac06b79bd9ca401ec5963fb074b072a2eea674387",
+          "port": null,
+          "recordDigest": "d33c3efbfa332463bffd1c841a5f5658b836a18b798acbd4d6e2399def81cc8b",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": true,
+          "sourceDigest": "0f6dae971e476430cb1847cac06b79bd9ca401ec5963fb074b072a2eea674387",
+          "port": 8020,
+          "recordDigest": "d21c2511f542c36ec27da5b957bec40cb3738e239c876589ca2300bfb23f8239",
+          "artifacts": [
+            {
+              "id": "0de18b9e-8531-4920-a4f0-3eb3f5cd0423",
+              "sha256": "4f9e81a21f074a1fe245606da0fb70b1644e02a7984107b0f2bd45a588999afa",
+              "mimeType": "image/jpeg",
+              "bytes": 34658,
+              "semanticType": "sandbox.browser-screenshot"
+            }
+          ]
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 513362,
+        "modelAttempts": 31,
+        "outputTokens": 100262,
+        "toolInvocations": 24
+      }
+    },
+    {
+      "artifactCount": 2,
+      "case": "restaurant",
+      "codeRevision": "development-profile-48-64",
+      "durationSeconds": 556.533518910408,
+      "failures": [
+        "Goal did not complete: 共享工具预算 48/48 已全部耗尽（toolInvocationsRemaining=0），剩余 worker 激活无法执行任何 sandbox_browser/sandbox_run，因此无法补做真实浏览器整页验收这一必要能力；按协议以 blocked 保留已完成的源码、测试、API 冒烟、SQLite 持久化与导出回执等全部部分成果，并明确报告 #time 可见性疑似真实缺陷尚未复验。",
+        "The website was not actually started, inspected and exported"
+      ],
+      "frozenLimits": {
+        "toolCalls": 48,
+        "modelRequests": 64,
+        "activeMilliseconds": 1800000
+      },
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 48,
+      "runID": "feb1f0ef-dd6a-4d64-9e7a-8720e8b1ea1a",
+      "state": "paused",
+      "workerCalls": 8,
+      "evidenceDirectory": "restaurant-feb1f0ef-dd6a-4d64-9e7a-8720e8b1ea1a",
+      "launchedAtUTC": "2026-10-27T04:27:46.449000+00:00",
+      "scriptSHA256": "40fe0b4add9eedfa3e059cc11aecab5f0a7220b7605d58b780f5074b33ef2b76",
+      "reasoningEffort": "low",
+      "testedCommit": "aea7fe2",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build",
+          "agent": "builder",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "review",
+          "agent": "reviewer",
+          "state": "failed",
+          "dependencies": [
+            "build"
+          ],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify_ui",
+          "agent": "reviewer",
+          "state": "failed",
+          "dependencies": [
+            "build"
+          ],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify_artifacts",
+          "agent": "verifier",
+          "state": "failed",
+          "dependencies": [
+            "build"
+          ],
+          "revision": 6,
+          "required": true
+        },
+        {
+          "id": "uicheck",
+          "agent": "uicheck",
+          "state": "failed",
+          "dependencies": [
+            "build"
+          ],
+          "revision": 6,
+          "required": true
+        },
+        {
+          "id": "uicheck2",
+          "agent": "uicheck",
+          "state": "failed",
+          "dependencies": [
+            "build"
+          ],
+          "revision": 3,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "3cc1f605362855e5e83fa2a6d45ee987a876b20f6c34bf797164d2dfd211e140",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "efe59cf1e6fdfac117d4bbe03c5070ed8a6bdc6d7f417fdd97cb62a7b693603a",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "a30aa45f84778964509cc6775955cf7232e7cc084907b5ff7fa4afaf58b01c66",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": 8000,
+          "recordDigest": "2247c963d5593eab2e934ed0e5e8916c009f91189a7e834b29c89b0e77161c09",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "7580e07bfbdd59bf913f9d2bd72e8238fe7caeab4003d8be77cbccb15a9318b8",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "d52da7a6b4c6c1aae158c2542b5aa93679097ab19c435d5c41a6fc027581ec2f",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "c9659056cad4526305978357041510e71a3d3cc86b27441e7928fc5f30e2ae53",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "fe2e882baf11c1013c1258b65ad7786c66d1bf0b73d4e06f6d3d0dd8d676a257",
+          "port": null,
+          "recordDigest": "6590f602d45bb1e96af4e9bbd647c57f3e143fbff4a045cbde39fc7a20492667",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "424133f19b4ba10911e156b95d760904f5e8f9b8ea8883e14701944d85fcdfbe",
+          "port": null,
+          "recordDigest": "ab2888b6e79c1e0facad2d722220b0891b964bde9528c75a0792fc074c54f2dd",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "590b8beaacca7be0844bc680c1616a87a96f89417fa305ff92c8daa1c3c8c744",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "7190915bf6c3b8c873f8a1b1ea11cef68414202e406e262ee904950a2977ecd1",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "8b65c63b0b51ceba2ca7e9962b2ddcc4164c4a36cf2a089aeb2b536879f4ec27",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "9b5e253b5f437279b0de1835977b30175642b19d2f8f49b6ad5105050503161b",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "0428cfde2eef61c3c5cee3316fff86da72335c29175986b2fb56b0443515dd5a",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "15cff4f21dcf8ae7984518a38b5b33283ff81709876d9e691bb6cc1be7dde2f3",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": 8000,
+          "recordDigest": "941349ae75db0c477053fb63569c234d161a8a8d293e937e0e15eced1dca2aab",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "2dae963ad1dcd6fd3d07304fc31b076014cdb1b27fe3893599765cb5d1ddd068",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "800035e874d5c5d4d593e46747b24bb6b8ae605f2ccc97393ef33383780fae97",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "54cae00a66705399667bc950f99d30193b4317cc5463ec5cbcb7032650193842",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "34d3b15b5e6aeb314492b76bc3a4faca697a7cba15d26e2637128adce6cc07ec",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "8bccf7550fd1ad5fece8798a52f25957b98696a0939ed0e7eb58e16e39cd302d",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "7a8c0b0a1aa2142a94be1173b2dff11654f5886a630d1a69608ab9a74942c31d",
+          "artifacts": [
+            {
+              "id": "b7383cb0-9bf7-4eb5-998c-6bd8c817a446",
+              "sha256": "f7c5030e1e3b224d9cbbc25f6b1825a70e7d041712a2707d67e2bed7f3c37b0f",
+              "mimeType": "application/zip",
+              "bytes": 16988,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "b96742b91db53a505d2efa4429ca3fc309ce727252e7328e2c8719ac6f5d96a5",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "1a076e08bdfcd46ba7cb6dc1a5c31bf2f4388f54ef74347f7493a8f59b35f0d3",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "0efbdecc0dbc824ab9645c673915758c5667a3bf617bbc38eccb48ee3bb68977",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "3874f927a3ee9a9b7d614a197f6d37865405383252c2154838f927d1ac7206be",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "aeef04aa7fd483a1f936840ce2849bb49025fbd8f5909c4406135111c825c64c",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "177bf49c34becac62a4cc2df4af02f5badec495b18ef89281acd6989a991ddfb",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "a0c2f9284e1b2e54096ee70120161074cb1ec1a660577ae042d2fe968776e069",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": 8000,
+          "recordDigest": "fb49104e9cf0d65e6accedf79a9d0a7a09b9a310c7f096ab0cad5816d5b41bce",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "ef4c259c55f7263c59b53f82749fd38d1e7f74697d8ab3cbcb01ae4cb6bcdd07",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "32725bb9ef811e3341088e16cd0eff58fc234c814e6d819835d4b3ad88ea55ee",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "572d82df9def897fbbc0be52e2563def14bf0474516ec7b455dee6ed78dfc7a0",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "2d149d7060989b8eed61150769470779578ce2213aa5f1ebb8329ff220e546d3",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "942e620e505556a22f9a5814949bf945c59c4e5b496aef6a0258b6cd396804ca",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "5293d6cc5aa68030df33d101f41c9fa0221bd4b1efa8c034acb76f331c843d2f",
+          "artifacts": [
+            {
+              "id": "7499a7a4-609a-4a3b-8610-8b76d56192df",
+              "sha256": "9103745eb6b596e2a3a4cc71388facf0e198ceaf46323e8d1f0a20dd585ad1db",
+              "mimeType": "application/zip",
+              "bytes": 16988,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "ee4909c78825d9646d28d0d9de333cfcb8a5f23e83cf0e31154296014716b36e",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_process",
+          "succeeded": false,
+          "sourceDigest": null,
+          "port": null,
+          "recordDigest": "10d0996bb791f8b2ac47fcdba169313f0ec8427001d6d3d2f94d6bd69125b894",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "cc0e5f21c23ca8215ab719b8d11a5dd1e535efaf5921afbb5a2826449a21e535",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": null,
+          "recordDigest": "e78cea84c8465e22180d4b5aef84b2b3062315c2a8994178323833d2ea015024",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "d78dcbfb722df1ff7f4518f2e583c0693e72e034669f8f7b7ef69fd72f6b4ea0",
+          "port": 8000,
+          "recordDigest": "f28a5ca34da09671bbcaffa65bc4211b7dd0cfb31c23f965d35e7b0bfca5892f",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": null,
+          "port": null,
+          "recordDigest": "0679210991350698f859fd93da167655bece7c416c6fc6f93e68fb65c9564004",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": null,
+          "port": null,
+          "recordDigest": "5d0923a09bf9e70c962cdf074dca36fa282490a450d009ad78ac66810da7f610",
+          "artifacts": []
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 762687,
+        "modelAttempts": 59,
+        "outputTokens": 102305,
+        "toolInvocations": 48
+      }
+    },
+    {
+      "artifactCount": 7,
+      "case": "restaurant",
+      "codeRevision": "c4a12c5",
+      "durationSeconds": 689.5496369600296,
+      "failures": [
+        "Goal did not complete: The model request budget was used; remaining work and partial results are saved."
+      ],
+      "frozenLimits": {
+        "toolCalls": 48,
+        "modelRequests": 64,
+        "activeMilliseconds": 1800000
+      },
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "recordedToolCalls": 44,
+      "runID": "d09f4d01-7986-4be8-ab8b-2db14091d6c8",
+      "state": "paused",
+      "workerCalls": 6,
+      "evidenceDirectory": "restaurant-d09f4d01-7986-4be8-ab8b-2db14091d6c8",
+      "launchedAtUTC": "2026-10-27T05:14:37.658000+00:00",
+      "scriptSHA256": "40fe0b4add9eedfa3e059cc11aecab5f0a7220b7605d58b780f5074b33ef2b76",
+      "reasoningEffort": "low",
+      "activationToolLimit": 6,
+      "tasks": [
+        {
+          "id": "build-app",
+          "agent": "builder",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "review-app",
+          "agent": "reviewer",
+          "state": "completed",
+          "dependencies": [
+            "build-app"
+          ],
+          "revision": 6,
+          "required": true
+        },
+        {
+          "id": "finalize-app",
+          "agent": "finalizer",
+          "state": "completed",
+          "dependencies": [
+            "build-app"
+          ],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify-app",
+          "agent": "auditor",
+          "state": "failed",
+          "dependencies": [
+            "finalize-app"
+          ],
+          "revision": 6,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "b48b2781d5cabc495f5994ec6e1bc6b0cd7854bdd859a61b368e67eb6c94a058",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "424f20c43afaa7d3a499a0047bd08c6cc70b3e9c9ac9d284306e552b5895a368",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "42aa1d59bda07c2e8558a25aa5f50610fdb17278db103d606841396068b89e66",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": null,
+          "port": 8000,
+          "recordDigest": "b8088d9ead0130a5989a6d67235971a7fbfe9cf1855ba65fdca35d8b7b421fe4",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": 8001,
+          "recordDigest": "817979a84793b9b0e490b9023563075cd7a6dfa701ec8df54ea5b0dfe836b963",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": 8001,
+          "recordDigest": "e66bad68110c4ddb25dc6c644c67aa42805af7c5c7537a215632f7a1a38a59d1",
+          "artifacts": [
+            {
+              "id": "4636173d-8832-4ddc-b906-af964a0ef88a",
+              "sha256": "f875399fd3bc0fe44b02caf2a238b8446a27e097a1d592f311d578f9a5bc2cca",
+              "mimeType": "image/jpeg",
+              "bytes": 44531,
+              "semanticType": "sandbox.browser-screenshot"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "4a2e43039b5778d5098db8b510a1549da1e2f471e340f5ad4fdd9d4abf3ea6d5",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "16ec0995c135520bd3f31ea6dbc6bf532691a4d5f29f6c598628803f15b54254",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "87784ee16c03631f54d2e630c3256e43d2d4e99629afc73b1d8c35df3a18fde8",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": 8003,
+          "recordDigest": "831ce8b033fce60dcbc86123a588e895ce3993ecf631041033ddd639fb552929",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "b149ade54bfa9739e35fab926a536d48ad220bb88e855796a6b05c80b589567d",
+          "artifacts": [
+            {
+              "id": "c5ea7ca4-1f63-48a3-964f-5b60221d976b",
+              "sha256": "56169a89575705d75f603cbd8d8c3eff6fc0c1e695c2ebb416f28ad617eb42b8",
+              "mimeType": "application/zip",
+              "bytes": 12483,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": null,
+          "recordDigest": "4555f7e9bd94312416c5804a7838989d453ccbe1ed97112b3cc2fcd8d5d540a4",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "a9d3a06993fd8705553993e71f150f9a6a790da4ab841b543f52f992d581d547",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "563bac6f49755b256363c0e102931ea2b8d2396a4f42d270aa1c6b9f6f8ba193",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": 8000,
+          "recordDigest": "a0f55ec9c42f7035785c89521e4a4e9c9084e581846f2b4493a7befcab266f91",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": null,
+          "port": 8000,
+          "recordDigest": "d059456daa833e51c93a325a7ca7084db0693ba8ebb4b9174be191c137c82c3d",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "318c342249ec410c6f5b45324a1644d3f50670aeead47c1929cb784bc6e900b2",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "dddfde7f2b66f4dff3c60440eaefe09fa0d0e534ea64545ff90f41759170ad30",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "ba6866cfa1ffd1f29d109af507e98989a57597004de2497e25bbdf53f3720139",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": null,
+          "recordDigest": "8e7a1d9a65d08435f7135c9bf1c7bdabcde6ac4e9dbbf4391289a4b85b820dc8",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": 8002,
+          "recordDigest": "1a37c45f01a1608ba8f94b388f9217c6cf4431b4554f11092aa6895e1812ab9e",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": true,
+          "sourceDigest": "db9b5bd197c2d3d743d759a3cc11ec818da5c749cd0116dd85040a21f02bf080",
+          "port": 8002,
+          "recordDigest": "03b88614dc47166230e26932f795d13d0a588d521ccfbf2fa4202415eb5e2401",
+          "artifacts": [
+            {
+              "id": "712d897f-1e16-45b9-82aa-3c3aaaeef1d1",
+              "sha256": "8cdcc7e0112ad6d991964a5c72eb325182bc4ccfa84191019e6d00f5d25b59ea",
+              "mimeType": "image/jpeg",
+              "bytes": 45046,
+              "semanticType": "sandbox.browser-screenshot"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": null,
+          "recordDigest": "9f5cc443d041571d282d19146c546d185586896cfa517783db5ba6290bffb2c7",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": null,
+          "recordDigest": "d8ee9e01a829eff3f5081c672385c6472743d59d0325e51fe0ea2ab157a5eda4",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": null,
+          "recordDigest": "2aa4a939ef1c476b445d80a0a6e13d3de3c17a59a8bccb6cb54d7fdd0de0247b",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": null,
+          "recordDigest": "4771daba19658bd759a6fca0486b791b67abd2239f58e99b15e1e4801bd0c172",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": 8000,
+          "recordDigest": "91ab438baa6351cbb36a45c8f458222fe68eda633169e7196623734eeed94d47",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": true,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": 8000,
+          "recordDigest": "f385e7f2781b083ae2781892f7ab20fa7d98476672a55ec664f777f86c94e8c5",
+          "artifacts": [
+            {
+              "id": "08624937-0b9c-4964-b0f7-7a0f08728430",
+              "sha256": "14070d1a86a8ca8c15dd870e17e4be778bdaf9cfb575214199bf77263d52e8a7",
+              "mimeType": "image/jpeg",
+              "bytes": 39158,
+              "semanticType": "sandbox.browser-screenshot"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": null,
+          "recordDigest": "0c3e8890884fe59e435de1192d797f48d99d1bdd77666f9bae08ef6c400e94a2",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": null,
+          "recordDigest": "426289857107f3a1cfcbb3ab9aae67c6f0400be5ed15af53543e36727f4642d1",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": null,
+          "recordDigest": "294c1abfdc9548e375bfa43f828a342d0151d7e25fe930ab81f5e5a0d8557f4e",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": 8000,
+          "recordDigest": "fd7c0dafeb580bda5013431eb466bbe72f5ef470e7cd86482af79bd50d5d907f",
+          "artifacts": [
+            {
+              "id": "bf6e2775-2ae0-4e75-b9b9-9e6b757a49f5",
+              "sha256": "cedeb0e090af59c4eb3cea674f9de40fe891f4a485cb02bdcb1717212fb996f8",
+              "mimeType": "image/jpeg",
+              "bytes": 70643,
+              "semanticType": "sandbox.browser-failure"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": 8000,
+          "recordDigest": "fcc7765b70615022f58ea0f74fd2199a1988973085b7912f3954909791251d1f",
+          "artifacts": [
+            {
+              "id": "01616997-891a-4e91-82e0-a225f6f25cba",
+              "sha256": "cedeb0e090af59c4eb3cea674f9de40fe891f4a485cb02bdcb1717212fb996f8",
+              "mimeType": "image/jpeg",
+              "bytes": 70643,
+              "semanticType": "sandbox.browser-failure"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": "247b57dd9428d97a11dce1b5743cf0e7c177493742bbeec5ef40e2930a3ec98a",
+          "port": 8000,
+          "recordDigest": "b754904dcc9ebc381d77bd743da5f17357c21d10ff5ec7823ed3788742a527cd",
+          "artifacts": [
+            {
+              "id": "1f026abb-9e8a-4bde-b002-79e9412f52be",
+              "sha256": "cc6ffdd91669823ce89dff58b7a38d832676b76b6602390d83bda3be33667fd1",
+              "mimeType": "image/jpeg",
+              "bytes": 57328,
+              "semanticType": "sandbox.browser-failure"
+            }
+          ]
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 1048329,
+        "modelAttempts": 64,
+        "outputTokens": 104839,
+        "toolInvocations": 44
+      }
+    },
+    {
+      "artifactCount": 1,
+      "case": "restaurant",
+      "codeRevision": "8a59bda",
+      "contextTokens": 32768,
+      "durationSeconds": 818.9729959964752,
+      "failures": [
+        "Goal did not complete: 工具预算 48/48 已耗尽（本轮 0 次可用），独立浏览器端验收（移动视口渲染、页面确认码、错误提示、跨上下文共享）无法再取得真实证据；按协议不得伪造通过，故以 blocked 保留已完成的实现、修复、测试与导出成果并如实报告缺口。",
+        "The website was not actually started, inspected and exported"
+      ],
+      "frozenLimits": {
+        "toolCalls": 48,
+        "modelRequests": 64,
+        "activeMilliseconds": 1800000
+      },
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "reasoningEffort": "high",
+      "recordedToolCalls": 48,
+      "runID": "c8d1de62-98f3-4226-9679-7ca1e608139e",
+      "state": "paused",
+      "workerCalls": 6,
+      "evidenceDirectory": "restaurant-c8d1de62-98f3-4226-9679-7ca1e608139e",
+      "launchedAtUTC": "2026-10-27T05:46:56.973000+00:00",
+      "scriptSHA256": "1367f6682ac7d74fb47959463c850705ad3c76858984e98a4851fc8fc1184e1a",
+      "activationToolLimit": 12,
+      "tasks": [
+        {
+          "id": "build_app",
+          "agent": "builder",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "review_app",
+          "agent": "reviewer",
+          "state": "failed",
+          "dependencies": [
+            "build_app"
+          ],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "fix_app",
+          "agent": "builder",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 6,
+          "required": true
+        },
+        {
+          "id": "review_app2",
+          "agent": "reviewer",
+          "state": "failed",
+          "dependencies": [
+            "fix_app"
+          ],
+          "revision": 4,
+          "required": true
+        },
+        {
+          "id": "review_app3",
+          "agent": "reviewer",
+          "state": "failed",
+          "dependencies": [
+            "fix_app"
+          ],
+          "revision": 3,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "570501cf72c842cca145819c64f88e00997123b4b6d17af4e9a0268d21cb22e3",
+          "port": null,
+          "recordDigest": "e06a3be9a63efbd27b67114c1bef4aa6abec2460e185858b8f04f0f0e1aa2e26",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": null,
+          "port": 8000,
+          "recordDigest": "5a3d099145e03493642c9dd52e29f0e468ce655c48a696c6f65b1b9d1b7dd1d5",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "85dc2a30a657dcb44a06e39ffe4ed29920b880880da71f2845f60d51685d9677",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "4eccfd92f00078ba0f9d6db1a89b28ea83fc8c5809285af8412f9eab0ef6f2f0",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "9d5585c67aa695dfff2bd49734d93324a845462fe4f8e06874d9de9acfa41ec9",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "d88dc30c2d25c7925d67ec54c9f8ba62ef8856a8af6282e04e254ae0abcc2694",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "1a633ece77e8310ea5ae4bc33713597a2762abe58fc174c24fc901c237c7f336",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "0fc4848c723c3eefb9743e981e19f1d1edecd47d4be06e0bae7a19841df39a39",
+          "port": null,
+          "recordDigest": "ba52bd883f9260f983d6fe2f9393da773049b41526996a41e98b1def235226de",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "40d3bdb41bafddacece994fdec37f552edbdba04221e875feceb75b664f1d667",
+          "port": null,
+          "recordDigest": "7c317a503f8a20f3f532ca31afbe31d81558cc8f514b6bc4c7cf32787e8f23b0",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": false,
+          "sourceDigest": "570501cf72c842cca145819c64f88e00997123b4b6d17af4e9a0268d21cb22e3",
+          "port": null,
+          "recordDigest": "57bb445bcaea6274ad81f3f22c9ac100be420121dde6d6bb3ba9b7c3221fb972",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "570501cf72c842cca145819c64f88e00997123b4b6d17af4e9a0268d21cb22e3",
+          "port": null,
+          "recordDigest": "52b6e7438e8e170146f16d9861274cf38142cbc98d89b62220086d4defa10df4",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "570501cf72c842cca145819c64f88e00997123b4b6d17af4e9a0268d21cb22e3",
+          "port": null,
+          "recordDigest": "9f14b501aa48b9fbe9a1988be4dbdb76794a11c7c2a8e4a93cae63d05167fd2a",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "570501cf72c842cca145819c64f88e00997123b4b6d17af4e9a0268d21cb22e3",
+          "port": null,
+          "recordDigest": "10939116072f5c2cfeef9a299bbbf6ed4e5a8c4a6cc2557d16902b6e4af3c25e",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "570501cf72c842cca145819c64f88e00997123b4b6d17af4e9a0268d21cb22e3",
+          "port": 8000,
+          "recordDigest": "b36f5f80243b300e8f9e620d8c17d3944bcbefa139ecf641057aeaab585d7038",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": false,
+          "sourceDigest": null,
+          "port": 8000,
+          "recordDigest": "ec79845679ab01127b1ab7e9e18116a1813247f49372215eb70d71659a37ff5e",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "570501cf72c842cca145819c64f88e00997123b4b6d17af4e9a0268d21cb22e3",
+          "port": null,
+          "recordDigest": "137008d1e06e7c8ee0cf11658937758c382df3da1e1b9ece081951e7f4f16907",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "570501cf72c842cca145819c64f88e00997123b4b6d17af4e9a0268d21cb22e3",
+          "port": null,
+          "recordDigest": "4fc94bbdd95b59609671c07dc63580ade39ad2884f66b6600ba5b7cc6eb0b26b",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_stop",
+          "succeeded": true,
+          "sourceDigest": null,
+          "port": null,
+          "recordDigest": "ca6389915dc9c887a7348274ca82ba68b19c0c3f8e3cc4ad96cefe52ba5333e7",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "8a39eaa1140499681111db262f82851668b2537490fe3f35e6fad251b898b32a",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "de6eae7cb52be7b8517f87327d15c84831b47a5cc1a60598f711c8f59e28b05e",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "cbb770f3232dafe3393a27f1e39eba0784f1d83e669a08ad2b6803e274b0eafb",
+          "port": null,
+          "recordDigest": "d0f9442396fd42f8aa498166d75e1943364e4c472113ad03fe55f40347b89bbd",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "5ead9e366331db14a7a91c502a49474a4378dd0a2fc5f72c2d7af1830b66f2b5",
+          "port": null,
+          "recordDigest": "55a1da3bfbc22f78fadaf27ea24fb275800be22a53cd07bb91b6d652f49a78a0",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "65c99a7919b33f27d055632c20a9571c08cbf45abea5384c181feeffe91cc9aa",
+          "port": null,
+          "recordDigest": "915dcf5dda172ca4e96396cf09e3758ba8837ce326011297a943c30c08940ec2",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "1cf04bc51ae785f5693fb74b4bd3e979baaf44a1ce466605f1d5dcdd61e25a9d",
+          "port": null,
+          "recordDigest": "f2e99d79b359f73587b9464c58c973c72bc12d7b39f67c6dffbcac147a073fa1",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "642c5dd31b877c0e42b4d6793771bd6698dc3c29cbd07f1569a0d66b334b609f",
+          "port": null,
+          "recordDigest": "a520b312022ef87e94e2401193e2e43c56a314b7612f923b46ed76f8c13d7f38",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": false,
+          "sourceDigest": "642c5dd31b877c0e42b4d6793771bd6698dc3c29cbd07f1569a0d66b334b609f",
+          "port": null,
+          "recordDigest": "7e9253df99e30b7108af2a26b42df57fd774405b064548c90014f67a6f496fad",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "642c5dd31b877c0e42b4d6793771bd6698dc3c29cbd07f1569a0d66b334b609f",
+          "port": null,
+          "recordDigest": "7487681dd18bdaa640caf87777e9b1fc8cb62fc9167cc010324de1f0e478e5a2",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "642c5dd31b877c0e42b4d6793771bd6698dc3c29cbd07f1569a0d66b334b609f",
+          "port": null,
+          "recordDigest": "2760fab616f09618424e845633a515173230a7c5b3097408b801c9aa5625d72c",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "071ca74dab9e6accf469146b04b69b8574b50c419ca08d38a732fc44bb7a6932",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "e087445426a5aa7d75a106d79ef7e2fa39518036507a7376d2a8245f63b53c84",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "4a6958c3797ff1be993c40d04f3ac001d436653e6a7330719c75ca600aa93a10",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "3f2c4fc59f494cc15ebd45ca09afe07c0ca36bbc084ee2c14e4b5d2c05e676e3",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "4a309c38d864295093701da4a8d6805f7f4b0cdecfbf5eac44574da2893c5543",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "14a12ee371de56d21659139e5c170d5ba7067804a1c9f01bc5926adc365a124f",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "17739dcb5bcfb77ee64b33eb4cfd5876136a33105180f0f086d2df7e8a36f02d",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": 8000,
+          "recordDigest": "61fc2799cf24ba68c29be92893025f67de6622533b8eee4e944cbce99d4c2d12",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "6fd5bca21d07493e4262e0afc23e78bd45e28919eca3876f233283a6a7d06965",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "2398ebf4fbac41e0b1196841554a4e640a6e41b9f5158b3f38c22aa763aa602d",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "a7fd7998b45732afed2c85021618a49fb0a59d6f814542d4e1e5b861484359aa",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "f5022f4a64e41efde5bbbc3cea1a7bc3e4b24a75919f2c8524443ea8022b2407",
+          "port": null,
+          "recordDigest": "91c344b5ecb5e0b47ccb44b917d83a62ffd51e75c0a3f7d80fd75c58404da9f9",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "40d3bdb41bafddacece994fdec37f552edbdba04221e875feceb75b664f1d667",
+          "port": null,
+          "recordDigest": "f957063c3a4502d3ef2b95d4b75ec5997dd2a8786884ed786cfe2b14a351b248",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "40d3bdb41bafddacece994fdec37f552edbdba04221e875feceb75b664f1d667",
+          "port": null,
+          "recordDigest": "50dd438b3d6e7b0703752edc79df3c4180e34de97e802c8b1baad5b4892e0c7c",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "40d3bdb41bafddacece994fdec37f552edbdba04221e875feceb75b664f1d667",
+          "port": null,
+          "recordDigest": "51857954b082844d9ca5b369a0105cf826609fa798fcd2696c0939ef30e78ea1",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "40d3bdb41bafddacece994fdec37f552edbdba04221e875feceb75b664f1d667",
+          "port": null,
+          "recordDigest": "c511ab4cbe6ed18c672dfd49b16424919c13cf058d8996fdd5bf5eefc48aebdc",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "83cab19e3de45351c2ab90b96d434980e089c7ca796068daffc544d934c4adf7",
+          "port": null,
+          "recordDigest": "45b6b8fb5185e4f4cd02b4499a652ff31e80575ea19fabdfcc5c70e49c5f7e71",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "83cab19e3de45351c2ab90b96d434980e089c7ca796068daffc544d934c4adf7",
+          "port": null,
+          "recordDigest": "458a57ceed49c5ed47d06665bd2cae6c09d1fc13570a44e545f7800d0c2e9074",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "570501cf72c842cca145819c64f88e00997123b4b6d17af4e9a0268d21cb22e3",
+          "port": null,
+          "recordDigest": "41937a4713e7901243231e337ea289ef3280595d312368adbf4b38f15b7415c4",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "570501cf72c842cca145819c64f88e00997123b4b6d17af4e9a0268d21cb22e3",
+          "port": null,
+          "recordDigest": "edc3e7076857e3bfd8d92f3af1b1464ea567efe2f13232bc221f412973b8ed1f",
+          "artifacts": [
+            {
+              "id": "74d52040-732c-4b5b-88a3-72de7597f8f7",
+              "sha256": "6dc37a2c24e5235af391f9e4a7887cabfc1c311c3b4dcebf90d85c644b0e260c",
+              "mimeType": "application/zip",
+              "bytes": 23877,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 1086751,
+        "modelAttempts": 57,
+        "outputTokens": 143029,
+        "toolInvocations": 48
+      }
+    },
+    {
+      "artifactCount": 0,
+      "case": "restaurant",
+      "codeRevision": "cedbbec",
+      "contextTokens": 32768,
+      "durationSeconds": 193.57163989543915,
+      "failures": [
+        "Goal did not complete: The coordinator could not continue: __MOBILELLM_WORKFLOW_ERROR__|hostFailure|The model could not produce a valid action after one repair attempt: model.online.structured-output-invalid: The online model returned invalid structured output.",
+        "No actual source archive",
+        "The website was not actually started, inspected and exported",
+        "No independent collaborating agents"
+      ],
+      "frozenLimits": {
+        "toolCalls": 48,
+        "modelRequests": 64,
+        "activeMilliseconds": 1800000
+      },
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "reasoningEffort": "high",
+      "recordedToolCalls": 3,
+      "runID": "252a7fda-74c5-460a-91ef-49ada33f88af",
+      "state": "paused",
+      "workerCalls": 1,
+      "evidenceDirectory": "restaurant-252a7fda-74c5-460a-91ef-49ada33f88af",
+      "launchedAtUTC": "2026-10-27T06:48:32.624000+00:00",
+      "scriptSHA256": "1367f6682ac7d74fb47959463c850705ad3c76858984e98a4851fc8fc1184e1a",
+      "activationToolLimit": 12,
+      "tasks": [
+        {
+          "id": "build-site",
+          "agent": "builder",
+          "state": "failed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "accept-site",
+          "agent": "reviewer",
+          "state": "pending",
+          "dependencies": [
+            "build-site"
+          ],
+          "revision": 1,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "c260b80671000a29812a26f57ff12b83e25eb8795e288988f7d3061fba8edffb",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "78d18556571edcbf21b8a484be8b7598793ef9ceca35f35523438f84a642fc04",
+          "artifacts": []
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 36769,
+        "modelAttempts": 6,
+        "outputTokens": 11910,
+        "toolInvocations": 3
+      }
+    },
+    {
+      "artifactCount": 4,
+      "case": "restaurant",
+      "codeRevision": "4691f51",
+      "contextTokens": 131072,
+      "durationSeconds": 298.0053139925003,
+      "failures": [],
+      "frozenLimits": {
+        "toolCalls": 48,
+        "modelRequests": 64,
+        "activeMilliseconds": 1800000
+      },
+      "goal": "开发一个中餐馆网站，支持在线订台。",
+      "model": "deepseek-v4-flash",
+      "reasoningEffort": "high",
+      "recordedToolCalls": 21,
+      "runID": "c07c543d-3d75-479f-80a9-0507f10a1917",
+      "state": "completed",
+      "workerCalls": 2,
+      "evidenceDirectory": "restaurant-c07c543d-3d75-479f-80a9-0507f10a1917",
+      "launchedAtUTC": "2026-10-27T07:03:47.789000+00:00",
+      "scriptSHA256": "1367f6682ac7d74fb47959463c850705ad3c76858984e98a4851fc8fc1184e1a",
+      "activationToolLimit": 12,
+      "tasks": [
+        {
+          "id": "build-app",
+          "agent": "builder",
+          "state": "completed",
+          "dependencies": [],
+          "revision": 3,
+          "required": true
+        },
+        {
+          "id": "verify-app",
+          "agent": "reviewer",
+          "state": "completed",
+          "dependencies": [
+            "build-app"
+          ],
+          "revision": 3,
+          "required": true
+        }
+      ],
+      "sandboxReceipts": [
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "e09e19f2aebee1ae06d395be243ebc027736d48f013fb221749258313ae3f0f8",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "port": null,
+          "recordDigest": "94660009497ec1cc2a3be7399120b0ea468b64536df4410292c7a5c32ada9042",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "1a942d56a793fb43b191750d18148aba74e754c68ab09709d722356fa5f6e6e3",
+          "port": null,
+          "recordDigest": "ec89480c6794d220803348926a45903695c23afeeffa55ef56d9be16e12fb7e0",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": false,
+          "sourceDigest": "1a942d56a793fb43b191750d18148aba74e754c68ab09709d722356fa5f6e6e3",
+          "port": null,
+          "recordDigest": "bf10fa29b17b15f688ab828c608c4194b2a56999717ab16d38173a38e5fcdb3f",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "1a942d56a793fb43b191750d18148aba74e754c68ab09709d722356fa5f6e6e3",
+          "port": null,
+          "recordDigest": "3853f283a500707fcc104bd2bd8e12c6356a777fa9effb317bcff3f0aa15fa2e",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "1a942d56a793fb43b191750d18148aba74e754c68ab09709d722356fa5f6e6e3",
+          "port": null,
+          "recordDigest": "56d1dd46792ac9d63c82db32564b42a122741b9cc62c619a51d3bfdaf891377a",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_write_files",
+          "succeeded": true,
+          "sourceDigest": "06cfc8c4667ead2207cfd10d0cf35efeb92608f5883e3f90af63d122293ad3c7",
+          "port": null,
+          "recordDigest": "d1a59b2bf52fc69a2ffe0334dd470ea8849a508627c55fba68b89213ffc8b72c",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": false,
+          "sourceDigest": "06cfc8c4667ead2207cfd10d0cf35efeb92608f5883e3f90af63d122293ad3c7",
+          "port": null,
+          "recordDigest": "2ceda96ee4c80aae6715195f723f163683bac0538877fd3b64835873fe50a254",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+          "port": null,
+          "recordDigest": "3a2455a22215e006478bb9cf82935330aa0b568a5ff6f49fe85ad4af96ba9c35",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_start",
+          "succeeded": true,
+          "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+          "port": 3000,
+          "recordDigest": "8c68b8fe32328ecb4ab82b16e1e0560b6356b13080701585ee13a3e5d2e6670f",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": true,
+          "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+          "port": 3000,
+          "recordDigest": "ed87dc0aa635650b47cb415224fa64ec96a9fac57143aa350bc83624d5d9f928",
+          "artifacts": [
+            {
+              "id": "d4351bdc-faef-4fb7-8ead-598248ef84b0",
+              "sha256": "808b9f8afdc93960e8032c2abe407f970a03a1719b5a129c10accce8591c9c6d",
+              "mimeType": "image/jpeg",
+              "bytes": 54973,
+              "semanticType": "sandbox.browser-screenshot"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+          "port": null,
+          "recordDigest": "f18b4bfdf622060e5024e335ec39793fd4a974ab48f43365d971d0a1f5b08477",
+          "artifacts": [
+            {
+              "id": "db63cd52-04a6-42e4-8726-4363a815384e",
+              "sha256": "735c2e5ab3faef5ca061e766a330184ffd30f62f77c0d15ebba5d3ee01b4e820",
+              "mimeType": "application/zip",
+              "bytes": 28716,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_list_files",
+          "succeeded": true,
+          "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+          "port": null,
+          "recordDigest": "3e1fed5ff6b821ea9cab4d892f8ead3fa354e58c7b65f403cc6221fd90f8b2d7",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+          "port": null,
+          "recordDigest": "8133feccdcf423923ae15396e7f63a0166ccef90eb3d5762b594eac8acb296c3",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+          "port": null,
+          "recordDigest": "c8cb0b7fe6858828c4e2faa7a663ff4de106c18293d7fbb1ae3692b8aebde647",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_read_file",
+          "succeeded": true,
+          "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+          "port": null,
+          "recordDigest": "066a0651cc04cc7a01d7e654c14870f3ae447dc86643b860667a64281cbbe9e4",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_browser",
+          "succeeded": true,
+          "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+          "port": 3000,
+          "recordDigest": "68d63afaf38a6d313776b287ba56ae798f3404b2e3ba0988d33b3d7e018c4bdf",
+          "artifacts": [
+            {
+              "id": "453edd0f-d381-4376-bd3a-e9b49bb49e24",
+              "sha256": "3055c47f4740ab27d1d93ec62655471a2af6669626931cd260de56cb8d3e493f",
+              "mimeType": "image/jpeg",
+              "bytes": 64474,
+              "semanticType": "sandbox.browser-screenshot"
+            }
+          ]
+        },
+        {
+          "tool": "sandbox_run",
+          "succeeded": true,
+          "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+          "port": null,
+          "recordDigest": "e95b5ccacc4f47c3062be412dcb722b2cebfeeb7f1e68ad6a4e2be66e2c475da",
+          "artifacts": []
+        },
+        {
+          "tool": "sandbox_export",
+          "succeeded": true,
+          "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+          "port": null,
+          "recordDigest": "d3fa25c4faa26f889a22bf4b4b0017352b9275f48ba7791904f6bd85c809d694",
+          "artifacts": [
+            {
+              "id": "cfd217fd-dfb8-4c27-8bfa-1ed1d5fb0722",
+              "sha256": "38f8b512409a5d5ff792e93fd4b87f3a341b8d480d506ac768f453bac886d4b5",
+              "mimeType": "application/zip",
+              "bytes": 28716,
+              "semanticType": "sandbox.project-source"
+            }
+          ]
+        }
+      ],
+      "recordedUsage": {
+        "inputTokens": 475068,
+        "modelAttempts": 22,
+        "outputTokens": 55307,
+        "toolInvocations": 21
+      }
+    }
+  ]
+}

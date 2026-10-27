@@ -1,0 +1,15 @@
+{
+  "artifactCount" : 1,
+  "case" : "repair",
+  "codeRevision" : "b92502a",
+  "durationSeconds" : 78.613923072814941,
+  "failures" : [
+
+  ],
+  "goal" : "Fix the inventory.py project in the workspace. reserve(stock, requests) must aggregate repeated SKU requests, reject invalid quantities or insufficient stock without changing any input, and return remaining stock on success. Keep the public function signature and the existing tests. Run the tests, fix the code, verify it and deliver the repaired project.",
+  "model" : "deepseek-v4-flash",
+  "recordedToolCalls" : 11,
+  "runID" : "48c78ac1-2352-4c79-8e1a-fb131080f953",
+  "state" : "completed",
+  "workerCalls" : 2
+}

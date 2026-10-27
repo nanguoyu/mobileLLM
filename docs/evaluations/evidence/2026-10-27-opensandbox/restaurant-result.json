@@ -1,0 +1,22 @@
+{
+  "artifactCount" : 4,
+  "case" : "restaurant",
+  "codeRevision" : "4691f51",
+  "contextTokens" : 131072,
+  "durationSeconds" : 298.00531399250031,
+  "failures" : [
+
+  ],
+  "frozenLimits" : {
+    "activeMilliseconds" : 1800000,
+    "modelRequests" : 64,
+    "toolCalls" : 48
+  },
+  "goal" : "开发一个中餐馆网站，支持在线订台。",
+  "model" : "deepseek-v4-flash",
+  "reasoningEffort" : "high",
+  "recordedToolCalls" : 21,
+  "runID" : "c07c543d-3d75-479f-80a9-0507f10a1917",
+  "state" : "completed",
+  "workerCalls" : 2
+}

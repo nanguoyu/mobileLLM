@@ -1,0 +1,15 @@
+{
+  "artifactCount" : 2,
+  "case" : "sales",
+  "codeRevision" : "b92502a",
+  "durationSeconds" : 96.927411913871765,
+  "failures" : [
+
+  ],
+  "goal" : "Create a reproducible Python sales analysis project from orders.csv. Deduplicate by order_id keeping the latest updated_at, exclude cancelled orders, and compute revenue in integer euro cents as quantity * unit_cents - refund_cents. Write totals.json with revenue_cents, order_count and by_country revenue totals. Include a concise human-readable report and tests, run them, and deliver the project.",
+  "model" : "deepseek-v4-flash",
+  "recordedToolCalls" : 12,
+  "runID" : "87e95f52-dc20-40a0-8c96-75fed1630378",
+  "state" : "completed",
+  "workerCalls" : 2
+}

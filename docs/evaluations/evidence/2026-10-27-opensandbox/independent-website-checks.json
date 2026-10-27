@@ -1,0 +1,56 @@
+{
+  "case": "restaurant",
+  "scope": "c07c543d-3d75-479f-80a9-0507f10a1917",
+  "afterAutonomousCompletion": true,
+  "checksPassed": true,
+  "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+  "booking": {
+    "id": 3,
+    "code": "SX20261027WGR7F",
+    "date": "2026-11-03",
+    "slot": "11:30",
+    "phone": "13962071583",
+    "bookedBefore": 0,
+    "bookedAfter": 1,
+    "confirmation": "✓\n订台成功！\n\n请截图保存预订号，到店报号即可入席。\n\n预订号\nSX20261027WGR7F\n姓名\n独立验收\n手机号\n13962071583\n用餐时间\n2026-11-03 11:30\n人数\n4 位\n备注\nindependent-check-after-autonomous-completion\n再订一桌",
+    "mobileFits": true
+  },
+  "verification": {
+    "persistedAfterProcessRestart": true,
+    "duplicateStatus": 409,
+    "invalidFieldsRejected": [
+      "name",
+      "phone",
+      "date",
+      "time",
+      "partySize",
+      "partySize"
+    ],
+    "capacityUnchangedByRejectedRequests": true
+  },
+  "processRestart": {
+    "stopped": {
+      "processID": "94f27915-b5c8-e6f7-b70e-a6fbef18ef88",
+      "running": false,
+      "exitCode": 0,
+      "error": null
+    },
+    "started": {
+      "processID": "9379d21e-6365-4951-885a-f5f624946725",
+      "running": true,
+      "port": 3000,
+      "sourceDigest": "85ae4c69a955c962fa618daac42a7ffaf5e5b421c3b037c10c131db1a1f7e693",
+      "logPath": ".mobilellm/processes/9379d21e-6365-4951-885a-f5f624946725.log"
+    }
+  },
+  "operations": [
+    "dc7746a2-f07c-4e2a-b08d-1c55301092ae",
+    "69dc5f24-d093-41c7-a026-faf508513c60",
+    "9379d21e-6365-4951-885a-f5f624946725",
+    "60cf328b-703a-4fbf-a11e-f51750a8a9a8"
+  ],
+  "screenshotSHA256": "9ab2ba9c6f20358df0c62f429717d56ff61f6b0b2d84e1cc59b0117b6ae6e96f",
+  "limits": [
+    "Local demonstration; administrator API is open unless ADMIN_TOKEN is configured, as documented by the generated project. No public deployment was tested."
+  ]
+}

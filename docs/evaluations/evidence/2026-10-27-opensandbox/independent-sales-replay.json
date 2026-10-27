@@ -1,0 +1,17 @@
+{
+  "case": "sales",
+  "check": "Independent replay on unseen shuffled orders with newer cancellation",
+  "archiveSHA256": "a0cb5455410ec7b017f3176a217ec7adaa92247b1d205c0d20ddd309aa973283",
+  "passed": true,
+  "command": "python3 analyze.py --input heldout.csv --json-out heldout.json --report heldout.md && python3 - <<'END'\nimport json\nx=json.load(open('heldout.json'))\nassert x['revenue_cents']==1115 and x['order_count']==3,x\nassert x['by_country']=={'AT':475,'DE':440,'FR':200},x\nprint(json.dumps(x,sort_keys=True))\nEND",
+  "operationID": "21c73f95-6aa9-49c1-8aa3-c8935019150d",
+  "output": {
+    "exitCode": 0,
+    "stdout": "orders counted: 3\nrevenue_cents: 1115\n  AT: 475\n  DE: 440\n  FR: 200\nwrote heldout.json and heldout.md\n{\"by_country\": {\"AT\": 475, \"DE\": 440, \"FR\": 200}, \"order_count\": 3, \"revenue_cents\": 1115}\n",
+    "stderr": "",
+    "truncated": false,
+    "timedOut": false,
+    "cancelled": false,
+    "sourceDigest": "0998e55bc70fdec22f6d7b84033ec9d3775e346d67621b2ba21803022e429fb4"
+  }
+}
