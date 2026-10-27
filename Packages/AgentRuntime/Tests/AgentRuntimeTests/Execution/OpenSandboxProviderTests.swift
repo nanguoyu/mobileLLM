@@ -28,7 +28,8 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
         _ = try await execute(provider, request: write, key: "source")
         let start = try await request(provider, payload: .object(["action": .string("start"),
             "command": .string("python3 -m http.server 8011 --bind 0.0.0.0"), "port": .integer(8011)]))
-        XCTAssertEqual(try await execute(provider, request: start, key: "server").terminalStatus.state, .completed)
+        let started = try await execute(provider, request: start, key: "server")
+        XCTAssertEqual(started.terminalStatus.state, .completed)
         let browser = try await request(provider, payload: .object(["action": .string("browser"), "port": .integer(8011),
             "script": .string("await expect(page.get_by_role('heading', name='Real browser')).to_be_visible()\nreturn {'checked': True}")]))
         let inspected = try await execute(provider, request: browser, key: "browser")
