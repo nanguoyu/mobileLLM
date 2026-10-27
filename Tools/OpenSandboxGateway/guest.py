@@ -4,6 +4,7 @@
 import asyncio
 import ast
 import base64
+import contextlib
 import hashlib
 import io
 import json
@@ -24,6 +25,29 @@ from urllib.parse import urlsplit
 ROOT = Path('/workspace/project')
 MAX_TEXT = 131072
 MAX_FILE = 8 * 1024 * 1024
+
+
+class BoundedCapture:
+    def __init__(self, limit=16384):
+        self.limit = limit
+        self.parts = []
+        self.size = 0
+        self.truncated = False
+
+    def write(self, text):
+        data = str(text).encode('utf-8', errors='replace')
+        kept = data[:self.limit - self.size]
+        if kept:
+            self.parts.append(kept)
+            self.size += len(kept)
+        self.truncated |= len(data) > len(kept)
+        return len(text)
+
+    def flush(self):
+        pass
+
+    def value(self):
+        return b''.join(self.parts).decode('utf-8', errors='replace')
 IGNORED = {'node_modules', '.git', '.mobilellm', '.venv', '__pycache__', '.next', 'dist', 'build'}
 
 
@@ -188,6 +212,12 @@ async def inspect_browser(script, operation_id, port):
         browser = await playwright.chromium.launch(headless=True, args=['--no-sandbox'])
         context = await browser.new_context(viewport={'width': 1280, 'height': 900})
         page = await context.new_page()
+        browser_errors = []
+        def record_error(message):
+            if len(browser_errors) < 20:
+                browser_errors.append(str(message)[:1000])
+        page.on('pageerror', record_error)
+        page.on('console', lambda message: record_error(message.text) if message.type == 'error' else None)
         page.set_default_timeout(10000)
         base_url = 'http://127.0.0.1:' + str(port)
         before = source_digest()
@@ -199,7 +229,9 @@ async def inspect_browser(script, operation_id, port):
                      'asyncio': SimpleNamespace(sleep=asyncio.sleep,gather=asyncio.gather),
                      'json': SimpleNamespace(dumps=json.dumps,loads=json.loads)}
         exec('async def user_check():\n' + '\n'.join('    ' + line for line in script.splitlines()), namespace)
-        result = await namespace['user_check']()
+        stdout, stderr = BoundedCapture(), BoundedCapture()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            result = await namespace['user_check']()
         location = urlsplit(page.url)
         if location.hostname not in {'localhost', '127.0.0.1'} or location.port != port:
             raise ValueError('Browser checks must finish on the selected workspace application')
@@ -216,7 +248,14 @@ async def inspect_browser(script, operation_id, port):
         if len(data) > 512 * 1024:
             raise ValueError('Browser screenshot exceeds 512 KiB')
         response = {'scriptCompleted': True, 'url': page.url, 'port': port, 'title': await page.title(),
-                    'result': result, 'screenshot': str(screenshot.relative_to(ROOT)),
+                    'result': result, 'stdout': stdout.value(), 'stderr': stderr.value(),
+                    'outputTruncated': stdout.truncated or stderr.truncated,
+                    'pageText': (await page.locator('body').inner_text())[:12000], 'browserErrors': browser_errors,
+                    'controls': await page.locator('input,select,textarea,button').evaluate_all("""nodes => nodes.slice(0,40).map(n => ({
+                        tag:n.tagName.toLowerCase(),type:n.type || '',name:(n.name || '').slice(0,128),
+                        id:(n.id || '').slice(0,128),label:(n.getAttribute('aria-label') || n.labels?.[0]?.innerText || n.innerText || '').slice(0,256)
+                    }))"""),
+                    'screenshot': str(screenshot.relative_to(ROOT)),
                     'screenshotBase64': base64.b64encode(data).decode(), 'screenshotSHA256': hashlib.sha256(data).hexdigest()}
         await browser.close()
         return response

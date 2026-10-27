@@ -31,9 +31,12 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
         let started = try await execute(provider, request: start, key: "server")
         XCTAssertEqual(started.terminalStatus.state, .completed)
         let browser = try await request(provider, payload: .object(["action": .string("browser"), "port": .integer(8011),
-            "script": .string("await expect(page.get_by_role('heading', name='Real browser')).to_be_visible()\nreturn {'checked': True}")]))
+            "script": .string("await expect(page.get_by_role('heading', name='Real browser')).to_be_visible()\nprint('assertion reached')\nreturn {'checked': True}")]))
         let inspected = try await execute(provider, request: browser, key: "browser")
         let image = try object(inspected)
+        XCTAssertEqual(image["stdout"], .string("assertion reached\n"))
+        if case .string(let text)? = image["pageText"] { XCTAssertTrue(text.contains("Real browser")) }
+        else { XCTFail("Browser observations must include actual page text") }
         guard case .string(let encoded)? = image["screenshotBase64"], let pixels = Data(base64Encoded: encoded) else {
             return XCTFail("No original screenshot: \(inspected.terminalStatus.failure?.safeMessage ?? "missing result")")
         }

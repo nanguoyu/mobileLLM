@@ -174,7 +174,7 @@ public struct OpenSandboxTool: ToolV2 {
                 + " processID must be the 36-character identity returned by sandbox_start, not an operating-system PID."
         case .browser:
             fields = ["script": string(32_768), "port": integer(1024, 32767)]
-            summary = "Run async Python Playwright checks on a started app port. page, context, browser, base_url, expect, json and asyncio.sleep/gather are provided; imports/introspection are not allowed. Use assertions. Exceptions fail the check. Return JSON findings; a screenshot is retained."
+            summary = "Run async Python Playwright checks on a started app port. page, context, browser, base_url, expect, json and asyncio.sleep/gather are provided; imports/introspection are not allowed. Use assertions. Exceptions fail the check. Returns actual page text, controls, browser errors, script stdout, optional returned JSON, and a retained screenshot."
         case .export:
             fields = [:]; summary = "Export the current project source as an immutable ZIP artifact, excluding dependency caches and internal logs. The compressed archive is limited to 512 KiB."
         }
