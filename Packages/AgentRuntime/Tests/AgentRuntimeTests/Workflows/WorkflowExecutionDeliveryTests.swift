@@ -18,7 +18,7 @@ final class WorkflowExecutionDeliveryTests: XCTestCase {
         XCTAssertNil(aliases["sandbox_write_files"], "Aliases cannot introduce unavailable tools")
     }
 
-    func testDeliveryRejectsStaleUnreviewedForeignAndStoppedExecution() throws {
+    func testDeliveryRejectsMissingStaleForeignAndStoppedExecution() throws {
         let scope = SandboxWorkspaceHandleID(), source = StableDigest.sha256(Data("source-1".utf8))
         func receipt(_ operation: String, _ time: Int64, digest: StableDigest? = nil,
                      workspace: SandboxWorkspaceHandleID? = nil, success: Bool = true, running: Bool? = nil,
@@ -43,19 +43,19 @@ final class WorkflowExecutionDeliveryTests: XCTestCase {
         let policy = WorkflowDeliveryPolicy(requestedOutcome: .runningApplication,
             availableCapabilities: [.workspaceFiles, .codeExecution, .applicationInspection])
         let good = [start, browser, export]
-        XCTAssertNil(policy.completionBlocker(workspaceID: scope, evidence: good, acceptedReviewEvidence: [browser, export]))
-        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good, acceptedReviewEvidence: []))
-        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good, acceptedReviewEvidence: [export]))
-        XCTAssertNotNil(policy.completionBlocker(workspaceID: SandboxWorkspaceHandleID(), evidence: good, acceptedReviewEvidence: good))
+        XCTAssertNil(policy.completionBlocker(workspaceID: scope, evidence: good))
+        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: [start, browser]))
+        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: [start, export]))
+        XCTAssertNotNil(policy.completionBlocker(workspaceID: SandboxWorkspaceHandleID(), evidence: good))
         let changed = try receipt("sandbox_run", 4, digest: .sha256(Data("changed-by-failed-test".utf8)), success: false)
-        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [changed], acceptedReviewEvidence: good))
+        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [changed]))
         let stop = try receipt("sandbox_stop", 4, running: false)
-        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [stop], acceptedReviewEvidence: good))
+        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [stop]))
         let unknown = WorkflowReviewToolEvidence(toolID: "sandbox_run", invocationID: ToolInvocationID(), recordDigest: source,
             execution: WorkflowSandboxEvidence(workspaceID: scope, sourceDigest: nil, operation: "sandbox_run"),
             completedAt: AgentTimestamp(rawValue: 4), succeeded: false)
-        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [unknown], acceptedReviewEvidence: good),
+        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: good + [unknown]),
             "A known failed command without current source evidence cannot validate a stale delivery")
-        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: Array(good.dropFirst()), acceptedReviewEvidence: good))
+        XCTAssertNotNil(policy.completionBlocker(workspaceID: scope, evidence: Array(good.dropFirst())))
     }
 }

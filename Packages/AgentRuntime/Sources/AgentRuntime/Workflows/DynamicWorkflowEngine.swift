@@ -1015,7 +1015,7 @@ private actor DynamicWorkflowSession {
                       projection.submittedHandles.keys.allSatisfy({ projection.outcomes[$0] != nil }),
                       projection.reconciliationCallID == nil else { throw WorkflowTaskGraphError.incomplete }
                 if try requiresAcceptedReviews() { try graph.requireAcceptedReviews() }
-                if let blocker = try await deliveryCompletionBlocker(graph: graph) { feedback = blocker; break }
+                if let blocker = try await deliveryCompletionBlocker() { feedback = blocker; break }
                 if let limits = try outputLimits(graph) {
                     guard let answer = decoded.answer else { throw WorkflowTaskGraphError.invalid }
                     if let rejected = limits.finalRejection(answer) {
@@ -1091,7 +1091,7 @@ private actor DynamicWorkflowSession {
         return values["_mobileLLMReviewRequiredV1"] == .bool(true)
     }
 
-    private func deliveryCompletionBlocker(graph: WorkflowTaskGraph? = nil) async throws -> String? {
+    private func deliveryCompletionBlocker() async throws -> String? {
         guard let policy = try deliveryPolicy() else { return nil }
         if let blocker = policy.blocker { return blocker }
         guard policy.requestedOutcome == .runningApplication || policy.requestedOutcome == .workspaceArtifact else { return nil }
@@ -1101,16 +1101,11 @@ private actor DynamicWorkflowSession {
                 evidence += try await spawner.reviewToolEvidence(handle)
             }
         }
-        let graph = graph ?? projection.taskGraph
-        let accepted = graph?.tasks.filter { $0.required && $0.state == .completed && $0.review != nil }.flatMap { task in
-            guard let artifact = graph?.artifacts.first(where: { $0.id == task.outputArtifactID }),
-                  let review = artifact.reviewResult, review.status == .pass,
-                  review.goalAmendmentCount == graph?.amendments.count,
-                  review.inputArtifactIDs == task.inputArtifactIDs else { return [WorkflowReviewToolEvidence]() }
-            return review.toolEvidence
-        } ?? []
+        // Independent acceptance is enforced by graph.requireAcceptedReviews() at delivery.
+        // Execution receipts may come from any worker on the same unchanged source; forcing the
+        // reviewer to repeat them would add no execution evidence.
         return policy.completionBlocker(workspaceID: SandboxWorkspaceHandleID(rawValue: projection.runID.rawValue),
-            evidence: evidence, acceptedReviewEvidence: accepted)
+            evidence: evidence)
     }
 
     private func deliveryPolicy() throws -> WorkflowDeliveryPolicy? {

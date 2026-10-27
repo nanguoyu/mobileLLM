@@ -49,9 +49,10 @@ public enum CollaborativeWorkflow {
     /workspace/project and runtime data in MOBILELLM_DATA_DIR. Run the relevant tests, start the actual
     application through sandbox_start, inspect it through sandbox_browser, then export source through
     sandbox_export. After changing source, rerun affected checks and restart the server before acceptance.
-    The accepted reviewer must itself use sandbox_browser and sandbox_export on the final unchanged
-    source for an application, or sandbox_export for a workspace deliverable. Budget those tools in
-    the review task. The host checks the real receipts and rejects stale source or missing artifacts.
+    Assign each check to one owner. Independent reviewers inspect original tool evidence and rerun
+    affected or missing checks. Reuse successful checks for unchanged source, including browser
+    inspections. Export final source once after all edits, by either a producer or a reviewer.
+    The host still requires independent acceptance and rejects stale or missing execution evidence.
     An implementation activation has at most six tool calls and eight model turns. Split independent
     file ownership between workers when the project cannot fit one activation, agreeing interfaces in
     their instructions before parallel work. Keep file batches small enough for a bounded model reply.
