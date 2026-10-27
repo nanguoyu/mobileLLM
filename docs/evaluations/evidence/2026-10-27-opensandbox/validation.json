@@ -1,0 +1,284 @@
+{
+  "schemaVersion": 1,
+  "capturedAtUTC": "2026-10-27T08:23:33.437403+00:00",
+  "scope": "Targeted checks selected from changed behavior; overlapping checks are not summed into a capability score.",
+  "nativeChecks": [
+    {
+      "log": "provider-final-contract.log",
+      "sha256": "141d26e6455dbfc901016a76ae8694794bb0db65b581c030ebaba6d232af1e02",
+      "cases": [
+        {
+          "test": "AgentRuntimeTests.OpenSandboxProviderTests testPersistedConnectionCannotBypassEndpointOrCapabilityValidation",
+          "outcome": "passed",
+          "seconds": 0.003
+        },
+        {
+          "test": "AgentRuntimeTests.OpenSandboxProviderTests testRealBrowserScreenshotAndSourceArchiveSurviveLogTailLimits",
+          "outcome": "passed",
+          "seconds": 6.232
+        },
+        {
+          "test": "AgentRuntimeTests.OpenSandboxProviderTests testRealProviderPreservesExecutionAcrossReconnectAndCancelsChildren",
+          "outcome": "passed",
+          "seconds": 26.614
+        }
+      ]
+    },
+    {
+      "log": "final-lifecycle-contract.log",
+      "sha256": "4969f63970d1cae48afa1fe06cb2955e3218baf9e371126b8af740c0e1ffa79d",
+      "cases": [
+        {
+          "test": "AgentRuntimeTests.OpenSandboxProviderTests testRealProviderPreservesExecutionAcrossReconnectAndCancelsChildren",
+          "outcome": "passed",
+          "seconds": 25.215
+        }
+      ]
+    },
+    {
+      "log": "path-confinement-live.log",
+      "sha256": "8ff4a120bd7e102174a836a8d8347d2a622e727f4f03b5a4bcfcb2ec19dea7a3",
+      "cases": [
+        {
+          "test": "AgentRuntimeTests.OpenSandboxProviderTests testRealBrowserScreenshotAndSourceArchiveSurviveLogTailLimits",
+          "outcome": "passed",
+          "seconds": 7.742
+        }
+      ]
+    },
+    {
+      "log": "service-state-live.log",
+      "sha256": "98c5bfd7285507df02e1a9c369ee8ddf8b7f6adf0695cd3ca984d0a63a1eeedf",
+      "cases": [
+        {
+          "test": "AgentRuntimeTests.OpenSandboxProviderTests testRealBrowserScreenshotAndSourceArchiveSurviveLogTailLimits",
+          "outcome": "passed",
+          "seconds": 7.047
+        },
+        {
+          "test": "AgentRuntimeTests.OpenSandboxToolPipelineTests testFailedCommandCanBeRetriedAfterAnObservedEditInTheSameRun",
+          "outcome": "passed",
+          "seconds": 7.382
+        },
+        {
+          "test": "AgentRuntimeTests.OpenSandboxToolPipelineTests testImmediateIdenticalSandboxRetriesRemainBounded",
+          "outcome": "passed",
+          "seconds": 4.498
+        },
+        {
+          "test": "AgentRuntimeTests.OpenSandboxToolPipelineTests testRuntimeDataChangesPermitTheSameCheckWithoutChangingSourceFiles",
+          "outcome": "passed",
+          "seconds": 7.409
+        }
+      ]
+    },
+    {
+      "log": "failed-browser-live.log",
+      "sha256": "f689150470e73f0813a971c3351c185cbc5d37bf2f4c3f365b43ed33329d86b5",
+      "cases": [
+        {
+          "test": "AgentRuntimeTests.OpenSandboxProviderTests testRealBrowserScreenshotAndSourceArchiveSurviveLogTailLimits",
+          "outcome": "passed",
+          "seconds": 5.447
+        },
+        {
+          "test": "AgentRuntimeTests.OpenSandboxToolPipelineTests testFailedCommandCanBeRetriedAfterAnObservedEditInTheSameRun",
+          "outcome": "passed",
+          "seconds": 7.319
+        }
+      ]
+    },
+    {
+      "log": "regex-browser-live.log",
+      "sha256": "738b1947e9c1db625110983922af47df6d22d8d9afe6adcc4162c6623d58cfda",
+      "cases": [
+        {
+          "test": "AgentRuntimeTests.OpenSandboxProviderTests testRealBrowserScreenshotAndSourceArchiveSurviveLogTailLimits",
+          "outcome": "passed",
+          "seconds": 5.675
+        }
+      ]
+    },
+    {
+      "log": "evidence-reuse-regression.log",
+      "sha256": "f64e581cd6fc11669a7987083c28259299952f90b9e768d353670b12ec9f64bf",
+      "cases": [
+        {
+          "test": "AgentRuntimeTests.WorkflowExecutionDeliveryTests testDeliveryRejectsMissingStaleForeignAndStoppedExecution",
+          "outcome": "passed",
+          "seconds": 0.003
+        },
+        {
+          "test": "AgentRuntimeTests.WorkflowExecutionDeliveryTests testToolAliasesResolveOnlyUniqueAlreadyPermittedNames",
+          "outcome": "passed",
+          "seconds": 0.0
+        },
+        {
+          "test": "AgentRuntimeTests.WorkflowTaskReviewTests testAnAmendmentInvalidatesAnAlreadyAcceptedReviewWithoutErasingItsEvidence",
+          "outcome": "passed",
+          "seconds": 0.001
+        },
+        {
+          "test": "AgentRuntimeTests.WorkflowTaskReviewTests testClaimsCannotReplaceMissingToolExecutionOrUnreviewedRequiredWork",
+          "outcome": "passed",
+          "seconds": 0.001
+        },
+        {
+          "test": "AgentRuntimeTests.WorkflowTaskReviewTests testParallelReviewFailureReopensOnlyItsProducerAndKeepsOtherAcceptedBranch",
+          "outcome": "passed",
+          "seconds": 0.001
+        },
+        {
+          "test": "AgentRuntimeTests.WorkflowTaskReviewTests testReviewCriteriaAndIndependentReviewerCannotBeSilentlyReplaced",
+          "outcome": "passed",
+          "seconds": 0.0
+        },
+        {
+          "test": "AgentRuntimeTests.WorkflowTaskReviewTests testTwoAutomaticCorrectionsAreBoundedAndOldReviewCannotAcceptAnAmendment",
+          "outcome": "passed",
+          "seconds": 0.002
+        }
+      ]
+    },
+    {
+      "log": "review-receipt-regression.log",
+      "sha256": "2c89acbd8a3d1e6a7e0682ab472eb029287d99a6bf4bbb02d07b755150024268",
+      "cases": [
+        {
+          "test": "AgentRuntimeTests.DynamicWorkflowDurabilityTests testReviewCannotClaimToolExecutionWithoutARecordedSuccessfulInvocation",
+          "outcome": "passed",
+          "seconds": 0.216
+        }
+      ]
+    },
+    {
+      "log": "tool-boundary-regression.log",
+      "sha256": "202a774278c5a85a5e299fb1297c002fc6b0b008c521ee7f7f25f43a8fc09e46",
+      "cases": [
+        {
+          "test": "AgentRuntimeTests.AgentExecutorToolIntegrationTests testRepeatedNormalizedToolCallTerminatesNoProgressWithoutSecondExecution",
+          "outcome": "passed",
+          "seconds": 0.916
+        },
+        {
+          "test": "AgentRuntimeTests.AgentExecutorToolIntegrationTests testRiskyBoundaryThenProviderConfirmedNoEffectFailureStillRequiresReconciliation",
+          "outcome": "passed",
+          "seconds": 0.353
+        },
+        {
+          "test": "AgentRuntimeTests.AgentExecutorToolIntegrationTests testUncertainExternalWriteConfirmedSuccessIsSynthesizedWithoutReplay",
+          "outcome": "passed",
+          "seconds": 0.847
+        },
+        {
+          "test": "AgentRuntimeTests.AgentExecutorToolIntegrationTests testUncertainExternalWriteWaitsForReconciliationAndIsNeverSilentlyReplayed",
+          "outcome": "passed",
+          "seconds": 0.851
+        },
+        {
+          "test": "AgentRuntimeTests.WorkflowExecutionDeliveryTests testDeliveryRejectsStaleUnreviewedForeignAndStoppedExecution",
+          "outcome": "passed",
+          "seconds": 0.001
+        }
+      ]
+    },
+    {
+      "log": "metadata-validation.log",
+      "sha256": "9e4f19fa4a053b4c76e376b0c40c6e32ad902d54a1b0ef4e6be5c8f33ab97967",
+      "cases": [
+        {
+          "test": "AgentRuntimeTests.OpenSandboxProviderTests testPersistedConnectionCannotBypassEndpointOrCapabilityValidation",
+          "outcome": "passed",
+          "seconds": 0.005
+        }
+      ]
+    },
+    {
+      "log": "settings-tests.log",
+      "sha256": "30b4870e7f4b81e3fbfc298c225b18add16c2a3f8190a043387858fb789faa50",
+      "cases": [
+        {
+          "test": "MobileLLMUITests.SettingsPersistenceTests testSandboxSettingsPersistOnlyNonsecretIdentityAndRequireExplicitEnablement",
+          "outcome": "passed",
+          "seconds": 0.006
+        }
+      ]
+    },
+    {
+      "log": "architecture-tests.log",
+      "sha256": "affaa55c2cc96aaac4dee333c38779d09c0864c425b57faf0f3fd36d25e62880",
+      "cases": [
+        {
+          "test": "AgentHarnessVerificationTests.ArchitectureBoundaryVerifierTests testDeferredImplementationsAndShellEntryPointsAreRejected",
+          "outcome": "passed",
+          "seconds": 0.006
+        },
+        {
+          "test": "AgentHarnessVerificationTests.ArchitectureBoundaryVerifierTests testLinuxCryptoAllowanceRequiresOfficialExactPin",
+          "outcome": "passed",
+          "seconds": 0.007
+        },
+        {
+          "test": "AgentHarnessVerificationTests.ArchitectureBoundaryVerifierTests testPackageBoundariesAcceptOnlyApprovedDependenciesAndImports",
+          "outcome": "passed",
+          "seconds": 0.012
+        }
+      ]
+    }
+  ],
+  "simulatorChecks": [
+    {
+      "resultBundle": "settings-ui-v3.xcresult",
+      "result": "Passed",
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "totalTestCount": 1,
+      "title": "Test - UITests"
+    },
+    {
+      "resultBundle": "activation-budget.xcresult",
+      "result": "Passed",
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "totalTestCount": 1,
+      "title": "Test - mobileLLMUnitTests"
+    },
+    {
+      "resultBundle": "reasoning-budget.xcresult",
+      "result": "Passed",
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "totalTestCount": 1,
+      "title": "Test - mobileLLMUnitTests"
+    },
+    {
+      "resultBundle": "ios-keychain-erase.xcresult",
+      "result": "Passed",
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "totalTestCount": 1,
+      "title": "Test - mobileLLMUnitTests"
+    }
+  ],
+  "cleanupOwnershipChecks": {
+    "command": "python3 -B scripts/tests/test_opensandbox_dev.py",
+    "passed": 4,
+    "failed": 0,
+    "sourceCommit": "edfae3f"
+  },
+  "staticVerification": {
+    "outcome": "passed",
+    "command": "agent-harness-verify static --repo-root <repository>",
+    "specSHA256": "ea6174de90b0faed8ff37f965d26fa2dec631f33de1c0c2c58781b823f8f3217",
+    "logSHA256": "cbf6bc83b4992afa929a3986975215e407ae5e41752c317ff3d0254918628d85"
+  },
+  "retainedArtifactDigests": {
+    "repair-source.zip": "9692d090c9665376212cfedc97274254c7a37d94470255b505de06ac6ab2e17d",
+    "sales-source.zip": "a0cb5455410ec7b017f3176a217ec7adaa92247b1d205c0d20ddd309aa973283",
+    "restaurant-source.zip": "38f8b512409a5d5ff792e93fd4b87f3a341b8d480d506ac768f453bac886d4b5"
+  }
+}

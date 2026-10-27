@@ -12,7 +12,9 @@ during a run. Independent outcome checks ran after the application finished.
 | “开发一个中餐馆网站，支持在线订台。” | 298.0 s; 4691f51; Flash high, 128K context | 2 / 21 | Mobile browser booking returned a real confirmation code. A fresh client and a service restart retained the record. Duplicate and six invalid requests were rejected without changing capacity. |
 
 The configured model alias was deepseek-v4-flash on the official service. Budgets and reasoning
-settings differ between these development runs. They are not a frozen reliability benchmark.
+settings differ between these development runs. Twenty attempts were recorded during development;
+five completed, eight paused, six required reconciliation and one was stopped by the evaluator.
+They are not a frozen reliability benchmark.
 [The complete attempt ledger](evidence/2026-10-27-opensandbox/evaluation-ledger.json) retains earlier
 blocked, interrupted and failed runs, their limits, task relationships and native receipt digests.
 [Original failed worker reports and available source archives](evidence/2026-10-27-opensandbox/original-failures.json)
@@ -64,7 +66,14 @@ Native provider tests cover recovery without duplicate execution, cancellation, 
 large artifacts, confined paths and failed-page observations. A separate fixed-action regression
 uses the real authorization and container path to verify failed test → edit → identical retest,
 including runtime-data changes. It is a mechanism test, not an autonomous model score.
-Simulator interaction verified connection, reconnect, access toggles, removal and relaunch.
+Simulator interaction verified connection, reconnect, access toggles, removal and relaunch. A separate
+iOS regression verified Keychain erasure across two accounts while preserving another service; all
+three task-owned UI test spaces were then erased through the application. Compact test outcomes and
+original log digests are retained in the [validation manifest](evidence/2026-10-27-opensandbox/validation.json).
 
 Setup, resource limits and ownership-based teardown are described in [OPENSANDBOX.md](../OPENSANDBOX.md).
-The cleanup record is added after teardown has been verified.
+The [cleanup record](evidence/2026-10-27-opensandbox/cleanup.json) verifies removal of owned containers,
+images, volumes, 39 build-cache records and 10 build histories. All 92 unrelated cache records and the
+original Docker resources were preserved. Only the default bridge identity changed on runtime restart.
+Task-created Xcode products, logs, temporary test files and the private environment directory were
+removed. Reused build caches were preserved, and OrbStack and the test Simulator were shut down.

@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "verifiedAtUTC": "2026-10-27T08:25:04.696793+00:00",
+  "docker": {
+    "verifiedAtUTC": "2026-10-27T08:18:34.506616+00:00",
+    "baselineCounts": {
+      "containers": 2,
+      "images": 20,
+      "volumes": 9,
+      "networks": 4
+    },
+    "afterCounts": {
+      "containers": 2,
+      "images": 20,
+      "volumes": 9,
+      "networks": 4
+    },
+    "baselinePreserved": {
+      "containers": true,
+      "images": true,
+      "volumes": true,
+      "networks": true
+    },
+    "defaultBridgeRecreatedOnRuntimeRestart": true,
+    "ownedImagesRemaining": [],
+    "ownedBuildCacheRemaining": [],
+    "recordedVolumesRemaining": [],
+    "cleanupRetained": [],
+    "orbstackStatus": "Stopped",
+    "countDefinition": "Unique resource IDs; the 20 original image IDs had 21 listed references."
+  },
+  "buildCache": {
+    "verifiedAtUTC": "2026-10-27T08:17:42.605892+00:00",
+    "recordedOwnedCacheIDs": 39,
+    "removedOwnedCacheIDs": 39,
+    "remainingOwnedCacheIDs": [],
+    "unrelatedCacheBefore": 92,
+    "unrelatedCachePreserved": true,
+    "removedOwnedBuildHistory": 10,
+    "errors": [],
+    "remainingOwnedBuildHistory": []
+  },
+  "filesystem": {
+    "verifiedAtUTC": "2026-10-27T08:20:34.437179+00:00",
+    "xcodeLogsRemoved": 44,
+    "xcodeProductsRemoved": 22,
+    "nativeTemporaryEntriesRemoved": 36,
+    "nativeTemporaryEntriesAlreadyAbsent": 0,
+    "logicalBytesRemoved": 30923531402,
+    "retained": [],
+    "unrelatedXcodeOutputsPreserved": true,
+    "taskDerivedDataRemoved": true,
+    "erasedSimulatorScopesRemoved": 0,
+    "simulatorState": "Shutdown",
+    "reusedBuildCachesPreserved": true,
+    "erasedSimulatorScopesVerified": 3,
+    "remainingTaskSimulatorScopes": 0,
+    "privateEnvironmentLogicalBytesRemoved": 856971954,
+    "privateEnvironmentRemoved": true
+  },
+  "credentialScan": {
+    "retainedFilesChecked": 16,
+    "knownCredentialMatches": 0,
+    "zipContentsChecked": true
+  },
+  "executionServicesStopped": true
+}

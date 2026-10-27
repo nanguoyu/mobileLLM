@@ -1121,14 +1121,17 @@ enter guest environments, model inputs or durable execution requests. Ordinary a
 
 Tool V2 prepares and authorizes every operation. One workflow owns one opaque workspace shared by its workers;
 model arguments cannot select another workspace, image or host mount. File replacement checks the observed SHA-256.
+File paths are relative or absolute under the goal's project root; traversal and sibling roots are rejected.
 Commands, service startup, browser assertions and exports run inside OpenSandbox. The Docker development deployment
 binds lifecycle, gateway and guest ports to loopback, denies guest egress except configured package hosts, and limits
 CPU, memory, processes, job duration and workspace lifetime. Docker secureAccess is unsupported and is not claimed.
 
 Provider handles persist before submission. Reattachment observes an existing command and does not replay uncertain
 submission. Detaching an observer does not cancel the command. Explicit cancellation stops its child process group.
-Confirmed test failures retain bounded diagnostic output and the complete guest result. They allow another edit;
-rerunning an identical command requires an observed source change and still consumes the original cumulative budget.
+Confirmed test failures retain bounded diagnostics and the complete guest result. Failed browser observations retain
+page/control state, script output and a screenshot. Immediate identical calls are blocked; intervening workspace work
+permits a retest, including dependency or runtime-data changes without a source edit. Every attempt consumes the
+original cumulative budget. Startup rejects occupied ports, checks the new process and stop waits for its exit.
 
 Executable deliverables require native receipts from the goal's workspace and latest source digest, plus a passing
 independent review of current task artifacts. A running application requires a successful service start, browser

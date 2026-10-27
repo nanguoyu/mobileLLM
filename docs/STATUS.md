@@ -54,11 +54,21 @@ code/workspace execution; local-inference performance and OS background scheduli
 ## Optional OpenSandbox execution
 
 [Setup and cleanup](OPENSANDBOX.md) use the existing Docker runtime and a task-owned temporary directory.
-No global Python/npm install or host workspace mount is required. The native provider's real-container
-contract passed duplicate-start, reconnect, failure-output, cursor replay and cancellation checks.
-The Simulator app compiled successfully. Focused delivery counterexamples reject stale sources,
-unreviewed exports, another workspace and a stopped application. Real development evaluations are
-in progress; these component checks do not establish autonomous task success.
+No global Python/npm install or host workspace mount is required. Production-runtime evaluations
+completed an inventory repair, a reproducible sales analysis and the original brief “开发一个中餐馆网站，支持在线订台。”.
+Each used two workers with actual container operations. Independent checks verified input preservation,
+unseen sales data and mobile booking persistence across a fresh browser and service restart.
+[The dated report and source artifacts](evaluations/2026-10-27-opensandbox.md) retain all 20 development
+attempts, including 15 failures, interruptions or blocked outcomes. The runs use different revisions and
+budgets; they do not establish a current-version reliability rate.
+
+Real-container regressions cover reconnect without replay, cancellation, failed-page diagnostics,
+large artifacts, service lifecycle and confined paths. The edit/retest path also handles changed runtime
+data without requiring a source edit. Focused delivery counterexamples reject stale sources,
+unreviewed exports, another workspace and a stopped application. Simulator interaction passed connection,
+reconnect, access toggles, removal and relaunch. Actual iOS Keychain erasure passed while preserving
+another service. Task-owned development resources have been removed; the original Docker inventory
+and reused build caches are preserved.
 
 ## Task workspaces and interface
 
