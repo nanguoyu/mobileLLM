@@ -164,7 +164,7 @@ public struct OpenSandboxTool: ToolV2 {
             fields = ["path": string(512)]; summary = "List this goal's project files. Use '.' for the project root."
         case .run:
             fields = ["command": string(131_072), "timeoutSeconds": integer(1, 120)]
-            summary = "Execute a real shell command in /workspace/project. Node, npm, Python, SQLite and Playwright are available. Keep runtime data in MOBILELLM_DATA_DIR (/workspace/data), outside source files. Nonzero exit is a real failure. Output is bounded."
+            summary = "Execute a real bash command with errexit and pipefail in /workspace/project. Node, npm, Python, SQLite and Playwright are available. Keep runtime data in MOBILELLM_DATA_DIR (/workspace/data), outside source files. Preserve test exit status; use assertions, not printed success claims. Output is bounded."
         case .start:
             fields = ["command": string(32_768), "port": integer(1024, 32767)]
             summary = "Start a long-running application server in this workspace and check its HTTP port. Returns an actual process identity; this does not mean the application passed its tests."

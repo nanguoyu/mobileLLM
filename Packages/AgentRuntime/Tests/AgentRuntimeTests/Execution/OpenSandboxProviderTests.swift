@@ -67,6 +67,12 @@ final class OpenSandboxProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertNil(failure.structuredOutput)
         XCTAssertTrue(failure.terminalStatus.failure?.safeMessage.contains("CONTRACT_FAILURE") == true)
         XCTAssertNotNil(failure.terminalStatus.failure?.details["sandbox.source"])
+        let pipe = try await request(restored, payload: .object(["action": .string("exec"),
+            "command": .string("printf 'original failure\\n'; false | cat; printf 'MASKED_SUCCESS'"),
+            "timeoutSeconds": .integer(10)]))
+        let pipeResult = try await execute(restored, request: pipe, key: "pipeline-status")
+        XCTAssertEqual(pipeResult.terminalStatus.state, .failed, "A logging pipeline must preserve the failing test's exit status")
+        XCTAssertFalse(pipeResult.terminalStatus.failure?.safeMessage.contains("MASKED_SUCCESS") == true)
 
         let sleeping = try await request(restored, payload: .object(["action": .string("exec"),
             "command": .string("python3 -c \"import time; from pathlib import Path; time.sleep(4); Path('late.txt').write_text('unexpected')\""),

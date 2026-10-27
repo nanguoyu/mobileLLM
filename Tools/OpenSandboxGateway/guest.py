@@ -132,7 +132,7 @@ def write_files(files):
 def run_command(command, timeout):
     if not isinstance(command, str) or not command.strip() or len(command.encode()) > MAX_TEXT:
         raise ValueError('Invalid or oversized command')
-    process = subprocess.Popen(['/bin/bash', '--noprofile', '--norc', '-c', command], cwd=ROOT, stdout=subprocess.PIPE,
+    process = subprocess.Popen(['/bin/bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', command], cwd=ROOT, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, start_new_session=True)
     selector = selectors.DefaultSelector()
     selector.register(process.stdout, selectors.EVENT_READ, 'stdout')

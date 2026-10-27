@@ -248,7 +248,7 @@ class Gateway:
                             raise ValueError('Invalid command')
                         # The process keeps running independently of its observing client. Its
                         # stdout is file-size bounded and readable from the same workspace.
-                        argv = ['/bin/bash', '--noprofile', '--norc', '-c', 'mkdir -p .mobilellm/processes; ulimit -f 65536; exec /bin/bash --noprofile --norc -c '
+                        argv = ['/bin/bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', 'mkdir -p .mobilellm/processes; ulimit -f 65536; exec /bin/bash --noprofile --norc -e -o pipefail -c '
                                 + __import__('shlex').quote(text) + ' > .mobilellm/processes/' + operation + '.log 2>&1']
                         timeout = 1800
                     else:

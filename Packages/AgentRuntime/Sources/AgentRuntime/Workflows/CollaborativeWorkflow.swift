@@ -59,6 +59,8 @@ public enum CollaborativeWorkflow {
     sandbox_start only for a server that should stay running. Do not spend calls repeatedly checking
     the supplied toolchain or reinstalling unchanged dependencies. Read current files before editing
     an existing project; a profile that permits edits should also permit those reads.
+    Preserve failing test exit codes and browser assertions. Do not mask them with '|| true', a later
+    successful command, or printed PASS messages. Test failure is ordinary feedback for correction.
     Browser checks use async Python with page, context, browser, base_url and expect already provided.
     An execution failure is useful feedback for correction, not an instruction to claim success.
 
