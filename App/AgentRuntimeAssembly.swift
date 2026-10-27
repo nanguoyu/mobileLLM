@@ -893,7 +893,8 @@ public final class AgentRuntimeAssembly {
             payloadStore: payloadStore,
             valueStore: dynamicValueStore,
             childRequestBuilder: dynamicChildBuilder,
-            sessionController: executor.controller
+            sessionController: executor.controller,
+            sandboxTools: sandboxTools
         )
         self.diagnosticLogger = diagnosticLogger
         runStore = AgentRunStore(
@@ -904,6 +905,7 @@ public final class AgentRuntimeAssembly {
     }
 
     public func eraseAllRuntimeData() async throws {
+        try await sandboxTools.closeAll()
         await repository.close()
         await dynamicWorkflowJournal.close()
         try await artifactStore.eraseAllData()

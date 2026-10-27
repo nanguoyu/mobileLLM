@@ -804,6 +804,7 @@ public actor AppDynamicWorkflowService {
     private let valueStore: any WorkflowValueStoring
     private let childRequestBuilder: AppDynamicWorkflowChildRequestBuilder
     private let sessionController: AgentRunController
+    private let sandboxTools: OpenSandboxToolService
     private let analyzer = DynamicWorkflowScriptAnalyzer()
 
     init(
@@ -813,7 +814,8 @@ public actor AppDynamicWorkflowService {
         payloadStore: ContentAddressedExecutionPayloadStore,
         valueStore: any WorkflowValueStoring,
         childRequestBuilder: AppDynamicWorkflowChildRequestBuilder,
-        sessionController: AgentRunController
+        sessionController: AgentRunController,
+        sandboxTools: OpenSandboxToolService
     ) {
         self.engine = engine
         self.journal = journal
@@ -822,6 +824,7 @@ public actor AppDynamicWorkflowService {
         self.valueStore = valueStore
         self.childRequestBuilder = childRequestBuilder
         self.sessionController = sessionController
+        self.sandboxTools = sandboxTools
     }
 
     /// Normalizes/analyzes one exact candidate, saves it through the durable workflow journal, and
@@ -984,6 +987,7 @@ public actor AppDynamicWorkflowService {
 
     public func stop(runID: WorkflowRunID) async throws {
         try await engine.stop(runID: runID)
+        try await sandboxTools.close(workspaceID: runID.rawValue)
     }
 
     public func restartAgent(

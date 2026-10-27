@@ -82,8 +82,39 @@ public actor OpenSandboxToolService {
     }
 
     public func close(workspaceID: UUID) async throws {
-        for provider in providers.values where provider.workspaceID.rawValue == workspaceID {
-            try await provider.closeWorkspace()
+        try restoreOwnedProviders(workspaceID: workspaceID)
+        for provider in providers.values where provider.workspaceID.rawValue == workspaceID { try await provider.closeWorkspace() }
+    }
+
+    public func closeAll() async throws {
+        try restoreOwnedProviders(workspaceID: nil)
+        for provider in providers.values { try await provider.closeWorkspace() }
+    }
+
+    /// Reconstruct only scopes with this app's durable execution records. Never enumerate or close
+    /// all workspaces on a shared server. A removed credential produces an explicit cleanup error.
+    private func restoreOwnedProviders(workspaceID: UUID?) throws {
+        guard FileManager.default.fileExists(atPath: directory.path) else { return }
+        struct Header: Decodable { let connectionFingerprint: StableDigest }
+        func children(_ path: URL) throws -> [URL] {
+            try FileManager.default.contentsOfDirectory(at: path, includingPropertiesForKeys: [.isSymbolicLinkKey])
+                .filter { try $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true }
+        }
+        for server in try children(directory) {
+            guard let serverID = UUID(uuidString: server.lastPathComponent) else { continue }
+            for scope in try children(server) {
+                guard let id = UUID(uuidString: scope.lastPathComponent), workspaceID == nil || workspaceID == id else { continue }
+                guard let file = try children(scope).first(where: { $0.pathExtension == "json" }) else { continue }
+                let header = try JSONDecoder().decode(Header.self, from: Data(contentsOf: file))
+                let key = header.connectionFingerprint.rawValue + ":" + SandboxWorkspaceHandleID(rawValue: id).description
+                if providers[key] != nil { continue }
+                guard let credentials = resolve(header.connectionFingerprint.rawValue), credentials.connection.id == serverID else {
+                    throw OpenSandboxError.unavailable
+                }
+                let resolver = resolve, fingerprint = header.connectionFingerprint.rawValue
+                providers[key] = try OpenSandboxProvider(connection: credentials.connection, scopeID: id, directory: server,
+                    apiKey: { resolver(fingerprint)?.apiKey })
+            }
         }
     }
 
