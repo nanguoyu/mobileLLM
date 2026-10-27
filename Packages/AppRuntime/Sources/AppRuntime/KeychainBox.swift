@@ -6,7 +6,7 @@ import Security
 /// A minimal generic-password Keychain store (A2.9): save / read / delete a small secret by account key.
 ///
 /// Items are pinned to THIS device (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) — never synced to
-/// iCloud, and readable only after the first unlock following a boot. `service` scopes the items so
+/// iCloud, and readable while the device is unlocked. `service` scopes the items so
 /// several boxes (or the test suite) don't collide on the same account name. No UI and no app dependency;
 /// the Settings migration that moves secrets off `UserDefaults` wires this in a later wave.
 public struct KeychainBox: Sendable {
@@ -17,8 +17,15 @@ public struct KeychainBox: Sendable {
     public init(service: String) { self.service = service }
 
     /// A non-success Keychain status. `errSecItemNotFound` is modeled as `nil`/no-op, not an error.
-    public enum KeychainError: Error, Equatable {
+    public enum KeychainError: Error, Equatable, LocalizedError {
         case unexpectedStatus(OSStatus)
+        public var errorDescription: String? {
+            switch self {
+            case .unexpectedStatus(let status):
+                let explanation = SecCopyErrorMessageString(status, nil) as String? ?? "Unknown Security framework error"
+                return "Keychain operation failed (\(status)): \(explanation)"
+            }
+        }
     }
 
     private func baseQuery(account: String) -> [String: Any] {
@@ -74,13 +81,15 @@ public struct KeychainBox: Sendable {
     /// boundary rather than only the currently configured account ids, so a token orphaned by an edited
     /// MCP URL cannot survive a user-requested wipe.
     public func deleteAll() throws {
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            // The macOS file-based keychain incorrectly defaults delete queries to one match; spell out
-            // "all" so CLI tests and the Mac app erase every token just like iOS's data-protection keychain.
-            kSecMatchLimit as String: kSecMatchLimitAll,
         ]
+        #if os(macOS)
+        // The file-based Mac keychain defaults to one match. The iOS data-protection
+        // keychain already deletes all matches and rejects this search-only attribute.
+        query[kSecMatchLimit as String] = kSecMatchLimitAll
+        #endif
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainError.unexpectedStatus(status)

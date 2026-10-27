@@ -13,6 +13,24 @@ import AppRuntime
 final class ProductionRegressionTests: XCTestCase, @unchecked Sendable {
     private let attestor = try! LocalSanitizationAttestor(key: Data(repeating: 0x3d, count: 32), policyRevision: 1)
 
+    func testKeychainEraseRemovesEveryOwnedAccountAndPreservesAnotherService() throws {
+        let prefix = "mobileLLM.sandbox-cleanup-test." + UUID().uuidString
+        let owned = KeychainBox(service: prefix + ".owned")
+        let other = KeychainBox(service: prefix + ".other")
+        defer {
+            try? owned.delete(account: "one"); try? owned.delete(account: "two")
+            try? other.delete(account: "unrelated")
+        }
+        try owned.save("first test value", account: "one")
+        try owned.save("second test value", account: "two")
+        try other.save("preserved test value", account: "unrelated")
+        try owned.deleteAll()
+        XCTAssertNil(try owned.readString(account: "one"))
+        XCTAssertNil(try owned.readString(account: "two"))
+        XCTAssertEqual(try other.readString(account: "unrelated"), "preserved test value")
+        XCTAssertNoThrow(try owned.deleteAll())
+    }
+
     func testRecoveredAttachmentResolvesWithoutAnInMemoryRegistrationAndRejectsForgedMetadata() async throws {
         let root = FileManager.default.temporaryDirectory.appending(component: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
