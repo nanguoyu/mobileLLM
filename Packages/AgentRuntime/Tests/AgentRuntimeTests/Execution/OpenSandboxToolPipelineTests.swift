@@ -28,7 +28,7 @@ final class OpenSandboxToolPipelineTests: XCTestCase, @unchecked Sendable {
         let calls = try [call(686, "printf broken > value.txt"), call(687, check),
                          call(688, "printf fixed > value.txt"), call(689, check)]
         let outcomes = try calls.map { call in
-            AgentModelAttemptOutcome.completed(AgentModelCompletion(action: .callTools([call]),
+            try AgentModelAttemptOutcome.completed(AgentModelCompletion(action: .callTools([call]),
                 usage: modelUsage(input: 8, output: 3, milliseconds: 4, memory: 48)))
         } + [.completed(AgentModelCompletion(action: .finalAnswer(AgentAnswer(text: "The corrected source passed the same check.")),
             usage: modelUsage(input: 8, output: 3, milliseconds: 4, memory: 48)))]
