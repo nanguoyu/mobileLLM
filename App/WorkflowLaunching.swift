@@ -622,6 +622,7 @@ extension AgentRuntimeAssembly {
                 "sandboxTools": .array(try sandboxToolIDs(snapshot: snapshot).map(JSONValue.string)),
                 "runDate": .string(runDate),
                 "availableTools": .array(try availableWorkflowTools(snapshot: snapshot).map(JSONValue.string)),
+                "toolAliases": .object(try workflowToolAliases(snapshot: snapshot).mapValues(JSONValue.string)),
                 "availableSkills": .array(availableWorkflowSkills(snapshot: snapshot).map(\.catalogEntry)),
                 "availableModels": .array(coordinator.modelPolicy.allowedSelections.map { .string($0.modelID.rawValue) }),
                 "maximumReasoningEffort": .string(coordinator.modelPolicy.localOnly || !snapshot.onlineReasoningEnabled ? "inherit only" : snapshot.onlineReasoningEffort?.rawValue ?? "service default"),

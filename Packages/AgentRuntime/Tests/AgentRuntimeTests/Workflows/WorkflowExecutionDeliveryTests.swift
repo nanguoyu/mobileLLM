@@ -6,6 +6,18 @@ import XCTest
 
 // TEST-ID: AHT-SANDBOX-001
 final class WorkflowExecutionDeliveryTests: XCTestCase {
+    func testToolAliasesResolveOnlyUniqueAlreadyPermittedNames() throws {
+        let run = try AgentToolLogicalID(providerID: "sandbox", name: "sandbox_run")
+        let browser = try AgentToolLogicalID(providerID: "sandbox", name: "sandbox_browser")
+        let sameName = try AgentToolLogicalID(providerID: "custom", name: "sandbox_run")
+        let aliases = WorkflowToolAliases.uniqueAliases(for: [run, browser, sameName])
+        XCTAssertNil(aliases["sandbox_run"], "A bare ambiguous name must not select a provider")
+        XCTAssertEqual(aliases["sandbox.sandbox_run"], run.description)
+        XCTAssertEqual(aliases[run.description], run.description)
+        XCTAssertEqual(aliases["sandbox_browser"], browser.description)
+        XCTAssertNil(aliases["sandbox_write_files"], "Aliases cannot introduce unavailable tools")
+    }
+
     func testDeliveryRejectsStaleUnreviewedForeignAndStoppedExecution() throws {
         let scope = SandboxWorkspaceHandleID(), source = StableDigest.sha256(Data("source-1".utf8))
         func receipt(_ operation: String, _ time: Int64, digest: StableDigest? = nil,

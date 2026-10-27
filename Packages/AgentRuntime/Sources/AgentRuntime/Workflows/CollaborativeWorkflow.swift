@@ -400,11 +400,13 @@ public enum CollaborativeWorkflow {
           } else if (decision.action === 'blocked') {
             await suspend(decision.reason,'capability');
           } else if (decision.action === 'work') {
+            const aliases = args.toolAliases || {};
+            const tools = names => (names || []).map(name => typeof aliases[name] === 'string' ? aliases[name] : name);
             const changes = decision.tasks.map(t => ({id:t.id,expectedRevision:t.expectedRevision,agent:t.agent,
               instruction:t.instruction,dependencies:t.dependencies,required:t.required,maximumToolCalls:t.maxToolCalls,
               model:t.model || null,inputRanges:t.inputRanges,artifactInputs:t.inputs || [],
-              review:t.review || null,
-              profile:{toolNames:t.tools || [],skillIDs:t.skills || [],reasoningEffort:t.effort && t.effort !== 'inherit' ? t.effort : null}}));
+              review:t.review ? {criteria:t.review.criteria,requiredTools:tools(t.review.requiredTools)} : null,
+              profile:{toolNames:tools(t.tools),skillIDs:t.skills || [],reasoningEffort:t.effort && t.effort !== 'inherit' ? t.effort : null}}));
             packet = await collaborate({action:'update',expectedRevision:packet.graph.revision,tasks:changes});
             feedback = packet.feedback || '';
             phase(decision.stage);

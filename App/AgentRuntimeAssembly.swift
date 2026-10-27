@@ -1000,6 +1000,13 @@ public final class AgentRuntimeAssembly {
             + (try WorkflowAgentToolOperation.allCases.filter { hasSkills || !$0.isSkillOperation }.map { try WorkflowAgentTool.descriptor($0).id.logicalID.description })
     }
 
+    func workflowToolAliases(snapshot: AgentRunRequestSnapshot) throws -> [String: String] {
+        let frozen = try frozenBuilder.frozenInputs(snapshot: snapshot, artifactReferences: [])
+            .addingWorkflowTools(availableSkills: availableWorkflowSkills(snapshot: snapshot))
+        let allowed = Set(try availableWorkflowTools(snapshot: snapshot))
+        return WorkflowToolAliases.uniqueAliases(for: frozen.toolPolicy.allowedToolIDs.filter { allowed.contains($0.description) })
+    }
+
     public func availableWorkflowSkills(snapshot: AgentRunRequestSnapshot) -> [WorkflowSkillDefinition] {
         guard AppFrozenInputBuilder.isOnline(snapshot: snapshot) else { return [] }
         var result: [WorkflowSkillDefinition] = []
