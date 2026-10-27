@@ -81,7 +81,7 @@ public actor OpenSandboxProvider: AgentSandboxProvider {
               request.requirement.workspaceID == nil || request.requirement.workspaceID == workspaceID,
               request.inputArtifacts.isEmpty, request.requirement.secretReferences.isEmpty,
               request.requirement.process == nil,
-              request.requirement.filesystem.allSatisfy({ $0.logicalRoot == "workspace" })
+              request.requirement.filesystem.allSatisfy({ $0.logicalRoot == "sandbox.workspace" })
         else { throw AgentSandboxAPIError.requestBindingMismatch }
         let digest = StableDigest.fingerprint(domain: "opensandbox-operation.v1", components: [
             Data(connection.fingerprint.rawValue.utf8), Data(workspaceID.description.utf8), Data(idempotencyKey.utf8)])

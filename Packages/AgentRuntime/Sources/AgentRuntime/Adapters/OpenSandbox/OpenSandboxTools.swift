@@ -65,7 +65,7 @@ public actor OpenSandboxToolService {
         guard authority.isSubset(of: context.capabilityGrant.authority) else { throw AgentSandboxAPIError.authorityOrBudgetExpansion }
         var roots: [SandboxFilesystemRequirement] = []
         if [.write, .read, .list, .export].contains(operation) {
-            roots = [try SandboxFilesystemRequirement(logicalRoot: "workspace", access: operation == .write ? .readWrite : .readOnly,
+            roots = [try SandboxFilesystemRequirement(logicalRoot: "sandbox.workspace", access: operation == .write ? .readWrite : .readOnly,
                 maximumWrittenBytes: operation == .write ? min(262_144, budget.limits[.generatedArtifactBytes]) : 0)]
         }
         let requirement = try SandboxRequirement(minimumProtocolVersion: AgentContractVersion.currentProtocol,
