@@ -75,7 +75,10 @@ class Environment:
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             if not shutil.which('orbctl'):
                 raise RuntimeError('Start an existing local Docker runtime before continuing')
-            was_running = subprocess.check_output(['orbctl','status'], text=True).strip() != 'Stopped'
+            status = subprocess.run(['orbctl','status'], text=True, capture_output=True)
+            if status.stdout.strip() not in {'Running', 'Stopped'}:
+                raise RuntimeError('Could not determine the existing OrbStack state')
+            was_running = status.stdout.strip() == 'Running'
             self.state.setdefault('orbstackWasRunning', was_running)
             self.save()
             self.run(['orbctl','start'], timeout=60)
@@ -129,7 +132,12 @@ class Environment:
                 self.run(['docker','pull',image], log=f'pull-{index}.log', timeout=300)
                 self.record_image(image)
         tag = self.state.setdefault('runtimeImageReference', 'mobilellm-opensandbox-test:' + self.state['ownerLabel'])
-        if rebuild or not self.state.get('runtimeImageID'):
+        existing_image = self.state.get('runtimeImageID')
+        if existing_image:
+            probe = subprocess.run(['docker','image','inspect',existing_image], env=self.env,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if probe.returncode != 0:existing_image = None
+        if rebuild or not existing_image:
             self.run(['docker','buildx','build','--load','--progress','plain','--label','org.mobilellm.owner='+self.state['ownerLabel'],
                       '-t',tag,'Tools/OpenSandboxGateway'], log='image-build.log', timeout=600)
             self.state['runtimeImageID'] = self.record_image(tag)
